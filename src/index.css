@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root{
+  --bg:#0b0b0b; 
+  --card:#151515; 
+  --muted:#9aa0a6; 
+  --fg:#f2f2f2;
+  --accent:#4ade80; 
+  --danger:#ef4444; 
+  --secondary:#374151;
+}
+
+/* Reset básico + mobile safe */
+*{ 
+  box-sizing:border-box; 
+  max-width: 100%;
+}
+
+html, body, #root { 
+  height:100%; 
+  width:100%;
+}
+
+html, body { 
+  background: var(--bg); 
+}
+
+body { 
+  margin:0; 
+  overflow-x:hidden; /* IMPORTANTÍSIMO: evita scroll lateral y “zoom/recorte” */
+  -webkit-text-size-adjust: 100%;
+}
+
+#root { 
+  width:100%;
+  min-height:100%;
+}

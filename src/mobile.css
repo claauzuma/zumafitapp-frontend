@@ -1,0 +1,227 @@
+/* ====== LAYOUT GENERAL ====== */
+.page{
+  width:100%;
+  min-height:100vh;
+  color:var(--fg);
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+}
+
+/* ====== HEADER ====== */
+.header{
+  width:100%; max-width:480px; margin:0 auto;
+  padding:16px; position:sticky; top:0;
+  background:linear-gradient(180deg, rgba(11,11,11,0.9), rgba(11,11,11,0));
+  backdrop-filter:saturate(150%) blur(2px);
+}
+.header h1{ margin:0; font-size:20px; }
+.header .date{ font-size:12px; color:var(--muted); }
+
+/* ====== SWITCH DE ROL ====== */
+.roleSwitch{
+  width:100%; max-width:480px; margin:0 auto 6px auto;
+  padding:6px 16px; display:flex; align-items:center; gap:10px;
+}
+.roleLabel{ color:#cfcfcf; font-size:13px; }
+.roleOpt{
+  display:inline-flex; align-items:center; gap:6px;
+  background:#0f0f0f; border:1px solid #2b2b2b; color:#ddd;
+  padding:6px 10px; border-radius:999px; cursor:pointer;
+  user-select:none;
+}
+.roleOpt input{ accent-color:#22c55e; }
+.roleOpt.active{ background:rgba(34,197,94,.15); border-color:#22c55e; color:#eaffea; }
+
+/* ====== TABS ====== */
+.tabs{
+  width:100%; max-width:480px; margin:0 auto;
+  display:flex; gap:8px; padding:0 16px 8px; overflow-x:auto;
+}
+.tab{
+  flex:1; padding:10px 12px; border-radius:999px;
+  background:var(--secondary); color:#fff;
+  border:1px solid #2b2b2b; white-space:nowrap;
+}
+.tab.active{ background:var(--accent); color:#0a0a0a; font-weight:700; }
+
+/* ====== OBJETIVOS (TARGETS) + GENERAR ====== */
+.targets{ width:100%; max-width:480px; margin:0 auto; padding:8px 16px; }
+.targets .row{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* auto-wrap */
+  gap:8px; margin-bottom:8px;
+}
+.targets label{ display:flex; flex-direction:column; gap:4px; font-size:13px; color:#ddd; }
+.targets input{ padding:10px 12px; border-radius:10px; border:1px solid #2b2b2b; background:#0f0f0f; color:#fff; }
+
+.genRow{ display:flex; gap:8px; align-items:center; }
+.segmented{ display:flex; background:#0f0f0f; border:1px solid #2b2b2b; border-radius:12px; padding:2px; }
+.seg{
+  border:none; background:transparent; color:#ddd; padding:8px 10px; border-radius:10px;
+}
+.seg.active{ background:var(--accent); color:#0a0a0a; font-weight:800; }
+.cta{
+  flex:1; padding:12px 14px; border-radius:12px;
+  background:linear-gradient(135deg, #22c55e, #a3e635);
+  color:#0a0a0a; border:none; font-weight:800; letter-spacing:0.2px;
+}
+
+/* ====== BUSCADOR + SUGERENCIAS ====== */
+.search{ width:100%; max-width:480px; margin:0 auto; display:flex; gap:8px; padding:0 16px; position:relative; }
+.searchBox{ position:relative; flex:1; }
+.search input{ width:100%; padding:12px 14px; border-radius:12px; border:1px solid #2b2b2b; background:#0f0f0f; color:var(--fg); }
+.add{ padding:12px 14px; border-radius:12px; background:var(--accent); color:#0a0a0a; border:none; font-weight:700; }
+.add:disabled{ opacity:.5; cursor:not-allowed; }
+
+.suggestions{
+  position:absolute; top:100%; left:0; right:0; z-index:20;
+  background:#0f0f0f; border:1px solid #2b2b2b; border-radius:12px;
+  margin-top:6px; padding:6px; max-height:220px; overflow:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,0.35);
+}
+.suggItem{
+  width:100%; text-align:left; background:transparent; border:none;
+  color:#e7e7e7; padding:10px 12px; border-radius:10px;
+}
+.suggItem:hover{ background:#171717; }
+.suggItem .meta{ color:#a0a0a0; font-size:12px; margin-left:6px; }
+
+/* ====== LISTA Y TARJETAS ====== */
+.list{ width:100%; max-width:480px; margin:0 auto; padding:12px 16px 96px; display:flex; flex-direction:column; gap:10px; }
+.card{ display:flex; justify-content:space-between; gap:10px; padding:12px; border:1px solid #232323; border-radius:16px; background:var(--card); }
+.card-left .title{ font-weight:700; margin-bottom:4px; }
+.card-left .sub{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+.macros{ display:flex; gap:8px; font-size:12px; color:#d0d0d0; }
+.card-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+
+/* Cantidad (botones y input) */
+.qty{ display:flex; align-items:center; gap:8px; }
+.round{ width:32px; height:32px; border-radius:50%; border:1px solid #2b2b2b; background:#0f0f0f; color:#fff; font-size:18px; }
+.gramsInput{
+  width:64px; text-align:center; font-variant:tabular-nums;
+  background:#0f0f0f; color:#fff; border:1px solid #2b2b2b; border-radius:10px; padding:6px 8px;
+}
+
+.actions{ display:flex; gap:6px; }
+.secondary{ background:#2c2c2c; color:#eee; border:1px solid #3a3a3a; padding:6px 10px; border-radius:10px; }
+.danger{ background:var(--danger); color:#fff; border:none; padding:6px 10px; border-radius:10px; }
+.empty{ color:var(--muted); text-align:center; padding:16px; }
+
+/* Chips de macro (iconitos) */
+.badges{ display:flex; gap:6px; margin-bottom:4px; }
+.chip{
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:14px; line-height:1; width:22px; height:22px;
+  border-radius:999px; background:#1a1a1a; border:1px solid #2a2a2a;
+}
+.chip.protein{ box-shadow:0 0 0 1px rgba(59,130,246,.25) inset; }
+.chip.carbs  { box-shadow:0 0 0 1px rgba(234,179,8,.25) inset; }
+.chip.fat    { box-shadow:0 0 0 1px rgba(244,63,94,.25) inset; }
+
+/* ====== TOTALES ====== */
+.totals{ width:100%; max-width:480px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 16px; }
+.t-right{ display:flex; gap:10px; color:#dcdcdc; font-size:14px; }
+
+/* ====== FOOTER ====== */
+.footer{
+  position:fixed; bottom:0; left:0; right:0; margin:auto;
+  max-width:480px; background:#101010; border-top:1px solid #242424;
+  padding:10px 16px 14px; display:flex; justify-content:space-between; align-items:center;
+  box-shadow:0 -8px 32px rgba(0,0,0,0.35);
+}
+.footer .macro-row{ display:flex; gap:12px; font-variant:tabular-nums; }
+
+/* ====== TOAST ====== */
+.toast{
+  position:fixed; bottom:84px; left:50%; transform:translateX(-50%);
+  background:#111; color:#fff; border:1px solid #2a2a2a; border-radius:999px;
+  padding:10px 16px; font-weight:700; box-shadow:0 8px 30px rgba(0,0,0,0.35);
+}
+
+/* ====== MODAL ====== */
+.modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px; }
+.modal{ width:100%; max-width:420px; background:#121212; border:1px solid #2a2a2a; border-radius:16px; padding:16px; }
+.modal h3{ margin:0 0 12px; }
+.grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.grid label{ display:flex; flex-direction:column; gap:4px; font-size:13px; }
+.grid input{ padding:10px 12px; border-radius:10px; border:1px solid #2b2b2b; background:#0f0f0f; color:#fff; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.primary{ background:var(--accent); color:#0a0a0a; border:none; padding:8px 12px; border-radius:10px; font-weight:700; }
+
+/* ====== DESKTOP ====== */
+@media (min-width: 768px) {
+  .header, .roleSwitch, .tabs, .targets, .search, .list, .totals, .footer { max-width: 860px; }
+}
+
+/* ===========================
+   MOBILE: Kcal / P / C / G en 1 sola fila
+   =========================== */
+@media (max-width: 480px) {
+  .targets .row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 4 columnas fijas */
+    gap: 8px;
+  }
+
+  /* permitir que los campos se achiquen sin romper la fila */
+  .targets .row > * { min-width: 0; }
+  .targets label { font-size: 12px; gap: 4px; }
+  .targets input {
+    height: 40px;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+}
+
+/* Extra compacto para pantallas muy chicas */
+@media (max-width: 360px) {
+  .targets label { font-size: 11px; }
+  .targets input { height: 36px; font-size: 13px; }
+}
+
+
+/* ====== Header: día dorado + flechas ====== */
+.dayChip{
+  background: #1a1300;
+  color: #facc15;           /* dorado */
+  border: 1px solid #3a3000;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: capitalize; /* Lunes/Martes... */
+}
+
+.navArrow{
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  color: #ddd;
+  font-size: 18px;
+  line-height: 1;
+  display:flex; align-items:center; justify-content:center;
+}
+.navArrow:active{ transform: translateY(1px); }
+
+/* Día más grande (casi el doble) */
+.dayChip{
+  font-size: 18px;           /* antes 12px */
+  font-weight: 900;
+  padding: 6px 14px;         /* un poco más de aire */
+}
+
+/* Opcional: dar un toque más de jerarquía en desktop */
+@media (min-width: 768px){
+  .dayChip{
+    font-size: 20px;
+    padding: 6px 16px;
+  }
+}
+
+/* Ajuste mínimo del título para que no “apriete” */
+.header h1{
+  display:flex; align-items:center; gap:10px;
+  margin:0; font-size:20px; /* tu valor original */
+}
