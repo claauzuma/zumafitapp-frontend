@@ -7,10 +7,10 @@ import AuthPage from "./AuthPage.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
 
-import AppLayout from "./AppLayout.jsx"
+import AppLayout from "./AppLayout.jsx";
 
 // Pantallas del panel:
-import InicioEntrenado from "./entrenado/InicioEntrenado.jsx"; // la vas a crear
+import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
 import MenuEj from "./entrenado/MenuEj.jsx";
 
 // (Opcional) otras:
@@ -22,10 +22,17 @@ import Ajustes from "./entrenado/Ajustes.jsx";
 export default function App() {
   return (
     <Routes>
-      {/* Landing pública */}
-      <Route path="/" element={<Bienvenida />} />
+      {/* ✅ Landing SOLO público: si está logueado -> /app/inicio */}
+      <Route
+        path="/"
+        element={
+          <PublicOnlyRoute>
+            <Bienvenida />
+          </PublicOnlyRoute>
+        }
+      />
 
-      {/* Solo público */}
+      {/* ✅ Solo público: si está logueado -> /app/inicio */}
       <Route
         path="/login"
         element={
@@ -43,7 +50,7 @@ export default function App() {
         }
       />
 
-      {/* APP protegida + layout con navbar */}
+      {/* ✅ APP protegida + layout con navbar */}
       <Route
         path="/app"
         element={
@@ -58,7 +65,6 @@ export default function App() {
         <Route path="inicio" element={<InicioEntrenado />} />
         <Route path="menu" element={<MenuEj />} />
 
-        {/* estas las dejás si ya existen o las creás */}
         <Route path="perfil" element={<Perfil />} />
         <Route path="rutinas" element={<Rutinas />} />
         <Route path="progresos" element={<Progresos />} />
