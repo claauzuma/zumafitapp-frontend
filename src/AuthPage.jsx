@@ -311,17 +311,19 @@ export default function AuthPage({ defaultMode = "login" }) {
 
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/register`, { email });
 
-      await apiFetch("/api/usuarios/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          password,
-          nombre: name,
-          apellido,
-          fechaNacimiento: birthDate,
-          requireEmailVerification: true,
-        }),
-      });
+await apiFetch("/api/usuarios/auth/register", {
+  method: "POST",
+  body: JSON.stringify({
+    email,
+    password,
+    nombre: name,
+    apellido,
+    fechaNacimiento: birthDate,
+    requireEmailVerification: true,
+  }),
+  timeoutMs: 60000, // ✅ 60s para que no se aborte mientras manda el mail
+});
+
 
       setStep("verify");
       setVerifyCode("");
@@ -462,10 +464,12 @@ export default function AuthPage({ defaultMode = "login" }) {
     try {
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/resend-code`, { email });
 
-      await apiFetch("/api/usuarios/auth/resend-code", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
+await apiFetch("/api/usuarios/auth/resend-code", {
+  method: "POST",
+  body: JSON.stringify({ email }),
+  timeoutMs: 60000,
+});
+
 
       setSuccess("Listo ✅ Te reenviamos un nuevo código");
       setCooldown(60);
@@ -503,10 +507,12 @@ export default function AuthPage({ defaultMode = "login" }) {
     try {
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/forgot-password`, { mail });
 
-      await apiFetch("/api/usuarios/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email: mail }),
-      });
+await apiFetch("/api/usuarios/auth/forgot-password", {
+  method: "POST",
+  body: JSON.stringify({ email: mail }),
+  timeoutMs: 60000,
+});
+
 
       setSuccess("Si el email existe, te enviamos un código ✅");
       setStep("reset");
