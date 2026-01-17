@@ -5,3 +5,5 @@ export const API_BASE = "https://zumafitapp-backend-production.up.railway.app";
 //"https://zumafitapp-backend-production.up.railway.app"; 
 // ✅ En DEV: ""  -> usa /api y lo agarra el proxy
 // ✅ En PROD: "https://tu-backend.railway.app"
+
+//hola
