@@ -9,7 +9,7 @@ import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
 import RequireRole from "./RequireRole.jsx";
 
 import AppLayout from "./AppLayout.jsx";
-import AdminLayout from "./AdminLayout.jsx""
+import AdminLayout from "./AdminLayout.jsx"
 
 import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
 import MenuEj from "./entrenado/MenuEj.jsx";
