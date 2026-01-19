@@ -19,7 +19,7 @@ import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
 import Ajustes from "./entrenado/Ajustes.jsx";
 
-import AdminInicio from "./admin/AdminInicio.jsx";
+import AdminInicio from "./AdminInicio.jsx"
 
 export default function App() {
   return (
