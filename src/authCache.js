@@ -1,51 +1,92 @@
 // src/authCache.js
-// src/authCache.js
-const TTL_MS = 3 * 60_000; // 3 minutos
 
+// Estado de auth ultra simple y rápido (para evitar loaders)
+// "unknown" = no sabemos todavía (ej: primera carga)
+// "guest"   = deslogueado
+// "logged"  = logueado
 
-let mem = { status: "unknown", ts: 0 }; // unknown | logged | guest
+const KEY_STATUS = "auth_status_v1";
+const KEY_ROLE = "auth_role_v1";
+const KEY_USER = "auth_user_v1";
 
-export function clearAuthCache() {
-  mem = { status: "unknown", ts: 0 };
+/**
+ * Guarda estado logged + (opcional) user y role.
+ * Soporta que lo llames como setAuthLogged() sin args (backwards compatible).
+ */
+export function setAuthLogged(user = null) {
   try {
-    sessionStorage.removeItem("auth_status");
-    sessionStorage.removeItem("auth_ts");
+    localStorage.setItem(KEY_STATUS, "logged");
+
+    // Intentamos inferir role de varias formas comunes
+    const role =
+      user?.role ||
+      user?.rol ||
+      user?.user?.role ||
+      user?.user?.rol ||
+      null;
+
+    if (role) localStorage.setItem(KEY_ROLE, String(role));
+    else localStorage.removeItem(KEY_ROLE);
+
+    // Guardar user completo es opcional (pero útil)
+    if (user) localStorage.setItem(KEY_USER, JSON.stringify(user));
+    else localStorage.removeItem(KEY_USER);
   } catch {}
 }
 
-export function setAuthLogged() {
-  mem = { status: "logged", ts: Date.now() };
-  try {
-    sessionStorage.setItem("auth_status", "logged");
-    sessionStorage.setItem("auth_ts", String(Date.now()));
-  } catch {}
-}
-
+/**
+ * Marca como guest y limpia role + user.
+ */
 export function setAuthGuest() {
-  mem = { status: "guest", ts: Date.now() };
   try {
-    sessionStorage.setItem("auth_status", "guest");
-    sessionStorage.setItem("auth_ts", String(Date.now()));
+    localStorage.setItem(KEY_STATUS, "guest");
+    localStorage.removeItem(KEY_ROLE);
+    localStorage.removeItem(KEY_USER);
   } catch {}
 }
 
+/**
+ * Devuelve: "logged" | "guest" | "unknown"
+ */
 export function getCachedStatus() {
-  const now = Date.now();
-
-  // ✅ 1) memoria
-  if (mem.status !== "unknown" && now - mem.ts < TTL_MS) return mem.status;
-
-  // ✅ 2) sessionStorage
   try {
-    const status = sessionStorage.getItem("auth_status");
-    const ts = Number(sessionStorage.getItem("auth_ts") || 0);
-    if (status && ts && now - ts < TTL_MS) {
-      if (status === "logged" || status === "guest") {
-        mem = { status, ts };
-        return status;
-      }
-    }
-  } catch {}
+    return localStorage.getItem(KEY_STATUS) || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
-  return "unknown";
+/**
+ * Devuelve el rol cacheado (ej: "admin") o null si no existe.
+ */
+export function getCachedRole() {
+  try {
+    return localStorage.getItem(KEY_ROLE) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Devuelve el user cacheado (obj) o null.
+ * No lo necesitás para roles, pero ayuda.
+ */
+export function getCachedUser() {
+  try {
+    const raw = localStorage.getItem(KEY_USER);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Limpia todo el cache de auth.
+ */
+export function clearAuthCache() {
+  try {
+    localStorage.removeItem(KEY_STATUS);
+    localStorage.removeItem(KEY_ROLE);
+    localStorage.removeItem(KEY_USER);
+  } catch {}
 }

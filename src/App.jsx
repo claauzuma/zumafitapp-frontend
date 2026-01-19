@@ -6,23 +6,24 @@ import AuthPage from "./AuthPage.jsx";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
+import RequireRole from "./RequireRole.jsx";
 
 import AppLayout from "./AppLayout.jsx";
+import AdminLayout from "./AdminLayout.jsx""
 
-// Pantallas del panel:
 import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
 import MenuEj from "./entrenado/MenuEj.jsx";
 
-// (Opcional) otras:
 import Perfil from "./entrenado/Perfil.jsx";
 import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
 import Ajustes from "./entrenado/Ajustes.jsx";
 
+import AdminInicio from "./admin/AdminInicio.jsx";
+
 export default function App() {
   return (
     <Routes>
-      {/* ✅ Landing SOLO público: si está logueado -> /app/inicio */}
       <Route
         path="/"
         element={
@@ -32,7 +33,6 @@ export default function App() {
         }
       />
 
-      {/* ✅ Solo público: si está logueado -> /app/inicio */}
       <Route
         path="/login"
         element={
@@ -42,6 +42,15 @@ export default function App() {
         }
       />
       <Route
+  path="/auth"
+  element={
+    <PublicOnlyRoute>
+      <AuthPage defaultMode="login" />
+    </PublicOnlyRoute>
+  }
+/>
+
+      <Route
         path="/register"
         element={
           <PublicOnlyRoute>
@@ -50,7 +59,22 @@ export default function App() {
         }
       />
 
-      {/* ✅ APP protegida + layout con navbar */}
+      {/* ✅ ADMIN */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <RequireRole role="admin">
+              <AdminLayout />
+            </RequireRole>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="inicio" replace />} />
+        <Route path="inicio" element={<AdminInicio />} />
+      </Route>
+
+      {/* ✅ APP */}
       <Route
         path="/app"
         element={
@@ -59,19 +83,15 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        {/* default de /app */}
         <Route index element={<Navigate to="inicio" replace />} />
-
         <Route path="inicio" element={<InicioEntrenado />} />
         <Route path="menu" element={<MenuEj />} />
-
         <Route path="perfil" element={<Perfil />} />
         <Route path="rutinas" element={<Rutinas />} />
         <Route path="progresos" element={<Progresos />} />
         <Route path="ajustes" element={<Ajustes />} />
       </Route>
 
-      {/* fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

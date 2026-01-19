@@ -6,7 +6,6 @@ import FullPageLoader from "./FullPageLoader.jsx";
 import { getCachedStatus, setAuthLogged, setAuthGuest } from "./authCache.js";
 
 export default function ProtectedRoute({ children }) {
-  // loading | ok | no
   const cached = getCachedStatus();
   const [status, setStatus] = useState(() => (cached === "logged" ? "ok" : "loading"));
 
@@ -23,8 +22,9 @@ export default function ProtectedRoute({ children }) {
 
         if (!alive) return;
 
-        if (me?.user || me) {
-          setAuthLogged();
+        const user = me?.user || me;
+        if (user) {
+          setAuthLogged(user);   // ✅ ahora guarda rol
           setStatus("ok");
         } else {
           setAuthGuest();

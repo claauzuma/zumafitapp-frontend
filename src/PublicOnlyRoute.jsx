@@ -3,16 +3,17 @@ import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import FullPageLoader from "./FullPageLoader.jsx";
-import { getCachedStatus, setAuthLogged, setAuthGuest } from "./authCache.js";
+import { getCachedStatus, getCachedRole, setAuthLogged, setAuthGuest } from "./authCache.js";
 
 export default function PublicOnlyRoute({ children }) {
   const cached = getCachedStatus(); // logged | guest | unknown
+  const roleCached = getCachedRole?.() || null;
+
   const [status, setStatus] = useState(cached);
 
   useEffect(() => {
     let alive = true;
 
-    // ✅ si ya sabemos por cache, no consultamos nada
     if (cached === "guest") {
       setStatus("guest");
       return () => {
@@ -26,7 +27,6 @@ export default function PublicOnlyRoute({ children }) {
       };
     }
 
-    // ✅ unknown: consultamos /me con timeout y fallback a guest
     (async () => {
       try {
         const me = await apiFetch("/api/usuarios/auth/me", {
@@ -37,8 +37,9 @@ export default function PublicOnlyRoute({ children }) {
 
         if (!alive) return;
 
-        if (me?.user || me) {
-          setAuthLogged();
+        const user = me?.user || me;
+        if (user) {
+          setAuthLogged(user);      // ✅ guarda rol
           setStatus("logged");
         } else {
           setAuthGuest();
@@ -56,12 +57,14 @@ export default function PublicOnlyRoute({ children }) {
     };
   }, [cached]);
 
-  // ✅ Loader SOLO cuando está unknown
   if (status === "unknown") {
     return <FullPageLoader title="Verificando sesión…" sub="Un segundo…" />;
   }
 
-  if (status === "logged") return <Navigate to="/app/inicio" replace />;
+  if (status === "logged") {
+    const role = (getCachedRole?.() || roleCached || "").toLowerCase();
+    return <Navigate to={role === "admin" ? "/admin/inicio" : "/app/inicio"} replace />;
+  }
 
   return children;
 }

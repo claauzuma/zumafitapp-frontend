@@ -6,6 +6,10 @@ import { API_BASE } from "./apiCredentials";
 // antes: import { setAuthLogged } from "./PublicOnlyRoute.jsx";
 import { setAuthLogged, clearAuthCache } from "./authCache.js";
 
+// ✅ Si tu AuthPage está en otra ruta (ej "/"), cambiá esto.
+// Importante para Google: volver acá para que corra /me y redirija por rol.
+const AUTH_RETURN_PATH = "/auth";
+
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/+$/, "");
   const p = (path || "").replace(/^\/+/, "");
@@ -182,20 +186,34 @@ export default function AuthPage({ defaultMode = "login" }) {
         });
 
         const me = await apiFetch("/api/usuarios/auth/me");
-
         if (cancelled) return;
 
-        console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, me);
-        setAuthLogged();
+        // ✅ Normalizamos el "user" (depende de cómo responda tu backend)
+        const user = me?.user || me;
+        const role = String(user?.role || user?.rol || "").toLowerCase();
 
-        console.log(`🟢 [AuthPage ${debugIdRef.current}] navigate -> /app/inicio`);
-        navigate("/app/inicio", { replace: true });
+        console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { user, role });
+
+        // ✅ Guarda status + role (y user si lo guardás en authCache)
+        setAuthLogged(user);
+
+        // ✅ Navega según rol
+        if (role === "admin") {
+          console.log(`🟢 [AuthPage ${debugIdRef.current}] navigate -> /admin/inicio`);
+          navigate("/admin/inicio", { replace: true });
+        } else {
+          console.log(`🟢 [AuthPage ${debugIdRef.current}] navigate -> /app/inicio`);
+          navigate("/app/inicio", { replace: true });
+        }
       } catch (err) {
         console.log(`🔴 [AuthPage ${debugIdRef.current}] /me FAIL`, {
           status: err?.status,
           message: err?.message,
           err,
         });
+
+        // ✅ evita quedarse con cache viejo (p.ej. "logged" de una sesión anterior)
+        clearAuthCache();
       }
     })();
 
@@ -212,14 +230,15 @@ export default function AuthPage({ defaultMode = "login" }) {
   function loginWithGoogle() {
     if (googleLoading || loading) return;
 
-    // opcional pero recomendado: limpiás cache para que no “rebote”
+    // ✅ opcional pero recomendado: limpiás cache para que no “rebote”
     clearAuthCache();
 
     setGoogleLoading(true);
 
     // dejamos que pinte el estado (spinner / glow) antes de navegar
     requestAnimationFrame(() => {
-      const returnTo = encodeURIComponent(window.location.origin + "/app/inicio");
+      // ✅ IMPORTANTE: volver a AuthPage (o ruta que ejecute /me) para redirigir por rol
+      const returnTo = encodeURIComponent(window.location.origin + AUTH_RETURN_PATH);
       const url = joinUrl(API_BASE, `/api/usuarios/auth/google?returnTo=${returnTo}`);
 
       console.log("[AuthPage] loginWithGoogle", {
@@ -231,7 +250,7 @@ export default function AuthPage({ defaultMode = "login" }) {
       window.location.assign(url);
     });
 
-    // “seguro” si el navegador tarda/bloquea popup (en algunos casos)
+    // “seguro” si el navegador tarda/bloquea
     setTimeout(() => setGoogleLoading(false), 8000);
   }
 
@@ -275,9 +294,22 @@ export default function AuthPage({ defaultMode = "login" }) {
             body: JSON.stringify({ email, password, remember }),
           });
 
-          console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK -> setAuthLogged + navigate`);
-          setAuthLogged();
-          navigate("/app/inicio", { replace: true });
+          // ✅ Traemos el user/rol (login normalmente solo setea cookie)
+          const me = await apiFetch("/api/usuarios/auth/me");
+          const user = me?.user || me;
+          const role = String(user?.role || user?.rol || "").toLowerCase();
+
+          console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
+
+          // ✅ Guarda logged + role en cache
+          setAuthLogged(user);
+
+          // ✅ Navega según rol
+          if (role === "admin") {
+            navigate("/admin/inicio", { replace: true });
+          } else {
+            navigate("/app/inicio", { replace: true });
+          }
           return;
         } catch (err) {
           console.log(`🔴 [AuthPage ${debugIdRef.current}] login FAIL`, {
@@ -311,19 +343,18 @@ export default function AuthPage({ defaultMode = "login" }) {
 
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/register`, { email });
 
-await apiFetch("/api/usuarios/auth/register", {
-  method: "POST",
-  body: JSON.stringify({
-    email,
-    password,
-    nombre: name,
-    apellido,
-    fechaNacimiento: birthDate,
-    requireEmailVerification: true,
-  }),
-  timeoutMs: 60000, // ✅ 60s para que no se aborte mientras manda el mail
-});
-
+      await apiFetch("/api/usuarios/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+          nombre: name,
+          apellido,
+          fechaNacimiento: birthDate,
+          requireEmailVerification: true,
+        }),
+        timeoutMs: 60000, // ✅ 60s para que no se aborte mientras manda el mail
+      });
 
       setStep("verify");
       setVerifyCode("");
@@ -464,12 +495,11 @@ await apiFetch("/api/usuarios/auth/register", {
     try {
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/resend-code`, { email });
 
-await apiFetch("/api/usuarios/auth/resend-code", {
-  method: "POST",
-  body: JSON.stringify({ email }),
-  timeoutMs: 60000,
-});
-
+      await apiFetch("/api/usuarios/auth/resend-code", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+        timeoutMs: 60000,
+      });
 
       setSuccess("Listo ✅ Te reenviamos un nuevo código");
       setCooldown(60);
@@ -484,7 +514,11 @@ await apiFetch("/api/usuarios/auth/resend-code", {
       });
 
       const msg = String(err?.message || "");
-      if (msg.toLowerCase().includes("1 minuto") || msg.toLowerCase().includes("esperá") || msg.toLowerCase().includes("espera")) {
+      if (
+        msg.toLowerCase().includes("1 minuto") ||
+        msg.toLowerCase().includes("esperá") ||
+        msg.toLowerCase().includes("espera")
+      ) {
         setCooldown((c) => (c > 0 ? c : 60));
       }
       setError(err?.message || "No se pudo reenviar el código");
@@ -507,12 +541,11 @@ await apiFetch("/api/usuarios/auth/resend-code", {
     try {
       console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/forgot-password`, { mail });
 
-await apiFetch("/api/usuarios/auth/forgot-password", {
-  method: "POST",
-  body: JSON.stringify({ email: mail }),
-  timeoutMs: 60000,
-});
-
+      await apiFetch("/api/usuarios/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: mail }),
+        timeoutMs: 60000,
+      });
 
       setSuccess("Si el email existe, te enviamos un código ✅");
       setStep("reset");
