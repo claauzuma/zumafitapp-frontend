@@ -4,12 +4,13 @@ import AdminNavBar from "./AdminNavBar.jsx";
 
 export default function AdminLayout() {
   return (
-    <div>
+    <div style={{ minHeight: "100vh", background: "#0b0b0b" }}>
       <AdminNavBar />
-      <div style={{ padding: 12 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: 16 }}>
         <Outlet />
       </div>
     </div>
   );
 }
+
 
