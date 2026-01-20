@@ -19,8 +19,6 @@ export default function AdminUsuarios() {
     setLoading(true);
     setErr("");
     try {
-      // 🔁 si tu endpoint está en otro path, cambiá acá:
-      // /api/usuarios/admin/users
       const qs = new URLSearchParams();
       if (search.trim()) qs.set("search", search.trim());
       if (role !== "todos") qs.set("role", role);
@@ -51,7 +49,6 @@ export default function AdminUsuarios() {
   const filtered = useMemo(() => {
     let arr = [...users];
 
-    // por si el backend no filtra, filtramos acá también
     const s = search.trim().toLowerCase();
     if (s) {
       arr = arr.filter((u) => {
@@ -75,7 +72,6 @@ export default function AdminUsuarios() {
   }
 
   function onVer(u) {
-    // ✅ acá vas al detalle pro
     navigate(`/admin/usuarios/${u?.id || u?._id || ""}`);
   }
 
@@ -124,6 +120,7 @@ export default function AdminUsuarios() {
           <option value="todos">Rol: Todos</option>
           <option value="admin">admin</option>
           <option value="cliente">cliente</option>
+          <option value="entrenador">entrenador</option>
         </select>
 
         <select className="au-select" value={tipo} onChange={(e) => setTipo(e.target.value)}>
@@ -163,13 +160,15 @@ export default function AdminUsuarios() {
             const t = u?.tipo || "—";
             const est = u?.estado || "—";
 
-            // meta/macros (si es entrenador, no mostrar)
-            const showPlan = t !== "entrenador";
-            const objetivo = u?.meta || u?.objetivo || u?.goal || "—"; // pérdida/ganancia/mantenimiento
-            const kcal = u?.kcalObjetivo || u?.kcal || u?.metas?.kcal || "—";
-            const p = u?.metas?.p ?? u?.macros?.p ?? "—";
-            const c = u?.metas?.c ?? u?.macros?.c ?? "—";
-            const g = u?.metas?.g ?? u?.macros?.g ?? "—";
+            // ✅ meta/macros según tu estructura
+            const isTrainer = t === "entrenador" || r === "entrenador";
+            const objRaw = u?.objetivoActual?.objetivo || null;
+            const objetivo = prettifyObjetivo(objRaw);
+
+            const kcal = u?.metasActuales?.kcal ?? "—";
+            const p = u?.metasActuales?.macros?.p ?? "—";
+            const c = u?.metasActuales?.macros?.c ?? "—";
+            const g = u?.metasActuales?.macros?.g ?? "—";
 
             return (
               <div key={id} className="au-card au-item">
@@ -184,12 +183,15 @@ export default function AdminUsuarios() {
                       <span className={`au-badge ${r === "admin" ? "gold" : ""}`}>{r}</span>
                       <span className="au-badge">{t}</span>
                       <span className={`au-badge ${est === "bloqueado" ? "danger" : "ok"}`}>{est}</span>
+                      {u?.plan ? <span className="au-badge soft">{u.plan}</span> : null}
                     </div>
                   </div>
                 </div>
 
                 <div className="au-mid">
-                  {showPlan ? (
+                  {isTrainer ? (
+                    <div className="au-muted2">Entrenador • sin meta/macros</div>
+                  ) : (
                     <>
                       <div className="au-kpi">
                         <div className="au-kTitle">Meta</div>
@@ -206,8 +208,6 @@ export default function AdminUsuarios() {
                         </div>
                       </div>
                     </>
-                  ) : (
-                    <div className="au-muted2">Entrenador • sin meta/macros</div>
                   )}
                 </div>
 
@@ -243,151 +243,173 @@ function initials(nombre = "", apellido = "") {
   return (a + b).toUpperCase();
 }
 
+function prettifyObjetivo(v) {
+  if (!v) return "—";
+  const s = String(v);
+  if (s === "perdida_grasa") return "Pérdida de grasa";
+  if (s === "ganancia_muscular") return "Ganancia muscular";
+  if (s === "mantenimiento") return "Mantenimiento";
+  return s;
+}
+
 const styles = `
-.au-page{ max-width:1100px; margin:0 auto; padding:16px; color:#eaeaea; }
-.au-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.au-title{ margin:0; font-size:34px; color:#f5d76e; letter-spacing:.2px; }
-.au-sub{ margin-top:6px; opacity:.85; }
-.au-headBtns{ display:flex; gap:10px; flex-wrap:wrap; }
+.au-page{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 6px 30px;
+  color: #eaeaea;
+}
+.au-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom: 10px;
+}
+.au-title{ margin:0; font-size: 26px; letter-spacing:.2px; }
+.au-sub{ color:#b9b9b9; font-weight:700; margin-top: 3px; }
+
+.au-headBtns{ display:flex; gap:10px; }
+.au-btn{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  color:#eaeaea;
+  cursor:pointer;
+  font-weight:900;
+}
+.au-btn.gold{
+  border-color: rgba(245,215,110,.55);
+  box-shadow: 0 0 0 3px rgba(245,215,110,.10);
+  color:#f5d76e;
+}
 
 .au-card{
-  border:1px solid #1f1f1f;
-  background: linear-gradient(180deg,#0b0b0b,#0b0b0bcc);
-  border-radius:18px;
-  padding:14px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  background: #0f0f0f;
+  border: 1px solid #242424;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.22);
 }
-
-.au-btn{
-  padding:10px 12px;
-  border-radius:14px;
-  border:1px solid #2b2b2b;
-  background:#0f0f0f;
-  color:#eaeaea;
-  font-weight:900;
-  cursor:pointer;
-}
-.au-btn:hover{ border-color: rgba(245,215,110,.25); }
-.au-btn.gold{ border-color: rgba(245,215,110,.35); background: rgba(245,215,110,.06); color:#f5d76e; }
-
 .au-filters{
-  margin-top:14px;
   display:grid;
-  grid-template-columns: 1.5fr .8fr .8fr .8fr auto;
-  gap:12px;
-  align-items:center;
+  grid-template-columns: 1fr 180px 200px 180px auto;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
 }
-.au-input,.au-select{
+.au-input, .au-select{
   width:100%;
-  padding:10px 12px;
-  border-radius:14px;
-  border:1px solid #2b2b2b;
-  background:#0b0b0b;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #2b2b2b;
+  background: #0b0b0b;
   color:#eaeaea;
+  font-weight:800;
   outline:none;
 }
-.au-input:focus,.au-select:focus{
-  border-color: rgba(245,215,110,.5);
-  box-shadow: 0 0 0 4px rgba(245,215,110,.12);
+.au-input:focus, .au-select:focus{
+  border-color: rgba(245,215,110,.55);
+  box-shadow: 0 0 0 3px rgba(245,215,110,.12);
 }
 
-.au-row{ display:flex; justify-content:space-between; align-items:center; margin:10px 4px 0; }
-.au-muted{ opacity:.8; font-weight:800; }
-.au-muted2{ opacity:.75; font-weight:900; }
-.au-err{ color:#ffb1b1; font-weight:900; }
+.au-row{ margin: 4px 2px 10px; }
+.au-muted{ color:#b9b9b9; font-weight:800; }
+.au-err{ color:#ff8b8b; font-weight:900; }
 
-.au-list{ margin-top:12px; display:grid; gap:12px; }
-.au-empty{ opacity:.85; }
+.au-list{ display:flex; flex-direction:column; gap: 10px; }
+.au-empty{ padding: 16px; color:#b9b9b9; font-weight:900; }
 
 .au-item{
-  display:grid;
-  grid-template-columns: 1.2fr 1fr 170px;
-  gap:14px;
+  display:flex;
   align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  padding: 12px;
 }
-
-.au-left{ display:flex; gap:12px; align-items:center; min-width:0; }
+.au-left{ display:flex; align-items:center; gap: 12px; min-width: 0; }
 .au-avatar{
-  width:52px; height:52px; border-radius:16px;
+  width: 44px; height: 44px;
+  border-radius: 14px;
   display:flex; align-items:center; justify-content:center;
-  font-weight:1000;
+  background: #141414;
+  border: 1px solid #2a2a2a;
   color:#f5d76e;
-  border:1px solid rgba(245,215,110,.35);
-  background: rgba(245,215,110,.06);
-  flex: 0 0 auto;
+  font-weight: 1000;
 }
-.au-main{ min-width:0; }
-.au-name{ font-size:18px; font-weight:1000; }
-.au-email{ opacity:.8; margin-top:3px; word-break:break-word; }
-
-.au-badges{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.au-main{ min-width: 0; }
+.au-name{ font-weight: 1000; font-size: 16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.au-email{ color:#b9b9b9; font-weight:800; font-size: 13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.au-badges{ display:flex; flex-wrap:wrap; gap: 6px; margin-top: 6px; }
 .au-badge{
-  font-size:12px; padding:6px 10px; border-radius:999px;
-  border:1px solid #2b2b2b; background:#0f0f0f; font-weight:1000;
+  font-weight: 1000;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px solid #2b2b2b;
+  background:#0b0b0b;
 }
-.au-badge.gold{ border-color: rgba(245,215,110,.35); color:#f5d76e; background: rgba(245,215,110,.05); }
-.au-badge.ok{ border-color: rgba(80,220,140,.35); color:#a8f7cf; background: rgba(80,220,140,.07); }
-.au-badge.danger{ border-color: rgba(255,80,80,.35); color:#ffb1b1; background: rgba(255,80,80,.08); }
+.au-badge.gold{ color:#f5d76e; border-color: rgba(245,215,110,.5); }
+.au-badge.ok{ border-color:#1e4a2c; background:#0b120d; }
+.au-badge.danger{ border-color:#5a1f1f; background:#1a0b0b; }
+.au-badge.soft{ border-color:#2b2b2b; background:#111; color:#cfcfcf; }
 
 .au-mid{
   display:flex;
-  gap:14px;
+  gap: 14px;
+  align-items:center;
   justify-content:flex-end;
   flex-wrap:wrap;
+  flex: 1;
 }
-.au-kpi{ min-width:140px; text-align:right; }
-.au-kTitle{ opacity:.75; font-weight:1000; font-size:12px; }
-.au-kVal{ margin-top:6px; font-weight:1000; color:#f5d76e; }
+.au-kpi{ min-width: 150px; text-align:right; }
+.au-kTitle{ color:#b9b9b9; font-weight:900; font-size: 12px; }
+.au-kVal{ font-weight: 1000; margin-top: 2px; }
 .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
-.au-right{
-  display:flex;
-  justify-content:flex-end;
-  gap:10px;
-}
+.au-muted2{ color:#b9b9b9; font-weight:900; }
+
+.au-right{ display:flex; gap: 8px; align-items:center; }
+
 .au-ibtn{
-  position:relative;
-  width:44px; height:44px;
-  border-radius:14px;
-  border:1px solid #2b2b2b;
-  background:#0f0f0f;
-  color:#eaeaea;
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  border: 1px solid #2b2b2b;
+  background:#0b0b0b;
   cursor:pointer;
-  font-weight:1000;
-  display:grid;
-  place-items:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
-.au-ibtn:hover{ border-color: rgba(245,215,110,.25); }
 .au-ibtn.danger{
-  border-color: rgba(255,80,80,.35);
-  background: rgba(255,80,80,.08);
+  border-color:#5a1f1f;
+  background:#1a0b0b;
 }
-.au-ico{ font-size:18px; line-height:1; }
+.au-ico{ font-size: 16px; line-height: 1; }
 .au-tip{
   position:absolute;
   bottom: -34px;
   left: 50%;
   transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #1f1f1f;
-  background: #0b0b0b;
+  background:#0b0b0b;
+  border: 1px solid #2b2b2b;
+  padding: 6px 8px;
+  border-radius: 10px;
+  white-space:nowrap;
+  font-weight: 900;
   font-size: 12px;
+  color:#eaeaea;
   opacity: 0;
-  pointer-events: none;
-  transition: opacity .15s ease, transform .15s ease;
+  pointer-events:none;
+  transition: opacity .12s ease;
+  box-shadow: 0 10px 30px rgba(0,0,0,.22);
 }
-.au-ibtn:hover .au-tip{
-  opacity: 1;
-  transform: translateX(-50%) translateY(-2px);
-}
+.au-ibtn:hover .au-tip{ opacity: 1; }
 
 @media (max-width: 980px){
   .au-filters{ grid-template-columns: 1fr 1fr; }
-  .au-item{ grid-template-columns: 1fr; }
+  .au-kpi{ min-width: unset; text-align:left; }
   .au-mid{ justify-content:flex-start; }
-  .au-right{ justify-content:flex-start; }
-  .au-kpi{ text-align:left; }
 }
 `;
