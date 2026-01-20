@@ -24,6 +24,8 @@ import AdminUsuarios from "./AdminUsuarios.jsx";
 import AdminComidas from "./AdminComidas.jsx";
 import AdminAlimentos from "./AdminAlimentos.jsx";
 import AdminRutinas from "./AdminRutinas.jsx";
+import AdminUsuarioDetalle from "./AdminUsuarioDetalle.jsx";
+
 
 export default function App() {
   return (
@@ -79,10 +81,15 @@ export default function App() {
       >
         <Route index element={<Navigate to="inicio" replace />} />
         <Route path="inicio" element={<AdminInicio />} />
+
         <Route path="usuarios" element={<AdminUsuarios />} />
+        <Route path="usuarios/:id" element={<AdminUsuarioDetalle />} />
+
         <Route path="comidas" element={<AdminComidas />} />
         <Route path="alimentos" element={<AdminAlimentos />} />
         <Route path="rutinas" element={<AdminRutinas />} />
+  
+
       </Route>
 
       {/* ✅ APP (CLIENTE) */}
