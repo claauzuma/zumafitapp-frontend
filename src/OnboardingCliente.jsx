@@ -1,7 +1,7 @@
 // src/pages/OnboardingCliente.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../Api";
+import { apiFetch } from "./Api.js"
 import { setAuthLogged } from "../authCache.js"; // ✅ AGREGAR
 
 const OBJETIVOS = [
