@@ -198,13 +198,10 @@ export default function AuthPage({ defaultMode = "login" }) {
         setAuthLogged(user);
 
         // ✅ Navega según rol
-        if (role === "admin") {
-          console.log(`🟢 [AuthPage ${debugIdRef.current}] navigate -> /admin/inicio`);
-          navigate("/admin/inicio", { replace: true });
-        } else {
-          console.log(`🟢 [AuthPage ${debugIdRef.current}] navigate -> /app/inicio`);
-          navigate("/app/inicio", { replace: true });
-        }
+const done = Boolean(user?.onboarding?.done);
+if (role === "admin") navigate("/admin/inicio", { replace: true });
+else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+
       } catch (err) {
         console.log(`🔴 [AuthPage ${debugIdRef.current}] /me FAIL`, {
           status: err?.status,
@@ -305,11 +302,10 @@ export default function AuthPage({ defaultMode = "login" }) {
           setAuthLogged(user);
 
           // ✅ Navega según rol
-          if (role === "admin") {
-            navigate("/admin/inicio", { replace: true });
-          } else {
-            navigate("/app/inicio", { replace: true });
-          }
+const done = Boolean(user?.onboarding?.done);
+if (role === "admin") navigate("/admin/inicio", { replace: true });
+else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+
           return;
         } catch (err) {
           console.log(`🔴 [AuthPage ${debugIdRef.current}] login FAIL`, {

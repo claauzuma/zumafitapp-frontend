@@ -3,7 +3,13 @@ import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import FullPageLoader from "./FullPageLoader.jsx";
-import { getCachedStatus, getCachedRole, setAuthLogged, setAuthGuest } from "./authCache.js";
+import {
+  getCachedStatus,
+  getCachedRole,
+  getCachedUser,
+  setAuthLogged,
+  setAuthGuest,
+} from "./authCache.js";
 
 export default function PublicOnlyRoute({ children }) {
   const cached = getCachedStatus(); // logged | guest | unknown
@@ -39,7 +45,7 @@ export default function PublicOnlyRoute({ children }) {
 
         const user = me?.user || me;
         if (user) {
-          setAuthLogged(user);      // ✅ guarda rol
+          setAuthLogged(user); // ✅ guarda rol + user
           setStatus("logged");
         } else {
           setAuthGuest();
@@ -62,8 +68,12 @@ export default function PublicOnlyRoute({ children }) {
   }
 
   if (status === "logged") {
-    const role = (getCachedRole?.() || roleCached || "").toLowerCase();
-    return <Navigate to={role === "admin" ? "/admin/inicio" : "/app/inicio"} replace />;
+    const user = getCachedUser?.() || null;
+    const role = String(user?.role || roleCached || "").toLowerCase();
+    const done = Boolean(user?.onboarding?.done);
+
+    if (role === "admin") return <Navigate to="/admin/inicio" replace />;
+    return <Navigate to={done ? "/app/inicio" : "/app/onboarding"} replace />;
   }
 
   return children;

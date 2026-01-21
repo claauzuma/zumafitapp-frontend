@@ -1,4 +1,5 @@
 // src/App.jsx
+import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import Bienvenida from "./bienvenida.jsx";
@@ -7,25 +8,29 @@ import AuthPage from "./AuthPage.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
 import RequireRole from "./RequireRole.jsx";
+import RequireOnboarding from "./RequireOnboarding.jsx";
 
 import AppLayout from "./AppLayout.jsx";
 import AdminLayout from "./AdminLayout.jsx";
 
+// ✅ Onboarding cliente
+import OnboardingCliente from "./OnboardingCliente.jsx"; // ajustá si está en /pages
+
+// ✅ Cliente (entrenado)
 import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
 import MenuEj from "./entrenado/MenuEj.jsx";
-
 import Perfil from "./entrenado/Perfil.jsx";
 import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
 import Ajustes from "./entrenado/Ajustes.jsx";
 
+// ✅ Admin
 import AdminInicio from "./AdminInicio.jsx";
 import AdminUsuarios from "./AdminUsuarios.jsx";
 import AdminComidas from "./AdminComidas.jsx";
 import AdminAlimentos from "./AdminAlimentos.jsx";
 import AdminRutinas from "./AdminRutinas.jsx";
 import AdminUsuarioDetalle from "./AdminUsuarioDetalle.jsx";
-
 
 export default function App() {
   return (
@@ -88,8 +93,6 @@ export default function App() {
         <Route path="comidas" element={<AdminComidas />} />
         <Route path="alimentos" element={<AdminAlimentos />} />
         <Route path="rutinas" element={<AdminRutinas />} />
-  
-
       </Route>
 
       {/* ✅ APP (CLIENTE) */}
@@ -97,11 +100,18 @@ export default function App() {
         path="/app"
         element={
           <ProtectedRoute>
-            <AppLayout />
+            <RequireOnboarding>
+              <AppLayout />
+            </RequireOnboarding>
           </ProtectedRoute>
         }
       >
         <Route index element={<Navigate to="inicio" replace />} />
+
+        {/* ✅ Onboarding forzado (1 sola vez) */}
+        <Route path="onboarding" element={<OnboardingCliente />} />
+
+        {/* ✅ Rutas normales */}
         <Route path="inicio" element={<InicioEntrenado />} />
         <Route path="menu" element={<MenuEj />} />
         <Route path="perfil" element={<Perfil />} />
