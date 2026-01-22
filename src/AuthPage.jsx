@@ -6,13 +6,13 @@ import { API_BASE } from "./apiCredentials";
 import {
   setAuthLogged,
   clearAuthCache,
-  getCachedToken, // ✅ NUEVO
+  getCachedToken, // ✅ fallback token
 } from "./authCache.js";
 
-// ✅ Si tu AuthPage está en otra ruta (ej "/"), cambiá esto.
 // Importante para Google: volver acá para que corra /me y redirija por rol.
 const AUTH_RETURN_PATH = "/auth";
 
+// ---------------- helpers ----------------
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/+$/, "");
   const p = (path || "").replace(/^\/+/, "");
@@ -36,12 +36,53 @@ function removeQueryParams(paramsToRemove = []) {
   } catch {}
 }
 
+function isProblemBrowser() {
+  try {
+    const ua = navigator.userAgent || "";
+
+    // Safari “real” (no Chrome/Edge/Opera, etc.)
+    const isSafari =
+      /Safari/i.test(ua) &&
+      !/Chrome|CriOS|Chromium|Edg|EdgiOS|OPR|Opera/i.test(ua);
+
+    // iOS WebView (in-app browsers)
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isWebViewIOS = isIOS && !/Safari/i.test(ua) && /AppleWebKit/i.test(ua);
+
+    return isSafari || isWebViewIOS;
+  } catch {
+    return false;
+  }
+}
+
+function hasOAuthTokenInUrl() {
+  const t = readQueryParam("token");
+  const o = readQueryParam("oauth");
+  return Boolean(t || o);
+}
+
+function normalizeRole(role) {
+  return String(role || "").trim().toLowerCase();
+}
+
+// ---------------- component ----------------
 export default function AuthPage({ defaultMode = "login" }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // debug id por “sesión” de página (así agrupás logs)
   const debugIdRef = useRef(Math.random().toString(16).slice(2));
+  const problemBrowserRef = useRef(isProblemBrowser());
+
+  // ✅ booting: evita “flash” del form en Safari/WebView cuando hay token/fallback/OAuth
+  const [booting, setBooting] = useState(() => {
+    const pb = isProblemBrowser();
+    if (!pb) return false;
+
+    // Si volvimos de OAuth con token en query o ya existe token fallback, no muestres form
+    const urlHasToken = hasOAuthTokenInUrl();
+    const hasFallback = !!getCachedToken();
+    return urlHasToken || hasFallback;
+  });
 
   const [mode, setMode] = useState(defaultMode === "register" ? "register" : "login");
 
@@ -83,12 +124,10 @@ export default function AuthPage({ defaultMode = "login" }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // ✅ Para que al cambiar de modo NO te borre el success cuando lo hacemos programáticamente
   const skipClearOnModeChangeRef = useRef(false);
-
   const isVerifyLocked = useMemo(() => attemptsLeft <= 0, [attemptsLeft]);
 
-  // ---- logs de montaje / navegación ----
+  // ---- logs ----
   useEffect(() => {
     console.log(`🧩 [AuthPage ${debugIdRef.current}] mount`, {
       API_BASE,
@@ -96,6 +135,9 @@ export default function AuthPage({ defaultMode = "login" }) {
       pathname: location.pathname,
       search: location.search,
       key: location.key,
+      isProblemBrowser: problemBrowserRef.current,
+      booting,
+      hasFallbackToken: !!getCachedToken(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -107,16 +149,9 @@ export default function AuthPage({ defaultMode = "login" }) {
       key: location.key,
       step,
       mode,
+      booting,
     });
-  }, [location.pathname, location.search, location.key, step, mode]);
-
-  useEffect(() => {
-    try {
-      if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) {
-        console.warn("[AuthPage] Hay overflow horizontal, revisá paddings/margins.");
-      }
-    } catch {}
-  }, []);
+  }, [location.pathname, location.search, location.key, step, mode, booting]);
 
   useEffect(() => {
     setError(null);
@@ -134,14 +169,20 @@ export default function AuthPage({ defaultMode = "login" }) {
     setAttemptsLeft(MAX_ATTEMPTS);
     setVerifiedBanner(false);
 
-    // forgot password state reset
+    // forgot password reset
     setFpEmail("");
     setFpCode("");
     setFpNewPass("");
     setFpNewPass2("");
 
-    // también frenamos loader google si cambias de modo
     setGoogleLoading(false);
+
+    // ✅ si cambias de modo manualmente, dejá booting en false (salvo que problem browser + token fallback)
+    if (problemBrowserRef.current) {
+      setBooting(!!getCachedToken() || hasOAuthTokenInUrl());
+    } else {
+      setBooting(false);
+    }
   }, [mode]);
 
   useEffect(() => {
@@ -150,37 +191,65 @@ export default function AuthPage({ defaultMode = "login" }) {
     return () => clearInterval(t);
   }, [cooldown]);
 
-  // ✅ 1) Manejo de retorno OAuth por query (opcional):
+  // ✅ 1) Retorno OAuth por query: si viene token, lo guardamos y hacemos /me SIN mostrar form
   useEffect(() => {
     const oauthError = readQueryParam("error");
     const oauthToken = readQueryParam("token");
-    const oauthFlag = readQueryParam("oauth"); // solo debug
+    const oauthFlag = readQueryParam("oauth"); // debug
 
     if (oauthFlag) console.log(`🟣 [OAuth ${debugIdRef.current}] flag oauth=`, oauthFlag);
 
     if (oauthError) {
       console.log(`🔴 [OAuth ${debugIdRef.current}] error query:`, oauthError);
       setError(decodeURIComponent(oauthError));
-      removeQueryParams(["error", "token"]);
+      removeQueryParams(["error", "token", "oauth"]);
+      setBooting(false);
       return;
     }
 
-    // ✅ Si vuelve token por query, lo guardamos usando authCache (misma key auth_token_v1)
     if (oauthToken) {
-      console.log(`🟡 [OAuth ${debugIdRef.current}] token por query (guardando fallback auth_token_v1)`);
+      console.log(`🟡 [OAuth ${debugIdRef.current}] token por query -> guardando fallback y resolviendo /me sin flash`);
+      // ✅ bloqueá UI (evita ver el form)
+      setBooting(true);
 
-      // ✅ recomendado: usar authCache en vez de localStorage directo
+      // ✅ guarda token fallback
       setAuthLogged(null, oauthToken);
 
-      removeQueryParams(["token", "error"]);
+      // ✅ limpiá la URL (no dejes token en la barra)
+      removeQueryParams(["token", "error", "oauth"]);
 
-      // ✅ forzar re-ejecución /me (algunos navegadores vuelven y el effect ya corrió)
-      window.location.replace(AUTH_RETURN_PATH);
+      // ✅ ahora resolvemos /me y redirigimos (sin recargar)
+      (async () => {
+        try {
+          const me = await apiFetch("/api/usuarios/auth/me");
+          const user = me?.user || me;
+          const role = normalizeRole(user?.role || user?.rol);
+
+          console.log(`🟢 [OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
+
+          setAuthLogged(user);
+
+          const done = Boolean(user?.onboarding?.done);
+          if (role === "admin") navigate("/admin/inicio", { replace: true });
+          else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+        } catch (err) {
+          console.log(`🔴 [OAuth ${debugIdRef.current}] /me FAIL luego de token query`, {
+            status: err?.status,
+            message: err?.message,
+            err,
+          });
+          setError("No se pudo completar el login con Google. Probá de nuevo.");
+          // Si falla, dejá que el usuario vea el form
+          setBooting(false);
+        }
+      })();
+
       return;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
-  // ✅ 2) Auto-login: si ya hay cookie/sesión (o volvimos de Google y backend seteó cookie)
+  // ✅ 2) Auto-login: si ya hay cookie o token fallback, probamos /me
   useEffect(() => {
     if (step !== "form") return;
 
@@ -188,40 +257,57 @@ export default function AuthPage({ defaultMode = "login" }) {
 
     (async () => {
       try {
+        const hasFallbackToken = !!getCachedToken();
+        const isPB = problemBrowserRef.current;
+
+        // ✅ si es Safari/WebView y hay token fallback, evita el form hasta resolver
+        if (isPB && hasFallbackToken) setBooting(true);
+
         console.log(`🟡 [AuthPage ${debugIdRef.current}] probando /api/usuarios/auth/me ...`, {
           step,
           mode,
           href: window.location.href,
-          hasFallbackToken: !!getCachedToken(),
+          hasFallbackToken,
+          isProblemBrowser: isPB,
         });
 
         const me = await apiFetch("/api/usuarios/auth/me");
         if (cancelled) return;
 
         const user = me?.user || me;
-        const role = String(user?.role || user?.rol || "").toLowerCase();
+        const role = normalizeRole(user?.role || user?.rol);
 
-        console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { user, role });
+        console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { role, user });
 
         setAuthLogged(user);
 
         const done = Boolean(user?.onboarding?.done);
+
+        // ✅ una vez que tenemos /me, ya no hay “flash”
+        setBooting(false);
+
         if (role === "admin") navigate("/admin/inicio", { replace: true });
         else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
       } catch (err) {
+        if (cancelled) return;
+
         console.log(`🔴 [AuthPage ${debugIdRef.current}] /me FAIL`, {
           status: err?.status,
           message: err?.message,
           err,
           hasFallbackToken: !!getCachedToken(),
+          isProblemBrowser: problemBrowserRef.current,
         });
 
         // ✅ SOLO limpiamos si realmente NO está autenticado
         if (err?.status === 401) {
-          // ✅ Si NO hay token fallback, limpiá todo
+          // Si NO hay token fallback, limpiá todo
           if (!getCachedToken()) clearAuthCache();
-          // ✅ Si hay token fallback, NO lo borres acá (Safari timing)
+          // Si hay token fallback, NO lo borres (Safari timing)
         }
+
+        // ✅ si falló y estamos en booting, dejá ver el form (pero sin flash previo)
+        setBooting(false);
       }
     })();
 
@@ -230,16 +316,11 @@ export default function AuthPage({ defaultMode = "login" }) {
     };
   }, [navigate, step, mode, location.key]);
 
-  function goHome() {
-    navigate("/");
-  }
-
-  // ✅ Google: feedback inmediato, sin overlay, y sin borrar el form
+  // ✅ Google: feedback inmediato, sin overlay, sin “flash” en Safari porque booting cubrirá el retorno
   function loginWithGoogle() {
     if (googleLoading || loading) return;
 
-    // ✅ opcional: limpiar status/role/user, pero NO es obligatorio.
-    // Si querés mantener token fallback previo, NO llames clearAuthCache().
+    // ✅ podés limpiar estado/user/role (no rompe Chrome)
     clearAuthCache();
 
     setGoogleLoading(true);
@@ -301,19 +382,16 @@ export default function AuthPage({ defaultMode = "login" }) {
             body: JSON.stringify({ email, password, remember }),
           });
 
-          // 2) Fallback: si viene token (para navegadores que bloquean cookies)
-          if (r?.token) {
-            setAuthLogged(null, r.token); // ✅ guarda auth_token_v1
-          }
+          // 2) Fallback: si viene token
+          if (r?.token) setAuthLogged(null, r.token);
 
-          // 3) Traemos el user/rol (con cookie o con Bearer si cookies no funcionan)
+          // 3) /me
           const me = await apiFetch("/api/usuarios/auth/me");
           const user = me?.user || me;
-          const role = String(user?.role || user?.rol || "").toLowerCase();
+          const role = normalizeRole(user?.role || user?.rol);
 
           console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
 
-          // 4) Guarda user + role (y deja token si ya estaba)
           setAuthLogged(user);
 
           const done = Boolean(user?.onboarding?.done);
@@ -643,6 +721,28 @@ export default function AuthPage({ defaultMode = "login" }) {
     if (isVerifyLocked) return "Bloqueado por intentos. Reenviá el código para seguir.";
     return `Te quedan ${attemptsLeft} intento${attemptsLeft === 1 ? "" : "s"}.`;
   }, [attemptsLeft, isVerifyLocked, verifiedBanner]);
+
+  // ✅ Si estamos “booting”, no mostramos el form (evita el flash en Safari/WebView)
+  if (booting) {
+    return (
+      <div className="auth-page">
+        <style>{AUTH_CSS}</style>
+        <div className="ap-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="ap-overlay-card">
+            <div className="ap-overlay-glow" />
+            <div className="ap-overlay-row">
+              <div className="ap-spinner" />
+              <div>
+                <p className="ap-oload-title">Cargando sesión…</p>
+                <p className="ap-oload-sub">Estamos verificando tu acceso.</p>
+              </div>
+            </div>
+            <div className="ap-shimmer" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-page">
@@ -1147,10 +1247,9 @@ export default function AuthPage({ defaultMode = "login" }) {
 }
 
 /* =========
-   TU CSS
+   CSS
    ========= */
 
-// ✅ TU CSS + mejoras tap/loader google
 const AUTH_CSS = `
 :root{
   --bg:#0b0b0b;
@@ -1178,7 +1277,7 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
 .ap-sub{ margin:0 0 12px; color:#cfcfcf; }
 .ap-social{ display:grid; gap:10px; margin:10px 0 2px; }
 
-/* ✅ Botón Google con tap PRO */
+/* Botón Google */
 .ap-social-btn{
   width:100%;
   display:flex; align-items:center; justify-content:center; gap:10px;
@@ -1191,16 +1290,12 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.ap-social-btn:active{
-  transform: translateY(1px) scale(0.99);
-}
+.ap-social-btn:active{ transform: translateY(1px) scale(0.99); }
 .ap-social-btn:focus-visible{
   outline:none;
   box-shadow: 0 0 0 3px rgba(245,217,138,.14);
   border-color: rgba(245,217,138,.45);
 }
-
-/* Ripple “pro obvio” */
 .ap-social-btn::after{
   content:"";
   position:absolute;
@@ -1219,7 +1314,6 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
   transform: translate(-50%,-50%) scale(18);
   transition: transform .45s ease, opacity .55s ease;
 }
-
 .ap-social-btn.is-loading{
   border-color: rgba(245,215,110,.55);
   box-shadow: 0 0 0 3px rgba(245,215,110,.12), 0 10px 40px rgba(0,0,0,.35);
