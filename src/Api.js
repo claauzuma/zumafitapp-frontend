@@ -1,10 +1,35 @@
 // src/Api.js
 import { API_BASE } from "./apiCredentials";
+import { getCachedToken } from "./authCache.js";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/+$/, "");
   const p = (path || "").replace(/^\/+/, "");
   return `${b}/${p}`;
+}
+
+// ✅ helper: token fallback (por si el navegador no guarda cookies)
+function getAuthToken() {
+  try {
+    return getCachedToken(); // ✅ viene de authCache (auth_token_v1)
+  } catch {
+    return null;
+  }
+}
+
+// ✅ helper: setear Authorization sin pisar si ya existe
+function withAuthHeader(headers = {}) {
+  const h = { ...headers };
+
+  // si ya viene authorization, no tocamos
+  if (h.Authorization || h.authorization) return h;
+
+  const token = getAuthToken();
+  if (token) {
+    h.Authorization = `Bearer ${token}`;
+  }
+
+  return h;
 }
 
 export async function apiFetch(path, options = {}) {
@@ -22,14 +47,16 @@ export async function apiFetch(path, options = {}) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const mergedHeaders = withAuthHeader({
+      "Content-Type": "application/json",
+      ...headers,
+    });
+
     const res = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        ...headers,
-      },
+      headers: mergedHeaders,
       body,
-      credentials: "include",
+      credentials: "include", // ✅ cookies si el navegador las acepta
       signal: controller.signal,
     });
 

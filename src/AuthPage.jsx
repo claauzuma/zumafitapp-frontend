@@ -3,8 +3,11 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { API_BASE } from "./apiCredentials";
-// antes: import { setAuthLogged } from "./PublicOnlyRoute.jsx";
-import { setAuthLogged, clearAuthCache } from "./authCache.js";
+import {
+  setAuthLogged,
+  clearAuthCache,
+  getCachedToken, // ✅ NUEVO
+} from "./authCache.js";
 
 // ✅ Si tu AuthPage está en otra ruta (ej "/"), cambiá esto.
 // Importante para Google: volver acá para que corra /me y redirija por rol.
@@ -162,12 +165,18 @@ export default function AuthPage({ defaultMode = "login" }) {
       return;
     }
 
+    // ✅ Si vuelve token por query, lo guardamos usando authCache (misma key auth_token_v1)
     if (oauthToken) {
-      console.log(`🟡 [OAuth ${debugIdRef.current}] token por query (guardando en localStorage)`);
-      try {
-        localStorage.setItem("access_token", oauthToken);
-      } catch {}
+      console.log(`🟡 [OAuth ${debugIdRef.current}] token por query (guardando fallback auth_token_v1)`);
+
+      // ✅ recomendado: usar authCache en vez de localStorage directo
+      setAuthLogged(null, oauthToken);
+
       removeQueryParams(["token", "error"]);
+
+      // ✅ forzar re-ejecución /me (algunos navegadores vuelven y el effect ya corrió)
+      window.location.replace(AUTH_RETURN_PATH);
+      return;
     }
   }, [location.key]);
 
@@ -183,34 +192,36 @@ export default function AuthPage({ defaultMode = "login" }) {
           step,
           mode,
           href: window.location.href,
+          hasFallbackToken: !!getCachedToken(),
         });
 
         const me = await apiFetch("/api/usuarios/auth/me");
         if (cancelled) return;
 
-        // ✅ Normalizamos el "user" (depende de cómo responda tu backend)
         const user = me?.user || me;
         const role = String(user?.role || user?.rol || "").toLowerCase();
 
         console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { user, role });
 
-        // ✅ Guarda status + role (y user si lo guardás en authCache)
         setAuthLogged(user);
 
-        // ✅ Navega según rol
-const done = Boolean(user?.onboarding?.done);
-if (role === "admin") navigate("/admin/inicio", { replace: true });
-else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
-
+        const done = Boolean(user?.onboarding?.done);
+        if (role === "admin") navigate("/admin/inicio", { replace: true });
+        else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
       } catch (err) {
         console.log(`🔴 [AuthPage ${debugIdRef.current}] /me FAIL`, {
           status: err?.status,
           message: err?.message,
           err,
+          hasFallbackToken: !!getCachedToken(),
         });
 
-        // ✅ evita quedarse con cache viejo (p.ej. "logged" de una sesión anterior)
-        clearAuthCache();
+        // ✅ SOLO limpiamos si realmente NO está autenticado
+        if (err?.status === 401) {
+          // ✅ Si NO hay token fallback, limpiá todo
+          if (!getCachedToken()) clearAuthCache();
+          // ✅ Si hay token fallback, NO lo borres acá (Safari timing)
+        }
       }
     })();
 
@@ -227,14 +238,13 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
   function loginWithGoogle() {
     if (googleLoading || loading) return;
 
-    // ✅ opcional pero recomendado: limpiás cache para que no “rebote”
+    // ✅ opcional: limpiar status/role/user, pero NO es obligatorio.
+    // Si querés mantener token fallback previo, NO llames clearAuthCache().
     clearAuthCache();
 
     setGoogleLoading(true);
 
-    // dejamos que pinte el estado (spinner / glow) antes de navegar
     requestAnimationFrame(() => {
-      // ✅ IMPORTANTE: volver a AuthPage (o ruta que ejecute /me) para redirigir por rol
       const returnTo = encodeURIComponent(window.location.origin + AUTH_RETURN_PATH);
       const url = joinUrl(API_BASE, `/api/usuarios/auth/google?returnTo=${returnTo}`);
 
@@ -247,7 +257,6 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
       window.location.assign(url);
     });
 
-    // “seguro” si el navegador tarda/bloquea
     setTimeout(() => setGoogleLoading(false), 8000);
   }
 
@@ -286,25 +295,30 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
         try {
           console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/login`, { email, remember });
 
-          await apiFetch("/api/usuarios/auth/login", {
+          // 1) Login
+          const r = await apiFetch("/api/usuarios/auth/login", {
             method: "POST",
             body: JSON.stringify({ email, password, remember }),
           });
 
-          // ✅ Traemos el user/rol (login normalmente solo setea cookie)
+          // 2) Fallback: si viene token (para navegadores que bloquean cookies)
+          if (r?.token) {
+            setAuthLogged(null, r.token); // ✅ guarda auth_token_v1
+          }
+
+          // 3) Traemos el user/rol (con cookie o con Bearer si cookies no funcionan)
           const me = await apiFetch("/api/usuarios/auth/me");
           const user = me?.user || me;
           const role = String(user?.role || user?.rol || "").toLowerCase();
 
           console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
 
-          // ✅ Guarda logged + role en cache
+          // 4) Guarda user + role (y deja token si ya estaba)
           setAuthLogged(user);
 
-          // ✅ Navega según rol
-const done = Boolean(user?.onboarding?.done);
-if (role === "admin") navigate("/admin/inicio", { replace: true });
-else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+          const done = Boolean(user?.onboarding?.done);
+          if (role === "admin") navigate("/admin/inicio", { replace: true });
+          else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
 
           return;
         } catch (err) {
@@ -349,7 +363,7 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
           fechaNacimiento: birthDate,
           requireEmailVerification: true,
         }),
-        timeoutMs: 60000, // ✅ 60s para que no se aborte mientras manda el mail
+        timeoutMs: 60000,
       });
 
       setStep("verify");
@@ -652,12 +666,12 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
 
       <header className="ap-nav">
         <div className="ap-nav-inner">
-          <button className="ap-brand" onClick={goHome} type="button" disabled={loading || googleLoading}>
+          <button className="ap-brand" onClick={() => navigate("/")} type="button" disabled={loading || googleLoading}>
             🍏 <span>ZumaFit</span>
           </button>
 
           <nav className="ap-nav-links">
-            <button className="ap-link" onClick={goHome} type="button" disabled={loading || googleLoading}>
+            <button className="ap-link" onClick={() => navigate("/")} type="button" disabled={loading || googleLoading}>
               Inicio
             </button>
           </nav>
@@ -1131,6 +1145,10 @@ else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
     </div>
   );
 }
+
+/* =========
+   TU CSS
+   ========= */
 
 // ✅ TU CSS + mejoras tap/loader google
 const AUTH_CSS = `
