@@ -17,12 +17,13 @@ const CSS = `
   --gold2:#facc15;
 }
 
-/* layout */
 .cs-wrap{
   min-height:100vh;
   background: var(--bg);
   color: var(--txt);
 }
+
+/* header */
 .cs-header{
   position: sticky;
   top: 0;
@@ -72,7 +73,6 @@ const CSS = `
   overflow:hidden;
   text-overflow:ellipsis;
 }
-
 .cs-actions{
   display:flex;
   align-items:center;
@@ -136,7 +136,7 @@ const CSS = `
   padding: 16px 14px 26px;
 }
 
-/* drawer */
+/* overlay + drawer */
 .cs-ov{
   position:fixed;
   inset:0;
@@ -149,7 +149,7 @@ const CSS = `
   top:0;
   right:0;
   height: 100vh;
-  width: min(360px, 92vw);
+  width: min(380px, 92vw);
   z-index: 9999;
   border-left:1px solid var(--border);
   background: linear-gradient(180deg,#121212,#0b0b0b);
@@ -159,31 +159,88 @@ const CSS = `
   display:flex;
   flex-direction:column;
 }
-.cs-drawer.open{
-  transform: translateX(0);
-}
+.cs-drawer.open{ transform: translateX(0); }
+
 .cs-d-head{
   padding: 14px 14px 12px;
   border-bottom:1px solid #1b1b1b;
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:10px;
 }
-.cs-d-head-title{
+
+/* profile header */
+.cs-prof{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+.cs-avatar{
+  width:48px;
+  height:48px;
+  border-radius:999px;
+  border:1px solid var(--border2);
+  background: radial-gradient(600px 200px at 20% 0%, rgba(245,215,110,.18), transparent 60%),
+              linear-gradient(180deg,#141414,#0f0f0f);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color: var(--gold);
+  font-weight: 900;
+  font-size: 18px;
+  flex: 0 0 auto;
+  overflow:hidden;
+}
+.cs-avatar img{
+  width:100%;
+  height:100%;
+  object-fit: cover;
+  display:block;
+}
+.cs-prof-name{
+  font-weight: 900;
+  color: var(--txt);
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.cs-prof-sub{
+  font-size:12px;
+  color: var(--muted);
+  margin-top: 3px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.cs-prof-link{
+  display:inline-flex;
+  margin-top: 6px;
+  font-size: 12px;
   font-weight: 900;
   color: var(--gold);
+  text-decoration:none;
+  width: fit-content;
 }
-.cs-d-head-sub{
-  margin-top:4px;
-  color: var(--muted);
+.cs-prof-link:hover{ text-decoration: underline; }
+
+/* section title */
+.cs-sec{
+  padding: 10px 10px 0;
+}
+.cs-sec-title{
+  padding: 10px 12px 6px;
   font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(245,215,110,.85);
 }
-.cs-d-body{
-  padding: 12px 10px 14px;
-  overflow:auto;
-}
-.cs-item{
+
+/* item */
+.cs-item, .cs-item-disabled{
   display:flex;
   align-items:center;
   gap:10px;
@@ -194,6 +251,7 @@ const CSS = `
   color: var(--txt);
   font-weight: 800;
   transition: background .15s ease, border-color .15s ease, transform .08s ease;
+  margin: 4px 10px;
 }
 .cs-item:hover{
   background: #0f0f0f;
@@ -227,24 +285,59 @@ const CSS = `
   gap:2px;
   min-width:0;
 }
-.cs-desc small{
+
+/* ✅ descripción SIEMPRE visible */
+.cs-subline{
+  display:block;
+  margin-top:2px;
   font-weight: 600;
   color: var(--muted);
   opacity:.9;
 }
-.cs-item.active .cs-desc small{
+.cs-item.active .cs-subline{
   color:#0b0b0b;
   opacity:.85;
 }
+
+/* disabled item */
+.cs-item-disabled{
+  background:#0f0f0f;
+  border-color:#1e1e1e;
+  opacity: .78;
+  cursor: not-allowed;
+}
+.cs-item-disabled:hover{ transform:none; }
+.cs-badge{
+  margin-left:auto;
+  font-size:11px;
+  font-weight:900;
+  color:#0a0a0a;
+  background: linear-gradient(135deg,var(--gold2),var(--gold));
+  padding:6px 10px;
+  border-radius:999px;
+}
+
+/* drawer body scroll */
+.cs-d-body{
+  padding: 4px 0 10px;
+  overflow:auto;
+}
+
+/* footer */
 .cs-d-foot{
   margin-top:auto;
   padding: 12px 14px 16px;
   border-top:1px solid #1b1b1b;
   display:flex;
+  flex-direction:column;
   gap:10px;
 }
+.cs-foot-item{
+  width:100%;
+  justify-content:center;
+}
 
-/* overlay premium logout (reusamos tu estilo) */
+/* logout overlay (premium) */
 .cn-ov{
   position:fixed;
   inset:0;
@@ -302,25 +395,53 @@ const CSS = `
   .cs-header-inner{ padding:10px 12px; }
   .cs-btn{ width:42px; height:42px; border-radius:13px; }
   .cs-logo{ width:40px; height:40px; border-radius:13px; }
+  .cs-avatar{ width:46px; height:46px; }
 }
 `;
-
-const NAV = [
-  { to: "/app/inicio", label: "Inicio", sub: "Resumen y accesos", icon: "🏠" },
-  { to: "/app/perfil", label: "Perfil", sub: "Datos y objetivos", icon: "👤" },
-  { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: "🍽️" },
-  { to: "/app/rutinas", label: "Rutina", sub: "Entrenamiento", icon: "🏋️" },
-  { to: "/app/progresos", label: "Progresos", sub: "Medidas y fotos", icon: "📈" },
-  { to: "/app/amigos", label: "Amigos", sub: "Conexiones", icon: "🤝" },
-  { to: "/app/feed", label: "Feed", sub: "Actividad", icon: "📰" },
-  { to: "/app/equivalencias", label: "Equivalencias", sub: "Intercambios", icon: "🧠" },
-];
 
 function firstName(fullName) {
   const s = String(fullName || "").trim();
   if (!s) return "";
   return s.split(/\s+/)[0];
 }
+function initialFromName(fullName) {
+  const s = String(fullName || "").trim();
+  if (!s) return "Z";
+  return s[0].toUpperCase();
+}
+
+/**
+ * 🔧 CONFIG
+ * - Se quitó Notificaciones del drawer.
+ * - Ajustes también se quitó del drawer (queda solo "Salir" abajo).
+ */
+const NAV_TOP = [
+  { to: "/app/inicio", label: "Inicio", sub: "Resumen y accesos", icon: "🏠", enabled: true },
+];
+
+const NAV_SECTIONS = [
+  {
+    title: "Tu plan",
+    items: [
+      { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: "🍽️", enabled: true },
+      { to: "/app/rutinas", label: "Rutina", sub: "Entrenamiento", icon: "🏋️", enabled: true },
+      { to: "/app/equivalencias", label: "Equivalencias", sub: "Intercambios de alimentos", icon: "🧠", enabled: false },
+    ],
+  },
+  {
+    title: "Tu progreso",
+    items: [
+      { to: "/app/progresos", label: "Progresos", sub: "Medidas y fotos", icon: "📈", enabled: true },
+    ],
+  },
+  {
+    title: "Social",
+    items: [
+      { to: "/app/amigos", label: "Amigos", sub: "Conexiones", icon: "🤝", enabled: false },
+      { to: "/app/feed", label: "Feed", sub: "Actividad", icon: "📰", enabled: false },
+    ],
+  },
+];
 
 export default function ClientShell() {
   const nav = useNavigate();
@@ -346,7 +467,6 @@ export default function ClientShell() {
   async function logout() {
     if (loading) return;
     setLoading(true);
-
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
     } catch (err) {
@@ -358,8 +478,42 @@ export default function ClientShell() {
     }
   }
 
-  const nombre = firstName(user?.profile?.nombre || user?.nombre || "");
+  const fullName = user?.profile?.nombre || user?.nombre || "";
+  const nombre = firstName(fullName);
   const sub = nombre ? `Hola, ${nombre}` : "Tu espacio";
+
+  // (opcional) si en el futuro tenés una URL de avatar:
+  const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl || "";
+
+  function renderItem(it) {
+    if (!it.enabled) {
+      return (
+        <div key={it.to} className="cs-item-disabled" title={`${it.label} (Próximamente)`}>
+          <span className="cs-ic">{it.icon}</span>
+          <span className="cs-desc">
+            <span>{it.label}</span>
+            <small className="cs-subline">{it.sub}</small>
+          </span>
+          <span className="cs-badge">Próximamente</span>
+        </div>
+      );
+    }
+
+    return (
+      <NavLink
+        key={it.to}
+        to={it.to}
+        className={({ isActive }) => `cs-item ${isActive ? "active" : ""}`}
+        title={it.label}
+      >
+        <span className="cs-ic">{it.icon}</span>
+        <span className="cs-desc">
+          <span>{it.label}</span>
+          <small className="cs-subline">{it.sub}</small>
+        </span>
+      </NavLink>
+    );
+  }
 
   return (
     <div className="cs-wrap">
@@ -392,12 +546,7 @@ export default function ClientShell() {
           </div>
 
           <div className="cs-actions">
-            <button
-              className="cs-btn"
-              onClick={() => setOpen(true)}
-              aria-label="Abrir menú"
-              title="Menú"
-            >
+            <button className="cs-btn" onClick={() => setOpen(true)} aria-label="Abrir menú" title="Menú">
               ☰
             </button>
 
@@ -414,40 +563,53 @@ export default function ClientShell() {
         </div>
       </header>
 
-      {/* drawer */}
+      {/* overlay */}
       {open && <div className="cs-ov" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside className={`cs-drawer ${open ? "open" : ""}`} role="dialog" aria-modal="true" aria-label="Menú principal">
         <div className="cs-d-head">
-          <div>
-            <div className="cs-d-head-title">Navegación</div>
-            <div className="cs-d-head-sub">Elegí una sección</div>
+          <div className="cs-prof">
+            <div className="cs-avatar" aria-label="Avatar">
+              {avatarUrl ? <img src={avatarUrl} alt="Avatar" /> : <span>{initialFromName(fullName)}</span>}
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div className="cs-prof-name">{fullName ? fullName : "Mi cuenta"}</div>
+              <div className="cs-prof-sub">{sub}</div>
+
+              <NavLink className="cs-prof-link" to="/app/perfil">
+                Ver mi perfil →
+              </NavLink>
+            </div>
           </div>
+
           <button className="cs-btn" onClick={() => setOpen(false)} aria-label="Cerrar menú" title="Cerrar">
             ✕
           </button>
         </div>
 
         <div className="cs-d-body">
-          {NAV.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              className={({ isActive }) => `cs-item ${isActive ? "active" : ""}`}
-              title={it.label}
-            >
-              <span className="cs-ic">{it.icon}</span>
-              <span className="cs-desc">
-                <span>{it.label}</span>
-                <small>{it.sub}</small>
-              </span>
-            </NavLink>
+          {/* TOP */}
+          <div className="cs-sec">{NAV_TOP.map(renderItem)}</div>
+
+          {/* SECTIONS */}
+          {NAV_SECTIONS.map((sec) => (
+            <div key={sec.title} className="cs-sec">
+              <div className="cs-sec-title">{sec.title}</div>
+              {sec.items.map(renderItem)}
+            </div>
           ))}
         </div>
 
         <div className="cs-d-foot">
-          <button className="cs-btn" onClick={logout} disabled={loading} style={{ width: "100%", justifyContent: "center" }}>
-            {loading ? "Cerrando…" : "Cerrar sesión"}
+          {/* Salir (último de todo) */}
+          <button
+            className="cs-btn cs-foot-item"
+            onClick={logout}
+            disabled={loading}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {loading ? "Cerrando…" : "Salir"}
           </button>
         </div>
       </aside>

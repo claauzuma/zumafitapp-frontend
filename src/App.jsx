@@ -14,11 +14,17 @@ import AppLayout from "./AppLayout.jsx";
 import AdminLayout from "./AdminLayout.jsx";
 
 // ✅ Onboarding cliente
-import OnboardingCliente from "./OnboardingCliente.jsx"; // ajustá si está en /pages
+import OnboardingCliente from "./OnboardingCliente.jsx";
 
 // ✅ Cliente (entrenado)
 import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
-import MenuEj from "./entrenado/MenuEj.jsx";
+
+// ✅ Menú con tabs
+import MenuEj from "./entrenado/MenuEj.jsx"; // ✅ ESTE es el layout con tabs + Outlet
+import MenuPlan from "./entrenado/menu/MenuPlan.jsx"; // ✅ tu plan (el componente gigante que hoy tenés)
+import MenuPreferencias from "./entrenado/menu/MenuPreferencias.jsx";
+import MenuFavoritas from "./entrenado/menu/MenuFavoritas.jsx";
+
 import Perfil from "./entrenado/Perfil.jsx";
 import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
@@ -113,7 +119,14 @@ export default function App() {
 
         {/* ✅ Rutas normales */}
         <Route path="inicio" element={<InicioEntrenado />} />
-        <Route path="menu" element={<MenuEj />} />
+
+        {/* ✅ MENU: al apretar "Menú" en el drawer -> /app/menu -> cae en MenuPlan */}
+        <Route path="menu" element={<MenuEj />}>
+          <Route index element={<MenuPlan />} />
+          <Route path="preferencias" element={<MenuPreferencias />} />
+          <Route path="favoritas" element={<MenuFavoritas />} />
+        </Route>
+
         <Route path="perfil" element={<Perfil />} />
         <Route path="rutinas" element={<Rutinas />} />
         <Route path="progresos" element={<Progresos />} />
