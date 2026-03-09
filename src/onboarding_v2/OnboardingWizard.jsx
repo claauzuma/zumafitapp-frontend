@@ -1,0 +1,300 @@
+// src/onboarding_v2/OnboardingWizard.jsx
+import React, { useMemo, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { apiFetch } from "../Api.js";
+import { setAuthLogged } from "../authCache.js";
+
+import OnboardingLayout from "./OnboardingLayout.jsx";
+
+import IntroStart from "./screens/IntroStart.jsx";
+import BasicsSex from "./screens/BasicsSex.jsx";
+import BasicsBirth from "./screens/BasicsBirth.jsx";
+import BasicsHeight from "./screens/BasicsHeight.jsx";
+import BasicsWeight from "./screens/BasicsWeight.jsx";
+import BasicsWeightTrend from "./screens/BasicsWeightTrend.jsx";
+import BasicsExerciseFreq from "./screens/BasicsExerciseFreq.jsx";
+import BasicsDailyActivity from "./screens/BasicsDailyActivity.jsx";
+import BasicsExperience from "./screens/BasicsExperience.jsx";
+import BasicsTDEE from "./screens/BasicsTDEE.jsx";
+
+import GoalPlaceholder from "./screens/GoalPlaceholder.jsx";
+import ProgramPlaceholder from "./screens/ProgramPlaceholder.jsx";
+
+const BASICS_SCREENS = [
+  { key: "intro", component: IntroStart, title: "Onboarding", subtitle: "Tu plan en 1 minuto" },
+
+  { key: "sex", component: BasicsSex, title: "Básicos", subtitle: "Datos iniciales" },
+  { key: "birth", component: BasicsBirth, title: "Básicos", subtitle: "Datos iniciales" },
+  { key: "height", component: BasicsHeight, title: "Básicos", subtitle: "Datos iniciales" },
+  { key: "weight", component: BasicsWeight, title: "Básicos", subtitle: "Datos iniciales" },
+  { key: "trend", component: BasicsWeightTrend, title: "Básicos", subtitle: "Datos iniciales" },
+  { key: "exercise", component: BasicsExerciseFreq, title: "Básicos", subtitle: "Actividad" },
+  { key: "daily", component: BasicsDailyActivity, title: "Básicos", subtitle: "Actividad" },
+  { key: "exp", component: BasicsExperience, title: "Básicos", subtitle: "Entrenamiento" },
+  { key: "tdee", component: BasicsTDEE, title: "Básicos", subtitle: "Estimación" },
+];
+
+export default function OnboardingWizard({ startAt = "basics" }) {
+  const nav = useNavigate();
+  const loc = useLocation();
+
+  // datos acumulados (se van guardando en backend paso a paso)
+  const [form, setForm] = useState({
+    sexo: "",                // "masculino" | "femenino" | "prefiero_no_decir"
+    fechaNacimiento: "",     // "YYYY-MM-DD"
+    alturaCm: 170,
+    pesoKg: 75,
+    tendenciaPeso: "",       // "bajando" | "subiendo" | "estable" | "no_se"
+    frecuenciaEjercicio: "", // "0" | "1_3" | "4_6" | "7_plus"
+    actividadDiaria: "",     // "sedentario" | "moderado" | "muy_activo"
+    experienciaPesas: "",    // "ninguna" | "principiante" | "intermedio" | "avanzado"
+    tdeeEstimado: null,
+    tdeeCustom: null,
+  });
+
+  // qué “sección” mostrar (basics/goal/program)
+  const section = useMemo(() => {
+    const p = (loc.pathname || "").toLowerCase();
+    if (startAt === "goal" || p.includes("/onboarding/goal")) return "goal";
+    if (startAt === "program" || p.includes("/onboarding/program")) return "program";
+    return "basics";
+  }, [loc.pathname, startAt]);
+
+  // índice para BASICS
+  const [i, setI] = useState(() => 0); // si venís directo a /app/onboarding -> arranca intro
+
+  const isBasics = section === "basics";
+  const screen = isBasics ? BASICS_SCREENS[i] : null;
+
+  const progressPct = useMemo(() => {
+    if (!isBasics) return section === "goal" ? 67 : 100;
+    // basics: 0=Intro (muy poquito), 1..9 reales
+    if (i === 0) return 8;
+    const basicsCount = BASICS_SCREENS.length - 1; // sin intro
+    const idx = Math.max(1, i) - 1;
+    return Math.round(((idx + 1) / basicsCount) * 100);
+  }, [isBasics, i, section]);
+
+  async function patchStep1(partialData) {
+    // Guardado incremental a tu backend: step=1
+    const payload = { step: 1, data: partialData };
+    await apiFetch("/api/usuarios/me/onboarding", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function finishOnboardingAndGoHome() {
+    // ✅ Marca done (step 3) + refresca /me + actualiza cache
+    await apiFetch("/api/usuarios/me/onboarding", {
+      method: "PATCH",
+      body: JSON.stringify({ step: 3, data: { done: true } }),
+    });
+
+    const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
+    const user = me?.user || me;
+    if (user) setAuthLogged(user);
+
+    nav("/app/inicio", { replace: true });
+  }
+
+  function back() {
+    if (section === "goal") return nav("/app/onboarding", { replace: true });
+    if (section === "program") return nav("/app/onboarding/goal", { replace: true });
+
+    if (i <= 0) {
+      // salir del onboarding (si querés, también podrías mandar a /app/inicio)
+      nav("/app/inicio", { replace: true });
+      return;
+    }
+    setI((x) => Math.max(0, x - 1));
+  }
+
+  function next() {
+    if (!isBasics) return;
+
+    if (i < BASICS_SCREENS.length - 1) {
+      setI((x) => x + 1);
+    } else {
+      // fin basics -> ir a goal
+      nav("/app/onboarding/goal", { replace: true });
+    }
+  }
+
+  // --------------------------
+  // SECCIÓN GOAL (placeholder)
+  // --------------------------
+  if (section === "goal") {
+    return (
+      <OnboardingLayout
+        title="Objetivo"
+        subtitle="Próximo módulo"
+        progressPct={progressPct}
+        onBack={() => nav("/app/onboarding", { replace: true })}
+        footer={null}
+      >
+        <GoalPlaceholder onGoProgram={() => nav("/app/onboarding/program", { replace: true })} />
+      </OnboardingLayout>
+    );
+  }
+
+  // -----------------------------
+  // SECCIÓN PROGRAM (placeholder)
+  // -----------------------------
+  if (section === "program") {
+    return (
+      <OnboardingLayout
+        title="Programa"
+        subtitle="Próximo módulo"
+        progressPct={progressPct}
+        onBack={() => nav("/app/onboarding/goal", { replace: true })}
+        footer={null}
+      >
+        <ProgramPlaceholder
+          onFinish={finishOnboardingAndGoHome}
+        />
+      </OnboardingLayout>
+    );
+  }
+
+  // --------------------------
+  // BASICS
+  // --------------------------
+  if (!screen) return null;
+  const ScreenComp = screen.component;
+
+  return (
+    <OnboardingLayout
+      title={screen.title}
+      subtitle={screen.subtitle}
+      progressPct={progressPct}
+      onBack={back}
+      footer={
+        <div className="ob2-sticky-inner">
+          <ScreenFooter
+            screenKey={screen.key}
+            form={form}
+            setForm={setForm}
+            onNext={next}
+            onBack={back}
+            patchStep1={patchStep1}
+            nav={nav}
+          />
+          <div className="ob2-mini">{isBasics ? "Básicos → Objetivo → Programa" : ""}</div>
+        </div>
+      }
+    >
+      <ScreenComp
+        form={form}
+        setForm={setForm}
+        onNext={next}
+        patchStep1={patchStep1}
+        nav={nav}
+      />
+    </OnboardingLayout>
+  );
+}
+
+function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  function canContinue() {
+    // Validaciones mínimas por pantalla
+    if (screenKey === "intro") return true;
+    if (screenKey === "sex") return !!form.sexo;
+    if (screenKey === "birth") return !!form.fechaNacimiento;
+    if (screenKey === "trend") return !!form.tendenciaPeso;
+    if (screenKey === "exercise") return !!form.frecuenciaEjercicio;
+    if (screenKey === "daily") return !!form.actividadDiaria;
+    if (screenKey === "exp") return !!form.experienciaPesas;
+    // height/weight/tdee siempre ok
+    return true;
+  }
+
+  async function handlePrimary() {
+    setError("");
+    if (!canContinue()) {
+      setError("Completá este paso para continuar.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (screenKey === "intro") {
+        onNext();
+        return;
+      }
+
+      // Guardados por pantalla (step: 1)
+      if (screenKey === "sex") await patchStep1({ sexo: form.sexo });
+      if (screenKey === "birth") await patchStep1({ fechaNacimiento: form.fechaNacimiento });
+      if (screenKey === "height") await patchStep1({ alturaCm: Number(form.alturaCm) });
+      if (screenKey === "weight") await patchStep1({ pesoKg: Number(form.pesoKg) });
+      if (screenKey === "trend") await patchStep1({ tendenciaPeso: form.tendenciaPeso });
+      if (screenKey === "exercise") await patchStep1({ frecuenciaEjercicio: form.frecuenciaEjercicio });
+      if (screenKey === "daily") await patchStep1({ actividadDiaria: form.actividadDiaria });
+      if (screenKey === "exp") await patchStep1({ experienciaPesas: form.experienciaPesas });
+
+      if (screenKey === "tdee") {
+        // Guardamos el tdee (calculado o custom) y pasamos a Goal
+        const kcal = form.tdeeCustom != null ? Number(form.tdeeCustom) : Number(form.tdeeEstimado);
+        await patchStep1({ tdeeEstimado: kcal });
+        nav("/app/onboarding/goal", { replace: true });
+        return;
+      }
+
+      onNext();
+    } catch (e) {
+      setError(e?.message || "No se pudo guardar. Probá de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSkip() {
+    // solo para TDEE (como en tu captura)
+    setLoading(true);
+    setError("");
+    try {
+      nav("/app/onboarding/goal", { replace: true });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const showBack = screenKey !== "intro";
+  const showSkip = screenKey === "tdee";
+
+  return (
+    <>
+      {error ? (
+        <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>{error}</div>
+      ) : null}
+
+      {showSkip ? (
+        <div className="ob2-row2">
+          <button className="ob2-btn ghost" type="button" onClick={handleSkip} disabled={loading}>
+            Saltar
+          </button>
+          <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
+            {loading ? "Guardando…" : "Entendido"}
+          </button>
+        </div>
+      ) : showBack ? (
+        <div className="ob2-row2">
+          <button className="ob2-btn ghost" type="button" onClick={onBack} disabled={loading}>
+            Atrás
+          </button>
+          <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
+            {loading ? "Guardando…" : "Siguiente"}
+          </button>
+        </div>
+      ) : (
+        <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
+          {loading ? "…" : "Ir a Básicos"}
+        </button>
+      )}
+    </>
+  );
+}

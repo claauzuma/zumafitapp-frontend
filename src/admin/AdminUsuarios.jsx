@@ -1,7 +1,7 @@
 // src/AdminUsuarios.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "./Api.js";
+import { apiFetch } from "../Api.js";
 
 export default function AdminUsuarios() {
   const navigate = useNavigate();

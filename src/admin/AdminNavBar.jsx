@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { apiFetch } from "./Api.js";
-import { setAuthGuest } from "./authCache.js";
+import { apiFetch } from "../Api.js";
+import { setAuthGuest } from "../authCache.js";
 
 export default function AdminNavBar() {
   const navigate = useNavigate();
