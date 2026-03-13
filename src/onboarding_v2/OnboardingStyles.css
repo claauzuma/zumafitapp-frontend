@@ -297,6 +297,64 @@
   color: #bdbdbd;
   font-size: 13px;
 }
+.ob2-bf-grid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 520px){
+  .ob2-bf-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+.ob2-bf-item{
+  position:relative;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  padding: 10px;
+  text-align: left;
+  overflow: hidden;
+  color: inherit;
+}
+
+.ob2-bf-item.is-active{
+  border-color: rgba(245,215,110,.55);
+  box-shadow: 0 0 0 3px rgba(245,215,110,.10);
+}
+
+.ob2-bf-illus{
+  width: 100%;
+  border-radius: 16px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.ob2-bf-pill{
+  display:inline-block;
+  font-weight: 900;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.92);
+  color: #0a0a0a;
+}
+
+.ob2-bf-radio{
+  position:absolute;
+  right: 10px;
+  top: 10px;
+  font-size: 18px;
+  opacity: .85;
+}
+
+
+
 
 @media (min-width: 900px){
   .ob2-container { padding-top: 26px; }
