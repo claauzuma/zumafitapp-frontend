@@ -4,6 +4,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import { setAuthLogged, getCachedUser } from "../authCache.js";
 
+import GoalWizard from "./screens/goal/GoalWizard.jsx";
+
+
 import OnboardingLayout from "./OnboardingLayout.jsx";
 
 import IntroStart from "./screens/IntroStart.jsx";
@@ -159,19 +162,28 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   }
 
   // GOAL
-  if (section === "goal") {
-    return (
-      <OnboardingLayout
-        title="Objetivo"
-        subtitle="Próximo módulo"
-        progressPct={progressPct}
-        onBack={() => nav("/app/onboarding", { replace: true })}
-        footer={null}
-      >
-        <GoalPlaceholder onGoProgram={() => nav("/app/onboarding/program", { replace: true })} />
-      </OnboardingLayout>
-    );
-  }
+if (section === "goal") {
+  return (
+    <OnboardingLayout
+      title="Objetivo"
+      subtitle="Definí tu meta"
+      progressPct={67}
+      onBack={() => nav("/app/onboarding", { replace: true })}
+      footer={null}
+    >
+      <GoalWizard
+        onDone={async () => {
+          // ✅ al terminar Goal, refrescamos /me para que onboarding.step=3 quede en cache
+          const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
+          const user = me?.user || me;
+          if (user) setAuthLogged(user);
+
+          nav("/app/onboarding/program", { replace: true });
+        }}
+      />
+    </OnboardingLayout>
+  );
+}
 
   // PROGRAM
   if (section === "program") {
