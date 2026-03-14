@@ -11,6 +11,10 @@ import BasicsSex from "./screens/BasicsSex.jsx";
 import BasicsBirth from "./screens/BasicsBirth.jsx";
 import BasicsHeight from "./screens/BasicsHeight.jsx";
 import BasicsWeight from "./screens/BasicsWeight.jsx";
+
+
+import BasicsBodyFat from "./screens/BasicsBodyFat.jsx";
+
 import BasicsWeightTrend from "./screens/BasicsWeightTrend.jsx";
 import BasicsExerciseFreq from "./screens/BasicsExerciseFreq.jsx";
 import BasicsDailyActivity from "./screens/BasicsDailyActivity.jsx";
@@ -27,6 +31,10 @@ const BASICS_SCREENS = [
   { key: "birth", component: BasicsBirth, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "height", component: BasicsHeight, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "weight", component: BasicsWeight, title: "Básicos", subtitle: "Datos iniciales" },
+
+  // ✅ NUEVO (va después del peso)
+  { key: "bodyfat", component: BasicsBodyFat, title: "Básicos", subtitle: "Datos iniciales" },
+
   { key: "trend", component: BasicsWeightTrend, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "exercise", component: BasicsExerciseFreq, title: "Básicos", subtitle: "Actividad" },
   { key: "daily", component: BasicsDailyActivity, title: "Básicos", subtitle: "Actividad" },
@@ -44,6 +52,10 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     fechaNacimiento: "",
     alturaCm: 170,
     pesoKg: 75,
+
+    // ✅ NUEVO: % graso (string para inputs)
+    grasaPct: "",
+
     tendenciaPeso: "",
     frecuenciaEjercicio: "",
     actividadDiaria: "",
@@ -69,7 +81,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   const progressPct = useMemo(() => {
     if (!isBasics) return section === "goal" ? 67 : 100;
     if (i === 0) return 8;
-    const basicsCount = BASICS_SCREENS.length - 1;
+    const basicsCount = BASICS_SCREENS.length - 1; // sin intro
     const idx = Math.max(1, i) - 1;
     return Math.round(((idx + 1) / basicsCount) * 100);
   }, [isBasics, i, section]);
@@ -80,7 +92,6 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     const savedStep = Number(u?.onboarding?.step || 1);
     const done = Boolean(u?.onboarding?.done);
 
-    // si ya está terminado, no hagas nada
     if (done) return;
 
     const path = (loc.pathname || "").toLowerCase();
@@ -93,15 +104,12 @@ export default function OnboardingWizard({ startAt = "basics" }) {
 
     if (!isRootBasics) return;
 
-    // step=2 => ir a Goal
-    if (savedStep >= 2) {
-      nav("/app/onboarding/goal", { replace: true });
-      return;
-    }
-
-    // step=3 (sin done) => ir a Program (por si lo usás más adelante)
     if (savedStep >= 3) {
       nav("/app/onboarding/program", { replace: true });
+      return;
+    }
+    if (savedStep >= 2) {
+      nav("/app/onboarding/goal", { replace: true });
       return;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,13 +121,10 @@ export default function OnboardingWizard({ startAt = "basics" }) {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
-
-    // ✅ opcional: refrescar cache liviano (para que onboarding.step quede actualizado tras TDEE)
-    // si no querés hittear /me siempre, lo dejamos sin refresh acá.
   }
 
   async function finishOnboardingAndGoHome() {
-    // ✅ tu backend Step 3 usa "skip" (no "done:true")
+    // ✅ tu backend Step 3 usa "skip" (en placeholder)
     await apiFetch("/api/usuarios/me/onboarding", {
       method: "PATCH",
       body: JSON.stringify({ step: 3, data: { skip: true } }),
@@ -207,7 +212,13 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         </div>
       }
     >
-      <ScreenComp form={form} setForm={setForm} onNext={next} patchStep1={patchStep1} nav={nav} />
+      <ScreenComp
+        form={form}
+        setForm={setForm}
+        onNext={next}
+        patchStep1={patchStep1}
+        nav={nav}
+      />
     </OnboardingLayout>
   );
 }
@@ -220,10 +231,16 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     if (screenKey === "intro") return true;
     if (screenKey === "sex") return !!form.sexo;
     if (screenKey === "birth") return !!form.fechaNacimiento;
+
+    // ✅ BodyFat: lo dejamos opcional (podés hacerlo obligatorio si querés)
+    // si querés obligatorio: return String(form.grasaPct).trim() !== "";
+    if (screenKey === "bodyfat") return true;
+
     if (screenKey === "trend") return !!form.tendenciaPeso;
     if (screenKey === "exercise") return !!form.frecuenciaEjercicio;
     if (screenKey === "daily") return !!form.actividadDiaria;
     if (screenKey === "exp") return !!form.experienciaPesas;
+
     return true;
   }
 
@@ -245,6 +262,14 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
       if (screenKey === "birth") await patchStep1({ fechaNacimiento: form.fechaNacimiento });
       if (screenKey === "height") await patchStep1({ alturaCm: Number(form.alturaCm) });
       if (screenKey === "weight") await patchStep1({ pesoKg: Number(form.pesoKg) });
+
+      // ✅ NUEVO: guardar grasaPct (null si vacío)
+      if (screenKey === "bodyfat") {
+        const raw = String(form.grasaPct ?? "").trim();
+        const val = raw === "" ? null : Number(raw);
+        await patchStep1({ grasaPct: val });
+      }
+
       if (screenKey === "trend") await patchStep1({ tendenciaPeso: form.tendenciaPeso });
       if (screenKey === "exercise") await patchStep1({ frecuenciaEjercicio: form.frecuenciaEjercicio });
       if (screenKey === "daily") await patchStep1({ actividadDiaria: form.actividadDiaria });
@@ -254,7 +279,7 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
         const kcal = form.tdeeCustom != null ? Number(form.tdeeCustom) : Number(form.tdeeEstimado);
         await patchStep1({ tdeeEstimado: kcal });
 
-        // ✅ IMPORTANTE: refrescamos /me para que cache tenga onboarding.step=2 inmediatamente
+        // ✅ refrescar /me para que cache tenga onboarding.step actualizado
         const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
         const user = me?.user || me;
         if (user) setAuthLogged(user);
@@ -271,33 +296,13 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     }
   }
 
-  async function handleSkip() {
-    setLoading(true);
-    setError("");
-    try {
-      nav("/app/onboarding/goal", { replace: true });
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const showBack = screenKey !== "intro";
-  const showSkip = screenKey === "tdee";
 
   return (
     <>
       {error ? <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>{error}</div> : null}
 
-      {showSkip ? (
-        <div className="ob2-row2">
-          <button className="ob2-btn ghost" type="button" onClick={handleSkip} disabled={loading}>
-            Saltar
-          </button>
-          <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
-            {loading ? "Guardando…" : "Entendido"}
-          </button>
-        </div>
-      ) : showBack ? (
+      {showBack ? (
         <div className="ob2-row2">
           <button className="ob2-btn ghost" type="button" onClick={onBack} disabled={loading}>
             Atrás
