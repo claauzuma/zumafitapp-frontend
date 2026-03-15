@@ -9,7 +9,7 @@ export default function GoalIntro({ onNext }) {
         Ahora definimos tu meta y armamos un plan para ayudarte a lograrla.
       </p>
 
-      {/* Timeline (usa clases existentes del CSS) */}
+      {/* Timeline usando clases que YA existen en tu CSS */}
       <div className="ob2-timeline">
         <div className="ob2-line">
           <div className="ob2-bubble active">✓</div>
