@@ -353,6 +353,75 @@
   opacity: .85;
 }
 
+/* Timeline (GoalIntro) */
+.ob2-timeline {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.ob2-tl-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.ob2-tl-left {
+  position: relative;
+  display: grid;
+  justify-items: center;
+}
+
+.ob2-line {
+  width: 2px;
+  height: 44px;
+  background: rgba(255,255,255,.10);
+  border-radius: 999px;
+  margin-top: 8px;
+}
+
+.ob2-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 1000;
+  font-size: 13px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.85);
+}
+
+.ob2-dot.done {
+  background: rgba(245, 215, 110, .16);
+  border-color: rgba(245, 215, 110, .35);
+  color: rgba(245, 215, 110, 1);
+}
+
+.ob2-dot.active {
+  background: rgba(245, 215, 110, .10);
+  border-color: rgba(245, 215, 110, .35);
+  color: rgba(245, 215, 110, 1);
+  box-shadow: 0 0 0 3px rgba(245,215,110,.08);
+}
+
+.ob2-tl-title {
+  font-weight: 1000;
+  color: rgba(255,255,255,.92);
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.ob2-tl-sub {
+  margin-top: 2px;
+  color: rgba(189,189,189,.9);
+  font-size: 13px;
+}
+
+
+
 
 
 
