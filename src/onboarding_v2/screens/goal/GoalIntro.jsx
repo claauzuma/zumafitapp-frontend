@@ -9,33 +9,34 @@ export default function GoalIntro({ onNext }) {
         Ahora definimos tu meta y armamos un plan para ayudarte a lograrla.
       </p>
 
-      <div style={{ marginTop: 18 }} className="ob2-stepList">
-        <div className="ob2-stepItem done">
-          <div className="ob2-stepDot">✓</div>
+      {/* Timeline (usa clases existentes del CSS) */}
+      <div className="ob2-timeline">
+        <div className="ob2-line">
+          <div className="ob2-bubble active">✓</div>
           <div>
-            <div className="ob2-stepTitle">Básicos</div>
-            <div className="ob2-stepSub">Listo</div>
+            <p className="ob2-section-title">Básicos</p>
+            <p className="ob2-section-sub">Listo</p>
           </div>
         </div>
 
-        <div className="ob2-stepItem active">
-          <div className="ob2-stepDot">2</div>
+        <div className="ob2-line">
+          <div className="ob2-bubble active">2</div>
           <div>
-            <div className="ob2-stepTitle">Objetivo</div>
-            <div className="ob2-stepSub">Elegí tu meta</div>
+            <p className="ob2-section-title">Objetivo</p>
+            <p className="ob2-section-sub">Elegí tu meta</p>
           </div>
         </div>
 
-        <div className="ob2-stepItem">
-          <div className="ob2-stepDot">3</div>
+        <div className="ob2-line">
+          <div className="ob2-bubble">3</div>
           <div>
-            <div className="ob2-stepTitle">Programa</div>
-            <div className="ob2-stepSub">Últimos detalles</div>
+            <p className="ob2-section-title">Programa</p>
+            <p className="ob2-section-sub">Últimos detalles</p>
           </div>
         </div>
       </div>
 
-      <div className="ob2-sticky">
+      <div style={{ marginTop: 14 }}>
         <button className="ob2-btn primary" type="button" onClick={onNext}>
           Ir a Objetivo
         </button>

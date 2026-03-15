@@ -353,71 +353,97 @@
   opacity: .85;
 }
 
-/* Timeline (GoalIntro) */
-.ob2-timeline {
-  display: grid;
-  gap: 14px;
-  margin-top: 14px;
-}
 
-.ob2-tl-row {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 12px;
-  align-items: start;
-}
+/* =========================
+   GOAL SCOPE (NO rompe Basics)
+   ========================= */
 
-.ob2-tl-left {
-  position: relative;
-  display: grid;
-  justify-items: center;
-}
-
-.ob2-line {
-  width: 2px;
-  height: 44px;
-  background: rgba(255,255,255,.10);
-  border-radius: 999px;
-  margin-top: 8px;
-}
-
-.ob2-dot {
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
+/* Envolvé Goal con .ob2-goal para que estos estilos NO afecten a Basics */
+.ob2-goal h1,
+.ob2-goal h2 {
+  margin: 18px 0 8px;
+  color: #ffffff;
   font-weight: 1000;
-  font-size: 13px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  color: rgba(255,255,255,.85);
+  letter-spacing: -0.3px;
+  line-height: 1.05;
 }
 
-.ob2-dot.done {
-  background: rgba(245, 215, 110, .16);
-  border-color: rgba(245, 215, 110, .35);
-  color: rgba(245, 215, 110, 1);
+.ob2-goal h1 { font-size: 38px; line-height: 0.95; letter-spacing: -0.5px; }
+.ob2-goal h2 { font-size: 30px; }
+
+.ob2-goal p {
+  margin: 0 0 14px;
+  color: #bdbdbd;
+  font-size: 14px;
 }
 
-.ob2-dot.active {
-  background: rgba(245, 215, 110, .10);
-  border-color: rgba(245, 215, 110, .35);
-  color: rgba(245, 215, 110, 1);
-  box-shadow: 0 0 0 3px rgba(245,215,110,.08);
+.ob2-goal .card,
+.ob2-goal .panel,
+.ob2-goal .box {
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
 }
 
-.ob2-tl-title {
+/* Si tu Goal usa botones “normales” */
+.ob2-goal button {
+  border-radius: 16px;
+  padding: 14px 14px;
   font-weight: 1000;
-  color: rgba(255,255,255,.92);
-  font-size: 15px;
-  line-height: 1.15;
+  cursor: pointer;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  color: #eaeaea;
 }
 
-.ob2-tl-sub {
-  margin-top: 2px;
-  color: rgba(189,189,189,.9);
-  font-size: 13px;
+.ob2-goal button.primary,
+.ob2-goal button[data-variant="primary"] {
+  border: none;
+  background: linear-gradient(135deg,#f5d98a,#ffe89d);
+  color: #0a0a0a;
+}
+
+.ob2-goal button.ghost,
+.ob2-goal button[data-variant="ghost"] {
+  background: transparent;
+  border: 1px solid #2b2b2b;
+  color: #eaeaea;
+}
+
+.ob2-goal button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* Inputs del Goal si no usan .ob2-input */
+.ob2-goal input,
+.ob2-goal select {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 16px;
+  border: 1px solid #2b2b2b;
+  background: #0b0b0b;
+  color: #fff;
+  outline: none;
+}
+
+.ob2-goal input:focus,
+.ob2-goal select:focus {
+  border-color: rgba(245,217,138,.75);
+  box-shadow: 0 0 0 3px rgba(245,217,138,.10);
+}
+
+/* Layout helpers por si tus pantallas goal usan filas/acciones */
+.ob2-goal .row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ob2-goal .center {
+  text-align: center;
 }
 
 
@@ -428,3 +454,6 @@
 @media (min-width: 900px){
   .ob2-container { padding-top: 26px; }
 }
+
+
+
