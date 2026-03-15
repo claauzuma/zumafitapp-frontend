@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+// src/onboarding_v2/screens/BasicsTDEE.jsx
+import React, { useMemo, useState, useEffect } from "react";
 
 function yearsOld(dateStr) {
   try {
@@ -41,16 +42,12 @@ function calcTDEE({ sexo, fechaNacimiento, alturaCm, pesoKg, actividadDiaria, fr
 export default function BasicsTDEE({ form, setForm }) {
   const [editing, setEditing] = useState(false);
 
-  const tdee = useMemo(() => {
-    const v = calcTDEE(form);
-    return v;
-  }, [form]);
+  const tdee = useMemo(() => calcTDEE(form), [form]);
 
-  // guardo calculado en state por si querés mostrarlo en pantallas siguientes
-  useMemo(() => {
+  // ✅ CORRECCIÓN: setear state con useEffect (NO useMemo)
+  useEffect(() => {
     setForm((p) => ({ ...p, tdeeEstimado: tdee }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tdee]);
+  }, [tdee, setForm]);
 
   const shown = form.tdeeCustom != null ? Number(form.tdeeCustom) : tdee;
 
@@ -96,7 +93,15 @@ export default function BasicsTDEE({ form, setForm }) {
           </div>
         ) : null}
 
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 16, border: "1px solid #2b2b2b", background: "#0b0b0b" }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 16,
+            border: "1px solid #2b2b2b",
+            background: "#0b0b0b",
+          }}
+        >
           <p style={{ margin: 0, color: "#eaeaea", fontWeight: 900 }}>¿Cómo lo calculamos?</p>
           <p style={{ margin: "8px 0 0", color: "#bdbdbd", fontSize: 13, lineHeight: 1.45 }}>
             Usamos una ecuación estándar que considera altura, peso, edad, sexo y actividad.

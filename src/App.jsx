@@ -112,10 +112,11 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="inicio" replace />} />
-
         {/* ✅ ONBOARDING v2: importante el "/*" para que funcione /goal y /program */}
         <Route path="onboarding/*" element={<OnboardingWizard />} />
+
+        {/* ✅ default de /app */}
+        <Route index element={<Navigate to="inicio" replace />} />
 
         {/* ✅ Rutas normales */}
         <Route path="inicio" element={<InicioEntrenado />} />
@@ -131,9 +132,12 @@ export default function App() {
         <Route path="rutinas" element={<Rutinas />} />
         <Route path="progresos" element={<Progresos />} />
         <Route path="ajustes" element={<Ajustes />} />
+
+        {/* ✅ fallback dentro de /app */}
+        <Route path="*" element={<Navigate to="/app/inicio" replace />} />
       </Route>
 
-      {/* fallback */}
+      {/* fallback global */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
