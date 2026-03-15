@@ -1,4 +1,3 @@
-// src/onboarding_v2/screens/goal/GoalLoseSetup.jsx
 import React from "react";
 
 export default function GoalLoseSetup({
@@ -12,25 +11,20 @@ export default function GoalLoseSetup({
   onNext,
 }) {
   return (
-    <div className="ob2-card">
-      <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
-        <div className="ob2-top-title">Definir nuevo objetivo</div>
-      </div>
-
-      {/* KPI arriba */}
+    <div>
       <div className="ob2-kpiRow">
         <div className="ob2-kpi mint">
           <div className="ob2-kpi-num">{initialBudgetKcal} kcal</div>
           <div className="ob2-kpi-sub">presupuesto diario inicial</div>
         </div>
-        <div className="ob2-kpi gray">
+        <div className="ob2-kpi">
           <div className="ob2-kpi-num">{endDateLabel}</div>
-          <div className="ob2-kpi-sub">fecha estimada</div>
+          <div className="ob2-kpi-sub">fecha estimada (placeholder)</div>
         </div>
       </div>
 
       <h1 className="ob2-h1">¿Cuál es tu peso objetivo?</h1>
+      <p className="ob2-p">Podés ajustarlo después. Lo usamos como referencia.</p>
 
       <div className="ob2-centerNum">{Number(targetWeightKg).toFixed(1)} kg</div>
 
@@ -52,8 +46,9 @@ export default function GoalLoseSetup({
       <h1 className="ob2-h1" style={{ marginTop: 18 }}>
         ¿A qué ritmo querés lograrlo?
       </h1>
+      <p className="ob2-p">Recomendado: 0.5% por semana (aprox.).</p>
 
-      <div className="ob2-pill mint">Estándar (recomendado)</div>
+      <span className="ob2-pill mint">Estándar (recomendado)</span>
 
       <div className="ob2-slider" style={{ marginTop: 10 }}>
         <input
@@ -82,9 +77,16 @@ export default function GoalLoseSetup({
       </div>
 
       <div className="ob2-sticky">
-        <button className="ob2-btn primary" type="button" onClick={onNext}>
-          Siguiente
-        </button>
+        <div className="ob2-sticky-inner">
+          <div className="ob2-row2">
+            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+              Atrás
+            </button>
+            <button className="ob2-btn primary" type="button" onClick={onNext}>
+              Siguiente
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

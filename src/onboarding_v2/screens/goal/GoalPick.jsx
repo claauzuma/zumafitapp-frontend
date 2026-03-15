@@ -1,45 +1,54 @@
-// src/onboarding_v2/screens/goal/GoalPick.jsx
 import React from "react";
 
 export default function GoalPick({ value, onChange, onBack, onNext }) {
   const options = [
-    { v: "perder_peso", t: "Perder peso" },
-    { v: "mantener_peso", t: "Mantener peso" },
-    { v: "ganar_peso", t: "Ganar peso" },
+    { v: "perder_peso", t: "Perder peso", sub: "Déficit + progreso sostenido" },
+    { v: "mantener_peso", t: "Mantener peso", sub: "Estabilidad y consistencia" },
+    { v: "ganar_peso", t: "Ganar peso", sub: "Superávit controlado" },
   ];
 
   return (
-    <div className="ob2-card">
-      <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
-        <div className="ob2-top-title">Definir nuevo objetivo</div>
-      </div>
-
-      <div className="ob2-progressTop" />
-
+    <div>
       <h1 className="ob2-h1">¿Cuál es tu objetivo?</h1>
+      <p className="ob2-p">Elegí una opción. Después ajustamos el plan en detalle.</p>
 
-      <div className="ob2-list">
+      <div style={{ display: "grid", gap: 10 }}>
         {options.map((o) => {
           const active = value === o.v;
           return (
             <button
               key={o.v}
               type="button"
-              className={`ob2-choice ${active ? "active" : ""}`}
+              className={`ob2-opt ${active ? "selected" : ""}`}
               onClick={() => onChange?.(o.v)}
             >
-              <div className="ob2-choiceText">{o.t}</div>
-              <div className={`ob2-radio ${active ? "on" : ""}`} />
+              <div className="ob2-opt-left">
+                <div className="ob2-icon">{o.v === "perder_peso" ? "↘" : o.v === "ganar_peso" ? "↗" : "→"}</div>
+                <div>
+                  <p className="ob2-opt-title">{o.t}</p>
+                  <p className="ob2-opt-sub">{o.sub}</p>
+                </div>
+              </div>
+
+              <div className="ob2-radio">
+                <div style={{ background: active ? "#f5d98a" : "transparent" }} />
+              </div>
             </button>
           );
         })}
       </div>
 
       <div className="ob2-sticky">
-        <button className="ob2-btn primary" type="button" onClick={onNext} disabled={!value}>
-          Siguiente
-        </button>
+        <div className="ob2-sticky-inner">
+          <div className="ob2-row2">
+            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+              Atrás
+            </button>
+            <button className="ob2-btn primary" type="button" onClick={onNext} disabled={!value}>
+              Siguiente
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

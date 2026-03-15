@@ -1,4 +1,3 @@
-// src/onboarding_v2/screens/goal/GoalMaintenanceSetup.jsx
 import React from "react";
 
 export default function GoalMaintenanceSetup({
@@ -9,27 +8,22 @@ export default function GoalMaintenanceSetup({
   onNext,
 }) {
   return (
-    <div className="ob2-card">
-      <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
-        <div className="ob2-top-title">Definir nuevo objetivo</div>
-      </div>
-
+    <div>
       <div className="ob2-kpi purple" style={{ marginBottom: 16 }}>
         <div className="ob2-kpi-num">{initialRangeLabel}</div>
         <div className="ob2-kpi-sub">rango calórico dinámico inicial</div>
       </div>
 
       <h1 className="ob2-h1">¿Qué es mantenimiento dinámico?</h1>
-
       <div className="ob2-infoBox">
-        En mantenimiento, el plan es <b>dinámico</b>: monitoreamos tu peso y ajustamos
-        para mantener tu <b>peso tendencia</b> en rango.
+        En mantenimiento, el plan es <b>dinámico</b>: monitoreamos tu peso y ajustamos para mantener tu{" "}
+        <b>peso tendencia</b> dentro de un rango.
       </div>
 
       <h1 className="ob2-h1" style={{ marginTop: 18 }}>
         ¿Cuál es tu peso tendencia objetivo?
       </h1>
+      <p className="ob2-p">Es el peso alrededor del cual querés mantenerte.</p>
 
       <div className="ob2-centerNum">{Number(trendTargetKg).toFixed(1)} kg</div>
 
@@ -49,9 +43,16 @@ export default function GoalMaintenanceSetup({
       </div>
 
       <div className="ob2-sticky">
-        <button className="ob2-btn primary" type="button" onClick={onNext}>
-          Siguiente
-        </button>
+        <div className="ob2-sticky-inner">
+          <div className="ob2-row2">
+            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+              Atrás
+            </button>
+            <button className="ob2-btn primary" type="button" onClick={onNext}>
+              Siguiente
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
