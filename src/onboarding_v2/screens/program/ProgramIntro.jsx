@@ -1,17 +1,14 @@
-// src/onboarding_v2/screens/program/ProgramIntro.jsx
 import React from "react";
 
-export default function ProgramIntro({ onBack, onNext }) {
+export default function ProgramIntro({ onNext }) {
   return (
     <div className="ob2-card">
-      <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
-        <div className="ob2-top-title">Programa</div>
-      </div>
-
       <h1 className="ob2-h1">¡Listo para tu programa!</h1>
-      <p className="ob2-p">Contanos tus preferencias para ajustar el plan.</p>
+      <p className="ob2-p">
+        Contanos tus preferencias y hábitos para ajustar tu plan.
+      </p>
 
+      {/* Timeline (igual look que GoalIntro “bueno”) */}
       <div className="ob2-timeline">
         <div className="ob2-line">
           <div className="ob2-bubble active">✓</div>
