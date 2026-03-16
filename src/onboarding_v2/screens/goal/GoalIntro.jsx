@@ -1,4 +1,5 @@
 // src/onboarding_v2/screens/goal/GoalIntro.jsx
+// src/onboarding_v2/screens/goal/GoalIntro.jsx
 import React from "react";
 
 export default function GoalIntro({ onNext }) {
@@ -9,29 +10,28 @@ export default function GoalIntro({ onNext }) {
         Ahora definimos tu meta y armamos un plan para ayudarte a lograrla.
       </p>
 
-      {/* Timeline usando clases que YA existen en tu CSS */}
-      <div className="ob2-timeline">
-        <div className="ob2-line">
-          <div className="ob2-bubble active">✓</div>
+      <div className="ob2-stepList">
+        <div className="ob2-stepItem done">
+          <div className="ob2-stepDot">✓</div>
           <div>
-            <p className="ob2-section-title">Básicos</p>
-            <p className="ob2-section-sub">Listo</p>
+            <div className="ob2-stepTitle">Básicos</div>
+            <div className="ob2-stepSub">Listo</div>
           </div>
         </div>
 
-        <div className="ob2-line">
-          <div className="ob2-bubble active">2</div>
+        <div className="ob2-stepItem active">
+          <div className="ob2-stepDot">2</div>
           <div>
-            <p className="ob2-section-title">Objetivo</p>
-            <p className="ob2-section-sub">Elegí tu meta</p>
+            <div className="ob2-stepTitle">Objetivo</div>
+            <div className="ob2-stepSub">Elegí tu meta</div>
           </div>
         </div>
 
-        <div className="ob2-line">
-          <div className="ob2-bubble">3</div>
+        <div className="ob2-stepItem">
+          <div className="ob2-stepDot">3</div>
           <div>
-            <p className="ob2-section-title">Programa</p>
-            <p className="ob2-section-sub">Últimos detalles</p>
+            <div className="ob2-stepTitle">Programa</div>
+            <div className="ob2-stepSub">Últimos detalles</div>
           </div>
         </div>
       </div>

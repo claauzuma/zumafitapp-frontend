@@ -3,7 +3,6 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import { setAuthLogged, getCachedUser } from "../authCache.js";
-
 import OnboardingLayout from "./OnboardingLayout.jsx";
 
 // BASICS screens
@@ -22,20 +21,16 @@ import BasicsTDEE from "./screens/BasicsTDEE.jsx";
 // GOAL
 import GoalWizard from "./screens/goal/GoalWizard.jsx";
 
-// PROGRAM
-import ProgramPlaceholder from "./screens/ProgramPlaceholder.jsx";
+// PROGRAM (✅ ahora usamos el wizard real)
+import ProgramWizard from "./screens/program/ProgramWizard.jsx";
 
 const BASICS_SCREENS = [
   { key: "intro", component: IntroStart, title: "Onboarding", subtitle: "Tu plan en 1 minuto" },
-
   { key: "sex", component: BasicsSex, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "birth", component: BasicsBirth, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "height", component: BasicsHeight, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "weight", component: BasicsWeight, title: "Básicos", subtitle: "Datos iniciales" },
-
-  // ✅ NUEVO: % graso
   { key: "bodyfat", component: BasicsBodyFat, title: "Básicos", subtitle: "Datos iniciales" },
-
   { key: "trend", component: BasicsWeightTrend, title: "Básicos", subtitle: "Datos iniciales" },
   { key: "exercise", component: BasicsExerciseFreq, title: "Básicos", subtitle: "Actividad" },
   { key: "daily", component: BasicsDailyActivity, title: "Básicos", subtitle: "Actividad" },
@@ -54,7 +49,6 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     alturaCm: 170,
     pesoKg: 75,
     grasaPct: "",
-
     tendenciaPeso: "",
     frecuenciaEjercicio: "",
     actividadDiaria: "",
@@ -99,13 +93,10 @@ export default function OnboardingWizard({ startAt = "basics" }) {
 
     const savedStep = Number(u?.onboarding?.step || 1);
 
-    // step 3 => program
     if (savedStep >= 3) {
       nav("/app/onboarding/program", { replace: true });
       return;
     }
-
-    // step 2 => goal
     if (savedStep >= 2) {
       nav("/app/onboarding/goal", { replace: true });
       return;
@@ -121,16 +112,10 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   }
 
   async function finishOnboardingAndGoHome() {
-    // placeholder: program terminado
-    await apiFetch("/api/usuarios/me/onboarding", {
-      method: "PATCH",
-      body: JSON.stringify({ step: 3, data: { skip: true } }),
-    });
-
+    // ✅ refrescamos cache y vamos al home
     const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
     const user = me?.user || me;
     if (user) setAuthLogged(user);
-
     nav("/app/inicio", { replace: true });
   }
 
@@ -187,14 +172,19 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     return (
       <OnboardingLayout
         title="Programa"
-        subtitle="Próximo módulo"
+        subtitle="Últimos detalles"
         progressPct={100}
         onBack={() => nav("/app/onboarding/goal", { replace: true })}
         footer={null}
       >
-        {/* ✅ Scope para Program (por si después metés estilos) */}
+        {/* ✅ Scope Program para que aplique tu CSS .ob2-program ... */}
         <div className="ob2-program">
-          <ProgramPlaceholder onFinish={finishOnboardingAndGoHome} />
+          <ProgramWizard
+            onDone={async () => {
+              // ✅ al terminar Program: refrescamos user/cached y vamos a inicio
+              await finishOnboardingAndGoHome();
+            }}
+          />
         </div>
       </OnboardingLayout>
     );
@@ -226,13 +216,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         </div>
       }
     >
-      <ScreenComp
-        form={form}
-        setForm={setForm}
-        onNext={next}
-        patchStep1={patchStep1}
-        nav={nav}
-      />
+      <ScreenComp form={form} setForm={setForm} onNext={next} patchStep1={patchStep1} nav={nav} />
     </OnboardingLayout>
   );
 }
@@ -246,7 +230,7 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     if (screenKey === "sex") return !!form.sexo;
     if (screenKey === "birth") return !!form.fechaNacimiento;
 
-    // bodyfat opcional (si lo querés obligatorio: return String(form.grasaPct).trim() !== "")
+    // bodyfat opcional
     if (screenKey === "bodyfat") return true;
 
     if (screenKey === "trend") return !!form.tendenciaPeso;
@@ -312,9 +296,7 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
 
   return (
     <>
-      {error ? (
-        <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>{error}</div>
-      ) : null}
+      {error ? <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>{error}</div> : null}
 
       {showBack ? (
         <div className="ob2-row2">

@@ -608,3 +608,227 @@
   padding: 0;
   margin-top: 14px;
 }
+
+
+
+/* ===== GoalIntro timeline (NO rompe Basics porque Basics no usa estas clases) ===== */
+.ob2-stepList{
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.ob2-stepItem{
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #2b2b2b;
+  background: #0b0b0b;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.ob2-stepItem.active{
+  border-color: rgba(245, 217, 138, 0.55);
+  box-shadow: 0 0 0 3px rgba(245, 217, 138, 0.10);
+}
+
+.ob2-stepItem.done{
+  border-color: rgba(191, 247, 208, 0.25);
+}
+
+.ob2-stepDot{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 1000;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+  flex: 0 0 auto;
+}
+
+.ob2-stepTitle{
+  font-weight: 1000;
+}
+
+.ob2-stepSub{
+  margin-top: 2px;
+  font-size: 12px;
+  color: #bdbdbd;
+}
+
+
+/* =================================================================
+   PROGRAM (100% scopeado, NO toca Basics/Goal)
+   Todo Program debe estar dentro de <div class="ob2-program"> … </div>
+   ================================================================= */
+
+.ob2-program .ob2-top{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ob2-program .ob2-top-title{
+  font-weight: 1000;
+  color: #eaeaea;
+}
+.ob2-program .ob2-progressTop{
+  height: 2px;
+  background: #232323;
+  border-radius: 999px;
+  margin: 10px 0 14px;
+}
+
+/* Listas tipo “cards” (diet, training, distribution, protein) */
+.ob2-program .ob2-list{
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.ob2-program .ob2-choice{
+  width: 100%;
+  text-align: left;
+  border-radius: 18px;
+  border: 1px solid #2b2b2b;
+  background: #111;
+  color: #eaeaea;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  transition: transform .08s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.ob2-program .ob2-choice:active{
+  transform: translateY(1px) scale(0.99);
+}
+.ob2-program .ob2-choice.active{
+  border-color: rgba(245, 217, 138, 0.75);
+  box-shadow: 0 0 0 3px rgba(245, 217, 138, 0.10);
+}
+.ob2-program .ob2-choiceText{ font-weight: 1000; }
+.ob2-program .ob2-choiceSub{
+  margin-top: 4px;
+  font-size: 12px;
+  color: #bdbdbd;
+}
+
+/* Radio del Program (usa tu .ob2-radio base + .on) */
+.ob2-program .ob2-radio.on{
+  border-color: #f5d98a;
+  box-shadow: inset 0 0 0 6px #f5d98a;
+}
+
+/* Checklist días (shift calories) */
+.ob2-program .ob2-checkList{
+  margin-top: 8px;
+  display: grid;
+}
+.ob2-program .ob2-checkRow{
+  width: 100%;
+  padding: 18px 6px;
+  border: none;
+  background: transparent;
+  color: #eaeaea;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom: 1px solid #1b1b1b;
+  cursor:pointer;
+}
+.ob2-program .ob2-checkText{
+  font-size: 18px;
+  font-weight: 900;
+}
+.ob2-program .ob2-checkBox{
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid #666;
+  background: transparent;
+}
+.ob2-program .ob2-checkBox.on{
+  border-color: #f5d98a;
+  background: rgba(245,217,138,.25);
+  box-shadow: 0 0 0 3px rgba(245,217,138,.08);
+}
+
+/* Grid semanal (pantalla “Your macro program is ready”) */
+.ob2-program .ob2-weekGrid{
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0,1fr));
+  gap: 10px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.ob2-program .ob2-weekCol{ display: grid; gap: 8px; min-width: 62px; }
+
+.ob2-program .ob2-weekKcal{
+  border-radius: 999px;
+  padding: 8px 10px;
+  text-align:center;
+  font-weight: 900;
+  background: rgba(127,179,255,.25);
+  border: 1px solid rgba(127,179,255,.35);
+}
+.ob2-program .ob2-weekBox{
+  border-radius: 14px;
+  padding: 14px 8px;
+  text-align:center;
+  font-weight: 1000;
+  border: 1px solid #2b2b2b;
+  background: #0b0b0b;
+}
+.ob2-program .ob2-weekBox.p{ background: rgba(255,123,92,.20); border-color: rgba(255,123,92,.25); }
+.ob2-program .ob2-weekBox.f{ background: rgba(245,217,138,.18); border-color: rgba(245,217,138,.25); }
+.ob2-program .ob2-weekBox.c{ background: rgba(130,230,170,.18); border-color: rgba(130,230,170,.22); }
+.ob2-program .ob2-weekDay{ text-align:center; color:#bdbdbd; font-size:12px; margin-top:2px; }
+
+/* Lista “How was your program designed?” */
+.ob2-program .ob2-howList{ margin-top: 12px; display: grid; gap: 14px; }
+.ob2-program .ob2-howLine{ display:grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: start; }
+.ob2-program .ob2-howDot{
+  width: 34px; height: 34px; border-radius: 999px;
+  display:grid; place-items:center;
+  font-weight: 1000;
+  border: 1px solid #2b2b2b;
+  background: #0f0f0f;
+}
+.ob2-program .ob2-howTitle{ font-weight: 1000; font-size: 16px; }
+.ob2-program .ob2-howValue{ color:#f5d98a; font-weight: 900; margin-top: 2px; }
+
+/* Orbital loader (pantalla “generando”) */
+@keyframes ob2-orbit {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.ob2-program .ob2-orbitWrap{
+  width: 260px;
+  height: 260px;
+  position: relative;
+  margin: 0 auto;
+}
+.ob2-program .ob2-orbitRing{
+  position:absolute;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.12);
+}
+.ob2-program .ob2-orbitRing.big{ inset: 0; border-color: rgba(245,217,138,.55); }
+.ob2-program .ob2-orbitRing.mid{ inset: 44px; border-color: rgba(127,179,255,.55); }
+.ob2-program .ob2-orbitRing.small{ inset: 86px; border-color: rgba(255,120,90,.45); }
+
+.ob2-program .ob2-orbitDot{
+  position:absolute;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  animation: ob2-orbit 1.6s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+
+
