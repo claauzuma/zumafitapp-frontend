@@ -770,11 +770,7 @@ export default function AuthPage({ defaultMode = "login" }) {
             🍏 <span>ZumaFit</span>
           </button>
 
-          <nav className="ap-nav-links">
-            <button className="ap-link" onClick={() => navigate("/")} type="button" disabled={loading || googleLoading}>
-              Inicio
-            </button>
-          </nav>
+
         </div>
       </header>
 

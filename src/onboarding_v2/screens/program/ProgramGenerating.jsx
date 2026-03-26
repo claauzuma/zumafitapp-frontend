@@ -10,22 +10,25 @@ export default function ProgramGenerating({ onBack, onDone }) {
   return (
     <div className="ob2-card">
       <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
+        <button className="ob2-back" type="button" onClick={onBack}>
+          ←
+        </button>
         <div className="ob2-top-title">Generando</div>
       </div>
 
       <h1 className="ob2-h1">Generando tu programa…</h1>
       <p className="ob2-p">Ajustamos el plan según tus respuestas.</p>
 
-      <div style={{ marginTop: 18 }}>
-        <div className="ob2-orbitWrap">
+      <div style={{ marginTop: 18, display: "grid", placeItems: "center" }}>
+        <div className="ob2-orbitWrap" aria-label="Generando">
           <div className="ob2-orbitRing big" />
           <div className="ob2-orbitRing mid" />
           <div className="ob2-orbitRing small" />
 
-          <div className="ob2-orbitDot big" />
-          <div className="ob2-orbitDot mid" />
-          <div className="ob2-orbitDot small" />
+          {/* dots que orbitan */}
+          <div className="ob2-orbitDot dot-big" />
+          <div className="ob2-orbitDot dot-mid" />
+          <div className="ob2-orbitDot dot-small" />
         </div>
       </div>
     </div>

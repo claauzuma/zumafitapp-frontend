@@ -15,15 +15,34 @@ function yearsOld(dateStr) {
   }
 }
 
-function calcTDEE({ sexo, fechaNacimiento, alturaCm, pesoKg, actividadDiaria, frecuenciaEjercicio }) {
-  const age = yearsOld(fechaNacimiento) ?? 30;
-  const cm = Number(alturaCm || 170);
-  const kg = Number(pesoKg || 75);
-
-  // Mifflin St-Jeor
+/**
+ * BMR: Mifflin-St Jeor
+ * - Hombre: 10W + 6.25H - 5A + 5
+ * - Mujer : 10W + 6.25H - 5A - 161
+ */
+function bmrMifflin({ sexo, edad, alturaCm, pesoKg }) {
   const s = sexo === "masculino" ? 5 : sexo === "femenino" ? -161 : 0;
-  const bmr = 10 * kg + 6.25 * cm - 5 * age + s;
+  return 10 * pesoKg + 6.25 * alturaCm - 5 * edad + s;
+}
 
+/**
+ * BMR: Harris-Benedict (Revised 1984)
+ * - Hombre: 88.362 + 13.397W + 4.799H - 5.677A
+ * - Mujer : 447.593 + 9.247W + 3.098H - 4.330A
+ */
+function bmrHarrisBenedict({ sexo, edad, alturaCm, pesoKg }) {
+  if (sexo === "masculino") {
+    return 88.362 + 13.397 * pesoKg + 4.799 * alturaCm - 5.677 * edad;
+  }
+  if (sexo === "femenino") {
+    return 447.593 + 9.247 * pesoKg + 3.098 * alturaCm - 4.33 * edad;
+  }
+  // si no hay sexo, usamos una media aproximada (promedio de ambas constantes y coeficientes)
+  // para no romper UX; es mejor pedir sexo, pero esto evita NaN
+  return 268.0 + 11.322 * pesoKg + 3.95 * alturaCm - 5.0 * edad;
+}
+
+function activityFactor({ actividadDiaria, frecuenciaEjercicio }) {
   const base =
     actividadDiaria === "muy_activo" ? 1.65 :
     actividadDiaria === "moderado" ? 1.45 :
@@ -35,16 +54,35 @@ function calcTDEE({ sexo, fechaNacimiento, alturaCm, pesoKg, actividadDiaria, fr
     frecuenciaEjercicio === "1_3" ? 0.10 :
     0;
 
-  const factor = Math.min(2.2, Math.max(1.2, base + extra));
-  return Math.round(bmr * factor);
+  return Math.min(2.2, Math.max(1.2, base + extra));
+}
+
+/**
+ * Opción A:
+ * - Calcular BMR por Mifflin y por Harris-Benedict (1984)
+ * - Promediar ambos BMR
+ * - Aplicar factor de actividad
+ */
+function calcTDEE_A(form) {
+  const edad = yearsOld(form.fechaNacimiento) ?? 30;
+  const alturaCm = Number(form.alturaCm || 170);
+  const pesoKg = Number(form.pesoKg || 75);
+
+  const mif = bmrMifflin({ sexo: form.sexo, edad, alturaCm, pesoKg });
+  const hb = bmrHarrisBenedict({ sexo: form.sexo, edad, alturaCm, pesoKg });
+
+  const bmrAvg = (mif + hb) / 2;
+  const factor = activityFactor(form);
+
+  return Math.round(bmrAvg * factor);
 }
 
 export default function BasicsTDEE({ form, setForm }) {
   const [editing, setEditing] = useState(false);
 
-  const tdee = useMemo(() => calcTDEE(form), [form]);
+  const tdee = useMemo(() => calcTDEE_A(form), [form]);
 
-  // ✅ CORRECCIÓN: setear state con useEffect (NO useMemo)
+  // ✅ Setear en estado para que ScreenFooter lo mande al backend en step 1 (tdee)
   useEffect(() => {
     setForm((p) => ({ ...p, tdeeEstimado: tdee }));
   }, [tdee, setForm]);
@@ -104,7 +142,8 @@ export default function BasicsTDEE({ form, setForm }) {
         >
           <p style={{ margin: 0, color: "#eaeaea", fontWeight: 900 }}>¿Cómo lo calculamos?</p>
           <p style={{ margin: "8px 0 0", color: "#bdbdbd", fontSize: 13, lineHeight: 1.45 }}>
-            Usamos una ecuación estándar que considera altura, peso, edad, sexo y actividad.
+            Promediamos dos ecuaciones estándar (Mifflin-St Jeor y Harris-Benedict) y aplicamos tu nivel
+            de actividad según lo que elegiste.
           </p>
         </div>
       </div>

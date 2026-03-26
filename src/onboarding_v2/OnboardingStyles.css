@@ -919,3 +919,112 @@
   line-height: 1.45;
 }
 
+/* ===== Program: pill "Recomendado" sutil ===== */
+.ob2-program .ob2-pill.rec{
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  padding: 5px 8px;
+  opacity: .85;
+  border-color: rgba(245,217,138,.22);
+  background: rgba(245,217,138,.08);
+  color: #d9c27a;
+}
+
+
+/* Badge Recomendado (solo el que tenga la clase) */
+.ob2-program .ob2-recoBadge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-left:10px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.2px;
+  color:#f5d98a;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(11,11,11,.55);
+  border:1px solid rgba(245,217,138,.35);
+  line-height:1;
+  box-shadow:0 0 0 3px rgba(245,217,138,.06);
+}
+
+/* ==== PROGRAM: Orbital loader (mejorado, con movimiento real) ==== */
+@keyframes ob2-orbit {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.ob2-program .ob2-orbitWrap{
+  width: 260px;
+  height: 260px;
+  position: relative;
+  margin: 0 auto;
+}
+
+.ob2-program .ob2-orbitRing{
+  position:absolute;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.12);
+}
+.ob2-program .ob2-orbitRing.big{ inset: 0; border-color: rgba(245,217,138,.55); }
+.ob2-program .ob2-orbitRing.mid{ inset: 44px; border-color: rgba(127,179,255,.55); }
+.ob2-program .ob2-orbitRing.small{ inset: 86px; border-color: rgba(255,120,90,.45); }
+
+/* cada dot es un "brazo" que rota; el circulito va en la punta */
+.ob2-program .ob2-orbitDot{
+  position:absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  animation: ob2-orbit 1.6s linear infinite;
+  will-change: transform;
+}
+
+/* dot grande */
+.ob2-program .ob2-orbitDot.dot-big{
+  animation-duration: 1.8s;
+}
+.ob2-program .ob2-orbitDot.dot-big::after{
+  content:"";
+  position:absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  transform: translateX(130px); /* radio */
+  background: rgba(245,217,138,.95);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+/* dot medio */
+.ob2-program .ob2-orbitDot.dot-mid{
+  animation-duration: 1.35s;
+  animation-direction: reverse;
+}
+.ob2-program .ob2-orbitDot.dot-mid::after{
+  content:"";
+  position:absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  transform: translateX(86px);
+  background: rgba(127,179,255,.95);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+/* dot chico */
+.ob2-program .ob2-orbitDot.dot-small{
+  animation-duration: 1.05s;
+}
+.ob2-program .ob2-orbitDot.dot-small::after{
+  content:"";
+  position:absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  transform: translateX(44px);
+  background: rgba(255,120,90,.95);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}

@@ -4,7 +4,7 @@ import React from "react";
 export default function ProgramProteinPick({ value, onChange, onBack, onNext }) {
   const options = [
     { v: "low", t: "Baja", s: "En el límite inferior del rango óptimo." },
-    { v: "moderate", t: "Moderada", s: "En el medio del rango óptimo." },
+    { v: "moderate", t: "Moderada", s: "En el medio del rango óptimo.", badge: "Recomendado" },
     { v: "high", t: "Alta", s: "En el límite superior del rango óptimo." },
     { v: "extra_high", t: "Extra alta", s: "La recomendación más alta." },
   ];
@@ -12,7 +12,9 @@ export default function ProgramProteinPick({ value, onChange, onBack, onNext }) 
   return (
     <div className="ob2-card">
       <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
+        <button className="ob2-back" type="button" onClick={onBack}>
+          ←
+        </button>
         <div className="ob2-top-title">Nuevo programa</div>
       </div>
 
@@ -23,6 +25,7 @@ export default function ProgramProteinPick({ value, onChange, onBack, onNext }) 
       <div className="ob2-list">
         {options.map((o) => {
           const active = value === o.v;
+
           return (
             <button
               key={o.v}
@@ -31,9 +34,18 @@ export default function ProgramProteinPick({ value, onChange, onBack, onNext }) 
               onClick={() => onChange(o.v)}
             >
               <div>
-                <div className="ob2-choiceText">{o.t}</div>
+                <div
+                  className="ob2-choiceText"
+                  style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+                >
+                  <span>{o.t}</span>
+
+                  {o.badge ? <span className="ob2-recoBadge">{o.badge}</span> : null}
+                </div>
+
                 <div className="ob2-choiceSub">{o.s}</div>
               </div>
+
               <div className={`ob2-radio ${active ? "on" : ""}`} />
             </button>
           );

@@ -38,6 +38,18 @@ const BASICS_SCREENS = [
   { key: "tdee", component: BasicsTDEE, title: "Básicos", subtitle: "Estimación" },
 ];
 
+
+function isAtLeast18(birthYYYYMMDD) {
+  if (!birthYYYYMMDD) return false;
+  const birth = new Date(`${birthYYYYMMDD}T00:00:00`);
+  if (Number.isNaN(birth.getTime())) return false;
+
+  const today = new Date();
+  const cutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+  return birth <= cutoff;
+}
+
+
 export default function OnboardingWizard({ startAt = "basics" }) {
   const nav = useNavigate();
   const loc = useLocation();
@@ -140,30 +152,33 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   // GOAL
   // =========================
   if (section === "goal") {
-    return (
-      <OnboardingLayout
-        title="Objetivo"
-        subtitle="Definí tu meta"
-        progressPct={67}
-        onBack={() => nav("/app/onboarding", { replace: true })}
-        footer={null}
-      >
-        {/* ✅ Scope CSS SOLO para Goal (no rompe Basics) */}
-        <div className="ob2-goal">
-          <GoalWizard
-            onDone={async () => {
-              // refresca cache para que onboarding.step=3 quede reflejado
-              const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
-              const user = me?.user || me;
-              if (user) setAuthLogged(user);
+  return (
+    <OnboardingLayout
+      title="Objetivo"
+      subtitle="Definí tu meta"
+      progressPct={67}
+      onBack={() => nav("/app/onboarding", { replace: true })}
+      footer={null}
+    >
+      {/* ✅ Scope CSS SOLO para Goal (no rompe Basics) */}
+      <div className="ob2-goal">
+<GoalWizard
+  heightCm={form.alturaCm}
+  currentWeightKg={form.pesoKg}
+  tdeeKcal={form.tdeeCustom ?? form.tdeeEstimado}
+  onDone={async () => {
+    const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
+    const user = me?.user || me;
+    if (user) setAuthLogged(user);
+    nav("/app/onboarding/program", { replace: true });
+  }}
+/>
 
-              nav("/app/onboarding/program", { replace: true });
-            }}
-          />
-        </div>
-      </OnboardingLayout>
-    );
-  }
+      </div>
+    </OnboardingLayout>
+  );
+}
+
 
   // =========================
   // PROGRAM
@@ -228,7 +243,7 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
   function canContinue() {
     if (screenKey === "intro") return true;
     if (screenKey === "sex") return !!form.sexo;
-    if (screenKey === "birth") return !!form.fechaNacimiento;
+    if (screenKey === "birth") return isAtLeast18(form.fechaNacimiento)
 
     // bodyfat opcional
     if (screenKey === "bodyfat") return true;

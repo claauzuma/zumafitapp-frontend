@@ -38,7 +38,7 @@ export default function BasicsBodyFat({ form, setForm }) {
   return (
     <div className="ob2-card">
       <h2 className="ob2-h2" style={{ marginTop: 0 }}>
-        ¿Cuál es tu nivel de grasa corporal?
+        ¿Que imagen te representa?
       </h2>
       <p className="ob2-p">Usá una evaluación visual. No hace falta ser exacto.</p>
 

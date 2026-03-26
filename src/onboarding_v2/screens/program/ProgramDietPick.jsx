@@ -19,10 +19,13 @@ export default function ProgramDietPick({ value, onChange, onBack, onNext }) {
       <div className="ob2-progressTop" />
 
       <h1 className="ob2-h1">¿Qué dieta preferís?</h1>
+      <p className="ob2-p">Podés cambiarlo después. Te recomendamos empezar con una opción equilibrada.</p>
 
       <div className="ob2-list">
         {options.map((o) => {
           const active = value === o.v;
+          const isRecommended = o.v === "equilibrada";
+
           return (
             <button
               key={o.v}
@@ -31,9 +34,18 @@ export default function ProgramDietPick({ value, onChange, onBack, onNext }) {
               onClick={() => onChange(o.v)}
             >
               <div>
-                <div className="ob2-choiceText">{o.t}</div>
+                <div className="ob2-choiceText" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {o.t}
+                  {isRecommended ? (
+<span className="ob2-pill rec">
+  Recomendado
+</span>
+
+                  ) : null}
+                </div>
                 <div className="ob2-choiceSub">{o.s}</div>
               </div>
+
               <div className={`ob2-radio ${active ? "on" : ""}`} />
             </button>
           );
