@@ -4,19 +4,16 @@ import React, { useMemo, useEffect, useState } from "react";
 function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
 }
-
 function startOfDay(d) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
 }
-
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
 }
-
 function fmtDateAR(date) {
   try {
     return date.toLocaleDateString("es-AR", {
@@ -63,32 +60,28 @@ export default function GoalLoseSetup({
     ? Math.max(Number(targetWeightKg), minHealthyKg)
     : minHealthyKg;
 
-  // 2) edición del peso objetivo (tap + slider)
+  // 2) edición del peso objetivo (tap + input + slider)
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetDraft, setTargetDraft] = useState(String(safeTarget.toFixed(1)));
 
   useEffect(() => {
-    if (!editingTarget) {
-      setTargetDraft(String(safeTarget.toFixed(1)));
-    }
+    if (!editingTarget) setTargetDraft(String(safeTarget.toFixed(1)));
   }, [safeTarget, editingTarget]);
 
   function commitTargetDraft() {
     const raw = String(targetDraft || "").replace(",", ".");
     const n = Number(raw);
-
     if (!Number.isFinite(n)) {
       setTargetDraft(String(safeTarget.toFixed(1)));
       setEditingTarget(false);
       return;
     }
-
     const next = clamp(n, minHealthyKg, 160);
     setTargetWeightKg(next);
     setEditingTarget(false);
   }
 
-  // 3) edición del ritmo (tap + slider)
+  // 3) edición del ritmo (tap + input + slider)
   const [editingRate, setEditingRate] = useState(false);
   const rateSafe = clamp(Number(ratePctBWPerWeek ?? 0.5), 0.1, 1.5);
   const [rateDraft, setRateDraft] = useState(String(rateSafe.toFixed(2)));
@@ -113,6 +106,7 @@ export default function GoalLoseSetup({
   const computed = useMemo(() => {
     const cw = Number(currentWeightKg);
     const tdee = Number(tdeeKcal);
+
     const deltaKg = Number.isFinite(cw) ? Math.max(0, cw - safeTarget) : 0;
 
     // kg/sem según % BW/sem
@@ -123,7 +117,7 @@ export default function GoalLoseSetup({
     const dailyDefBase =
       weeklyLossKg > 0 ? (weeklyLossKg * KCAL_PER_KG) / 7 : 0;
 
-    // factor por cuánto falta
+    // factor por cuánto falta (suaviza déficit cuando estás cerca)
     const progress = clamp(deltaKg / 12, 0.25, 1);
     const dailyDefEffective = dailyDefBase * progress;
 
@@ -134,7 +128,7 @@ export default function GoalLoseSetup({
       budget = Math.max(1200, budget);
     }
 
-    // ETA real
+    // ETA
     let etaLabel = "—";
     if (weeklyLossKg > 0 && deltaKg > 0) {
       const weeks = deltaKg / weeklyLossKg;
@@ -164,9 +158,7 @@ export default function GoalLoseSetup({
     <div>
       <div className="ob2-kpiRow">
         <div className="ob2-kpi mint">
-          <div className="ob2-kpi-num">
-            {computed.budget || initialBudgetKcal} kcal
-          </div>
+          <div className="ob2-kpi-num">{computed.budget || initialBudgetKcal} kcal</div>
           <div className="ob2-kpi-sub">
             presupuesto diario inicial
             <div style={{ marginTop: 4, color: "#bdbdbd", fontSize: 12 }}>
@@ -190,7 +182,8 @@ export default function GoalLoseSetup({
         </span>
       </p>
 
-      <div className="ob2-centerNum">
+      {/* ✅ DORADO: clase ob2-goalTarget */}
+      <div className="ob2-centerNum ob2-goalTarget">
         {!editingTarget ? (
           <button
             type="button"
@@ -227,6 +220,8 @@ export default function GoalLoseSetup({
               fontSize: "inherit",
               fontWeight: 1000,
               maxWidth: 140,
+              margin: "0 auto",
+              display: "block",
             }}
           />
         )}
@@ -305,8 +300,10 @@ export default function GoalLoseSetup({
                 style={{ padding: "10px 12px" }}
               />
             )}
+
             <span className="ob2-pill mint">por semana</span>
           </div>
+
           <div className="ob2-boxSub">del peso corporal</div>
         </div>
 

@@ -1,36 +1,37 @@
+// src/onboarding_v2/screens/program/ProgramIntro.jsx
 import React from "react";
 
 export default function ProgramIntro({ onNext }) {
   return (
-    <div className="ob2-card">
+    <div className="ob2-card ob2-programIntro">
       <h1 className="ob2-h1">¡Listo para tu programa!</h1>
-      <p className="ob2-p">
-        Contanos tus preferencias y hábitos para ajustar tu plan.
-      </p>
+      <p className="ob2-p">Contanos tus preferencias y hábitos para ajustar tu plan.</p>
 
-      {/* Timeline (igual look que GoalIntro “bueno”) */}
-      <div className="ob2-timeline">
-        <div className="ob2-line">
-          <div className="ob2-bubble active">✓</div>
+      <div className="ob2-stepList">
+        {/* Básicos DONE */}
+        <div className="ob2-stepItem done ob2-stepItemDoneGreen">
+          <div className="ob2-stepDot ob2-stepDotDoneGreen">✓</div>
           <div>
-            <p className="ob2-section-title">Básicos</p>
-            <p className="ob2-section-sub">Listo</p>
+            <div className="ob2-stepTitle ob2-stepTitleDoneGreen">Básicos</div>
+            <div className="ob2-stepSub">Listo</div>
           </div>
         </div>
 
-        <div className="ob2-line">
-          <div className="ob2-bubble active">✓</div>
+        {/* Objetivo DONE */}
+        <div className="ob2-stepItem done ob2-stepItemDoneGreen">
+          <div className="ob2-stepDot ob2-stepDotDoneGreen">✓</div>
           <div>
-            <p className="ob2-section-title">Objetivo</p>
-            <p className="ob2-section-sub">Listo</p>
+            <div className="ob2-stepTitle ob2-stepTitleDoneGreen">Objetivo</div>
+            <div className="ob2-stepSub">Listo</div>
           </div>
         </div>
 
-        <div className="ob2-line">
-          <div className="ob2-bubble active">3</div>
+        {/* Programa ACTIVE */}
+        <div className="ob2-stepItem active ob2-stepItemActiveGold">
+          <div className="ob2-stepDot ob2-stepDotActiveGold">3</div>
           <div>
-            <p className="ob2-section-title">Programa</p>
-            <p className="ob2-section-sub">Últimos detalles</p>
+            <div className="ob2-stepTitle ob2-stepTitleActiveGold">Programa</div>
+            <div className="ob2-stepSub">Últimos detalles</div>
           </div>
         </div>
       </div>

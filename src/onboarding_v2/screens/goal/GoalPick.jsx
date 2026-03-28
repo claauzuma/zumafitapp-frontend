@@ -1,3 +1,4 @@
+// src/onboarding_v2/screens/goal/GoalPick.jsx
 import React from "react";
 
 export default function GoalPick({ value, onChange, onBack, onNext }) {
@@ -6,6 +7,13 @@ export default function GoalPick({ value, onChange, onBack, onNext }) {
     { v: "mantener_peso", t: "Mantener peso", sub: "Estabilidad y consistencia" },
     { v: "ganar_peso", t: "Ganar peso", sub: "Superávit controlado" },
   ];
+
+  const iconFor = (v) => {
+    if (v === "perder_peso") return "🔥";
+    if (v === "ganar_peso") return "💪";
+    // mantener: flecha a la derecha pero azul (emoji ya es azul)
+    return "➡️";
+  };
 
   return (
     <div>
@@ -23,7 +31,7 @@ export default function GoalPick({ value, onChange, onBack, onNext }) {
               onClick={() => onChange?.(o.v)}
             >
               <div className="ob2-opt-left">
-                <div className="ob2-icon">{o.v === "perder_peso" ? "↘" : o.v === "ganar_peso" ? "↗" : "→"}</div>
+                <div className="ob2-icon">{iconFor(o.v)}</div>
                 <div>
                   <p className="ob2-opt-title">{o.t}</p>
                   <p className="ob2-opt-sub">{o.sub}</p>

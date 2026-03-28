@@ -1,5 +1,5 @@
 // src/onboarding_v2/screens/program/ProgramReady.jsx
-import React from "react";
+import React, { useMemo } from "react";
 
 function labelDiet(v) {
   if (v === "equilibrada") return "Equilibrada";
@@ -24,40 +24,74 @@ function labelProtein(v) {
 }
 
 export default function ProgramReady({ data, onBack, onFinish }) {
-  const days = ["L","M","X","J","V","S","D"];
+  const days = useMemo(
+    () => [
+      { key: "Lunes", short: "L" },
+      { key: "Martes", short: "M" },
+      { key: "Miércoles", short: "X" },
+      { key: "Jueves", short: "J" },
+      { key: "Viernes", short: "V" },
+      { key: "Sábado", short: "S" },
+      { key: "Domingo", short: "D" },
+    ],
+    []
+  );
+
+  const week = useMemo(() => {
+    return days.map((d) => ({
+      ...d,
+      kcal: 2614,
+      p: 156,
+      f: 87,
+      c: 301,
+    }));
+  }, [days]);
 
   return (
-    <div className="ob2-card">
+    <div className="ob2-card ob2-card--ready">
       <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>←</button>
+        <button className="ob2-back" type="button" onClick={onBack}>
+          ←
+        </button>
         <div className="ob2-top-title">Programa</div>
       </div>
 
       <h1 className="ob2-h1">Tu programa está listo</h1>
-      <p className="ob2-p">
-        Este resumen es inicial. Podés ajustar más adelante.
-      </p>
+      <p className="ob2-p">Este resumen es inicial. Podés ajustar más adelante.</p>
 
-      {/* Grid semanal (placeholder visual) */}
-      <div className="ob2-weekGrid">
-        {days.map((d) => (
-          <div key={d} className="ob2-weekCol">
-            <div className="ob2-weekKcal">— kcal</div>
-            <div className="ob2-weekBox p">P</div>
-            <div className="ob2-weekBox c">C</div>
-            <div className="ob2-weekBox f">G</div>
-            <div className="ob2-weekDay">{d}</div>
-          </div>
-        ))}
+      <div className="ob2-programReadyFull">
+        <div className="ob2-macroGrid">
+          {week.map((d) => (
+            <div key={d.key} className="ob2-macroCol">
+              <div className="ob2-macroKcal">{d.kcal}</div>
+
+              <div className="ob2-macroBox p">
+                <div className="ob2-macroNum">{d.p}</div>
+                <div className="ob2-macroLabel">P</div>
+              </div>
+
+              <div className="ob2-macroBox f">
+                <div className="ob2-macroNum">{d.f}</div>
+                <div className="ob2-macroLabel">F</div>
+              </div>
+
+              <div className="ob2-macroBox c">
+                <div className="ob2-macroNum">{d.c}</div>
+                <div className="ob2-macroLabel">C</div>
+              </div>
+
+              <div className="ob2-macroDay">{d.short}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* How list */}
-      <div className="ob2-howList">
+      <div className="ob2-howList" style={{ marginTop: 16 }}>
         <div className="ob2-howLine">
           <div className="ob2-howDot">1</div>
           <div>
             <div className="ob2-howTitle">Dieta</div>
-            <div className="ob2-howValue">{labelDiet(data.diet)}</div>
+            <div className="ob2-howValue">{labelDiet(data?.diet)}</div>
           </div>
         </div>
 
@@ -65,7 +99,7 @@ export default function ProgramReady({ data, onBack, onFinish }) {
           <div className="ob2-howDot">2</div>
           <div>
             <div className="ob2-howTitle">Entrenamiento</div>
-            <div className="ob2-howValue">{labelTraining(data.training)}</div>
+            <div className="ob2-howValue">{labelTraining(data?.training)}</div>
           </div>
         </div>
 
@@ -74,7 +108,7 @@ export default function ProgramReady({ data, onBack, onFinish }) {
           <div>
             <div className="ob2-howTitle">Calorías</div>
             <div className="ob2-howValue">
-              {data.calorieDist === "shift" ? "Mover calorías" : "Distribuir parejo"}
+              {data?.calorieDist === "shift" ? "Mover calorías" : "Distribuir parejo"}
             </div>
           </div>
         </div>
@@ -83,19 +117,10 @@ export default function ProgramReady({ data, onBack, onFinish }) {
           <div className="ob2-howDot">4</div>
           <div>
             <div className="ob2-howTitle">Proteína</div>
-            <div className="ob2-howValue">{labelProtein(data.protein)}</div>
+            <div className="ob2-howValue">{labelProtein(data?.protein)}</div>
           </div>
         </div>
       </div>
-
-      {data.calorieDist === "shift" ? (
-        <p className="ob2-p" style={{ marginTop: 10 }}>
-          Días con más calorías:{" "}
-          <b style={{ color: "#eaeaea" }}>
-            {Array.isArray(data.shiftDays) && data.shiftDays.length ? data.shiftDays.join(", ") : "Ninguno"}
-          </b>
-        </p>
-      ) : null}
 
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">

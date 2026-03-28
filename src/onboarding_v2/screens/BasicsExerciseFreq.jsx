@@ -10,7 +10,7 @@ export default function BasicsExerciseFreq({ form, setForm }) {
 
   return (
     <>
-      <h2 className="ob2-h2">¿Cada cuánto entrenás?</h2>
+      <h2 className="ob2-h2">¿Cuántas veces entrenás?</h2>
       <p className="ob2-p">Cardio, fuerza o deportes cuentan.</p>
 
       <div style={{ display: "grid", gap: 12 }}>
