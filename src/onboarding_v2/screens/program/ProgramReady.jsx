@@ -8,6 +8,7 @@ function labelDiet(v) {
   if (v === "keto") return "Keto";
   return "—";
 }
+
 function labelTraining(v) {
   if (v === "none") return "Nada o actividad suave";
   if (v === "lifting") return "Musculación";
@@ -15,6 +16,7 @@ function labelTraining(v) {
   if (v === "both") return "Cardio + Musculación";
   return "—";
 }
+
 function labelProtein(v) {
   if (v === "low") return "Baja";
   if (v === "moderate") return "Moderada";
@@ -23,7 +25,7 @@ function labelProtein(v) {
   return "—";
 }
 
-export default function ProgramReady({ data, onBack, onFinish }) {
+export default function ProgramReady({ data, onBack, onFinish, loading = false }) {
   const days = useMemo(
     () => [
       { key: "Lunes", short: "L" },
@@ -50,14 +52,14 @@ export default function ProgramReady({ data, onBack, onFinish }) {
   return (
     <div className="ob2-card ob2-card--ready">
       <div className="ob2-top">
-        <button className="ob2-back" type="button" onClick={onBack}>
+        <button className="ob2-back" type="button" onClick={onBack} disabled={loading}>
           ←
         </button>
         <div className="ob2-top-title">Programa</div>
       </div>
 
       <h1 className="ob2-h1">Tu programa está listo</h1>
-      <p className="ob2-p">Este resumen es inicial. Se puede ajustar mas adelante.</p>
+      <p className="ob2-p">Este resumen es inicial. Se puede ajustar más adelante.</p>
 
       <div className="ob2-programReadyFull">
         <div className="ob2-macroGrid">
@@ -124,8 +126,13 @@ export default function ProgramReady({ data, onBack, onFinish }) {
 
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">
-          <button className="ob2-btn primary" type="button" onClick={onFinish}>
-            Guardar y finalizar
+          <button
+            className={`ob2-btn primary ${loading ? "is-loading" : ""}`}
+            type="button"
+            onClick={onFinish}
+            disabled={loading}
+          >
+            {loading ? "Guardando..." : "Guardar y finalizar"}
           </button>
         </div>
       </div>

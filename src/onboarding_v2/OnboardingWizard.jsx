@@ -21,7 +21,7 @@ import BasicsTDEE from "./screens/BasicsTDEE.jsx";
 // GOAL
 import GoalWizard from "./screens/goal/GoalWizard.jsx";
 
-// PROGRAM (✅ ahora usamos el wizard real)
+// PROGRAM
 import ProgramWizard from "./screens/program/ProgramWizard.jsx";
 
 const BASICS_SCREENS = [
@@ -38,7 +38,6 @@ const BASICS_SCREENS = [
   { key: "tdee", component: BasicsTDEE, title: "Básicos", subtitle: "Estimación" },
 ];
 
-
 function isAtLeast18(birthYYYYMMDD) {
   if (!birthYYYYMMDD) return false;
   const birth = new Date(`${birthYYYYMMDD}T00:00:00`);
@@ -49,12 +48,32 @@ function isAtLeast18(birthYYYYMMDD) {
   return birth <= cutoff;
 }
 
+function buildFormFromUser(user) {
+  const basics = user?.profile?.basics || {};
+  const antropometria = user?.antropometriaActual || {};
+
+  return {
+    sexo: basics.genero || "",
+    fechaNacimiento: basics.fechaNacimiento || "",
+    alturaCm: antropometria.alturaCm ?? 170,
+    pesoKg: antropometria.pesoKg ?? 75,
+    grasaPct:
+      antropometria.grasaPct === null || antropometria.grasaPct === undefined
+        ? ""
+        : antropometria.grasaPct,
+    tendenciaPeso: basics.tendenciaPeso || "",
+    frecuenciaEjercicio: basics.frecuenciaEjercicio || "",
+    actividadDiaria: basics.actividadDiaria || "",
+    experienciaPesas: basics.experienciaPesas || "",
+    tdeeEstimado: basics.tdeeEstimado ?? null,
+    tdeeCustom: null,
+  };
+}
 
 export default function OnboardingWizard({ startAt = "basics" }) {
   const nav = useNavigate();
   const loc = useLocation();
 
-  // ✅ Form acumulado
   const [form, setForm] = useState({
     sexo: "",
     fechaNacimiento: "",
@@ -69,7 +88,8 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     tdeeCustom: null,
   });
 
-  // ✅ Sección según URL
+  const [i, setI] = useState(0);
+
   const section = useMemo(() => {
     const p = (loc.pathname || "").toLowerCase();
     if (startAt === "goal" || p.includes("/onboarding/goal")) return "goal";
@@ -77,31 +97,48 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     return "basics";
   }, [loc.pathname, startAt]);
 
-  // índice de Basics
-  const [i, setI] = useState(0);
-
   const isBasics = section === "basics";
   const screen = isBasics ? BASICS_SCREENS[i] : null;
 
   const progressPct = useMemo(() => {
     if (!isBasics) return section === "goal" ? 67 : 100;
     if (i === 0) return 8;
-    const basicsCount = BASICS_SCREENS.length - 1; // sin intro
+    const basicsCount = BASICS_SCREENS.length - 1;
     const idx = Math.max(1, i) - 1;
     return Math.round(((idx + 1) / basicsCount) * 100);
   }, [isBasics, i, section]);
 
+  // ✅ hidratar form desde user cacheado cuando se monta / cambia ruta
+  useEffect(() => {
+    const u = getCachedUser?.();
+    if (!u) return;
+    setForm((prev) => ({
+      ...prev,
+      ...buildFormFromUser(u),
+      tdeeCustom: prev.tdeeCustom, // respetamos custom si el usuario lo estaba editando
+    }));
+  }, [loc.pathname]);
+
   // ✅ Resume SOLO cuando entrás al root /app/onboarding
+  // pero si venís "a propósito" desde Goal o Program, NO redirige
   useEffect(() => {
     const path = (loc.pathname || "").toLowerCase();
     const isEnteringOnboardingRoot = path === "/app/onboarding" || path === "/app/onboarding/";
     if (!isEnteringOnboardingRoot) return;
 
+    const cameBackToBasics = Boolean(loc.state?.backToBasics);
     const u = getCachedUser?.();
     if (!u) return;
 
     const done = Boolean(u?.onboarding?.done);
     if (done) return;
+
+    // ✅ si volvió a basics desde goal/program, lo dejamos en basics
+    // y lo mandamos a la última pantalla de basics
+    if (cameBackToBasics) {
+      setI(BASICS_SCREENS.length - 1); // tdee
+      return;
+    }
 
     const savedStep = Number(u?.onboarding?.step || 1);
 
@@ -113,8 +150,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
       nav("/app/onboarding/goal", { replace: true });
       return;
     }
-    // step 1 => queda en basics
-  }, [loc.pathname, nav]);
+  }, [loc.pathname, loc.state, nav]);
 
   async function patchStep1(partialData) {
     await apiFetch("/api/usuarios/me/onboarding", {
@@ -124,7 +160,6 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   }
 
   async function finishOnboardingAndGoHome() {
-    // ✅ refrescamos cache y vamos al home
     const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
     const user = me?.user || me;
     if (user) setAuthLogged(user);
@@ -132,53 +167,61 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   }
 
   function back() {
-    if (section === "goal") return nav("/app/onboarding", { replace: true });
-    if (section === "program") return nav("/app/onboarding/goal", { replace: true });
+    if (section === "goal") {
+      nav("/app/onboarding", { replace: true, state: { backToBasics: true } });
+      return;
+    }
+
+    if (section === "program") {
+      nav("/app/onboarding/goal", { replace: true });
+      return;
+    }
 
     if (i <= 0) {
       nav("/app/inicio", { replace: true });
       return;
     }
+
     setI((x) => Math.max(0, x - 1));
   }
 
   function next() {
     if (!isBasics) return;
-    if (i < BASICS_SCREENS.length - 1) setI((x) => x + 1);
-    else nav("/app/onboarding/goal", { replace: true });
+    if (i < BASICS_SCREENS.length - 1) {
+      setI((x) => x + 1);
+    } else {
+      nav("/app/onboarding/goal", { replace: true });
+    }
   }
 
   // =========================
   // GOAL
   // =========================
   if (section === "goal") {
-  return (
-    <OnboardingLayout
-      title="Objetivo"
-      subtitle="Definí tu meta"
-      progressPct={67}
-      onBack={() => nav("/app/onboarding", { replace: true })}
-      footer={null}
-    >
-      {/* ✅ Scope CSS SOLO para Goal (no rompe Basics) */}
-      <div className="ob2-goal">
-<GoalWizard
-  heightCm={form.alturaCm}
-  currentWeightKg={form.pesoKg}
-  tdeeKcal={form.tdeeCustom ?? form.tdeeEstimado}
-  onDone={async () => {
-    const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
-    const user = me?.user || me;
-    if (user) setAuthLogged(user);
-    nav("/app/onboarding/program", { replace: true });
-  }}
-/>
-
-      </div>
-    </OnboardingLayout>
-  );
-}
-
+    return (
+      <OnboardingLayout
+        title="Objetivo"
+        subtitle="Definí tu meta"
+        progressPct={67}
+        onBack={() => nav("/app/onboarding", { replace: true, state: { backToBasics: true } })}
+        footer={null}
+      >
+        <div className="ob2-goal">
+          <GoalWizard
+            heightCm={form.alturaCm}
+            currentWeightKg={form.pesoKg}
+            tdeeKcal={form.tdeeCustom ?? form.tdeeEstimado}
+            onDone={async () => {
+              const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
+              const user = me?.user || me;
+              if (user) setAuthLogged(user);
+              nav("/app/onboarding/program", { replace: true });
+            }}
+          />
+        </div>
+      </OnboardingLayout>
+    );
+  }
 
   // =========================
   // PROGRAM
@@ -192,11 +235,9 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         onBack={() => nav("/app/onboarding/goal", { replace: true })}
         footer={null}
       >
-        {/* ✅ Scope Program para que aplique tu CSS .ob2-program ... */}
         <div className="ob2-program">
           <ProgramWizard
             onDone={async () => {
-              // ✅ al terminar Program: refrescamos user/cached y vamos a inicio
               await finishOnboardingAndGoHome();
             }}
           />
@@ -231,7 +272,13 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         </div>
       }
     >
-      <ScreenComp form={form} setForm={setForm} onNext={next} patchStep1={patchStep1} nav={nav} />
+      <ScreenComp
+        form={form}
+        setForm={setForm}
+        onNext={next}
+        patchStep1={patchStep1}
+        nav={nav}
+      />
     </OnboardingLayout>
   );
 }
@@ -243,11 +290,8 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
   function canContinue() {
     if (screenKey === "intro") return true;
     if (screenKey === "sex") return !!form.sexo;
-    if (screenKey === "birth") return isAtLeast18(form.fechaNacimiento)
-
-    // bodyfat opcional
+    if (screenKey === "birth") return isAtLeast18(form.fechaNacimiento);
     if (screenKey === "bodyfat") return true;
-
     if (screenKey === "trend") return !!form.tendenciaPeso;
     if (screenKey === "exercise") return !!form.frecuenciaEjercicio;
     if (screenKey === "daily") return !!form.actividadDiaria;
@@ -255,75 +299,106 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     return true;
   }
 
-  async function handlePrimary() {
-    setError("");
-    if (!canContinue()) {
-      setError("Completá este paso para continuar.");
-      return;
-    }
-
-    setLoading(true);
+  async function saveCurrentStepInBackground() {
     try {
-      if (screenKey === "intro") {
-        onNext();
-        return;
-      }
-
       if (screenKey === "sex") await patchStep1({ sexo: form.sexo });
       if (screenKey === "birth") await patchStep1({ fechaNacimiento: form.fechaNacimiento });
       if (screenKey === "height") await patchStep1({ alturaCm: Number(form.alturaCm) });
       if (screenKey === "weight") await patchStep1({ pesoKg: Number(form.pesoKg) });
-
       if (screenKey === "bodyfat") {
         const raw = String(form.grasaPct ?? "").trim();
         const val = raw === "" ? null : Number(raw);
         await patchStep1({ grasaPct: val });
       }
-
       if (screenKey === "trend") await patchStep1({ tendenciaPeso: form.tendenciaPeso });
       if (screenKey === "exercise") await patchStep1({ frecuenciaEjercicio: form.frecuenciaEjercicio });
       if (screenKey === "daily") await patchStep1({ actividadDiaria: form.actividadDiaria });
       if (screenKey === "exp") await patchStep1({ experienciaPesas: form.experienciaPesas });
+    } catch (e) {
+      console.error("No se pudo guardar el paso intermedio de Basics", e);
+    }
+  }
 
-      // ✅ CLAVE: TDEE -> ir a Goal
-      if (screenKey === "tdee") {
-        const kcal = form.tdeeCustom != null ? Number(form.tdeeCustom) : Number(form.tdeeEstimado);
+  async function handlePrimary() {
+    setError("");
+
+    if (!canContinue()) {
+      setError("Completá este paso para continuar.");
+      return;
+    }
+
+    if (screenKey === "intro") {
+      onNext();
+      return;
+    }
+
+    // último paso de Basics: guardar primero y pasar a Goal
+    if (screenKey === "tdee") {
+      setLoading(true);
+      try {
+        const kcal =
+          form.tdeeCustom != null
+            ? Number(form.tdeeCustom)
+            : Number(form.tdeeEstimado);
+
         await patchStep1({ tdeeEstimado: kcal });
 
-        // refresca /me para cache onboarding.step=2
         const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
         const user = me?.user || me;
         if (user) setAuthLogged(user);
 
         nav("/app/onboarding/goal", { replace: true });
         return;
+      } catch (e) {
+        setError(e?.message || "No se pudo guardar. Probá de nuevo.");
+      } finally {
+        setLoading(false);
       }
-
-      onNext();
-    } catch (e) {
-      setError(e?.message || "No se pudo guardar. Probá de nuevo.");
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    // pasos intermedios: avanzar primero, guardar después
+    onNext();
+    saveCurrentStepInBackground();
   }
 
   const showBack = screenKey !== "intro";
 
   return (
     <>
-      {error ? <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>{error}</div> : null}
+      {error ? (
+        <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>
+          {error}
+        </div>
+      ) : null}
 
       {showBack ? (
         <div className="ob2-row2">
-          <button className="ob2-btn ghost" type="button" onClick={onBack} disabled={loading}>
+          <button
+            className="ob2-btn ghost"
+            type="button"
+            onClick={onBack}
+            disabled={loading}
+          >
             Atrás
           </button>
-          <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
+
+          <button
+            className="ob2-btn primary"
+            type="button"
+            onClick={handlePrimary}
+            disabled={loading}
+          >
             {loading ? "Guardando…" : "Siguiente"}
           </button>
         </div>
       ) : (
-        <button className="ob2-btn primary" type="button" onClick={handlePrimary} disabled={loading}>
+        <button
+          className="ob2-btn primary"
+          type="button"
+          onClick={handlePrimary}
+          disabled={loading}
+        >
           {loading ? "…" : "Ir a Básicos"}
         </button>
       )}

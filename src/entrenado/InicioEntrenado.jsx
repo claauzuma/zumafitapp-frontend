@@ -3,37 +3,54 @@ import React, { useMemo } from "react";
 import { getCachedUser } from "../authCache"; // ✅ ojo el path (si InicioEntrenado.jsx está en src/)
 
 const CSS = `
-.wrap{
-  padding: 16px;
-  color:#eaeaea;
-  max-width: 1100px;
-  margin: 0 auto;
+*{ box-sizing:border-box; }
+
+html, body, #root{
+  margin:0;
+  padding:0;
+  width:100%;
 }
+
+.wrap{
+  color:#eaeaea;
+  width:100%;
+  max-width:none;   /* antes: 1200px */
+  margin:0;         /* antes: 0 auto */
+  padding:0;        /* sin padding */
+}
+
 .card{
   border:1px solid #232323;
   background: linear-gradient(180deg,#141414,#0f0f0f);
   border-radius:16px;
   padding:14px;
 }
+
 .h1{
   font-size: 26px;
   font-weight: 900;
   margin: 0 0 8px;
   line-height: 1.1;
 }
+
 .p{
   margin:0;
   color:#cfcfcf;
 }
+
 .grid{
   margin-top: 14px;
   display:grid;
   gap: 12px;
   grid-template-columns: 1fr;
 }
+
 @media (min-width: 900px){
-  .grid{ grid-template-columns: 1fr 1fr; }
+  .grid{
+    grid-template-columns: 1fr 1fr;
+  }
 }
+
 .badge{
   display:inline-flex;
   align-items:center;
@@ -46,6 +63,7 @@ const CSS = `
   color:#f5d76e;
   font-size: 12px;
 }
+
 .kicker{
   margin-top: 10px;
   color:#f5d76e;

@@ -11,7 +11,7 @@ import ProgramProteinPick from "./ProgramProteinPick.jsx";
 import ProgramGenerating from "./ProgramGenerating.jsx";
 import ProgramReady from "./ProgramReady.jsx";
 
-const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 export default function ProgramWizard({ onDone }) {
   const nav = useNavigate();
@@ -24,27 +24,25 @@ export default function ProgramWizard({ onDone }) {
   const [protein, setProtein] = useState("moderate");
   const [loading, setLoading] = useState(false);
 
-  const payload = useMemo(() => ({
-    diet,
-    training,
-    calorieDist,
-    shiftDays,
-    protein,
-  }), [diet, training, calorieDist, shiftDays, protein]);
+  const payload = useMemo(
+    () => ({
+      diet,
+      training,
+      calorieDist,
+      shiftDays,
+      protein,
+    }),
+    [diet, training, calorieDist, shiftDays, protein]
+  );
 
   async function savePartial(partial) {
-    try {
-      setLoading(true);
-      await apiFetch("/api/usuarios/me/onboarding", {
-        method: "PATCH",
-        body: JSON.stringify({
-          step: 3,
-          data: { __wizard: "v2", __final: false, programV2: partial },
-        }),
-      });
-    } finally {
-      setLoading(false);
-    }
+    await apiFetch("/api/usuarios/me/onboarding", {
+      method: "PATCH",
+      body: JSON.stringify({
+        step: 3,
+        data: { __wizard: "v2", __final: false, programV2: partial },
+      }),
+    });
   }
 
   async function saveFinal(finalData) {
@@ -62,13 +60,21 @@ export default function ProgramWizard({ onDone }) {
     }
   }
 
+  function savePartialInBackground(partial, label = "program") {
+    savePartial(partial).catch((e) => {
+      console.error(`No se pudo guardar ${label}`, e);
+    });
+  }
+
   return (
     <div className="ob2-program">
       {step === 0 && (
         <ProgramIntro
           onBack={() => nav("/app/onboarding/goal", { replace: true })}
-          onNext={() => setStep(1)}
-          loading={loading}
+          onNext={async () => {
+            await new Promise((r) => setTimeout(r, 140));
+            setStep(1);
+          }}
         />
       )}
 
@@ -78,11 +84,11 @@ export default function ProgramWizard({ onDone }) {
           onChange={setDiet}
           onBack={() => setStep(0)}
           onNext={async () => {
-            if (!diet || loading) return;
-            await savePartial({ diet });
+            if (!diet) return;
+            await new Promise((r) => setTimeout(r, 100));
             setStep(2);
+            savePartialInBackground({ diet }, "diet");
           }}
-          loading={loading}
         />
       )}
 
@@ -92,11 +98,11 @@ export default function ProgramWizard({ onDone }) {
           onChange={setTraining}
           onBack={() => setStep(1)}
           onNext={async () => {
-            if (!training || loading) return;
-            await savePartial({ diet, training });
+            if (!training) return;
+            await new Promise((r) => setTimeout(r, 100));
             setStep(3);
+            savePartialInBackground({ diet, training }, "training");
           }}
-          loading={loading}
         />
       )}
 
@@ -106,8 +112,8 @@ export default function ProgramWizard({ onDone }) {
           onChange={setCalorieDist}
           onBack={() => setStep(2)}
           onNext={async () => {
-            if (!calorieDist || loading) return;
-            await savePartial({ diet, training, calorieDist });
+            if (!calorieDist) return;
+            await new Promise((r) => setTimeout(r, 100));
 
             if (calorieDist === "shift") {
               setStep(4);
@@ -115,8 +121,9 @@ export default function ProgramWizard({ onDone }) {
               setShiftDays([]);
               setStep(5);
             }
+
+            savePartialInBackground({ diet, training, calorieDist }, "calorie distribution");
           }}
-          loading={loading}
         />
       )}
 
@@ -131,11 +138,10 @@ export default function ProgramWizard({ onDone }) {
           }}
           onBack={() => setStep(3)}
           onNext={async () => {
-            if (loading) return;
-            await savePartial({ diet, training, calorieDist, shiftDays });
+            await new Promise((r) => setTimeout(r, 100));
             setStep(5);
+            savePartialInBackground({ diet, training, calorieDist, shiftDays }, "shift days");
           }}
-          loading={loading}
         />
       )}
 
@@ -145,11 +151,11 @@ export default function ProgramWizard({ onDone }) {
           onChange={setProtein}
           onBack={() => setStep(calorieDist === "shift" ? 4 : 3)}
           onNext={async () => {
-            if (!protein || loading) return;
-            await savePartial({ ...payload, protein });
+            if (!protein) return;
+            await new Promise((r) => setTimeout(r, 100));
             setStep(6);
+            savePartialInBackground({ ...payload, protein }, "protein");
           }}
-          loading={loading}
         />
       )}
 
@@ -157,7 +163,6 @@ export default function ProgramWizard({ onDone }) {
         <ProgramGenerating
           onBack={() => setStep(5)}
           onDone={() => setStep(7)}
-          loading={loading}
         />
       )}
 

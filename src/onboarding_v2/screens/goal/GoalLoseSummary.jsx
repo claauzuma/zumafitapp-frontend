@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function GoalLoseSummary({ summary, onBack, onNext }) {
+export default function GoalLoseSummary({ summary, onBack, onNext, loading = false }) {
   return (
     <div>
       <h1 className="ob2-h1">Resumen del objetivo</h1>
@@ -14,7 +14,9 @@ export default function GoalLoseSummary({ summary, onBack, onNext }) {
       <div className="ob2-summaryCard">
         <div className="ob2-summaryRow">
           <div className="ob2-summaryLabel">Ritmo</div>
-          <div className="ob2-summaryRight">{Number(summary.ratePctBWPerWeek).toFixed(2)}% / semana</div>
+          <div className="ob2-summaryRight">
+            {Number(summary.ratePctBWPerWeek).toFixed(2)}% / semana
+          </div>
         </div>
         <div className="ob2-summaryBody">
           Ajustaremos tus calorías según sea necesario para sostener este ritmo. El ritmo real puede variar.
@@ -32,11 +34,22 @@ export default function GoalLoseSummary({ summary, onBack, onNext }) {
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">
           <div className="ob2-row2">
-            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+            <button
+              className="ob2-btn ghost"
+              type="button"
+              onClick={onBack}
+              disabled={loading}
+            >
               Atrás
             </button>
-            <button className="ob2-btn primary" type="button" onClick={onNext}>
-              Guardar y continuar
+
+            <button
+              className={`ob2-btn primary ${loading ? "is-loading" : ""}`}
+              type="button"
+              onClick={onNext}
+              disabled={loading}
+            >
+              {loading ? "Guardando..." : "Guardar y continuar"}
             </button>
           </div>
         </div>
