@@ -2,6 +2,11 @@
 import React from "react";
 
 export default function GoalIntro({ onNext }) {
+  async function handleNext() {
+    await new Promise((r) => setTimeout(r, 140));
+    onNext?.();
+  }
+
   return (
     <div className="ob2-card ob2-goalIntro">
       <h1 className="ob2-h1">¡Vamos con tu objetivo!</h1>
@@ -37,7 +42,7 @@ export default function GoalIntro({ onNext }) {
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <button className="ob2-btn primary" type="button" onClick={onNext}>
+        <button className="ob2-btn primary" type="button" onClick={handleNext}>
           Ir a Objetivo
         </button>
       </div>

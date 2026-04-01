@@ -1,9 +1,34 @@
 /* ZumaFit Onboarding V2 (Basics + BodyFat + Goal scoped) */
 
 /* ===== BASE (Basics y shared UI) ===== */
+
+/* ================================
+   ZumaFit Theme Tokens (NO CAMBIA ESTILO)
+   Solo centraliza colores en variables
+================================ */
+
+
+
+.ob2-root{
+  --ob2-bg: #0b0b0b;
+  --ob2-fg: #eaeaea;
+  --ob2-card: #0f0f0f;
+  --ob2-card-2: #111;        /* cuando usás #111 */
+  --ob2-border: #2b2b2b;
+  --ob2-border-2: #232323;   /* cuando usás #232323 */
+  --ob2-muted: #bdbdbd;
+
+  --ob2-accent: #f5d98a;     /* dorado */
+  --ob2-accent-2: #ffe89d;   /* dorado claro (gradiente) */
+
+  --ob2-shadow: rgba(0,0,0,.45);
+}
+
+
+
 .ob2-root {
   min-height: 100dvh;
-  background: #0b0b0b;
+  background: var(--ob2-bg);
   color: #eaeaea;
 }
 
@@ -1263,4 +1288,242 @@
     padding-left: 6px !important;
     padding-right: 6px !important;
   }
+}
+
+/* ProgramReady: stack continuo por día (barra vertical) */
+.ob2-card--ready .ob2-macroCol{
+  gap: 6px; /* reduce espacio general */
+}
+
+/* P/F/C pegados entre sí */
+.ob2-card--ready .ob2-macroBox{
+  border-radius: 0;        /* sin redondeo entre cajas */
+  margin-top: -6px;        /* se “pegan” y parecen una pieza */
+  border-top-width: 0;     /* evita doble línea en la unión */
+}
+
+/* Mantener redondeo solo en el primer bloque del stack (P) */
+.ob2-card--ready .ob2-macroCol .ob2-macroBox.p{
+  border-top-width: 1px;
+  border-radius: 12px 12px 0 0;
+  margin-top: 0;
+}
+
+/* Mantener redondeo solo en el último bloque del stack (C) */
+.ob2-card--ready .ob2-macroCol .ob2-macroBox.c{
+  border-radius: 0 0 12px 12px;
+}
+
+
+.ob2-btn{
+  transition: transform .08s ease, filter .12s ease, box-shadow .18s ease, opacity .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ob2-btn:active{
+  transform: translateY(1px) scale(0.99);
+  filter: brightness(0.96);
+}
+
+.ob2-btn.primary:active{
+  box-shadow: 0 0 0 4px rgba(245,217,138,.12);
+}
+
+.ob2-btn.ghost:active{
+  box-shadow: 0 0 0 4px rgba(255,255,255,.06);
+}
+
+.ob2-btn.is-loading{
+  pointer-events: none;
+  opacity: .95;
+}
+
+.ob2-spinner{
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(10,10,10,.22);
+  border-top-color: rgba(10,10,10,.9);
+  display: inline-block;
+  margin-right: 10px;
+  vertical-align: -3px;
+  animation: ob2-spin .8s linear infinite;
+}
+
+@keyframes ob2-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Feedback visual al apretar cualquier botón del onboarding */
+.ob2-btn{
+  transition: transform .08s ease, filter .12s ease, box-shadow .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ob2-btn:active{
+  transform: translateY(1px) scale(0.985);
+  filter: brightness(0.97);
+}
+
+.ob2-btn.primary:active{
+  box-shadow:
+    0 0 0 4px rgba(245,217,138,.12),
+    0 8px 24px rgba(0,0,0,.22);
+}
+
+.ob2-btn.ghost:active{
+  box-shadow: 0 0 0 4px rgba(255,255,255,.06);
+}
+
+/* opcional: también para las cards clickeables */
+.ob2-opt{
+  transition: transform .08s ease, border-color .18s ease, box-shadow .18s ease, filter .12s ease;
+}
+
+.ob2-opt:active{
+  transform: translateY(1px) scale(0.99);
+  filter: brightness(0.98);
+}
+
+@keyframes ob2-goldPulse {
+  0%, 100% {
+    border-color: rgba(245,217,138,.55);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.12),
+      0 0 22px rgba(245,217,138,.12),
+      inset 0 0 18px rgba(245,217,138,.03);
+  }
+  50% {
+    border-color: rgba(245,217,138,.85);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.22),
+      0 0 34px rgba(245,217,138,.24),
+      inset 0 0 24px rgba(245,217,138,.06);
+  }
+}
+
+.ob2-programIntro .ob2-stepItemActiveGold{
+  animation: ob2-goldPulse 2.2s ease-in-out infinite !important;
+}
+
+
+.ob2-programIntro .ob2-stepItemActiveGold{
+  position: relative;
+  overflow: hidden;
+}
+
+.ob2-programIntro .ob2-stepItemActiveGold::after{
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -140%;
+  width: 70%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.08),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: ob2-programShine 3.2s ease-in-out infinite;
+}
+
+@keyframes ob2-programShine {
+  0% { left: -140%; }
+  35% { left: 140%; }
+  100% { left: 140%; }
+}
+
+
+@keyframes ob2-goalGoldPulse {
+  0%, 100% {
+    border-color: rgba(245,217,138,.55);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.12),
+      0 0 22px rgba(245,217,138,.12),
+      inset 0 0 18px rgba(245,217,138,.03);
+  }
+  50% {
+    border-color: rgba(245,217,138,.85);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.22),
+      0 0 34px rgba(245,217,138,.24),
+      inset 0 0 24px rgba(245,217,138,.06);
+  }
+}
+
+.ob2-goalIntro .ob2-stepItemActiveGold{
+  position: relative;
+  overflow: hidden;
+  animation: ob2-goalGoldPulse 2.2s ease-in-out infinite !important;
+}
+
+.ob2-goalIntro .ob2-stepItemActiveGold::after{
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -140%;
+  width: 70%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.08),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: ob2-goalShine 3.2s ease-in-out infinite;
+}
+
+@keyframes ob2-goalShine {
+  0% { left: -140%; }
+  35% { left: 140%; }
+  100% { left: 140%; }
+}
+
+@keyframes ob2-introGoldPulse {
+  0%, 100% {
+    border-color: rgba(245,217,138,.55);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.12),
+      0 0 22px rgba(245,217,138,.12),
+      inset 0 0 18px rgba(245,217,138,.03);
+  }
+  50% {
+    border-color: rgba(245,217,138,.85);
+    box-shadow:
+      0 0 0 3px rgba(245,217,138,.22),
+      0 0 34px rgba(245,217,138,.24),
+      inset 0 0 24px rgba(245,217,138,.06);
+  }
+}
+
+.ob2-introStart .ob2-stepItemActiveGold{
+  position: relative;
+  overflow: hidden;
+  animation: ob2-introGoldPulse 2.2s ease-in-out infinite !important;
+}
+
+.ob2-introStart .ob2-stepItemActiveGold::after{
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -140%;
+  width: 70%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.08),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: ob2-introShine 3.2s ease-in-out infinite;
+}
+
+@keyframes ob2-introShine {
+  0% { left: -140%; }
+  35% { left: 140%; }
+  100% { left: 140%; }
 }

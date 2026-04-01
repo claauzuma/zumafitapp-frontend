@@ -2,7 +2,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../../Api.js";
-
 import ProgramIntro from "./ProgramIntro.jsx";
 import ProgramDietPick from "./ProgramDietPick.jsx";
 import ProgramTrainingPick from "./ProgramTrainingPick.jsx";
@@ -17,22 +16,13 @@ const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Doming
 export default function ProgramWizard({ onDone }) {
   const nav = useNavigate();
 
-  // 0 intro
-  // 1 dieta
-  // 2 entrenamiento
-  // 3 distribución calorías (even vs shift)
-  // 4 días shift (solo si shift)
-  // 5 proteína
-  // 6 generating
-  // 7 ready
   const [step, setStep] = useState(0);
-
-  // ✅ DEFAULT: Equilibrada preseleccionada
-  const [diet, setDiet] = useState("equilibrada"); // equilibrada | baja_grasa | baja_carbo | keto
-  const [training, setTraining] = useState("");     // none | lifting | cardio | both
-  const [calorieDist, setCalorieDist] = useState(""); // even | shift
-  const [shiftDays, setShiftDays] = useState([]);   // ["Lunes", ...]
-const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
+  const [diet, setDiet] = useState("equilibrada");
+  const [training, setTraining] = useState("");
+  const [calorieDist, setCalorieDist] = useState("");
+  const [shiftDays, setShiftDays] = useState([]);
+  const [protein, setProtein] = useState("moderate");
+  const [loading, setLoading] = useState(false);
 
   const payload = useMemo(() => ({
     diet,
@@ -43,23 +33,33 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
   }), [diet, training, calorieDist, shiftDays, protein]);
 
   async function savePartial(partial) {
-    await apiFetch("/api/usuarios/me/onboarding", {
-      method: "PATCH",
-      body: JSON.stringify({
-        step: 3,
-        data: { __wizard: "v2", __final: false, programV2: partial },
-      }),
-    });
+    try {
+      setLoading(true);
+      await apiFetch("/api/usuarios/me/onboarding", {
+        method: "PATCH",
+        body: JSON.stringify({
+          step: 3,
+          data: { __wizard: "v2", __final: false, programV2: partial },
+        }),
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function saveFinal(finalData) {
-    await apiFetch("/api/usuarios/me/onboarding", {
-      method: "PATCH",
-      body: JSON.stringify({
-        step: 3,
-        data: { __wizard: "v2", __final: true, programV2: finalData },
-      }),
-    });
+    try {
+      setLoading(true);
+      await apiFetch("/api/usuarios/me/onboarding", {
+        method: "PATCH",
+        body: JSON.stringify({
+          step: 3,
+          data: { __wizard: "v2", __final: true, programV2: finalData },
+        }),
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -68,6 +68,7 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
         <ProgramIntro
           onBack={() => nav("/app/onboarding/goal", { replace: true })}
           onNext={() => setStep(1)}
+          loading={loading}
         />
       )}
 
@@ -77,10 +78,11 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           onChange={setDiet}
           onBack={() => setStep(0)}
           onNext={async () => {
-            if (!diet) return; // igual siempre va a estar
+            if (!diet || loading) return;
             await savePartial({ diet });
             setStep(2);
           }}
+          loading={loading}
         />
       )}
 
@@ -90,10 +92,11 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           onChange={setTraining}
           onBack={() => setStep(1)}
           onNext={async () => {
-            if (!training) return;
+            if (!training || loading) return;
             await savePartial({ diet, training });
             setStep(3);
           }}
+          loading={loading}
         />
       )}
 
@@ -103,13 +106,9 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           onChange={setCalorieDist}
           onBack={() => setStep(2)}
           onNext={async () => {
-            if (!calorieDist) return;
-
+            if (!calorieDist || loading) return;
             await savePartial({ diet, training, calorieDist });
 
-            // ✅ branching:
-            // even -> NO días
-            // shift -> SÍ días
             if (calorieDist === "shift") {
               setStep(4);
             } else {
@@ -117,6 +116,7 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
               setStep(5);
             }
           }}
+          loading={loading}
         />
       )}
 
@@ -131,9 +131,11 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           }}
           onBack={() => setStep(3)}
           onNext={async () => {
+            if (loading) return;
             await savePartial({ diet, training, calorieDist, shiftDays });
             setStep(5);
           }}
+          loading={loading}
         />
       )}
 
@@ -143,10 +145,11 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           onChange={setProtein}
           onBack={() => setStep(calorieDist === "shift" ? 4 : 3)}
           onNext={async () => {
-            if (!protein) return;
+            if (!protein || loading) return;
             await savePartial({ ...payload, protein });
             setStep(6);
           }}
+          loading={loading}
         />
       )}
 
@@ -154,6 +157,7 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
         <ProgramGenerating
           onBack={() => setStep(5)}
           onDone={() => setStep(7)}
+          loading={loading}
         />
       )}
 
@@ -162,9 +166,11 @@ const [protein, setProtein] = useState("moderate"); // ✅ default recomendado
           data={payload}
           onBack={() => setStep(5)}
           onFinish={async () => {
+            if (loading) return;
             await saveFinal(payload);
             onDone?.();
           }}
+          loading={loading}
         />
       )}
     </div>

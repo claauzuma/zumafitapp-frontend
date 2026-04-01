@@ -1,4 +1,3 @@
-// src/onboarding_v2/screens/goal/GoalPick.jsx
 import React from "react";
 
 export default function GoalPick({ value, onChange, onBack, onNext }) {
@@ -11,7 +10,6 @@ export default function GoalPick({ value, onChange, onBack, onNext }) {
   const iconFor = (v) => {
     if (v === "perder_peso") return "🔥";
     if (v === "ganar_peso") return "💪";
-    // mantener: flecha a la derecha pero azul (emoji ya es azul)
     return "➡️";
   };
 
@@ -39,7 +37,7 @@ export default function GoalPick({ value, onChange, onBack, onNext }) {
               </div>
 
               <div className="ob2-radio">
-                <div style={{ background: active ? "#f5d98a" : "transparent" }} />
+                <div style={{ background: active ? "var(--ob2-accent)" : "transparent" }} />
               </div>
             </button>
           );
@@ -49,10 +47,20 @@ export default function GoalPick({ value, onChange, onBack, onNext }) {
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">
           <div className="ob2-row2">
-            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+            <button
+              className="ob2-btn ghost"
+              type="button"
+              onClick={onBack}
+            >
               Atrás
             </button>
-            <button className="ob2-btn primary" type="button" onClick={onNext} disabled={!value}>
+
+            <button
+              className="ob2-btn primary"
+              type="button"
+              onClick={onNext}
+              disabled={!value}
+            >
               Siguiente
             </button>
           </div>

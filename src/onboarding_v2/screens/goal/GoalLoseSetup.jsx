@@ -4,16 +4,19 @@ import React, { useMemo, useEffect, useState } from "react";
 function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
 }
+
 function startOfDay(d) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
 }
+
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
 }
+
 function fmtDateAR(date) {
   try {
     return date.toLocaleDateString("es-AR", {
@@ -40,6 +43,8 @@ export default function GoalLoseSetup({
   currentWeightKg,
   tdeeKcal,
 }) {
+  const currentWeight = Number(currentWeightKg);
+
   // 1) mínimo sano (IMC 18.5)
   const minHealthyKg = useMemo(() => {
     const cm = Number(heightCm);
@@ -50,17 +55,36 @@ export default function GoalLoseSetup({
     return Math.max(40, rounded);
   }, [heightCm]);
 
+  // 2) máximo permitido para perder peso = menor al peso actual
+  const maxLoseTarget = useMemo(() => {
+    if (!Number.isFinite(currentWeight) || currentWeight <= 0) return 160;
+    return Math.max(minHealthyKg, currentWeight - 0.1);
+  }, [currentWeight, minHealthyKg]);
+
+  // si por alguna razón el peso actual ya está por debajo del mínimo saludable,
+  // evitamos romper el rango
+  const finalMin = minHealthyKg;
+  const finalMax = Math.max(finalMin, maxLoseTarget);
+
   useEffect(() => {
     const cur = Number(targetWeightKg);
     if (!Number.isFinite(cur)) return;
-    if (cur < minHealthyKg) setTargetWeightKg(minHealthyKg);
-  }, [minHealthyKg, targetWeightKg, setTargetWeightKg]);
+
+    if (cur < finalMin) {
+      setTargetWeightKg(finalMin);
+      return;
+    }
+
+    if (cur > finalMax) {
+      setTargetWeightKg(finalMax);
+    }
+  }, [finalMin, finalMax, targetWeightKg, setTargetWeightKg]);
 
   const safeTarget = Number.isFinite(Number(targetWeightKg))
-    ? Math.max(Number(targetWeightKg), minHealthyKg)
-    : minHealthyKg;
+    ? clamp(Number(targetWeightKg), finalMin, finalMax)
+    : finalMax;
 
-  // 2) edición del peso objetivo (tap + input + slider)
+  // 3) edición del peso objetivo
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetDraft, setTargetDraft] = useState(String(safeTarget.toFixed(1)));
 
@@ -71,17 +95,19 @@ export default function GoalLoseSetup({
   function commitTargetDraft() {
     const raw = String(targetDraft || "").replace(",", ".");
     const n = Number(raw);
+
     if (!Number.isFinite(n)) {
       setTargetDraft(String(safeTarget.toFixed(1)));
       setEditingTarget(false);
       return;
     }
-    const next = clamp(n, minHealthyKg, 160);
+
+    const next = clamp(n, finalMin, finalMax);
     setTargetWeightKg(next);
     setEditingTarget(false);
   }
 
-  // 3) edición del ritmo (tap + input + slider)
+  // 4) edición del ritmo
   const [editingRate, setEditingRate] = useState(false);
   const rateSafe = clamp(Number(ratePctBWPerWeek ?? 0.5), 0.1, 1.5);
   const [rateDraft, setRateDraft] = useState(String(rateSafe.toFixed(2)));
@@ -93,42 +119,38 @@ export default function GoalLoseSetup({
   function commitRateDraft() {
     const raw = String(rateDraft || "").replace(",", ".");
     const n = Number(raw);
+
     if (!Number.isFinite(n)) {
       setRateDraft(String(rateSafe.toFixed(2)));
       setEditingRate(false);
       return;
     }
+
     setRatePctBWPerWeek(clamp(n, 0.1, 1.5));
     setEditingRate(false);
   }
 
-  // 4) cálculos
+  // 5) cálculos
   const computed = useMemo(() => {
     const cw = Number(currentWeightKg);
     const tdee = Number(tdeeKcal);
-
     const deltaKg = Number.isFinite(cw) ? Math.max(0, cw - safeTarget) : 0;
 
-    // kg/sem según % BW/sem
     const weeklyLossKg =
       Number.isFinite(cw) && cw > 0 ? (rateSafe / 100) * cw : 0;
 
-    // déficit base (según ritmo)
     const dailyDefBase =
       weeklyLossKg > 0 ? (weeklyLossKg * KCAL_PER_KG) / 7 : 0;
 
-    // factor por cuánto falta (suaviza déficit cuando estás cerca)
     const progress = clamp(deltaKg / 12, 0.25, 1);
     const dailyDefEffective = dailyDefBase * progress;
 
-    // presupuesto recomendado
     let budget = Number(initialBudgetKcal) || 0;
     if (Number.isFinite(tdee) && tdee > 0) {
       budget = Math.round(tdee - dailyDefEffective);
       budget = Math.max(1200, budget);
     }
 
-    // ETA
     let etaLabel = "—";
     if (weeklyLossKg > 0 && deltaKg > 0) {
       const weeks = deltaKg / weeklyLossKg;
@@ -154,6 +176,17 @@ export default function GoalLoseSetup({
       ? `faltan ${computed.deltaKg.toFixed(1)} kg`
       : "ya estás en el objetivo";
 
+  const targetError =
+    Number.isFinite(currentWeight) && safeTarget >= currentWeight
+      ? "El peso objetivo debe ser menor que tu peso actual."
+      : "";
+
+  async function handleNext() {
+    if (Number.isFinite(currentWeight) && safeTarget >= currentWeight) return;
+    await new Promise((r) => setTimeout(r, 140));
+    onNext?.();
+  }
+
   return (
     <div>
       <div className="ob2-kpiRow">
@@ -178,11 +211,12 @@ export default function GoalLoseSetup({
         Podés ajustarlo después. Lo usamos como referencia.
         <br />
         <span style={{ color: "#bdbdbd", fontSize: 12 }}>
-          Mínimo recomendado: {minHealthyKg.toFixed(1)} kg · {deltaText}
+          Mínimo recomendado: {minHealthyKg.toFixed(1)} kg ·
+          {" "}Tu peso actual: {Number.isFinite(currentWeight) ? currentWeight.toFixed(1) : "—"} kg ·
+          {" "}{deltaText}
         </span>
       </p>
 
-      {/* ✅ DORADO: clase ob2-goalTarget */}
       <div className="ob2-centerNum ob2-goalTarget">
         {!editingTarget ? (
           <button
@@ -227,26 +261,31 @@ export default function GoalLoseSetup({
         )}
       </div>
 
+      {targetError ? (
+        <p className="ob2-p" style={{ marginTop: 8, color: "#ffd9a1", fontSize: 12 }}>
+          {targetError}
+        </p>
+      ) : null}
+
       <div className="ob2-slider">
         <input
           style={{ width: "100%" }}
           type="range"
-          min={minHealthyKg}
-          max={160}
+          min={finalMin}
+          max={finalMax}
           step={0.1}
           value={safeTarget}
           onChange={(e) => setTargetWeightKg(Number(e.target.value))}
         />
         <div className="ob2-slider-minmax">
-          <span>{minHealthyKg.toFixed(1)}</span>
-          <span>160</span>
+          <span>{finalMin.toFixed(1)}</span>
+          <span>{finalMax.toFixed(1)}</span>
         </div>
       </div>
 
       <h1 className="ob2-h1" style={{ marginTop: 18 }}>
         ¿A qué ritmo querés lograrlo?
       </h1>
-
       <p className="ob2-p">
         Recomendado: 0.5% por semana.
         <span style={{ color: "#bdbdbd", fontSize: 12 }}>
@@ -300,10 +339,8 @@ export default function GoalLoseSetup({
                 style={{ padding: "10px 12px" }}
               />
             )}
-
             <span className="ob2-pill mint">por semana</span>
           </div>
-
           <div className="ob2-boxSub">del peso corporal</div>
         </div>
 
@@ -337,7 +374,12 @@ export default function GoalLoseSetup({
             <button className="ob2-btn ghost" type="button" onClick={onBack}>
               Atrás
             </button>
-            <button className="ob2-btn primary" type="button" onClick={onNext}>
+            <button
+              className="ob2-btn primary"
+              type="button"
+              onClick={handleNext}
+              disabled={Number.isFinite(currentWeight) && safeTarget >= currentWeight}
+            >
               Siguiente
             </button>
           </div>

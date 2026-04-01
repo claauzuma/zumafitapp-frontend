@@ -57,7 +57,7 @@ export default function ProgramReady({ data, onBack, onFinish }) {
       </div>
 
       <h1 className="ob2-h1">Tu programa está listo</h1>
-      <p className="ob2-p">Este resumen es inicial. Podés ajustar más adelante.</p>
+      <p className="ob2-p">Este resumen es inicial. Se puede ajustar mas adelante.</p>
 
       <div className="ob2-programReadyFull">
         <div className="ob2-macroGrid">

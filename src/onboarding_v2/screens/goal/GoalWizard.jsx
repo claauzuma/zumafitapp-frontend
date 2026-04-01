@@ -2,15 +2,12 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../../Api.js";
-
 import GoalIntro from "./GoalIntro.jsx";
 import GoalPick from "./GoalPick.jsx";
 import GoalLoseSetup from "./GoalLoseSetup.jsx";
 import GoalLoseSummary from "./GoalLoseSummary.jsx";
-
 import GoalMaintenanceSetup from "./GoalMaintenanceSetup.jsx";
 import GoalMaintenanceSummary from "./GoalMaintenanceSummary.jsx";
-
 import GoalGainSetup from "./GoalGainSetup.jsx";
 import GoalGainSummary from "./GoalGainSummary.jsx";
 
@@ -49,27 +46,31 @@ function calcPlan({
   const wt = Number(targetWeightKg);
   const r = Number(ratePctBWPerWeek);
 
-  if (!Number.isFinite(mKcal) || !Number.isFinite(w0) || !Number.isFinite(wt) || !Number.isFinite(r)) {
+  if (
+    !Number.isFinite(mKcal) ||
+    !Number.isFinite(w0) ||
+    !Number.isFinite(wt) ||
+    !Number.isFinite(r)
+  ) {
     return { budgetKcal: 2400, endDateLabel: "—", deficitDaily: 0, kgPerWeek: 0 };
   }
 
-  const kgPerWeek = Math.max(0, w0 * (r / 100)); // ej 80kg * 0.5% = 0.4 kg/sem
+  const kgPerWeek = Math.max(0, w0 * (r / 100));
   const kcalPerWeek = kgPerWeek * 7700;
   const kcalPerDay = kcalPerWeek / 7;
 
-  // clamps básicos de UX
-  const minBudget = 1400; // genérico (si después querés, lo hacemos por sexo)
-  const maxBudgetLose = Math.max(minBudget, mKcal - 100); // que no quede en "mantenimiento" exacto
-  const maxBudgetGain = mKcal + 1200; // techo para no volar
+  const minBudget = 1400;
+  const maxBudgetLose = Math.max(minBudget, mKcal - 100);
+  const maxBudgetGain = mKcal + 1200;
 
   let budgetKcal = mKcal;
+
   if (mode === "lose") {
     budgetKcal = Math.round(clamp(mKcal - kcalPerDay, minBudget, maxBudgetLose));
   } else {
     budgetKcal = Math.round(clamp(mKcal + kcalPerDay, mKcal + 100, maxBudgetGain));
   }
 
-  // fecha estimada aprox
   let endDateLabel = "—";
   if (kgPerWeek > 0) {
     const deltaKg = mode === "lose" ? Math.max(0, w0 - wt) : Math.max(0, wt - w0);
@@ -92,47 +93,44 @@ function calcPlan({
 
 export default function GoalWizard({
   onDone,
-  heightCm,          // ✅ viene de Basics
-  currentWeightKg,   // ✅ viene de Basics (peso actual)
-  tdeeKcal,          // ✅ viene de Basics (mantenimiento)
+  heightCm,
+  currentWeightKg,
+  tdeeKcal,
 }) {
   const nav = useNavigate();
 
-  // 0 intro -> 1 elegir objetivo -> 2 setup -> 3 summary
+  // 0 intro -> 1 pick -> 2 setup -> 3 summary
   const [step, setStep] = useState(0);
-
-  // perder_peso | mantener_peso | ganar_peso
   const [goalType, setGoalType] = useState("");
+  const [targetWeightKg, setTargetWeightKg] = useState(70.0);
+  const [ratePctBWPerWeek, setRatePctBWPerWeek] = useState(0.5);
+  const [loading, setLoading] = useState(false);
 
-  // ✅ base real: mantenimiento desde BasicsTDEE
   const maintenanceKcal = useMemo(() => {
     const t = Number(tdeeKcal);
     return Number.isFinite(t) && t >= 800 && t <= 6000 ? t : 2400;
   }, [tdeeKcal]);
 
-  // ✅ peso actual desde Basics
   const startWeightKg = useMemo(() => {
     const w = Number(currentWeightKg);
     return Number.isFinite(w) && w >= 30 && w <= 250 ? w : 75;
   }, [currentWeightKg]);
 
-  // Estados comunes
-  const [targetWeightKg, setTargetWeightKg] = useState(70.0);
-  const [ratePctBWPerWeek, setRatePctBWPerWeek] = useState(0.5);
-
   async function saveGoalToBackend(goalPayload) {
-    await apiFetch("/api/usuarios/me/onboarding", {
-      method: "PATCH",
-      body: JSON.stringify({
-        step: 2,
-        data: { __wizard: "v2", ...goalPayload },
-      }),
-    });
+    try {
+      setLoading(true);
+      await apiFetch("/api/usuarios/me/onboarding", {
+        method: "PATCH",
+        body: JSON.stringify({
+          step: 2,
+          data: { __wizard: "v2", ...goalPayload },
+        }),
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // --------------------------
-  // RENDER
-  // --------------------------
   if (step === 0) {
     return <GoalIntro onNext={() => setStep(1)} />;
   }
@@ -143,15 +141,15 @@ export default function GoalWizard({
         value={goalType}
         onChange={(v) => setGoalType(v)}
         onBack={() => nav("/app/onboarding", { replace: true })}
-        onNext={() => {
+        onNext={async () => {
           if (!goalType) return;
+          await new Promise((r) => setTimeout(r, 140));
           setStep(2);
         }}
       />
     );
   }
 
-  // ---- SETUP ----
   if (step === 2) {
     if (goalType === "perder_peso") {
       const plan = calcPlan({
@@ -164,16 +162,15 @@ export default function GoalWizard({
 
       return (
         <GoalLoseSetup
-          initialBudgetKcal={plan.budgetKcal}     // ✅ ahora sale del TDEE + % semanal
-          endDateLabel={plan.endDateLabel}        // ✅ ahora NO es "—"
+          initialBudgetKcal={plan.budgetKcal}
+          endDateLabel={plan.endDateLabel}
           targetWeightKg={targetWeightKg}
           setTargetWeightKg={setTargetWeightKg}
           ratePctBWPerWeek={ratePctBWPerWeek}
           setRatePctBWPerWeek={(v) => setRatePctBWPerWeek(clamp(v, 0.1, 1.5))}
           onBack={() => setStep(1)}
           onNext={() => setStep(3)}
-          heightCm={heightCm}                      // ✅ tu mínimo sano
-          // si querés usarlo dentro del setup después:
+          heightCm={heightCm}
           currentWeightKg={startWeightKg}
           maintenanceKcal={maintenanceKcal}
         />
@@ -203,7 +200,6 @@ export default function GoalWizard({
       );
     }
 
-    // mantenimiento
     return (
       <GoalMaintenanceSetup
         initialRangeLabel={`${maintenanceKcal - 150} – ${maintenanceKcal + 150} kcal`}
@@ -215,7 +211,6 @@ export default function GoalWizard({
     );
   }
 
-  // ---- SUMMARY + PERSIST ----
   if (goalType === "perder_peso") {
     const plan = calcPlan({
       mode: "lose",
@@ -251,6 +246,7 @@ export default function GoalWizard({
           });
           onDone?.();
         }}
+        loading={loading}
       />
     );
   }
@@ -290,11 +286,11 @@ export default function GoalWizard({
           });
           onDone?.();
         }}
+        loading={loading}
       />
     );
   }
 
-  // mantenimiento summary
   const maint = {
     goalType,
     maintenanceKcal,
@@ -316,11 +312,15 @@ export default function GoalWizard({
           maintenanceKcal: Number(maintenanceKcal),
           trendTargetKg: Number(maint.trendTargetKg),
           targetRangeKg: { min: maint.rangeMinKg, max: maint.rangeMaxKg },
-          initialRangeKcal: { min: maint.initialRangeKcalMin, max: maint.initialRangeKcalMax },
+          initialRangeKcal: {
+            min: maint.initialRangeKcalMin,
+            max: maint.initialRangeKcalMax,
+          },
           approach: maint.approach,
         });
         onDone?.();
       }}
+      loading={loading}
     />
   );
 }

@@ -2,13 +2,17 @@
 import React from "react";
 
 export default function ProgramIntro({ onNext }) {
+  async function handleNext() {
+    await new Promise((r) => setTimeout(r, 140));
+    onNext?.();
+  }
+
   return (
     <div className="ob2-card ob2-programIntro">
       <h1 className="ob2-h1">¡Listo para tu programa!</h1>
       <p className="ob2-p">Contanos tus preferencias y hábitos para ajustar tu plan.</p>
 
       <div className="ob2-stepList">
-        {/* Básicos DONE */}
         <div className="ob2-stepItem done ob2-stepItemDoneGreen">
           <div className="ob2-stepDot ob2-stepDotDoneGreen">✓</div>
           <div>
@@ -17,7 +21,6 @@ export default function ProgramIntro({ onNext }) {
           </div>
         </div>
 
-        {/* Objetivo DONE */}
         <div className="ob2-stepItem done ob2-stepItemDoneGreen">
           <div className="ob2-stepDot ob2-stepDotDoneGreen">✓</div>
           <div>
@@ -26,7 +29,6 @@ export default function ProgramIntro({ onNext }) {
           </div>
         </div>
 
-        {/* Programa ACTIVE */}
         <div className="ob2-stepItem active ob2-stepItemActiveGold">
           <div className="ob2-stepDot ob2-stepDotActiveGold">3</div>
           <div>
@@ -37,7 +39,7 @@ export default function ProgramIntro({ onNext }) {
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <button className="ob2-btn primary" type="button" onClick={onNext}>
+        <button className="ob2-btn primary" type="button" onClick={handleNext}>
           Ir a Programa
         </button>
       </div>
