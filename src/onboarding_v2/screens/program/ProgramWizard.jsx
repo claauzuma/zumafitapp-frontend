@@ -40,7 +40,11 @@ export default function ProgramWizard({ onDone }) {
       method: "PATCH",
       body: JSON.stringify({
         step: 3,
-        data: { __wizard: "v2", __final: false, programV2: partial },
+        data: {
+          __wizard: "v2",
+          __final: false,
+          program: partial,
+        },
       }),
     });
   }
@@ -52,7 +56,11 @@ export default function ProgramWizard({ onDone }) {
         method: "PATCH",
         body: JSON.stringify({
           step: 3,
-          data: { __wizard: "v2", __final: true, programV2: finalData },
+          data: {
+            __wizard: "v2",
+            __final: true,
+            program: finalData,
+          },
         }),
       });
     } finally {

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { apiFetch } from "../Api";
 import "./Perfil.css";
 
+const PERFIL_CACHE_KEY = "zumafit_perfil_cache_v1";
+
 function initialsOf(nombre, apellido, fallbackEmail) {
   const n = String(nombre || "").trim();
   const a = String(apellido || "").trim();
@@ -54,6 +56,24 @@ function labelDist(v) {
   return "—";
 }
 
+function readPerfilCache() {
+  try {
+    const raw = localStorage.getItem(PERFIL_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writePerfilCache(data) {
+  try {
+    localStorage.setItem(PERFIL_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    // ignore
+  }
+}
+
 export default function Perfil() {
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
@@ -84,75 +104,98 @@ export default function Perfil() {
   const [experienciaPesas, setExperienciaPesas] = useState("");
   const [tdeeEstimado, setTdeeEstimado] = useState("");
 
-  const [goalV2, setGoalV2] = useState(null);
-  const [programV2, setProgramV2] = useState(null);
+  const [goal, setGoal] = useState(null);
+  const [program, setProgram] = useState(null);
 
   const [snapPersonal, setSnapPersonal] = useState(null);
   const [snapBasics, setSnapBasics] = useState(null);
+
+  function hydrateProfile(data) {
+    setEmail(data?.email || "");
+    setRole(data?.role || "");
+    setPlan(data?.plan || "");
+    setEstado(data?.estado || "");
+    setAvatarUrl(data?.profile?.avatarUrl || "");
+
+    setNombre(data?.profile?.nombre || "");
+    setApellido(data?.profile?.apellido || "");
+    setTelefono(data?.profile?.telefono || "");
+    setCiudad(data?.profile?.ciudad || "");
+
+    setSexo(data?.profile?.basics?.genero || "");
+    setFechaNacimiento(data?.profile?.basics?.fechaNacimiento || "");
+
+    setAlturaCm(
+      data?.antropometriaActual?.alturaCm !== undefined &&
+      data?.antropometriaActual?.alturaCm !== null
+        ? String(data.antropometriaActual.alturaCm)
+        : ""
+    );
+
+    setPesoKg(
+      data?.antropometriaActual?.pesoKg !== undefined &&
+      data?.antropometriaActual?.pesoKg !== null
+        ? String(data.antropometriaActual.pesoKg)
+        : ""
+    );
+
+    setGrasaPct(
+      data?.antropometriaActual?.grasaPct !== undefined &&
+      data?.antropometriaActual?.grasaPct !== null
+        ? String(data.antropometriaActual.grasaPct)
+        : ""
+    );
+
+    setTendenciaPeso(data?.profile?.basics?.tendenciaPeso || "");
+    setFrecuenciaEjercicio(data?.profile?.basics?.frecuenciaEjercicio || "");
+    setActividadDiaria(data?.profile?.basics?.actividadDiaria || "");
+    setExperienciaPesas(data?.profile?.basics?.experienciaPesas || "");
+    setTdeeEstimado(
+      data?.profile?.basics?.tdeeEstimado !== undefined &&
+      data?.profile?.basics?.tdeeEstimado !== null
+        ? String(data.profile.basics.tdeeEstimado)
+        : ""
+    );
+
+    setGoal(data?.goal || null);
+    setProgram(data?.program || null);
+  }
+
+  async function refetchPerfilSilently() {
+    const data = await apiFetch("/api/usuarios/users/me");
+    console.log("PERFIL /users/me =>", data);
+    writePerfilCache(data);
+    hydrateProfile(data);
+    return data;
+  }
 
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        setLoading(true);
         setMsg(null);
+
+        const cached = readPerfilCache();
+        if (cached && mounted) {
+          hydrateProfile(cached);
+          setLoading(false);
+        }
 
         const data = await apiFetch("/api/usuarios/users/me");
         console.log("PERFIL /users/me =>", data);
         if (!mounted) return;
 
-        setEmail(data?.email || "");
-        setRole(data?.role || "");
-        setPlan(data?.plan || "");
-        setEstado(data?.estado || "");
-        setAvatarUrl(data?.profile?.avatarUrl || "");
-
-        setNombre(data?.profile?.nombre || "");
-        setApellido(data?.profile?.apellido || "");
-        setTelefono(data?.profile?.telefono || "");
-        setCiudad(data?.profile?.ciudad || "");
-
-        setSexo(data?.profile?.basics?.genero || "");
-        setFechaNacimiento(data?.profile?.basics?.fechaNacimiento || "");
-
-        setAlturaCm(
-          data?.antropometriaActual?.alturaCm !== undefined &&
-          data?.antropometriaActual?.alturaCm !== null
-            ? String(data.antropometriaActual.alturaCm)
-            : ""
-        );
-
-        setPesoKg(
-          data?.antropometriaActual?.pesoKg !== undefined &&
-          data?.antropometriaActual?.pesoKg !== null
-            ? String(data.antropometriaActual.pesoKg)
-            : ""
-        );
-
-        setGrasaPct(
-          data?.antropometriaActual?.grasaPct !== undefined &&
-          data?.antropometriaActual?.grasaPct !== null
-            ? String(data.antropometriaActual.grasaPct)
-            : ""
-        );
-
-        setTendenciaPeso(data?.profile?.basics?.tendenciaPeso || "");
-        setFrecuenciaEjercicio(data?.profile?.basics?.frecuenciaEjercicio || "");
-        setActividadDiaria(data?.profile?.basics?.actividadDiaria || "");
-        setExperienciaPesas(data?.profile?.basics?.experienciaPesas || "");
-        setTdeeEstimado(
-          data?.profile?.basics?.tdeeEstimado !== undefined &&
-          data?.profile?.basics?.tdeeEstimado !== null
-            ? String(data.profile.basics.tdeeEstimado)
-            : ""
-        );
-
-        setGoalV2(data?.goalV2 || null);
-        setProgramV2(data?.programV2 || null);
+        writePerfilCache(data);
+        hydrateProfile(data);
       } catch (e) {
         if (mounted) {
-          setMsg({ type: "warn", text: e?.message || "No pude cargar el perfil" });
+          const hadCache = !!readPerfilCache();
+          if (!hadCache) {
+            setMsg({ type: "warn", text: e?.message || "No pude cargar el perfil" });
+          } else {
+            setMsg({ type: "warn", text: "Mostrando datos guardados localmente" });
+          }
         }
       } finally {
         if (mounted) setLoading(false);
@@ -241,19 +284,15 @@ export default function Perfil() {
         },
       };
 
-      const res = await apiFetch("/api/usuarios/users/me", {
+      await apiFetch("/api/usuarios/users/me", {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
 
-      const u = res?.user || res;
-      setNombre(u?.profile?.nombre ?? payload.profile.nombre);
-      setApellido(u?.profile?.apellido ?? payload.profile.apellido);
-      setTelefono(u?.profile?.telefono ?? payload.profile.telefono);
-      setCiudad(u?.profile?.ciudad ?? payload.profile.ciudad);
-
+      const fresh = await refetchPerfilSilently();
       setEditingPersonal(false);
       setMsg({ type: "ok", text: "Datos personales actualizados ✅" });
+      return fresh;
     } catch (e) {
       setMsg({ type: "warn", text: e?.message || "No pude guardar datos personales" });
     } finally {
@@ -290,8 +329,10 @@ export default function Perfil() {
         }),
       });
 
+      const fresh = await refetchPerfilSilently();
       setEditingBasics(false);
       setMsg({ type: "ok", text: "Datos físicos actualizados ✅" });
+      return fresh;
     } catch (e) {
       setMsg({ type: "warn", text: e?.message || "No pude guardar tus datos físicos" });
     } finally {
@@ -306,12 +347,14 @@ export default function Perfil() {
     <div className="p-wrap">
       <div className="p-inner">
         <div className="p-head">
-          <div>
+          <div className="p-titleWrap">
             <div className="p-titleRow">
-              <span className="p-titleIcon">👤</span>
+              <span className="p-titleIcon" aria-hidden="true">👤</span>
               <h1 className="p-title">Perfil</h1>
             </div>
-            <p className="p-sub">Tus datos, tu estado actual y la configuración principal de tu plan.</p>
+            <p className="p-sub">
+              Tus datos, tu estado actual y la configuración principal de tu plan.
+            </p>
           </div>
 
           <div className="p-badges">
@@ -331,14 +374,17 @@ export default function Perfil() {
               )}
             </div>
 
-            <div className="heroMain">
+            <div className="p-heroContent">
               <h2 className="heroName">{loading ? "Cargando..." : fullName}</h2>
               <p className="heroEmail">{loading ? "…" : email || "—"}</p>
 
               <div className="heroMeta">
                 <div className="badge soft">Rol: {role || "cliente"}</div>
                 <div className="badge gold">Plan: {plan || "free"}</div>
-                <div className="badge status">{estado || "activo"}</div>
+                <div className="badge badge-status">
+                  <span className="statusDot" aria-hidden="true" />
+                  {estado || "activo"}
+                </div>
               </div>
             </div>
           </div>
@@ -540,28 +586,41 @@ export default function Perfil() {
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Meta</div>
-                  <div className="infoValue">{labelGoal(goalV2?.goalType)}</div>
+                  <div className="infoValue">{labelGoal(goal?.type)}</div>
                 </div>
               </div>
 
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Peso objetivo</div>
-                  <div className="infoValue">{fmtValue(goalV2?.targetWeightKg, " kg")}</div>
+                  <div className="infoValue">{fmtValue(goal?.targetWeightKg, " kg")}</div>
                 </div>
               </div>
+
+              {"targetRangeKg" in (goal || {}) ? (
+                <div className="infoRow">
+                  <div className="infoLeft">
+                    <div className="infoLabel">Rango objetivo</div>
+                    <div className="infoValue">
+                      {goal?.targetRangeKg?.min != null && goal?.targetRangeKg?.max != null
+                        ? `${goal.targetRangeKg.min} a ${goal.targetRangeKg.max} kg`
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Ritmo</div>
-                  <div className="infoValue">{fmtValue(goalV2?.ratePctBWPerWeek, "% / semana")}</div>
+                  <div className="infoValue">{fmtValue(goal?.ratePctBWPerWeek, "% / semana")}</div>
                 </div>
               </div>
 
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Calorías iniciales</div>
-                  <div className="infoValue">{fmtValue(goalV2?.initialBudgetKcal, " kcal")}</div>
+                  <div className="infoValue">{fmtValue(goal?.initialBudgetKcal, " kcal")}</div>
                 </div>
               </div>
             </div>
@@ -579,23 +638,23 @@ export default function Perfil() {
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Dieta</div>
-                  <div className="infoValue">{labelDiet(programV2?.diet)}</div>
+                  <div className="infoValue">{labelDiet(program?.diet)}</div>
                 </div>
               </div>
 
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Entrenamiento</div>
-                  <div className="infoValue">{labelTraining(programV2?.training)}</div>
+                  <div className="infoValue">{labelTraining(program?.training)}</div>
                 </div>
               </div>
 
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Distribución calórica</div>
-                  <div className="infoValue">{labelDist(programV2?.calorieDist)}</div>
-                  {Array.isArray(programV2?.shiftDays) && programV2.shiftDays.length > 0 ? (
-                    <div className="infoHint">Días shift: {programV2.shiftDays.join(", ")}</div>
+                  <div className="infoValue">{labelDist(program?.calorieDist)}</div>
+                  {Array.isArray(program?.shiftDays) && program.shiftDays.length > 0 ? (
+                    <div className="infoHint">Días shift: {program.shiftDays.join(", ")}</div>
                   ) : null}
                 </div>
               </div>
@@ -603,7 +662,7 @@ export default function Perfil() {
               <div className="infoRow">
                 <div className="infoLeft">
                   <div className="infoLabel">Proteína</div>
-                  <div className="infoValue">{labelProtein(programV2?.protein)}</div>
+                  <div className="infoValue">{labelProtein(program?.protein)}</div>
                 </div>
               </div>
             </div>

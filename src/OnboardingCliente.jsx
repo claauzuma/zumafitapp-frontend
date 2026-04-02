@@ -63,7 +63,7 @@ export default function OnboardingCliente() {
   const [diasEntreno, setDiasEntreno] = useState("3");
 
   // -----------------
-  // Step 3 (preferenciasPlan)
+  // Step 3 
   // -----------------
   const [comidasPorDia, setComidasPorDia] = useState("4"); // string para inputs/select
   const [distribucion, setDistribucion] = useState("equilibrada");

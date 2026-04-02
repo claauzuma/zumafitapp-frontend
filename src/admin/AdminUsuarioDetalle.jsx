@@ -1,23 +1,6 @@
-// src/AdminUsuarioDetalle.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../Api.js";
-
-/**
- * ✅ AdminUsuarioDetalle (PRO)
- * - Trae usuario real desde: GET /api/usuarios/admin/users/:id
- * - Muestra objetivo + metas generales (metasActuales + objetivoActual)
- * - Permite editar metas generales (PATCH /api/usuarios/admin/users/:id)
- * - Modal "Plan semanal (Lun–Vie)" con:
- *   - "Personalizado" (antes Override)
- *   - kcal auto = P*4 + C*4 + G*9
- *   - días Lunes..Viernes (sin mostrar fecha en UI, pero se usa internamente)
- *   - ✏️ Menú por día: abre drawer lateral dentro del mismo modal (sin apilar modales)
- * - Guarda overrides semanales en: user.metasDiarias (si no existe en backend, igual lo envía)
- *
- * 🔧 Si tu backend usa otra key para los overrides diarios:
- *   cambiá readDailyOverrides() y buildPatchForDailyOverrides()
- */
 
 export default function AdminUsuarioDetalle() {
   const { id } = useParams();
@@ -27,15 +10,13 @@ export default function AdminUsuarioDetalle() {
   const [err, setErr] = useState("");
   const [user, setUser] = useState(null);
 
-  // UI state
   const [openWeekly, setOpenWeekly] = useState(false);
-  const [weeklyDrawerDay, setWeeklyDrawerDay] = useState(null); // "YYYY-MM-DD" (selected day)
+  const [weeklyDrawerDay, setWeeklyDrawerDay] = useState(null);
   const [savingGeneral, setSavingGeneral] = useState(false);
   const [savingWeekly, setSavingWeekly] = useState(false);
 
-  // editable general goal (local)
   const [editGeneral, setEditGeneral] = useState(false);
-  const [gObjetivo, setGObjetivo] = useState("mantenimiento"); // perdida_grasa/ganancia_muscular/mantenimiento
+  const [gObjetivo, setGObjetivo] = useState("mantener_peso");
   const [gKcal, setGKcal] = useState("");
   const [gP, setGP] = useState("");
   const [gC, setGC] = useState("");
@@ -53,12 +34,11 @@ export default function AdminUsuarioDetalle() {
       const u = data?.user || data;
       setUser(u);
 
-      // precargar general
-      const objetivo = u?.objetivoActual?.objetivo || "mantenimiento";
+      const objetivo = u?.goal?.type || "mantener_peso";
       const metas = u?.metasActuales || {};
       const macros = metas?.macros || {};
 
-      setGObjetivo(objetivo || "mantenimiento");
+      setGObjetivo(objetivo || "mantener_peso");
       setGKcal(numToInput(metas?.kcal));
       setGP(numToInput(macros?.p));
       setGC(numToInput(macros?.c));
@@ -76,9 +56,6 @@ export default function AdminUsuarioDetalle() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // ==========
-  // Derived data
-  // ==========
   const profile = user?.profile || {};
   const nombre = profile?.nombre || "—";
   const apellido = profile?.apellido || "";
@@ -87,7 +64,7 @@ export default function AdminUsuarioDetalle() {
   const tipo = user?.tipo || "—";
   const estado = user?.estado || "—";
 
-  const objetivoActual = user?.objetivoActual?.objetivo || null; // "perdida_grasa" | "ganancia_muscular" | "mantenimiento"
+  const objetivoActual = user?.goal?.type || null;
   const metasActuales = user?.metasActuales || {};
   const macrosActuales = metasActuales?.macros || {};
   const kcalGeneral = metasActuales?.kcal ?? null;
@@ -102,12 +79,8 @@ export default function AdminUsuarioDetalle() {
   const nacimiento = fmtDate(profile?.fechaNacimiento || profile?.nacimiento);
 
   const weekdays = useMemo(() => buildWeekdaysMonFri(), []);
-
   const dailyOverrides = useMemo(() => readDailyOverrides(user), [user]);
 
-  // ==========
-  // API updates
-  // ==========
   async function patchUser(patch) {
     const data = await apiFetch(`/api/usuarios/admin/users/${id}`, {
       method: "PATCH",
@@ -122,9 +95,9 @@ export default function AdminUsuarioDetalle() {
     setErr("");
     try {
       const patch = {
-        objetivoActual: {
-          ...(user?.objetivoActual || {}),
-          objetivo: gObjetivo || null,
+        goal: {
+          ...(user?.goal || {}),
+          type: gObjetivo || null,
           updatedAt: new Date().toISOString(),
         },
         metasActuales: {
@@ -141,6 +114,13 @@ export default function AdminUsuarioDetalle() {
 
       const u2 = await patchUser(patch);
       setUser(u2);
+
+      setGObjetivo(u2?.goal?.type || "mantener_peso");
+      setGKcal(numToInput(u2?.metasActuales?.kcal));
+      setGP(numToInput(u2?.metasActuales?.macros?.p));
+      setGC(numToInput(u2?.metasActuales?.macros?.c));
+      setGG(numToInput(u2?.metasActuales?.macros?.g));
+
       setEditGeneral(false);
     } catch (e) {
       setErr(e?.message || "No se pudo guardar metas generales");
@@ -150,7 +130,6 @@ export default function AdminUsuarioDetalle() {
   }
 
   async function saveWeeklyOverrides(overridesMap) {
-    // overridesMap: { "YYYY-MM-DD": { kcal, macros:{p,c,g} } }
     setSavingWeekly(true);
     setErr("");
     try {
@@ -166,22 +145,14 @@ export default function AdminUsuarioDetalle() {
     }
   }
 
-  // ==========
-  // Menu edit actions (drawer)
-  // ==========
   function openMenuEditorForDay(date) {
     setWeeklyDrawerDay(date);
   }
 
   function goToMenuDayPage(date) {
-    // Si preferís editar menú en otra pantalla (recomendado para “modo pro”):
-    // implementá una ruta y navegá con date en query.
     navigate(`/admin/usuarios/${id}/menu?date=${encodeURIComponent(date)}`);
   }
 
-  // ==========
-  // Render
-  // ==========
   if (loading) {
     return (
       <div className="zu-page">
@@ -215,7 +186,6 @@ export default function AdminUsuarioDetalle() {
 
   return (
     <div className="zu-page">
-      {/* Top */}
       <div className="zu-top">
         <button className="zu-btn" onClick={() => navigate("/admin/usuarios")}>
           ← Volver
@@ -234,7 +204,6 @@ export default function AdminUsuarioDetalle() {
         </div>
       </div>
 
-      {/* Header */}
       <div className="zu-card zu-header">
         <div className="zu-avatar">{initials(nombre, apellido)}</div>
 
@@ -272,7 +241,6 @@ export default function AdminUsuarioDetalle() {
         </div>
       </div>
 
-      {/* Goal summary (AL PRINCIPIO como pediste) */}
       <div className="zu-grid two">
         <div className="zu-card">
           <div className="zu-row">
@@ -312,9 +280,9 @@ export default function AdminUsuarioDetalle() {
                 <label className="zu-label">
                   Objetivo
                   <select className="zu-input" value={gObjetivo} onChange={(e) => setGObjetivo(e.target.value)}>
-                    <option value="perdida_grasa">Pérdida de grasa</option>
-                    <option value="ganancia_muscular">Ganancia muscular</option>
-                    <option value="mantenimiento">Mantenimiento</option>
+                    <option value="perder_peso">Pérdida de grasa</option>
+                    <option value="ganar_peso">Ganancia muscular</option>
+                    <option value="mantener_peso">Mantenimiento</option>
                   </select>
                 </label>
 
@@ -375,7 +343,6 @@ export default function AdminUsuarioDetalle() {
         </div>
       </div>
 
-      {/* ============= MODAL: Plan semanal ============= */}
       {openWeekly ? (
         <Modal onClose={() => { setOpenWeekly(false); setWeeklyDrawerDay(null); }}>
           <div className="zu-modalHead">
@@ -391,7 +358,6 @@ export default function AdminUsuarioDetalle() {
           </div>
 
           <div className="zu-weekShell">
-            {/* LEFT: table */}
             <div className="zu-weekLeft">
               <DailyGoalsWeekTable
                 weekdays={weekdays}
@@ -410,7 +376,6 @@ export default function AdminUsuarioDetalle() {
               />
             </div>
 
-            {/* RIGHT: drawer panel (same modal, no stack) */}
             <div className={`zu-weekRight ${weeklyDrawerDay ? "open" : ""}`}>
               <div className="zu-drawerHead">
                 <div className="zu-drawerTitle">
@@ -445,9 +410,6 @@ export default function AdminUsuarioDetalle() {
   );
 }
 
-/* =========================
-   Weekly table component
-========================= */
 function DailyGoalsWeekTable({ weekdays, general, initialOverrides, saving, onCancel, onSave, onEditDayMenu }) {
   const [rows, setRows] = useState(() => {
     const src = initialOverrides || {};
@@ -456,7 +418,7 @@ function DailyGoalsWeekTable({ weekdays, general, initialOverrides, saving, onCa
       return {
         date: d.date,
         label: d.label,
-        enabled: !!ov, // Personalizado Sí/No
+        enabled: !!ov,
         p: numToInput(ov?.macros?.p ?? ""),
         c: numToInput(ov?.macros?.c ?? ""),
         g: numToInput(ov?.macros?.g ?? ""),
@@ -610,11 +572,6 @@ function DailyGoalsWeekTable({ weekdays, general, initialOverrides, saving, onCa
   );
 }
 
-/* =========================
-   Drawer menu editor (stub pro)
-   - NO abre otro modal
-   - Si querés, acá lo conectamos a tu colección de comidas por fecha
-========================= */
 function DayMenuEditorStub({ userId, date, onGoFullEditor }) {
   const dayLabel = dayLabelFromDate(date);
 
@@ -658,9 +615,6 @@ function DayMenuEditorStub({ userId, date, onGoFullEditor }) {
   );
 }
 
-/* =========================
-   Modal
-========================= */
 function Modal({ children, onClose }) {
   useEffect(() => {
     function onKey(e) {
@@ -677,11 +631,7 @@ function Modal({ children, onClose }) {
   );
 }
 
-/* =========================
-   Helpers: daily overrides mapping
-========================= */
 function readDailyOverrides(user) {
-  // ✅ tolerante: si lo guardás en otro lugar, sumá acá.
   const a = user?.metasDiarias;
   const b = user?.settings?.metasDiarias;
   const c = user?.metas?.diarias;
@@ -690,14 +640,9 @@ function readDailyOverrides(user) {
 }
 
 function buildPatchForDailyOverrides(user, overridesMap) {
-  // ✅ default: guardamos en user.metasDiarias
-  // si preferís settings.metasDiarias -> devolvé { settings: { ...user.settings, metasDiarias: overridesMap } }
   return { metasDiarias: overridesMap };
 }
 
-/* =========================
-   Helpers UI
-========================= */
 function badge(text, tone = "base") {
   return <span className={`zu-badge ${tone}`}>{text}</span>;
 }
@@ -723,7 +668,6 @@ function numToInput(v) {
 
 function sanitizeNumInput(x) {
   const s = String(x ?? "");
-  // deja solo dígitos
   return s.replace(/[^\d]/g, "");
 }
 
@@ -747,18 +691,15 @@ function fmtDate(v) {
 
 function goalLabel(obj) {
   if (!obj) return "—";
-  if (obj === "perdida_grasa") return "Pérdida de grasa";
-  if (obj === "ganancia_muscular") return "Ganancia muscular";
-  if (obj === "mantenimiento") return "Mantenimiento";
+  if (obj === "perder_peso") return "Pérdida de grasa";
+  if (obj === "ganar_peso") return "Ganancia muscular";
+  if (obj === "mantener_peso") return "Mantenimiento";
   return String(obj);
 }
 
-/* =========================
-   Week helpers (Mon–Fri)
-========================= */
 function buildWeekdaysMonFri() {
   const now = new Date();
-  const day = now.getDay(); // 0 dom ... 1 lun ... 6 sab
+  const day = now.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
 
   const monday = new Date(now);
@@ -781,7 +722,7 @@ function buildWeekdaysMonFri() {
 function dayLabelFromDate(iso) {
   try {
     const d = new Date(iso + "T00:00:00");
-    const wd = d.getDay(); // 0 dom ... 1 lun ...
+    const wd = d.getDay();
     const map = { 1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado", 0: "Domingo" };
     return map[wd] || iso;
   } catch {
@@ -789,9 +730,6 @@ function dayLabelFromDate(iso) {
   }
 }
 
-/* =========================
-   Styles (black + gold PRO)
-========================= */
 const styles = `
 .zu-page{
   max-width: 1100px;

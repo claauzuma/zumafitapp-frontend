@@ -1,4 +1,3 @@
-// src/AdminUsuarios.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api.js";
@@ -10,7 +9,6 @@ export default function AdminUsuarios() {
   const [err, setErr] = useState("");
   const [users, setUsers] = useState([]);
 
-  // filtros
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("todos");
   const [tipo, setTipo] = useState("todos");
@@ -32,7 +30,6 @@ export default function AdminUsuarios() {
         timeoutMs: 9000,
       });
 
-      // ✅ tu backend devuelve: { users: [...], total: N }
       const arr = data?.users || data?.usuarios || data || [];
       setUsers(Array.isArray(arr) ? arr : []);
     } catch (e) {
@@ -51,7 +48,6 @@ export default function AdminUsuarios() {
   const filtered = useMemo(() => {
     let arr = [...users];
 
-    // por si el backend no filtra, filtramos acá también
     const s = search.trim().toLowerCase();
     if (s) {
       arr = arr.filter((u) => {
@@ -60,6 +56,7 @@ export default function AdminUsuarios() {
         return full.includes(s) || em.includes(s);
       });
     }
+
     if (role !== "todos") arr = arr.filter((u) => (u?.role || "") === role);
     if (tipo !== "todos") arr = arr.filter((u) => (u?.tipo || "") === tipo);
     if (estado !== "todos") arr = arr.filter((u) => (u?.estado || "") === estado);
@@ -165,23 +162,19 @@ export default function AdminUsuarios() {
             const t = u?.tipo || "—";
             const est = u?.estado || "—";
 
-            // ✅ tu backend: objetivoActual + metasActuales
             const showPlan = t !== "entrenador";
 
             const objetivo =
-              u?.objetivoActual?.objetivo ??
-              u?.objetivoActual?.meta ??
+              u?.goal?.type ??
               u?.meta ??
               u?.objetivo ??
-              u?.goal ??
               "—";
 
             const kcal =
               u?.metasActuales?.kcal ??
-              u?.metasActuales?.calorias ??
+              u?.metas?.kcal ??
               u?.kcalObjetivo ??
               u?.kcal ??
-              u?.metas?.kcal ??
               "—";
 
             const p =
@@ -263,7 +256,6 @@ export default function AdminUsuarios() {
   );
 }
 
-// ✅ Botón icon-only con tooltip
 function IconBtn({ title, onClick, children, danger = false }) {
   return (
     <button className={`au-ibtn ${danger ? "danger" : ""}`} onClick={onClick} type="button">
@@ -279,7 +271,6 @@ function initials(nombre = "", apellido = "") {
   return (a + b).toUpperCase();
 }
 
-// ✅ formateos
 function prettyNum(x) {
   if (x === null || x === undefined) return "—";
   if (x === "—") return "—";
@@ -291,9 +282,11 @@ function prettyNum(x) {
 function prettyObjetivo(x) {
   if (!x || x === "—") return "—";
   const v = String(x).toLowerCase();
-  if (v.includes("perdida")) return "Pérdida de grasa";
-  if (v.includes("ganancia")) return "Ganancia muscular";
-  if (v.includes("manten")) return "Mantenimiento";
+
+  if (v === "perder_peso" || v.includes("perdida")) return "Pérdida de grasa";
+  if (v === "ganar_peso" || v.includes("ganancia")) return "Ganancia muscular";
+  if (v === "mantener_peso" || v.includes("manten")) return "Mantenimiento";
+
   return String(x);
 }
 

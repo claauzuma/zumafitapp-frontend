@@ -26,16 +26,8 @@ function formatDateAR(d) {
   }
 }
 
-/**
- * Estimaciones rápidas (aprox):
- * - 1 kg de grasa ~ 7700 kcal
- * - déficit/superávit semanal = kg/sem * 7700
- * - diario = semanal / 7
- *
- * ratePctBWPerWeek es "porcentaje del peso corporal por semana", ej 0.5 = 0.5%
- */
 function calcPlan({
-  mode, // "lose" | "gain"
+  mode,
   maintenanceKcal,
   currentWeightKg,
   targetWeightKg,
@@ -99,7 +91,6 @@ export default function GoalWizard({
 }) {
   const nav = useNavigate();
 
-  // 0 intro -> 1 pick -> 2 setup -> 3 summary
   const [step, setStep] = useState(0);
   const [goalType, setGoalType] = useState("");
   const [targetWeightKg, setTargetWeightKg] = useState(70.0);
@@ -123,7 +114,10 @@ export default function GoalWizard({
         method: "PATCH",
         body: JSON.stringify({
           step: 2,
-          data: { __wizard: "v2", ...goalPayload },
+          data: {
+            __wizard: "v2",
+            goal: goalPayload,
+          },
         }),
       });
     } finally {
@@ -221,7 +215,7 @@ export default function GoalWizard({
     });
 
     const summary = {
-      goalType,
+      type: "perder_peso",
       maintenanceKcal,
       startWeightKg,
       initialBudgetKcal: plan.budgetKcal,
@@ -235,15 +229,7 @@ export default function GoalWizard({
         summary={summary}
         onBack={() => setStep(2)}
         onNext={async () => {
-          await saveGoalToBackend({
-            goalType: "perder_peso",
-            maintenanceKcal: Number(maintenanceKcal),
-            startWeightKg: Number(startWeightKg),
-            targetWeightKg: Number(targetWeightKg),
-            ratePctBWPerWeek: Number(summary.ratePctBWPerWeek),
-            initialBudgetKcal: Number(plan.budgetKcal),
-            endDateLabel: String(plan.endDateLabel || "—"),
-          });
+          await saveGoalToBackend(summary);
           onDone?.();
         }}
         loading={loading}
@@ -261,7 +247,7 @@ export default function GoalWizard({
     });
 
     const summary = {
-      goalType,
+      type: "ganar_peso",
       maintenanceKcal,
       startWeightKg,
       initialBudgetKcal: plan.budgetKcal,
@@ -275,15 +261,7 @@ export default function GoalWizard({
         summary={summary}
         onBack={() => setStep(2)}
         onNext={async () => {
-          await saveGoalToBackend({
-            goalType: "ganar_peso",
-            maintenanceKcal: Number(maintenanceKcal),
-            startWeightKg: Number(startWeightKg),
-            targetWeightKg: Number(targetWeightKg),
-            ratePctBWPerWeek: Number(summary.ratePctBWPerWeek),
-            initialBudgetKcal: Number(plan.budgetKcal),
-            endDateLabel: String(plan.endDateLabel || "—"),
-          });
+          await saveGoalToBackend(summary);
           onDone?.();
         }}
         loading={loading}
@@ -292,13 +270,17 @@ export default function GoalWizard({
   }
 
   const maint = {
-    goalType,
+    type: "mantener_peso",
     maintenanceKcal,
     trendTargetKg: targetWeightKg,
-    rangeMinKg: Number(targetWeightKg) - 1.5,
-    rangeMaxKg: Number(targetWeightKg) + 1.5,
-    initialRangeKcalMin: maintenanceKcal - 150,
-    initialRangeKcalMax: maintenanceKcal + 150,
+    targetRangeKg: {
+      min: Number(targetWeightKg) - 1.5,
+      max: Number(targetWeightKg) + 1.5,
+    },
+    initialRangeKcal: {
+      min: maintenanceKcal - 150,
+      max: maintenanceKcal + 150,
+    },
     approach: "Mantenerse en rango",
   };
 
@@ -307,17 +289,7 @@ export default function GoalWizard({
       summary={maint}
       onBack={() => setStep(2)}
       onNext={async () => {
-        await saveGoalToBackend({
-          goalType: "mantener_peso",
-          maintenanceKcal: Number(maintenanceKcal),
-          trendTargetKg: Number(maint.trendTargetKg),
-          targetRangeKg: { min: maint.rangeMinKg, max: maint.rangeMaxKg },
-          initialRangeKcal: {
-            min: maint.initialRangeKcalMin,
-            max: maint.initialRangeKcalMax,
-          },
-          approach: maint.approach,
-        });
+        await saveGoalToBackend(maint);
         onDone?.();
       }}
       loading={loading}
