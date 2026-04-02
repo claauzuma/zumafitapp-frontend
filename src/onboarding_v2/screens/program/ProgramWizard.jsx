@@ -1,4 +1,3 @@
-// src/onboarding_v2/screens/program/ProgramWizard.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../../Api.js";
@@ -50,23 +49,32 @@ export default function ProgramWizard({ onDone }) {
   }
 
   async function saveFinal(finalData) {
-    try {
-      setLoading(true);
-      await apiFetch("/api/usuarios/me/onboarding", {
-        method: "PATCH",
-        body: JSON.stringify({
-          step: 3,
-          data: {
-            __wizard: "v2",
-            __final: true,
-            program: finalData,
-          },
-        }),
-      });
-    } finally {
-      setLoading(false);
-    }
+    await apiFetch("/api/usuarios/me/onboarding", {
+      method: "PATCH",
+      body: JSON.stringify({
+        step: 3,
+        data: {
+          __wizard: "v2",
+          __final: true,
+          program: finalData,
+        },
+      }),
+    });
   }
+
+async function handleFinish() {
+  if (loading) return;
+
+  setLoading(true);
+
+  try {
+    await saveFinal(payload);
+    await onDone?.();
+  } catch (e) {
+    console.error("No se pudo guardar el programa", e);
+    setLoading(false);
+  }
+}
 
   function savePartialInBackground(partial, label = "program") {
     savePartial(partial).catch((e) => {
@@ -80,6 +88,7 @@ export default function ProgramWizard({ onDone }) {
         <ProgramIntro
           onBack={() => nav("/app/onboarding/goal", { replace: true })}
           onNext={async () => {
+            if (loading) return;
             await new Promise((r) => setTimeout(r, 140));
             setStep(1);
           }}
@@ -90,9 +99,12 @@ export default function ProgramWizard({ onDone }) {
         <ProgramDietPick
           value={diet}
           onChange={setDiet}
-          onBack={() => setStep(0)}
+          onBack={() => {
+            if (loading) return;
+            setStep(0);
+          }}
           onNext={async () => {
-            if (!diet) return;
+            if (!diet || loading) return;
             await new Promise((r) => setTimeout(r, 100));
             setStep(2);
             savePartialInBackground({ diet }, "diet");
@@ -104,9 +116,12 @@ export default function ProgramWizard({ onDone }) {
         <ProgramTrainingPick
           value={training}
           onChange={setTraining}
-          onBack={() => setStep(1)}
+          onBack={() => {
+            if (loading) return;
+            setStep(1);
+          }}
           onNext={async () => {
-            if (!training) return;
+            if (!training || loading) return;
             await new Promise((r) => setTimeout(r, 100));
             setStep(3);
             savePartialInBackground({ diet, training }, "training");
@@ -118,9 +133,12 @@ export default function ProgramWizard({ onDone }) {
         <ProgramCalorieDistribution
           value={calorieDist}
           onChange={setCalorieDist}
-          onBack={() => setStep(2)}
+          onBack={() => {
+            if (loading) return;
+            setStep(2);
+          }}
           onNext={async () => {
-            if (!calorieDist) return;
+            if (!calorieDist || loading) return;
             await new Promise((r) => setTimeout(r, 100));
 
             if (calorieDist === "shift") {
@@ -140,12 +158,17 @@ export default function ProgramWizard({ onDone }) {
           days={DAYS}
           value={shiftDays}
           onToggle={(day) => {
+            if (loading) return;
             setShiftDays((prev) =>
               prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
             );
           }}
-          onBack={() => setStep(3)}
+          onBack={() => {
+            if (loading) return;
+            setStep(3);
+          }}
           onNext={async () => {
+            if (loading) return;
             await new Promise((r) => setTimeout(r, 100));
             setStep(5);
             savePartialInBackground({ diet, training, calorieDist, shiftDays }, "shift days");
@@ -157,9 +180,12 @@ export default function ProgramWizard({ onDone }) {
         <ProgramProteinPick
           value={protein}
           onChange={setProtein}
-          onBack={() => setStep(calorieDist === "shift" ? 4 : 3)}
+          onBack={() => {
+            if (loading) return;
+            setStep(calorieDist === "shift" ? 4 : 3);
+          }}
           onNext={async () => {
-            if (!protein) return;
+            if (!protein || loading) return;
             await new Promise((r) => setTimeout(r, 100));
             setStep(6);
             savePartialInBackground({ ...payload, protein }, "protein");
@@ -169,20 +195,25 @@ export default function ProgramWizard({ onDone }) {
 
       {step === 6 && (
         <ProgramGenerating
-          onBack={() => setStep(5)}
-          onDone={() => setStep(7)}
+          onBack={() => {
+            if (loading) return;
+            setStep(5);
+          }}
+          onDone={() => {
+            if (loading) return;
+            setStep(7);
+          }}
         />
       )}
 
       {step === 7 && (
         <ProgramReady
           data={payload}
-          onBack={() => setStep(5)}
-          onFinish={async () => {
+          onBack={() => {
             if (loading) return;
-            await saveFinal(payload);
-            onDone?.();
+            setStep(5);
           }}
+          onFinish={handleFinish}
           loading={loading}
         />
       )}

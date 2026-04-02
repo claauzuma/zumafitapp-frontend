@@ -333,29 +333,31 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     }
 
     // último paso de Basics: guardar primero y pasar a Goal
-    if (screenKey === "tdee") {
-      setLoading(true);
-      try {
-        const kcal =
-          form.tdeeCustom != null
-            ? Number(form.tdeeCustom)
-            : Number(form.tdeeEstimado);
+if (screenKey === "tdee") {
+  setLoading(true);
 
-        await patchStep1({ tdeeEstimado: kcal });
+  try {
+    const kcal =
+      form.tdeeCustom != null
+        ? Number(form.tdeeCustom)
+        : Number(form.tdeeEstimado);
 
-        const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
-        const user = me?.user || me;
-        if (user) setAuthLogged(user);
+    await patchStep1({ tdeeEstimado: kcal });
 
-        nav("/app/onboarding/goal", { replace: true });
-        return;
-      } catch (e) {
-        setError(e?.message || "No se pudo guardar. Probá de nuevo.");
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
+    const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
+    const user = me?.user || me;
+    if (user) setAuthLogged(user);
+
+    nav("/app/onboarding/goal", { replace: true });
+    return;
+  } catch (e) {
+    setError(e?.message || "No se pudo guardar. Probá de nuevo.");
+    setLoading(false);
+  }
+
+  return;
+}
+
 
     // pasos intermedios: avanzar primero, guardar después
     onNext();

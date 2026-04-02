@@ -108,22 +108,32 @@ export default function GoalWizard({
   }, [currentWeightKg]);
 
   async function saveGoalToBackend(goalPayload) {
-    try {
-      setLoading(true);
-      await apiFetch("/api/usuarios/me/onboarding", {
-        method: "PATCH",
-        body: JSON.stringify({
-          step: 2,
-          data: {
-            __wizard: "v2",
-            goal: goalPayload,
-          },
-        }),
-      });
-    } finally {
-      setLoading(false);
-    }
+    await apiFetch("/api/usuarios/me/onboarding", {
+      method: "PATCH",
+      body: JSON.stringify({
+        step: 2,
+        data: {
+          __wizard: "v2",
+          goal: goalPayload,
+        },
+      }),
+    });
   }
+
+async function handleSaveAndContinue(goalPayload) {
+  if (loading) return;
+
+  setLoading(true);
+
+  try {
+    await saveGoalToBackend(goalPayload);
+    await onDone?.();
+  } catch (e) {
+    console.error("No se pudo guardar el objetivo", e);
+    setLoading(false);
+  }
+}
+
 
   if (step === 0) {
     return <GoalIntro onNext={() => setStep(1)} />;
@@ -136,7 +146,7 @@ export default function GoalWizard({
         onChange={(v) => setGoalType(v)}
         onBack={() => nav("/app/onboarding", { replace: true })}
         onNext={async () => {
-          if (!goalType) return;
+          if (!goalType || loading) return;
           await new Promise((r) => setTimeout(r, 140));
           setStep(2);
         }}
@@ -227,11 +237,11 @@ export default function GoalWizard({
     return (
       <GoalLoseSummary
         summary={summary}
-        onBack={() => setStep(2)}
-        onNext={async () => {
-          await saveGoalToBackend(summary);
-          onDone?.();
+        onBack={() => {
+          if (loading) return;
+          setStep(2);
         }}
+        onNext={() => handleSaveAndContinue(summary)}
         loading={loading}
       />
     );
@@ -259,11 +269,11 @@ export default function GoalWizard({
     return (
       <GoalGainSummary
         summary={summary}
-        onBack={() => setStep(2)}
-        onNext={async () => {
-          await saveGoalToBackend(summary);
-          onDone?.();
+        onBack={() => {
+          if (loading) return;
+          setStep(2);
         }}
+        onNext={() => handleSaveAndContinue(summary)}
         loading={loading}
       />
     );
@@ -287,11 +297,11 @@ export default function GoalWizard({
   return (
     <GoalMaintenanceSummary
       summary={maint}
-      onBack={() => setStep(2)}
-      onNext={async () => {
-        await saveGoalToBackend(maint);
-        onDone?.();
+      onBack={() => {
+        if (loading) return;
+        setStep(2);
       }}
+      onNext={() => handleSaveAndContinue(maint)}
       loading={loading}
     />
   );
