@@ -23,6 +23,11 @@ export default function ProgramWizard({ onDone }) {
   const [protein, setProtein] = useState("moderate");
   const [loading, setLoading] = useState(false);
 
+  const [weeklyPlan, setWeeklyPlan] = useState({
+    caloriesByDay: {},
+    macrosByDay: {},
+  });
+
   const payload = useMemo(
     () => ({
       diet,
@@ -30,8 +35,9 @@ export default function ProgramWizard({ onDone }) {
       calorieDist,
       shiftDays,
       protein,
+      weeklyPlan,
     }),
-    [diet, training, calorieDist, shiftDays, protein]
+    [diet, training, calorieDist, shiftDays, protein, weeklyPlan]
   );
 
   async function savePartial(partial) {
@@ -62,19 +68,19 @@ export default function ProgramWizard({ onDone }) {
     });
   }
 
-async function handleFinish() {
-  if (loading) return;
+  async function handleFinish() {
+    if (loading) return;
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    await saveFinal(payload);
-    await onDone?.();
-  } catch (e) {
-    console.error("No se pudo guardar el programa", e);
-    setLoading(false);
+    try {
+      await saveFinal(payload);
+      await onDone?.();
+    } catch (e) {
+      console.error("No se pudo guardar el programa", e);
+      setLoading(false);
+    }
   }
-}
 
   function savePartialInBackground(partial, label = "program") {
     savePartial(partial).catch((e) => {
@@ -188,7 +194,7 @@ async function handleFinish() {
             if (!protein || loading) return;
             await new Promise((r) => setTimeout(r, 100));
             setStep(6);
-            savePartialInBackground({ ...payload, protein }, "protein");
+            savePartialInBackground({ diet, training, calorieDist, shiftDays, protein }, "protein");
           }}
         />
       )}
@@ -212,6 +218,9 @@ async function handleFinish() {
           onBack={() => {
             if (loading) return;
             setStep(5);
+          }}
+          onPlanReady={(plan) => {
+            setWeeklyPlan(plan);
           }}
           onFinish={handleFinish}
           loading={loading}

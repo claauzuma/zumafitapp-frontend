@@ -1,5 +1,5 @@
 // src/onboarding_v2/screens/program/ProgramReady.jsx
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 
 function labelDiet(v) {
   if (v === "equilibrada") return "Equilibrada";
@@ -25,7 +25,13 @@ function labelProtein(v) {
   return "—";
 }
 
-export default function ProgramReady({ data, onBack, onFinish, loading = false }) {
+export default function ProgramReady({
+  data,
+  onBack,
+  onFinish,
+  onPlanReady,
+  loading = false,
+}) {
   const days = useMemo(
     () => [
       { key: "Lunes", short: "L" },
@@ -48,6 +54,28 @@ export default function ProgramReady({ data, onBack, onFinish, loading = false }
       c: 301,
     }));
   }, [days]);
+
+  const weeklyPlan = useMemo(() => {
+    return {
+      caloriesByDay: Object.fromEntries(
+        week.map((d) => [d.key, d.kcal])
+      ),
+      macrosByDay: Object.fromEntries(
+        week.map((d) => [
+          d.key,
+          {
+            p: d.p,
+            c: d.c,
+            g: d.f,
+          },
+        ])
+      ),
+    };
+  }, [week]);
+
+  useEffect(() => {
+    onPlanReady?.(weeklyPlan);
+  }, [onPlanReady, weeklyPlan]);
 
   return (
     <div className="ob2-card ob2-card--ready">
