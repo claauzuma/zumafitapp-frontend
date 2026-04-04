@@ -12,7 +12,7 @@ import {
 } from "./authCache.js";
 
 export default function PublicOnlyRoute({ children }) {
-  const cached = getCachedStatus(); // logged | guest | unknown
+  const cached = getCachedStatus();
   const roleCached = getCachedRole?.() || null;
 
   const [status, setStatus] = useState(cached);
@@ -45,7 +45,7 @@ export default function PublicOnlyRoute({ children }) {
 
         const user = me?.user || me;
         if (user) {
-          setAuthLogged(user); // ✅ guarda rol + user
+          setAuthLogged(user);
           setStatus("logged");
         } else {
           setAuthGuest();
@@ -70,10 +70,18 @@ export default function PublicOnlyRoute({ children }) {
   if (status === "logged") {
     const user = getCachedUser?.() || null;
     const role = String(user?.role || roleCached || "").toLowerCase();
+    const tipo = String(user?.tipo || "").toLowerCase();
     const done = Boolean(user?.onboarding?.done);
+    const enabled = user?.onboarding?.enabled === true;
+
+    const shouldDoOnboarding =
+      (role === "cliente" || role === "client") &&
+      tipo === "entrenado" &&
+      enabled &&
+      !done;
 
     if (role === "admin") return <Navigate to="/admin/inicio" replace />;
-    return <Navigate to={done ? "/app/inicio" : "/app/onboarding"} replace />;
+    return <Navigate to={shouldDoOnboarding ? "/app/onboarding" : "/app/inicio"} replace />;
   }
 
   return children;
