@@ -10,6 +10,7 @@ import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
 import RequireRole from "./RequireRole.jsx";
 import RequireOnboarding from "./RequireOnboarding.jsx";
 
+import CrearUsuario from "./admin/CrearUsuario.jsx";
 import AppLayout from "./AppLayout.jsx";
 import AdminLayout from "./admin/AdminLayout.jsx";
 
@@ -93,8 +94,11 @@ export default function App() {
         <Route index element={<Navigate to="inicio" replace />} />
         <Route path="inicio" element={<AdminInicio />} />
 
-        <Route path="usuarios" element={<AdminUsuarios />} />
-        <Route path="usuarios/:id" element={<AdminUsuarioDetalle />} />
+<Route path="usuarios" element={<AdminUsuarios />} />
+<Route path="usuarios/crear" element={<CrearUsuario />} />
+<Route path="usuarios/:id" element={<AdminUsuarioDetalle />} />
+
+        
 
         <Route path="comidas" element={<AdminComidas />} />
         <Route path="alimentos" element={<AdminAlimentos />} />

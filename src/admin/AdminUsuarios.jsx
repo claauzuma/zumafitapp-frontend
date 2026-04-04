@@ -96,12 +96,13 @@ export default function AdminUsuarios() {
 
         <div className="au-headBtns">
           <button className="au-btn" onClick={load}>↻ Refrescar</button>
-          <button
-            className="au-btn gold"
-            onClick={() => alert("TODO: crear usuario")}
-          >
-            + Crear usuario
-          </button>
+<button
+  className="au-btn gold"
+  onClick={() => navigate("/admin/usuarios/crear")}
+>
+  + Crear usuario
+</button>
+
         </div>
       </div>
 
