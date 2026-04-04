@@ -17,6 +17,7 @@ export default function AdminUsuarios() {
   async function load() {
     setLoading(true);
     setErr("");
+
     try {
       const qs = new URLSearchParams();
       if (search.trim()) qs.set("search", search.trim());
@@ -51,15 +52,25 @@ export default function AdminUsuarios() {
     const s = search.trim().toLowerCase();
     if (s) {
       arr = arr.filter((u) => {
-        const full = `${u?.profile?.nombre || ""} ${u?.profile?.apellido || ""}`.toLowerCase();
-        const em = String(u?.email || "").toLowerCase();
-        return full.includes(s) || em.includes(s);
+        const nombre = String(u?.profile?.nombre || "").toLowerCase();
+        const apellido = String(u?.profile?.apellido || "").toLowerCase();
+        const full = `${nombre} ${apellido}`.trim();
+        const email = String(u?.email || "").toLowerCase();
+        return full.includes(s) || email.includes(s);
       });
     }
 
-    if (role !== "todos") arr = arr.filter((u) => (u?.role || "") === role);
-    if (tipo !== "todos") arr = arr.filter((u) => (u?.tipo || "") === tipo);
-    if (estado !== "todos") arr = arr.filter((u) => (u?.estado || "") === estado);
+    if (role !== "todos") {
+      arr = arr.filter((u) => String(u?.role || "").toLowerCase() === role);
+    }
+
+    if (tipo !== "todos") {
+      arr = arr.filter((u) => String(u?.tipo || "").toLowerCase() === tipo);
+    }
+
+    if (estado !== "todos") {
+      arr = arr.filter((u) => String(u?.estado || "").toLowerCase() === estado);
+    }
 
     return arr;
   }, [users, search, role, tipo, estado]);
@@ -75,43 +86,29 @@ export default function AdminUsuarios() {
     navigate(`/admin/usuarios/${u?.id || u?._id || ""}`);
   }
 
-  function onEditar(u) {
-    alert(`TODO: editar usuario ${u?.email}`);
-  }
-
-  async function onEliminar(u) {
-    const id = u?.id || u?._id;
-    if (!id) return;
-
-    const ok = confirm(`¿Eliminar a ${u?.email}?`);
-    if (!ok) return;
-
-    try {
-      await apiFetch(`/api/usuarios/admin/users/${id}`, { method: "DELETE" });
-      setUsers((prev) => prev.filter((x) => (x?.id || x?._id) !== id));
-    } catch (e) {
-      alert(e?.message || "No se pudo eliminar");
-    }
-  }
-
   return (
     <div className="au-page">
       <div className="au-head">
         <div>
           <h1 className="au-title">Usuarios</h1>
-          <div className="au-sub">Gestión completa: filtros, roles, metas y acceso al detalle.</div>
+          <div className="au-sub">Gestión rápida de usuarios.</div>
         </div>
 
         <div className="au-headBtns">
           <button className="au-btn" onClick={load}>↻ Refrescar</button>
-          <button className="au-btn gold" onClick={() => alert("TODO: crear usuario")}>+ Crear usuario</button>
+          <button
+            className="au-btn gold"
+            onClick={() => alert("TODO: crear usuario")}
+          >
+            + Crear usuario
+          </button>
         </div>
       </div>
 
       <div className="au-filters au-card">
         <input
           className="au-input"
-          placeholder="Buscar por email / nombre / apellido…"
+          placeholder="Buscar por email / nombre / apellido..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -121,6 +118,8 @@ export default function AdminUsuarios() {
           <option value="admin">admin</option>
           <option value="cliente">cliente</option>
           <option value="entrenador">entrenador</option>
+          <option value="coach">coach</option>
+          <option value="user">user</option>
         </select>
 
         <select className="au-select" value={tipo} onChange={(e) => setTipo(e.target.value)}>
@@ -133,6 +132,7 @@ export default function AdminUsuarios() {
           <option value="todos">Estado: Todos</option>
           <option value="activo">activo</option>
           <option value="bloqueado">bloqueado</option>
+          <option value="inactivo">inactivo</option>
         </select>
 
         <button className="au-btn" onClick={limpiar}>Limpiar</button>
@@ -140,110 +140,80 @@ export default function AdminUsuarios() {
 
       <div className="au-row">
         <div className="au-muted">
-          {loading ? "Cargando…" : `Mostrando ${filtered.length} usuario(s)`}
+          {loading ? "Cargando..." : `Mostrando ${filtered.length} usuario(s)`}
           {err ? <span className="au-err"> • {err}</span> : null}
         </div>
       </div>
 
-      <div className="au-list">
+      <div className="au-grid">
         {loading ? (
-          <div className="au-card au-empty">Cargando usuarios…</div>
+          <div className="au-card au-empty">Cargando usuarios...</div>
         ) : filtered.length === 0 ? (
           <div className="au-card au-empty">No hay resultados con esos filtros.</div>
         ) : (
           filtered.map((u) => {
-            const id = u?.id || u?._id;
-
-            const nombre = u?.profile?.nombre || "—";
-            const apellido = u?.profile?.apellido || "";
-            const email = u?.email || "—";
-
-            const r = u?.role || "—";
-            const t = u?.tipo || "—";
-            const est = u?.estado || "—";
-
-            const showPlan = t !== "entrenador";
-
-            const objetivo =
-              u?.goal?.type ??
-              u?.meta ??
-              u?.objetivo ??
-              "—";
-
-            const kcal =
-              u?.metasActuales?.kcal ??
-              u?.metas?.kcal ??
-              u?.kcalObjetivo ??
-              u?.kcal ??
-              "—";
-
-            const p =
-              u?.metasActuales?.macros?.p ??
-              u?.metas?.macros?.p ??
-              u?.metas?.p ??
-              u?.macros?.p ??
-              "—";
-
-            const c =
-              u?.metasActuales?.macros?.c ??
-              u?.metas?.macros?.c ??
-              u?.metas?.c ??
-              u?.macros?.c ??
-              "—";
-
-            const g =
-              u?.metasActuales?.macros?.g ??
-              u?.metas?.macros?.g ??
-              u?.metas?.g ??
-              u?.macros?.g ??
-              "—";
+            const id = u?.id || u?._id || u?.email;
+            const nombre = (u?.profile?.nombre || "").trim();
+            const apellido = (u?.profile?.apellido || "").trim();
+            const avatar = getAvatarUrl(u);
+            const estadoActual = String(u?.estado || "").toLowerCase();
+            const activo = estadoActual === "activo";
+            const kind = getUserKindMeta(u);
+            const plan = getUserPlanMeta(u);
+            const activityLabel = formatLastActivity(u?.lastActivityAt);
+            const activityExact = formatExactDate(u?.lastActivityAt);
 
             return (
-              <div key={id} className="au-card au-item">
-                <div className="au-left">
-                  <div className="au-avatar">{initials(nombre, apellido)}</div>
+              <div key={id} className="au-card au-userCard">
+                <div className="au-avatarWrap">
+                  {avatar ? (
+                    <img
+                      className="au-avatarImg"
+                      src={avatar}
+                      alt={`${nombre} ${apellido}`.trim()}
+                    />
+                  ) : (
+                    <div className="au-avatarFallback">{initials(nombre, apellido)}</div>
+                  )}
 
-                  <div className="au-main">
-                    <div className="au-name">{nombre} {apellido}</div>
-                    <div className="au-email">{email}</div>
-
-                    <div className="au-badges">
-                      <span className={`au-badge ${r === "admin" ? "gold" : ""}`}>{r}</span>
-                      <span className="au-badge">{t}</span>
-                      <span className={`au-badge ${est === "bloqueado" ? "danger" : "ok"}`}>{est}</span>
-                    </div>
+                  <div
+                    className={`au-kindBadge ${kind.className}`}
+                    title={kind.label}
+                    aria-label={kind.label}
+                  >
+                    {kind.emoji}
                   </div>
                 </div>
 
-                <div className="au-mid">
-                  {showPlan ? (
-                    <>
-                      <div className="au-kpi">
-                        <div className="au-kTitle">Meta</div>
-                        <div className="au-kVal">{prettyObjetivo(objetivo)}</div>
-                      </div>
-
-                      <div className="au-kpi">
-                        <div className="au-kTitle">Kcal</div>
-                        <div className="au-kVal mono">{prettyNum(kcal)}</div>
-                      </div>
-
-                      <div className="au-kpi">
-                        <div className="au-kTitle">Macros</div>
-                        <div className="au-kVal mono">
-                          P {prettyNum(p)} • C {prettyNum(c)} • G {prettyNum(g)}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="au-muted2">Entrenador • sin meta/macros</div>
-                  )}
+                <div className="au-lastName" title={apellido || "Sin apellido"}>
+                  {apellido || "SIN APELLIDO"}
                 </div>
 
-                <div className="au-right">
-                  <IconBtn title="Ver" onClick={() => onVer(u)}>👁</IconBtn>
-                  <IconBtn title="Editar" onClick={() => onEditar(u)}>✏️</IconBtn>
-                  <IconBtn title="Eliminar" danger onClick={() => onEliminar(u)}>🗑</IconBtn>
+                <div className="au-firstName" title={nombre || "Sin nombre"}>
+                  {nombre || "Sin nombre"}
+                </div>
+
+                <div
+                  className={`au-lastActivity ${getActivityToneClass(u?.lastActivityAt)}`}
+                  title={activityExact}
+                >
+                  {activityLabel}
+                </div>
+
+                <div className="au-iconsRow">
+                  <StatusIcon active={activo} />
+
+                  {plan ? (
+                    <PlanIcon
+                      emoji={plan.emoji}
+                      label={plan.label}
+                      className={plan.className}
+                    />
+                  ) : (
+                    <div className="au-planPlaceholder" aria-hidden="true" />
+                  )}
+
+                  <IconBtn title="Detalle" onClick={() => onVer(u)}>ℹ️</IconBtn>
                 </div>
               </div>
             );
@@ -256,12 +226,35 @@ export default function AdminUsuarios() {
   );
 }
 
-function IconBtn({ title, onClick, children, danger = false }) {
+function IconBtn({ title, onClick, children }) {
   return (
-    <button className={`au-ibtn ${danger ? "danger" : ""}`} onClick={onClick} type="button">
-      <span className="au-ico" aria-hidden="true">{children}</span>
-      <span className="au-tip">{title}</span>
+    <button className="au-iconBtn" onClick={onClick} type="button" title={title}>
+      <span className="au-iconInner" aria-hidden="true">{children}</span>
     </button>
+  );
+}
+
+function StatusIcon({ active }) {
+  return (
+    <div
+      className={`au-statusIcon ${active ? "ok" : "off"}`}
+      title={active ? "Activo" : "Inactivo"}
+      aria-label={active ? "Activo" : "Inactivo"}
+    >
+      {active ? "🟢" : "🔴"}
+    </div>
+  );
+}
+
+function PlanIcon({ emoji, label, className = "" }) {
+  return (
+    <div
+      className={`au-planIcon ${className}`}
+      title={label}
+      aria-label={label}
+    >
+      {emoji}
+    </div>
   );
 }
 
@@ -271,38 +264,202 @@ function initials(nombre = "", apellido = "") {
   return (a + b).toUpperCase();
 }
 
-function prettyNum(x) {
-  if (x === null || x === undefined) return "—";
-  if (x === "—") return "—";
-  const n = Number(x);
-  if (!Number.isFinite(n)) return String(x);
-  return String(Math.round(n));
+function getAvatarUrl(u) {
+  return (
+    u?.profile?.foto ||
+    u?.profile?.avatar ||
+    u?.profile?.avatarUrl ||
+    u?.avatar ||
+    u?.avatarUrl ||
+    ""
+  );
 }
 
-function prettyObjetivo(x) {
-  if (!x || x === "—") return "—";
-  const v = String(x).toLowerCase();
+function getUserKindMeta(u) {
+  const role = String(u?.role || "").toLowerCase();
+  const tipo = String(u?.tipo || "").toLowerCase();
+  const mode =
+    String(u?.mode || u?.accountType || u?.gestion || u?.profile?.mode || "")
+      .toLowerCase();
 
-  if (v === "perder_peso" || v.includes("perdida")) return "Pérdida de grasa";
-  if (v === "ganar_peso" || v.includes("ganancia")) return "Ganancia muscular";
-  if (v === "mantener_peso" || v.includes("manten")) return "Mantenimiento";
+  const specialtiesRaw =
+    u?.coachProfile?.specialties ||
+    u?.specialties ||
+    u?.especialidades ||
+    u?.profile?.specialties ||
+    u?.profile?.especialidades ||
+    [];
 
-  return String(x);
+  const specialties = Array.isArray(specialtiesRaw)
+    ? specialtiesRaw.map((x) => String(x).toLowerCase())
+    : String(specialtiesRaw || "")
+        .toLowerCase()
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+  const isAdmin = role === "admin";
+
+  const isCoach =
+    role === "entrenador" ||
+    role === "coach" ||
+    tipo === "entrenador";
+
+  const hasTraining = specialties.some((s) =>
+    ["training", "trainer", "entrenamiento", "entrenador", "fitness"].includes(s)
+  );
+
+  const hasNutrition = specialties.some((s) =>
+    ["nutrition", "nutricion", "nutrición", "nutri", "nutritionist", "nutricionista"].includes(s)
+  );
+
+  const isSelfManaged =
+    mode === "self_service" ||
+    mode === "autogestionado" ||
+    mode === "self-managed" ||
+    mode === "self" ||
+    role === "user" ||
+    role === "cliente";
+
+  if (isAdmin) {
+    return { emoji: "👑", label: "Admin", className: "admin" };
+  }
+
+  if (isCoach && hasTraining && hasNutrition) {
+    return { emoji: "⚡", label: "Coach mixto", className: "mixed" };
+  }
+
+  if (isCoach && hasNutrition && !hasTraining) {
+    return { emoji: "🥗", label: "Coach nutrición", className: "nutrition" };
+  }
+
+  if (isCoach) {
+    return { emoji: "🏋️", label: "Coach entrenamiento", className: "coach" };
+  }
+
+  if (isSelfManaged) {
+    return { emoji: "📱", label: "Autogestionado", className: "self" };
+  }
+
+  return { emoji: "👤", label: "Usuario", className: "user" };
+}
+
+function getUserPlanMeta(u) {
+  const role = String(u?.role || "").toLowerCase();
+  if (role === "admin") return null;
+
+  const rawPlan =
+    u?.plan ||
+    u?.planActual ||
+    u?.subscription?.tier ||
+    u?.subscription?.plan ||
+    u?.suscripcion?.plan ||
+    u?.suscripcion?.tier ||
+    u?.membership ||
+    u?.membresia ||
+    u?.profile?.plan ||
+    "";
+
+  const plan = String(rawPlan || "free").toLowerCase().trim();
+
+  if (["vip", "premium"].includes(plan)) {
+    return { emoji: "💎", label: "Plan VIP", className: "vip" };
+  }
+
+  if (["plus", "pro"].includes(plan)) {
+    return { emoji: "⭐", label: "Plan Plus", className: "plus" };
+  }
+
+  return { emoji: "🆓", label: "Plan Free", className: "free" };
+}
+
+function formatLastActivity(value) {
+  if (!value) return "Sin actividad";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin actividad";
+
+  const diffMs = Date.now() - date.getTime();
+  const min = Math.floor(diffMs / (1000 * 60));
+  const hr = Math.floor(diffMs / (1000 * 60 * 60));
+  const day = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (min < 1) return "Ahora";
+  if (min < 60) return `Hace ${min} min`;
+  if (hr < 24) return `Hace ${hr} h`;
+  if (day < 7) return `Hace ${day} d`;
+  return "+7 d";
+}
+
+function formatExactDate(value) {
+  if (!value) return "Sin actividad";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin actividad";
+
+  return date.toLocaleString("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function getActivityToneClass(value) {
+  if (!value) return "old";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "old";
+
+  const diffMs = Date.now() - date.getTime();
+  const day = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (day < 1) return "fresh";
+  if (day < 7) return "mid";
+  return "old";
 }
 
 const styles = `
-.au-page{ max-width:1100px; margin:0 auto; padding:16px; color:#eaeaea; }
-.au-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.au-title{ margin:0; font-size:34px; color:#f5d76e; letter-spacing:.2px; }
-.au-sub{ margin-top:6px; opacity:.85; }
-.au-headBtns{ display:flex; gap:10px; flex-wrap:wrap; }
+.au-page{
+  width:100%;
+  max-width:100%;
+  margin:0 auto;
+  padding:6px 8px 14px;
+  color:#eaeaea;
+}
+
+.au-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+
+.au-title{
+  margin:0;
+  font-size:28px;
+  color:#f5d76e;
+  letter-spacing:.2px;
+}
+
+.au-sub{
+  margin-top:2px;
+  opacity:.82;
+}
+
+.au-headBtns{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
 
 .au-card{
-  border:1px solid #1f1f1f;
-  background: linear-gradient(180deg,#0b0b0b,#0b0b0bcc);
+  border:1.4px solid rgba(245,215,110,.18);
+  background: linear-gradient(180deg, #0a0d12, #080b10);
   border-radius:18px;
-  padding:14px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  box-shadow:
+    0 10px 26px rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(255,255,255,.02);
 }
 
 .au-btn{
@@ -313,17 +470,28 @@ const styles = `
   color:#eaeaea;
   font-weight:900;
   cursor:pointer;
+  transition:.16s ease;
 }
-.au-btn:hover{ border-color: rgba(245,215,110,.25); }
-.au-btn.gold{ border-color: rgba(245,215,110,.35); background: rgba(245,215,110,.06); color:#f5d76e; }
+
+.au-btn:hover{
+  border-color: rgba(245,215,110,.25);
+}
+
+.au-btn.gold{
+  border-color: rgba(245,215,110,.35);
+  background: rgba(245,215,110,.06);
+  color:#f5d76e;
+}
 
 .au-filters{
-  margin-top:14px;
+  margin-top:8px;
+  padding:10px;
   display:grid;
-  grid-template-columns: 1.5fr .8fr .8fr .8fr auto;
-  gap:12px;
+  grid-template-columns: 1.4fr .8fr .8fr .8fr auto;
+  gap:8px;
   align-items:center;
 }
+
 .au-input,.au-select{
   width:100%;
   padding:10px 12px;
@@ -333,108 +501,348 @@ const styles = `
   color:#eaeaea;
   outline:none;
 }
+
 .au-input:focus,.au-select:focus{
   border-color: rgba(245,215,110,.5);
   box-shadow: 0 0 0 4px rgba(245,215,110,.12);
 }
 
-.au-row{ display:flex; justify-content:space-between; align-items:center; margin:10px 4px 0; }
-.au-muted{ opacity:.8; font-weight:800; }
-.au-muted2{ opacity:.75; font-weight:900; }
-.au-err{ color:#ffb1b1; font-weight:900; }
-
-.au-list{ margin-top:12px; display:grid; gap:12px; }
-.au-empty{ opacity:.85; }
-
-.au-item{
-  display:grid;
-  grid-template-columns: 1.2fr 1fr 170px;
-  gap:14px;
+.au-row{
+  display:flex;
+  justify-content:space-between;
   align-items:center;
+  margin:10px 4px 0;
 }
 
-.au-left{ display:flex; gap:12px; align-items:center; min-width:0; }
-.au-avatar{
-  width:52px; height:52px; border-radius:16px;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:1000;
-  color:#f5d76e;
-  border:1px solid rgba(245,215,110,.35);
-  background: rgba(245,215,110,.06);
-  flex: 0 0 auto;
+.au-muted{
+  opacity:.85;
+  font-weight:900;
 }
-.au-main{ min-width:0; }
-.au-name{ font-size:18px; font-weight:1000; }
-.au-email{ opacity:.8; margin-top:3px; word-break:break-word; }
 
-.au-badges{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-.au-badge{
-  font-size:12px; padding:6px 10px; border-radius:999px;
-  border:1px solid #2b2b2b; background:#0f0f0f; font-weight:1000;
+.au-err{
+  color:#ffb1b1;
+  font-weight:900;
 }
-.au-badge.gold{ border-color: rgba(245,215,110,.35); color:#f5d76e; background: rgba(245,215,110,.05); }
-.au-badge.ok{ border-color: rgba(80,220,140,.35); color:#a8f7cf; background: rgba(80,220,140,.07); }
-.au-badge.danger{ border-color: rgba(255,80,80,.35); color:#ffb1b1; background: rgba(255,80,80,.08); }
 
-.au-mid{
-  display:flex;
-  gap:14px;
-  justify-content:flex-end;
-  flex-wrap:wrap;
-}
-.au-kpi{ min-width:140px; text-align:right; }
-.au-kTitle{ opacity:.75; font-weight:1000; font-size:12px; }
-.au-kVal{ margin-top:6px; font-weight:1000; color:#f5d76e; }
-.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-
-.au-right{
-  display:flex;
-  justify-content:flex-end;
+.au-grid{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap:10px;
 }
-.au-ibtn{
+
+.au-empty{
+  min-height:100px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  opacity:.85;
+}
+
+.au-userCard{
+  padding:14px 12px 12px;
+  min-height:286px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  text-align:center;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.au-userCard:hover{
+  transform: translateY(-2px);
+  border-color: rgba(245,215,110,.28);
+  box-shadow:
+    0 14px 32px rgba(0,0,0,.32),
+    0 0 0 1px rgba(245,215,110,.04);
+}
+
+.au-avatarWrap{
   position:relative;
-  width:44px; height:44px;
-  border-radius:14px;
+  width:108px;
+  height:108px;
+  margin-bottom:12px;
+  border-radius:999px;
+  overflow:visible;
+  background:#151515;
+  border:1px solid rgba(255,255,255,.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.au-avatarImg{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  border-radius:999px;
+}
+
+.au-avatarFallback{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:34px;
+  font-weight:1000;
+  color:#f5d76e;
+  border-radius:999px;
+  background: radial-gradient(circle at top, rgba(245,215,110,.14), rgba(255,255,255,.02));
+}
+
+.au-kindBadge{
+  position:absolute;
+  right:-2px;
+  bottom:2px;
+  width:32px;
+  height:32px;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:16px;
+  border:1px solid #2b2b2b;
+  background:#0f0f0f;
+  box-shadow: 0 8px 20px rgba(0,0,0,.28);
+}
+
+.au-kindBadge.admin{
+  border-color: rgba(245,215,110,.35);
+  background: rgba(245,215,110,.08);
+}
+
+.au-kindBadge.coach{
+  border-color: rgba(120,170,255,.35);
+  background: rgba(120,170,255,.08);
+}
+
+.au-kindBadge.nutrition{
+  border-color: rgba(80,220,140,.35);
+  background: rgba(80,220,140,.08);
+}
+
+.au-kindBadge.mixed{
+  border-color: rgba(255,170,80,.35);
+  background: rgba(255,170,80,.08);
+}
+
+.au-kindBadge.self{
+  border-color: rgba(160,160,160,.35);
+  background: rgba(255,255,255,.05);
+}
+
+.au-kindBadge.user{
+  border-color: rgba(150,150,150,.28);
+  background: rgba(255,255,255,.04);
+}
+
+.au-lastName{
+  max-width:100%;
+  font-size:20px;
+  line-height:1.05;
+  font-weight:700;
+  color:#f0f0f0;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.au-firstName{
+  margin-top:8px;
+  max-width:100%;
+  font-size:12px;
+  line-height:1.2;
+  font-weight:600;
+  color:#bdbdbd;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.au-lastActivity{
+  margin-top:10px;
+  min-height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.5px;
+  border:1px solid #2a2a2a;
+  background:#101010;
+  color:#cfcfcf;
+}
+
+.au-lastActivity.fresh{
+  color:#a8f7cf;
+  border-color: rgba(80,220,140,.35);
+  background: rgba(80,220,140,.07);
+}
+
+.au-lastActivity.mid{
+  color:#f5d76e;
+  border-color: rgba(245,215,110,.30);
+  background: rgba(245,215,110,.06);
+}
+
+.au-lastActivity.old{
+  color:#b7b7b7;
+  border-color: rgba(160,160,160,.24);
+  background: rgba(255,255,255,.04);
+}
+
+.au-iconsRow{
+  margin-top:auto;
+  width:100%;
+  display:grid;
+  grid-template-columns: 42px 42px 42px;
+  justify-content:space-between;
+  align-items:center;
+  padding-top:18px;
+}
+
+.au-statusIcon,
+.au-iconBtn,
+.au-planIcon,
+.au-planPlaceholder{
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.au-statusIcon{
+  border:1px solid #2b2b2b;
+  background:#101010;
+  font-size:20px;
+}
+
+.au-statusIcon.ok{
+  border-color: rgba(80,220,140,.35);
+  background: rgba(80,220,140,.07);
+}
+
+.au-statusIcon.off{
+  border-color: rgba(255,80,80,.35);
+  background: rgba(255,80,80,.08);
+}
+
+.au-planIcon{
+  border:1px solid #2b2b2b;
+  background:#101010;
+  font-size:18px;
+}
+
+.au-planIcon.free{
+  border-color: rgba(160,160,160,.28);
+  background: rgba(255,255,255,.045);
+}
+
+.au-planIcon.plus{
+  border-color: rgba(245,215,110,.35);
+  background: rgba(245,215,110,.08);
+}
+
+.au-planIcon.vip{
+  border-color: rgba(120,210,255,.35);
+  background: rgba(120,210,255,.08);
+}
+
+.au-planPlaceholder{
+  opacity:0;
+  pointer-events:none;
+}
+
+.au-iconBtn{
   border:1px solid #2b2b2b;
   background:#0f0f0f;
   color:#eaeaea;
   cursor:pointer;
-  font-weight:1000;
-  display:grid;
-  place-items:center;
+  transition:.16s ease;
 }
-.au-ibtn:hover{ border-color: rgba(245,215,110,.25); }
-.au-ibtn.danger{
-  border-color: rgba(255,80,80,.35);
-  background: rgba(255,80,80,.08);
+
+.au-iconBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(245,215,110,.25);
 }
-.au-ico{ font-size:18px; line-height:1; }
-.au-tip{
-  position:absolute;
-  bottom: -34px;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #1f1f1f;
-  background: #0b0b0b;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .15s ease, transform .15s ease;
-}
-.au-ibtn:hover .au-tip{
-  opacity: 1;
-  transform: translateX(-50%) translateY(-2px);
+
+.au-iconInner{
+  font-size:18px;
+  line-height:1;
 }
 
 @media (max-width: 980px){
-  .au-filters{ grid-template-columns: 1fr 1fr; }
-  .au-item{ grid-template-columns: 1fr; }
-  .au-mid{ justify-content:flex-start; }
-  .au-right{ justify-content:flex-start; }
-  .au-kpi{ text-align:left; }
+  .au-filters{
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px){
+  .au-page{
+    padding:6px 6px 12px;
+  }
+
+  .au-title{
+    font-size:24px;
+  }
+
+  .au-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .au-userCard{
+    min-height:260px;
+    padding:12px 10px 10px;
+  }
+
+  .au-avatarWrap{
+    width:88px;
+    height:88px;
+  }
+
+  .au-kindBadge{
+    width:28px;
+    height:28px;
+    font-size:14px;
+    right:-1px;
+    bottom:0;
+  }
+
+  .au-lastName{
+    font-size:17px;
+  }
+
+  .au-firstName{
+    font-size:11px;
+  }
+
+  .au-lastActivity{
+    font-size:10px;
+    padding:4px 8px;
+  }
+
+  .au-iconsRow{
+    grid-template-columns: 38px 38px 38px;
+  }
+
+  .au-statusIcon,
+  .au-iconBtn,
+  .au-planIcon,
+  .au-planPlaceholder{
+    width:38px;
+    height:38px;
+  }
 }
 `;

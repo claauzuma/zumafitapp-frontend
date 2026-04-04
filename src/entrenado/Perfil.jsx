@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../Api";
 import "./Perfil.css";
 
 const PERFIL_CACHE_KEY = "zumafit_perfil_cache_v1";
+const PERFIL_REFRESH_MS = 30_000;
+const PERFIL_ME_ENDPOINT = "/api/usuarios/users/me";
+const PERFIL_UPDATED_AT_ENDPOINT = "/api/usuarios/users/me/updatedAt";
 
 function initialsOf(nombre, apellido, fallbackEmail) {
   const n = String(nombre || "").trim();
@@ -74,6 +77,31 @@ function writePerfilCache(data) {
   }
 }
 
+function normalizeUpdatedAt(value) {
+  if (value === null || value === undefined || value === "") return null;
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? raw : String(parsed);
+}
+
+function extractUpdatedAt(payload) {
+  return normalizeUpdatedAt(
+    payload?.updatedAt ??
+      payload?.user?.updatedAt ??
+      payload?.profile?.updatedAt ??
+      payload?.data?.updatedAt ??
+      payload?.result?.updatedAt ??
+      null
+  );
+}
+
 export default function Perfil() {
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
@@ -109,6 +137,12 @@ export default function Perfil() {
 
   const [snapPersonal, setSnapPersonal] = useState(null);
   const [snapBasics, setSnapBasics] = useState(null);
+
+  const mountedRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
+  const checkInFlightRef = useRef(false);
+  const lastSyncAtRef = useRef(0);
+  const lastKnownUpdatedAtRef = useRef(null);
 
   function hydrateProfile(data) {
     setEmail(data?.email || "");
@@ -161,35 +195,121 @@ export default function Perfil() {
     setProgram(data?.program || null);
   }
 
-  async function refetchPerfilSilently() {
-    const data = await apiFetch("/api/usuarios/users/me");
-    console.log("PERFIL /users/me =>", data);
+  function commitProfileData(data, options = {}) {
+    const { fallbackUpdatedAt = null } = options;
+
     writePerfilCache(data);
     hydrateProfile(data);
-    return data;
+
+    const nextUpdatedAt = extractUpdatedAt(data) ?? normalizeUpdatedAt(fallbackUpdatedAt);
+    if (nextUpdatedAt) {
+      lastKnownUpdatedAtRef.current = nextUpdatedAt;
+    }
+  }
+
+  async function refetchPerfilSilently(options = {}) {
+    const {
+      showOfflineMessage = false,
+      minGapMs = 3000,
+      fallbackUpdatedAt = null,
+    } = options;
+
+    const now = Date.now();
+    if (refreshInFlightRef.current) return null;
+    if (now - lastSyncAtRef.current < minGapMs) return null;
+
+    refreshInFlightRef.current = true;
+    lastSyncAtRef.current = now;
+
+    try {
+      const data = await apiFetch(PERFIL_ME_ENDPOINT);
+      if (!mountedRef.current) return null;
+
+      console.log("PERFIL /users/me =>", data);
+      commitProfileData(data, { fallbackUpdatedAt });
+      return data;
+    } catch (e) {
+      if (mountedRef.current && showOfflineMessage) {
+        setMsg({ type: "warn", text: "Mostrando datos guardados localmente" });
+      }
+      return null;
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }
+
+  async function checkPerfilChangesSilently(options = {}) {
+    const { showOfflineMessage = false, minGapMs = 3000 } = options;
+
+    const now = Date.now();
+    if (checkInFlightRef.current || refreshInFlightRef.current) return null;
+    if (now - lastSyncAtRef.current < minGapMs) return null;
+
+    checkInFlightRef.current = true;
+    lastSyncAtRef.current = now;
+
+    try {
+      const updatedAtResponse = await apiFetch(PERFIL_UPDATED_AT_ENDPOINT);
+      if (!mountedRef.current) return null;
+
+      console.log("PERFIL /users/me/updatedAt =>", updatedAtResponse);
+
+      const remoteUpdatedAt = extractUpdatedAt(updatedAtResponse);
+      const localUpdatedAt = lastKnownUpdatedAtRef.current;
+
+      if (!remoteUpdatedAt || !localUpdatedAt || remoteUpdatedAt !== localUpdatedAt) {
+        return await refetchPerfilSilently({
+          showOfflineMessage,
+          minGapMs: 0,
+          fallbackUpdatedAt: remoteUpdatedAt,
+        });
+      }
+
+      return null;
+    } catch (e) {
+      if (mountedRef.current && showOfflineMessage) {
+        setMsg({ type: "warn", text: "Mostrando datos guardados localmente" });
+      }
+      return null;
+    } finally {
+      checkInFlightRef.current = false;
+    }
   }
 
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
 
     (async () => {
       try {
         setMsg(null);
 
         const cached = readPerfilCache();
-        if (cached && mounted) {
+
+        if (cached) {
           hydrateProfile(cached);
+
+          const cachedUpdatedAt = extractUpdatedAt(cached);
+          if (cachedUpdatedAt) {
+            lastKnownUpdatedAtRef.current = cachedUpdatedAt;
+          }
+
           setLoading(false);
+
+          await checkPerfilChangesSilently({
+            showOfflineMessage: false,
+            minGapMs: 0,
+          });
+
+          return;
         }
 
-        const data = await apiFetch("/api/usuarios/users/me");
-        console.log("PERFIL /users/me =>", data);
-        if (!mounted) return;
+        const data = await apiFetch(PERFIL_ME_ENDPOINT);
+        if (!mountedRef.current) return;
 
-        writePerfilCache(data);
-        hydrateProfile(data);
+        console.log("PERFIL /users/me =>", data);
+        commitProfileData(data);
       } catch (e) {
-        if (mounted) {
+        if (mountedRef.current) {
           const hadCache = !!readPerfilCache();
           if (!hadCache) {
             setMsg({ type: "warn", text: e?.message || "No pude cargar el perfil" });
@@ -198,14 +318,45 @@ export default function Perfil() {
           }
         }
       } finally {
-        if (mounted) setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     })();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    function handleWindowFocus() {
+      if (editingPersonal || editingBasics || savingPersonal || savingBasics) return;
+      checkPerfilChangesSilently({ showOfflineMessage: false, minGapMs: 3000 });
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      if (editingPersonal || editingBasics || savingPersonal || savingBasics) return;
+      checkPerfilChangesSilently({ showOfflineMessage: false, minGapMs: 3000 });
+    }
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [editingPersonal, editingBasics, savingPersonal, savingBasics]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (editingPersonal || editingBasics || savingPersonal || savingBasics) return;
+      checkPerfilChangesSilently({ showOfflineMessage: false, minGapMs: 3000 });
+    }, PERFIL_REFRESH_MS);
+
+    return () => clearInterval(intervalId);
+  }, [editingPersonal, editingBasics, savingPersonal, savingBasics]);
 
   useEffect(() => {
     if (editingPersonal) {
@@ -284,12 +435,12 @@ export default function Perfil() {
         },
       };
 
-      await apiFetch("/api/usuarios/users/me", {
+      await apiFetch(PERFIL_ME_ENDPOINT, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
 
-      const fresh = await refetchPerfilSilently();
+      const fresh = await refetchPerfilSilently({ showOfflineMessage: false, minGapMs: 0 });
       setEditingPersonal(false);
       setMsg({ type: "ok", text: "Datos personales actualizados ✅" });
       return fresh;
@@ -329,7 +480,7 @@ export default function Perfil() {
         }),
       });
 
-      const fresh = await refetchPerfilSilently();
+      const fresh = await refetchPerfilSilently({ showOfflineMessage: false, minGapMs: 0 });
       setEditingBasics(false);
       setMsg({ type: "ok", text: "Datos físicos actualizados ✅" });
       return fresh;
