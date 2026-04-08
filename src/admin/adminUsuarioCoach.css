@@ -1,0 +1,381 @@
+.auco-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.auco-tabs{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.auco-tab{
+  min-height:46px;
+  padding:0 18px;
+  border-radius:16px;
+  border:1px solid #2a2f36;
+  background:#0d1117;
+  color:#edf2f7;
+  font-weight:900;
+  cursor:pointer;
+  transition:.18s ease;
+}
+
+.auco-tab:hover{
+  border-color:rgba(245,215,110,.26);
+}
+
+.auco-tab.active{
+  border-color:rgba(245,215,110,.42);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  box-shadow:0 0 0 4px rgba(245,215,110,.08);
+}
+
+.auco-grid{
+  display:grid;
+  grid-template-columns:1.08fr .92fr;
+  gap:14px;
+}
+
+.auco-card{
+  border:1px solid rgba(245,215,110,.12);
+  background:linear-gradient(180deg, rgba(12,14,19,.96), rgba(8,10,14,.98));
+  border-radius:24px;
+  padding:16px;
+  box-shadow:
+    0 16px 50px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.02);
+}
+
+.auco-title{
+  font-size:18px;
+  font-weight:1000;
+  color:#f5d76e;
+}
+
+.auco-sub{
+  margin-top:6px;
+  color:#aeb8c4;
+  line-height:1.5;
+}
+
+.auco-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.auco-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.auco-btn{
+  min-height:44px;
+  padding:0 14px;
+  border-radius:14px;
+  border:1px solid #2a3038;
+  background:#0d1117;
+  color:#edf2f7;
+  font-weight:900;
+  cursor:pointer;
+  transition:.18s ease;
+}
+
+.auco-btn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(245,215,110,.26);
+}
+
+.auco-btnGold{
+  border-color:rgba(245,215,110,.38);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+}
+
+.auco-btnDanger{
+  border-color:rgba(255,90,90,.32);
+  background:rgba(255,90,90,.09);
+  color:#ffbcbc;
+}
+
+.auco-infoGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+  margin-top:14px;
+}
+
+.auco-box{
+  border:1px solid rgba(255,255,255,.06);
+  background:#0f141b;
+  border-radius:18px;
+  padding:14px;
+}
+
+.auco-kicker{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:#9eacbc;
+  font-weight:900;
+}
+
+.auco-value{
+  margin-top:8px;
+  font-size:18px;
+  font-weight:1000;
+  color:#f5f7fa;
+}
+
+.auco-searchWrap{
+  margin-top:14px;
+}
+
+.auco-input{
+  width:100%;
+  min-height:48px;
+  border-radius:16px;
+  border:1px solid #2a313b;
+  background:#0b0f15;
+  color:#edf2f7;
+  padding:0 14px;
+  outline:none;
+  font-size:15px;
+}
+
+.auco-input:focus{
+  border-color:rgba(245,215,110,.42);
+  box-shadow:0 0 0 4px rgba(245,215,110,.10);
+}
+
+.auco-clientList{
+  margin-top:14px;
+  display:grid;
+  gap:12px;
+}
+
+.auco-clientCard{
+  border:1px solid rgba(255,255,255,.06);
+  background:#0f141b;
+  border-radius:20px;
+  padding:14px;
+}
+
+.auco-clientTop{
+  display:flex;
+  gap:14px;
+  align-items:flex-start;
+}
+
+.auco-clientAvatarWrap{
+  width:64px;
+  height:64px;
+  border-radius:18px;
+  overflow:hidden;
+  border:1px solid rgba(245,215,110,.18);
+  background:rgba(245,215,110,.05);
+  flex:0 0 auto;
+}
+
+.auco-clientAvatarImg{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.auco-clientAvatarFallback{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:22px;
+  font-weight:1000;
+  color:#f5d76e;
+  background:radial-gradient(circle at top, rgba(245,215,110,.15), rgba(255,255,255,.02));
+}
+
+.auco-clientInfo{
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.auco-clientName{
+  font-size:22px;
+  font-weight:1000;
+  color:#f3f6fa;
+  line-height:1.1;
+}
+
+.auco-clientEmail{
+  margin-top:6px;
+  color:#b6c0cc;
+  word-break:break-word;
+}
+
+.auco-clientMeta{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+
+.auco-chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid #2d343d;
+  background:#10151c;
+  color:#e4ebf2;
+  font-size:12px;
+  font-weight:900;
+}
+
+.auco-chip.is-on{
+  border-color:rgba(80,220,140,.28);
+  background:rgba(80,220,140,.08);
+  color:#bdf4d0;
+}
+
+.auco-chip.is-off{
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+  color:#aeb8c4;
+}
+
+.auco-clientActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.auco-permissions{
+  display:grid;
+  gap:12px;
+  margin-top:14px;
+}
+
+.auco-chipWrap{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+}
+
+.auco-planRow{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.auco-planBtn{
+  min-width:120px;
+  min-height:52px;
+  padding:0 18px;
+  border-radius:16px;
+  border:1px solid #2a3038;
+  background:#0d1117;
+  color:#edf2f7;
+  font-weight:1000;
+  cursor:pointer;
+  transition:.18s ease;
+}
+
+.auco-planBtn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(245,215,110,.24);
+}
+
+.auco-planBtn.active{
+  border-color:rgba(245,215,110,.42);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  box-shadow:0 0 0 4px rgba(245,215,110,.08);
+}
+
+.auco-note{
+  margin-top:14px;
+  border:1px dashed rgba(245,215,110,.18);
+  background:rgba(245,215,110,.04);
+  border-radius:16px;
+  padding:12px 14px;
+  color:#d3dbe5;
+  line-height:1.5;
+}
+
+.auco-empty{
+  margin-top:14px;
+  border:1px dashed rgba(255,255,255,.10);
+  border-radius:18px;
+  padding:18px;
+  color:#bfc8d2;
+}
+
+.auco-error{
+  border:1px solid rgba(255,90,90,.24);
+  background:rgba(255,90,90,.08);
+  color:#ffbcbc;
+  border-radius:16px;
+  padding:12px 14px;
+  font-weight:800;
+}
+
+@media (max-width: 980px){
+  .auco-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width: 640px){
+  .auco-tabs{
+    flex-wrap:nowrap;
+    overflow:auto;
+    padding-bottom:4px;
+  }
+
+  .auco-tab{
+    flex:0 0 auto;
+    white-space:nowrap;
+  }
+
+  .auco-infoGrid{
+    grid-template-columns:1fr;
+  }
+
+  .auco-clientTop{
+    flex-direction:column;
+  }
+
+  .auco-clientAvatarWrap{
+    width:72px;
+    height:72px;
+  }
+
+  .auco-clientName{
+    font-size:18px;
+  }
+
+  .auco-actions,
+  .auco-clientActions,
+  .auco-planRow{
+    flex-direction:column;
+  }
+
+  .auco-btn,
+  .auco-planBtn{
+    width:100%;
+  }
+}
+

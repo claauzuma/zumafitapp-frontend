@@ -11,6 +11,28 @@ import {
   setAuthGuest,
 } from "./authCache.js";
 
+function normalizeRole(role) {
+  return String(role || "").trim().toLowerCase();
+}
+
+function getHomeByUser(user, roleCached = null) {
+  const role = normalizeRole(user?.role || roleCached || "");
+  const tipo = String(user?.tipo || "").toLowerCase();
+  const done = Boolean(user?.onboarding?.done);
+  const enabled = user?.onboarding?.enabled === true;
+
+  const shouldDoOnboarding =
+    (role === "cliente" || role === "client") &&
+    tipo === "entrenado" &&
+    enabled &&
+    !done;
+
+  if (role === "admin") return "/admin/inicio";
+  if (role === "coach") return "/profesional";
+
+  return shouldDoOnboarding ? "/app/onboarding" : "/app/inicio";
+}
+
 export default function PublicOnlyRoute({ children }) {
   const cached = getCachedStatus();
   const roleCached = getCachedRole?.() || null;
@@ -69,19 +91,7 @@ export default function PublicOnlyRoute({ children }) {
 
   if (status === "logged") {
     const user = getCachedUser?.() || null;
-    const role = String(user?.role || roleCached || "").toLowerCase();
-    const tipo = String(user?.tipo || "").toLowerCase();
-    const done = Boolean(user?.onboarding?.done);
-    const enabled = user?.onboarding?.enabled === true;
-
-    const shouldDoOnboarding =
-      (role === "cliente" || role === "client") &&
-      tipo === "entrenado" &&
-      enabled &&
-      !done;
-
-    if (role === "admin") return <Navigate to="/admin/inicio" replace />;
-    return <Navigate to={shouldDoOnboarding ? "/app/onboarding" : "/app/inicio"} replace />;
+    return <Navigate to={getHomeByUser(user, roleCached)} replace />;
   }
 
   return children;

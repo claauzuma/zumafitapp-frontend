@@ -1,4 +1,3 @@
-// src/Api.js
 import { API_BASE } from "./apiCredentials";
 import { getCachedToken } from "./authCache.js";
 
@@ -8,20 +7,17 @@ function joinUrl(base, path) {
   return `${b}/${p}`;
 }
 
-// ✅ helper: token fallback (por si el navegador no guarda cookies)
 function getAuthToken() {
   try {
-    return getCachedToken(); // ✅ viene de authCache (auth_token_v1)
+    return getCachedToken();
   } catch {
     return null;
   }
 }
 
-// ✅ helper: setear Authorization sin pisar si ya existe
 function withAuthHeader(headers = {}) {
   const h = { ...headers };
 
-  // si ya viene authorization, no tocamos
   if (h.Authorization || h.authorization) return h;
 
   const token = getAuthToken();
@@ -46,23 +42,35 @@ export async function apiFetch(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  const isFormData =
+    typeof FormData !== "undefined" && body instanceof FormData;
+
+  const isStringBody = typeof body === "string";
+
   try {
     const mergedHeaders = withAuthHeader({
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...headers,
     });
+
+    const finalBody =
+      body == null
+        ? undefined
+        : isFormData
+        ? body
+        : isStringBody
+        ? body
+        : JSON.stringify(body);
 
     const res = await fetch(url, {
       method,
       headers: mergedHeaders,
-      body,
-      credentials: "include", // ✅ cookies si el navegador las acepta
+      body: finalBody,
+      credentials: "include",
       signal: controller.signal,
     });
 
-    // ✅ Para /me: si 401 y silent401 -> devolver null (sin throw)
     if (silent401 && res.status === 401) return null;
-
     if (res.status === 204) return null;
 
     let data = null;
@@ -92,14 +100,12 @@ export async function apiFetch(path, options = {}) {
 
     return data;
   } catch (e) {
-    // ✅ Timeout
     if (e?.name === "AbortError") {
       const err = new Error("Tiempo de espera agotado. Revisá tu conexión.");
       err.status = 0;
       throw err;
     }
 
-    // ✅ Errores típicos de red (sin internet / backend caído / CORS / DNS)
     if (e instanceof TypeError) {
       const err = new Error("No se pudo conectar con el servidor. Revisá tu conexión.");
       err.status = 0;

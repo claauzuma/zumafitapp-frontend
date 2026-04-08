@@ -65,6 +65,17 @@ function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
 }
 
+function getHomeByUser(user) {
+  const role = normalizeRole(user?.role || user?.rol);
+  const done = Boolean(user?.onboarding?.done);
+
+  if (role === "admin") return "/admin/inicio";
+  if (role === "coach") return "/profesional";
+
+  return done ? "/app/inicio" : "/app/onboarding";
+}
+
+
 // ---------------- component ----------------
 export default function AuthPage({ defaultMode = "login" }) {
   const navigate = useNavigate();
@@ -228,10 +239,7 @@ export default function AuthPage({ defaultMode = "login" }) {
           console.log(`🟢 [OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
 
           setAuthLogged(user);
-
-          const done = Boolean(user?.onboarding?.done);
-          if (role === "admin") navigate("/admin/inicio", { replace: true });
-          else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+         navigate(getHomeByUser(user), { replace: true });
         } catch (err) {
           console.log(`🔴 [OAuth ${debugIdRef.current}] /me FAIL luego de token query`, {
             status: err?.status,
@@ -281,13 +289,11 @@ export default function AuthPage({ defaultMode = "login" }) {
 
         setAuthLogged(user);
 
-        const done = Boolean(user?.onboarding?.done);
+// ✅ una vez que tenemos /me, ya no hay “flash”
+setBooting(false);
 
-        // ✅ una vez que tenemos /me, ya no hay “flash”
-        setBooting(false);
+navigate(getHomeByUser(user), { replace: true });
 
-        if (role === "admin") navigate("/admin/inicio", { replace: true });
-        else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
       } catch (err) {
         if (cancelled) return;
 
@@ -394,11 +400,10 @@ export default function AuthPage({ defaultMode = "login" }) {
 
           setAuthLogged(user);
 
-          const done = Boolean(user?.onboarding?.done);
-          if (role === "admin") navigate("/admin/inicio", { replace: true });
-          else navigate(done ? "/app/inicio" : "/app/onboarding", { replace: true });
+navigate(getHomeByUser(user), { replace: true });
 
-          return;
+return;
+
         } catch (err) {
           console.log(`🔴 [AuthPage ${debugIdRef.current}] login FAIL`, {
             status: err?.status,

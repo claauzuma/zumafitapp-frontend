@@ -4,9 +4,7 @@ import { apiFetch } from "../Api.js";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin", emoji: "👑" },
-  { value: "trainer", label: "Entrenador", emoji: "🏋️" },
-  { value: "nutritionist", label: "Nutricionista", emoji: "🥗" },
-  { value: "trainer_nutritionist", label: "Entrenador + Nutrición", emoji: "⚡" },
+  { value: "coach", label: "Coach", emoji: "🧠" },
 ];
 
 const PLAN_OPTIONS = [
@@ -26,8 +24,14 @@ export default function CrearUsuario() {
     nombre: "",
     apellido: "",
     email: "",
-    role: "trainer",
+    role: "coach",
     plan: "free",
+    coachProfile: {
+      specialties: {
+        training: true,
+        nutrition: false,
+      },
+    },
   });
 
   const selectedRole = useMemo(
@@ -36,10 +40,34 @@ export default function CrearUsuario() {
   );
 
   const isAdmin = form.role === "admin";
-  const showPlan = !isAdmin;
+  const isCoach = form.role === "coach";
+  const showPlan = isCoach;
+
+  const specialtyLabel = useMemo(() => {
+    const training = !!form?.coachProfile?.specialties?.training;
+    const nutrition = !!form?.coachProfile?.specialties?.nutrition;
+
+    if (training && nutrition) return "Entrenamiento + Nutrición";
+    if (training) return "Entrenamiento";
+    if (nutrition) return "Nutrición";
+    return "Sin especialidad";
+  }, [form]);
 
   function setField(name, value) {
     setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function setCoachSpecialty(name, value) {
+    setForm((prev) => ({
+      ...prev,
+      coachProfile: {
+        ...prev.coachProfile,
+        specialties: {
+          ...prev.coachProfile?.specialties,
+          [name]: value,
+        },
+      },
+    }));
   }
 
   function validate() {
@@ -51,8 +79,16 @@ export default function CrearUsuario() {
     if (!emailOk) return "Ingresá un email válido.";
 
     if (!form.role) return "Elegí un rol.";
-
     if (showPlan && !form.plan) return "Elegí un plan.";
+
+    if (isCoach) {
+      const training = !!form?.coachProfile?.specialties?.training;
+      const nutrition = !!form?.coachProfile?.specialties?.nutrition;
+
+      if (!training && !nutrition) {
+        return "Elegí al menos una especialidad para el coach.";
+      }
+    }
 
     return "";
   }
@@ -66,6 +102,14 @@ export default function CrearUsuario() {
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
       },
+      coachProfile: isCoach
+        ? {
+            specialties: {
+              training: !!form?.coachProfile?.specialties?.training,
+              nutrition: !!form?.coachProfile?.specialties?.nutrition,
+            },
+          }
+        : null,
     };
   }
 
@@ -87,14 +131,12 @@ export default function CrearUsuario() {
 
       await apiFetch("/api/usuarios/admin/invitations", {
         method: "POST",
-        body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        body: payload,
         timeoutMs: 12000,
       });
 
       setOkMsg("Invitación creada correctamente.");
+
       setTimeout(() => {
         navigate("/admin/usuarios");
       }, 700);
@@ -125,8 +167,9 @@ export default function CrearUsuario() {
                 <div className="iu-kicker">Panel Admin</div>
                 <h1 className="iu-title">Invitar usuario</h1>
                 <p className="iu-sub">
-                  Creá admins, entrenadores o nutricionistas con una invitación
-                  simple por email. La persona completa su acceso después.
+                  Creá admins o coaches con una invitación simple por email. El
+                  acceso profesional y sus módulos se definen por rol y
+                  especialidades.
                 </p>
               </div>
             </div>
@@ -169,11 +212,11 @@ export default function CrearUsuario() {
                 <div className="iu-blockHead">
                   <h2 className="iu-h2">Rol</h2>
                   <p className="iu-small">
-                    Elegí el tipo de acceso que va a tener.
+                    Elegí si va a ser admin o coach.
                   </p>
                 </div>
 
-                <div className="iu-roleGrid">
+                <div className="iu-roleGrid compact">
                   {ROLE_OPTIONS.map((role) => (
                     <button
                       key={role.value}
@@ -189,6 +232,53 @@ export default function CrearUsuario() {
                   ))}
                 </div>
               </div>
+
+              {isCoach && (
+                <div className="iu-block">
+                  <div className="iu-blockHead">
+                    <h2 className="iu-h2">Especialidades del coach</h2>
+                    <p className="iu-small">
+                      Definí qué módulos va a tener habilitados.
+                    </p>
+                  </div>
+
+                  <div className="iu-specialties">
+                    <button
+                      type="button"
+                      className={`iu-specialtyBtn ${
+                        form?.coachProfile?.specialties?.training ? "active" : ""
+                      }`}
+                      onClick={() =>
+                        setCoachSpecialty(
+                          "training",
+                          !form?.coachProfile?.specialties?.training
+                        )
+                      }
+                    >
+                      🏋️ Entrenamiento
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`iu-specialtyBtn ${
+                        form?.coachProfile?.specialties?.nutrition ? "active" : ""
+                      }`}
+                      onClick={() =>
+                        setCoachSpecialty(
+                          "nutrition",
+                          !form?.coachProfile?.specialties?.nutrition
+                        )
+                      }
+                    >
+                      🥗 Nutrición
+                    </button>
+                  </div>
+
+                  <div className="iu-note">
+                    Configuración actual: <strong>{specialtyLabel}</strong>
+                  </div>
+                </div>
+              )}
 
               {showPlan ? (
                 <div className="iu-block">
@@ -216,7 +306,7 @@ export default function CrearUsuario() {
                 </div>
               ) : (
                 <div className="iu-note">
-                  Los admins no necesitan plan.
+                  Los admins no necesitan plan ni especialidades.
                 </div>
               )}
 
@@ -233,7 +323,11 @@ export default function CrearUsuario() {
                   Cancelar
                 </button>
 
-                <button type="submit" className="iu-btn iu-btnGold" disabled={saving}>
+                <button
+                  type="submit"
+                  className="iu-btn iu-btnGold"
+                  disabled={saving}
+                >
                   {saving ? "Guardando..." : "Crear invitación"}
                 </button>
               </div>
@@ -251,7 +345,9 @@ export default function CrearUsuario() {
               </div>
 
               <div className="iu-name">
-                {(form.nombre.trim() || "Nombre") + " " + (form.apellido.trim() || "Apellido")}
+                {(form.nombre.trim() || "Nombre") +
+                  " " +
+                  (form.apellido.trim() || "Apellido")}
               </div>
 
               <div className="iu-email">
@@ -260,14 +356,17 @@ export default function CrearUsuario() {
 
               <div className="iu-tags">
                 <span className="iu-tag">{selectedRole.label}</span>
-                {showPlan ? <span className="iu-tag">{form.plan.toUpperCase()}</span> : null}
+                {isCoach ? <span className="iu-tag">{specialtyLabel}</span> : null}
+                {showPlan ? (
+                  <span className="iu-tag">{form.plan.toUpperCase()}</span>
+                ) : null}
               </div>
             </div>
 
             <div className="iu-note">
-              Consejo para MVP: creá la invitación, guardala en una tabla tipo{" "}
-              <strong>InvitedUsers</strong>, y cuando esa persona entre por
-              primera vez validás email + invitación pendiente.
+              Para coaches, la invitación va a guardar{" "}
+              <strong>coachProfile.specialties</strong>. Después, cuando entre,
+              el sistema crea el usuario real con esos permisos.
             </div>
           </aside>
         </div>
@@ -455,6 +554,10 @@ const styles = `
   gap:12px;
 }
 
+.iu-roleGrid.compact{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
 .iu-roleCard{
   min-height:96px;
   border-radius:20px;
@@ -491,6 +594,32 @@ const styles = `
   font-size:15px;
   font-weight:900;
   line-height:1.2;
+}
+
+.iu-specialties{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.iu-specialtyBtn{
+  min-height:56px;
+  padding:12px 16px;
+  border-radius:16px;
+  border:1px solid #2a3440;
+  background:#0b0f15;
+  color:#d7dde5;
+  font-weight:900;
+  cursor:pointer;
+  transition:.18s ease;
+  text-align:left;
+}
+
+.iu-specialtyBtn.active{
+  border-color:rgba(245,215,110,.45);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  box-shadow:0 0 0 4px rgba(245,215,110,.08);
 }
 
 .iu-planRow{
@@ -682,7 +811,9 @@ const styles = `
     grid-template-columns:1fr;
   }
 
-  .iu-roleGrid{
+  .iu-roleGrid,
+  .iu-roleGrid.compact,
+  .iu-specialties{
     grid-template-columns:1fr;
   }
 
