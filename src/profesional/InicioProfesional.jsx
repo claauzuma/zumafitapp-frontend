@@ -166,10 +166,10 @@ async function handleCloseWelcome() {
 
 const styles = `
 .pro-wrap{
-  min-height: calc(100dvh - 56px);
-  background:#0b0b0b;
+  min-height:100%;
+  background:transparent;
   color:#eaeaea;
-  padding:16px;
+  padding:0;
 }
 
 .pro-wrapCenter{
@@ -220,7 +220,7 @@ const styles = `
   font-size:12px;
   font-weight:900;
   text-transform:uppercase;
-  letter-spacing:.05em;
+  letter-spacing:0;
 }
 
 .pro-hello{
@@ -228,7 +228,7 @@ const styles = `
   color:#f5d76e;
   font-size:15px;
   font-weight:900;
-  letter-spacing:.01em;
+  letter-spacing:0;
 }
 
 .pro-welcomeTitle{
@@ -237,7 +237,7 @@ const styles = `
   line-height:1.02;
   font-weight:1000;
   color:#f7f8fa;
-  letter-spacing:-.03em;
+  letter-spacing:0;
 }
 
 .pro-welcomeText{
@@ -318,9 +318,10 @@ const styles = `
   text-decoration:none;
   color:inherit;
   border:1px solid rgba(245,215,110,.16);
-  border-radius:22px;
+  border-radius:18px;
   background:linear-gradient(180deg, #0e1117, #0b0f15);
   padding:18px;
+  min-height:132px;
   display:flex;
   flex-direction:column;
   gap:8px;
@@ -359,6 +360,7 @@ const styles = `
 @media (max-width: 700px){
   .pro-grid{
     grid-template-columns:1fr;
+    gap:12px;
   }
 
   .pro-welcomeTitle{
@@ -371,6 +373,26 @@ const styles = `
 
   .pro-wrapCenter{
     padding-top:6px;
+  }
+}
+
+@media (max-width: 430px){
+  .pro-welcome{
+    padding:16px;
+    border-radius:18px;
+  }
+
+  .pro-title{
+    font-size:28px;
+  }
+
+  .pro-welcomeTitle{
+    font-size:28px;
+  }
+
+  .pro-card{
+    min-height:118px;
+    padding:16px;
   }
 }
 `;

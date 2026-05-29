@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  updateAdminUserGoals,
+  Ban,
+  Eye,
+  RefreshCw,
+  Trash2,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
+import {
   assignCoachToClient,
   unassignCoachFromClient,
   updateAdminUserStatus,
@@ -17,14 +24,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState("resumen");
-  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-
-  const [gObjetivo, setGObjetivo] = useState(user?.goal?.type || "mantener_peso");
-  const [gKcal, setGKcal] = useState(numToInput(user?.metasActuales?.kcal));
-  const [gP, setGP] = useState(numToInput(user?.metasActuales?.macros?.p));
-  const [gC, setGC] = useState(numToInput(user?.metasActuales?.macros?.c));
-  const [gG, setGG] = useState(numToInput(user?.metasActuales?.macros?.g));
 
   const [coachQuery, setCoachQuery] = useState("");
   const [coachOptions, setCoachOptions] = useState([]);
@@ -36,23 +36,15 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const [assignedCoachLoading, setAssignedCoachLoading] = useState(false);
 
   const tabs = [
-    { key: "resumen", label: "Resumen" },
-    { key: "nutricion", label: "Nutrición" },
-    { key: "rutina", label: "Rutina" },
-    { key: "progreso", label: "Progreso" },
-    { key: "relacion", label: "Relación" },
-    { key: "cuenta", label: "Cuenta" },
+    { key: "resumen", label: "Resumen", emoji: "📋" },
+    { key: "nutricion", label: "Nutricion", emoji: "🥗" },
+    { key: "rutina", label: "Rutina", emoji: "🏋️" },
+    { key: "progreso", label: "Progreso", emoji: "📈" },
+    { key: "relacion", label: "Relacion", emoji: "🤝" },
+    { key: "cuenta", label: "Cuenta", emoji: "⚙️" },
   ];
 
   const assignedCoachId = user?.coach?.entrenadorId || null;
-
-  useEffect(() => {
-    setGObjetivo(user?.goal?.type || "mantener_peso");
-    setGKcal(numToInput(user?.metasActuales?.kcal));
-    setGP(numToInput(user?.metasActuales?.macros?.p));
-    setGC(numToInput(user?.metasActuales?.macros?.c));
-    setGG(numToInput(user?.metasActuales?.macros?.g));
-  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,37 +110,9 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   }, [coachQuery, activeTab, dropdownOpen]);
 
   const coachActualNombre = useMemo(() => {
-    if (!assignedCoach) return "—";
+    if (!assignedCoach) return "-";
     return fullName(assignedCoach);
   }, [assignedCoach]);
-
-  async function handleSaveGoals() {
-    setSaving(true);
-    setErr("");
-    try {
-      const updated = await updateAdminUserGoals(user.id, {
-        goal: {
-          ...(user?.goal || {}),
-          type: gObjetivo || null,
-        },
-        metasActuales: {
-          ...(user?.metasActuales || {}),
-          kcal: inputToNumOrNull(gKcal),
-          macros: {
-            p: inputToNumOrNull(gP),
-            c: inputToNumOrNull(gC),
-            g: inputToNumOrNull(gG),
-          },
-        },
-      });
-
-      onUserChange(updated);
-    } catch (e) {
-      setErr(e?.message || "No se pudo guardar");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleBlock() {
     try {
@@ -270,7 +234,8 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
             className={`auc-tab ${activeTab === tab.key ? "active" : ""}`}
             onClick={() => setActiveTab(tab.key)}
           >
-            {tab.label}
+            <span className="auc-tabEmoji" aria-hidden="true">{tab.emoji}</span>
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
@@ -278,46 +243,50 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       {activeTab === "resumen" && (
         <div className="auc-grid">
           <div className="auc-card">
-            <div className="auc-title">Resumen del cliente</div>
+            <SectionTitle emoji="📋" title="Resumen del cliente" />
 
             <div className="auc-summaryGrid">
-              <div className="auc-summaryItem">
-                <span className="auc-summaryLabel">Objetivo</span>
-                <strong>{goalLabel(user?.goal?.type)}</strong>
-              </div>
-
-              <div className="auc-summaryItem">
-                <span className="auc-summaryLabel">Kcal</span>
-                <strong>{fmtNumOrDash(user?.metasActuales?.kcal)}</strong>
-              </div>
-
-              <div className="auc-summaryItem">
-                <span className="auc-summaryLabel">Coach</span>
-                <strong>
-                  {assignedCoachLoading
+              <MetricCard emoji="🎯" label="Objetivo" value={goalLabel(user?.goal?.type)} />
+              <MetricCard emoji="🔥" label="Kcal" value={fmtKcal(user?.metasActuales?.kcal)} />
+              <MetricCard
+                emoji="🤝"
+                label="Coach"
+                value={
+                  assignedCoachLoading
                     ? "Cargando..."
                     : assignedCoach
                     ? coachActualNombre
-                    : "Autogestionado"}
-                </strong>
-              </div>
+                    : "Autogestionado"
+                }
+              />
+              <MetricCard emoji="🥩" label="Proteina" value={fmtMacro(user?.metasActuales?.macros?.p)} />
+              <MetricCard emoji="🍚" label="Carbs" value={fmtMacro(user?.metasActuales?.macros?.c)} />
+              <MetricCard emoji="🥑" label="Grasas" value={fmtMacro(user?.metasActuales?.macros?.g)} />
             </div>
           </div>
 
           <div className="auc-card">
-            <div className="auc-title">Acciones rápidas</div>
+            <SectionTitle emoji="⚡" title="Acciones rápidas" />
             <div className="auc-actions">
-              <button className="auc-btn auc-btnGold" onClick={() => setActiveTab("relacion")}>
-                Asignar coach
+              <button type="button" className="auc-btn auc-btnGold" onClick={() => setActiveTab("relacion")}>
+                <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                Asignar
               </button>
-              <button className="auc-btn" onClick={handleViewAsClient}>
-                👁 Ver como cliente
+              <button type="button" className="auc-btn" onClick={handleViewAsClient}>
+                <Eye size={16} strokeWidth={2.2} aria-hidden="true" />
+                Ver como
               </button>
-              <button className="auc-btn" onClick={handleUnassignCoach}>
+              <button type="button" className="auc-btn" onClick={handleUnassignCoach} disabled={!assignedCoachId}>
+                <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />
                 Quitar coach
               </button>
-              <button className="auc-btn auc-btnDanger" onClick={handleBlock}>
+              <button type="button" className="auc-btn auc-btnDanger" onClick={handleBlock}>
+                <Ban size={16} strokeWidth={2.2} aria-hidden="true" />
                 {user?.estado === "bloqueado" ? "Desbloquear" : "Bloquear"}
+              </button>
+              <button type="button" className="auc-btn auc-btnDanger subtle" onClick={handleDeleteUser}>
+                <Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />
+                Eliminar
               </button>
             </div>
           </div>
@@ -325,75 +294,70 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       )}
 
       {activeTab === "nutricion" && (
-        <div className="auc-card">
-          <div className="auc-title">Objetivo + metas</div>
-
-          <div className="auc-form">
-            <select
-              value={gObjetivo}
-              onChange={(e) => setGObjetivo(e.target.value)}
-              className="auc-input"
-            >
-              <option value="perder_peso">Pérdida de grasa</option>
-              <option value="ganar_peso">Ganancia muscular</option>
-              <option value="mantener_peso">Mantenimiento</option>
-            </select>
-
-            <input
-              className="auc-input"
-              value={gKcal}
-              onChange={(e) => setGKcal(sanitizeNumInput(e.target.value))}
-              placeholder="Kcal"
-            />
-            <input
-              className="auc-input"
-              value={gP}
-              onChange={(e) => setGP(sanitizeNumInput(e.target.value))}
-              placeholder="Proteína"
-            />
-            <input
-              className="auc-input"
-              value={gC}
-              onChange={(e) => setGC(sanitizeNumInput(e.target.value))}
-              placeholder="Carbs"
-            />
-            <input
-              className="auc-input"
-              value={gG}
-              onChange={(e) => setGG(sanitizeNumInput(e.target.value))}
-              placeholder="Grasas"
-            />
+        <div className="auc-card auc-featureCard nutrition">
+          <div className="auc-sectionTop">
+            <SectionTitle emoji="🥗" title="Nutricion" />
+            <span className="auc-readOnlyPill">Solo lectura</span>
           </div>
 
-          <div className="auc-actions">
-            <button className="auc-btn auc-btnGold" onClick={handleSaveGoals} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar metas"}
-            </button>
+          <div className="auc-readOnlyNotice">
+            El admin revisa esta informacion, pero no edita metas nutricionales. La edicion debe hacerla el coach con especialidad de nutricion o el flujo del cliente.
+          </div>
+
+          <div className="auc-summaryGrid auc-summaryGridWide">
+            <MetricCard emoji="🎯" label="Objetivo" value={goalLabel(user?.goal?.type)} />
+            <MetricCard emoji="🔥" label="Kcal objetivo" value={fmtKcal(user?.metasActuales?.kcal)} />
+            <MetricCard emoji="🥩" label="Proteina" value={fmtMacro(user?.metasActuales?.macros?.p)} />
+            <MetricCard emoji="🍚" label="Carbs" value={fmtMacro(user?.metasActuales?.macros?.c)} />
+            <MetricCard emoji="🥑" label="Grasas" value={fmtMacro(user?.metasActuales?.macros?.g)} />
+            <MetricCard emoji="📅" label="Actualizado" value={dateLabel(firstPresent(user?.metasActuales?.updatedAt, user?.updatedAt))} />
           </div>
         </div>
       )}
 
       {activeTab === "rutina" && (
-        <div className="auc-card">
-          <div className="auc-title">Rutina</div>
-          <div className="auc-note">
-            Más adelante podés agregar acá rutina actual, split, días, editor y acciones de asignación.
+        <div className="auc-card auc-featureCard routine">
+          <div className="auc-sectionTop">
+            <SectionTitle emoji="🏋️" title="Rutina" />
+            <span className="auc-readOnlyPill">Solo lectura</span>
+          </div>
+
+          <div className="auc-readOnlyNotice">
+            El admin puede ver el estado general. La creacion o edicion de rutinas corresponde al coach con especialidad de entrenamiento.
+          </div>
+
+          <div className="auc-summaryGrid">
+            <MetricCard emoji="🏷️" label="Plan actual" value={firstPresent(user?.rutinaActual?.nombre, user?.routine?.name, user?.trainingPlan?.name)} />
+            <MetricCard emoji="📆" label="Frecuencia" value={firstPresent(user?.profile?.basics?.frecuenciaEjercicio, user?.program?.training?.frequency, user?.training?.frequency)} />
+            <MetricCard emoji="📌" label="Tipo" value={firstPresent(user?.program?.training, user?.training?.type, user?.rutinaActual?.tipo)} />
+            <MetricCard emoji="✅" label="Estado" value={firstPresent(user?.rutinaActual?.estado, user?.trainingPlan?.status, "Sin rutina asignada")} />
           </div>
         </div>
       )}
 
       {activeTab === "progreso" && (
-        <div className="auc-card">
-          <div className="auc-title">Progreso</div>
-          <div className="auc-note">
-            Más adelante podés agregar peso, adherencia, historial, check-ins y métricas.
+        <div className="auc-card auc-featureCard progress">
+          <div className="auc-sectionTop">
+            <SectionTitle emoji="📈" title="Progreso" />
+            <span className="auc-readOnlyPill">Solo lectura</span>
+          </div>
+
+          <div className="auc-readOnlyNotice">
+            Vista rapida para control administrativo. Los registros y cambios de progreso no se cargan desde el panel admin.
+          </div>
+
+          <div className="auc-summaryGrid">
+            <MetricCard emoji="⚖️" label="Peso actual" value={fmtUnit(firstPresent(user?.antropometriaActual?.pesoKg, user?.profile?.basics?.pesoKg, user?.profile?.pesoKg), "kg")} />
+            <MetricCard emoji="📏" label="Altura" value={fmtUnit(firstPresent(user?.antropometriaActual?.alturaCm, user?.profile?.basics?.alturaCm, user?.profile?.alturaCm), "cm")} />
+            <MetricCard emoji="🔥" label="TDEE" value={fmtKcal(firstPresent(user?.profile?.basics?.tdeeEstimado, user?.metasActuales?.tdee))} />
+            <MetricCard emoji="🎯" label="Peso objetivo" value={goalTargetLabel(user?.goal)} />
           </div>
         </div>
       )}
 
       {activeTab === "relacion" && (
         <div className="auc-card">
-          <div className="auc-title">Relación con coach</div>
+          <SectionTitle emoji="🤝" title="Relacion con coach" />
 
           <div className="auc-relationBox">
             <div className="auc-relationTop">
@@ -427,7 +391,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                       <span>{planLabel(assignedCoach?.effectiveCapabilities?.planCode || assignedCoach?.plan)}</span>
                       <span>{capacityLabel(assignedCoach)}</span>
                     </div>
-                <div className="auc-currentCoachEmail">{assignedCoach?.email || "—"}</div>
+                    <div className="auc-currentCoachEmail">{assignedCoach?.email || "-"}</div>
                   </div>
                 </div>
                 <div className="auc-helperText">
@@ -457,7 +421,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                     setCoachQuery((v) => v);
                   }}
                 >
-                  ↻
+                  <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
                 </button>
 
                 {dropdownOpen && (
@@ -481,7 +445,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                             <div className="auc-optionSub">
                               {specialtyLabel(coach)} - {capacityLabel(coach)}
                             </div>
-                            <div className="auc-optionEmail">{coach?.email || "—"}</div>
+                            <div className="auc-optionEmail">{coach?.email || "-"}</div>
                           </div>
 
                           <div className="auc-optionMeta">
@@ -500,10 +464,12 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
             </div>
 
             <div className="auc-actions">
-              <button className="auc-btn auc-btnGold" onClick={handleAssignCoach}>
+              <button type="button" className="auc-btn auc-btnGold" onClick={handleAssignCoach}>
+                <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />
                 Asignar coach
               </button>
-              <button className="auc-btn" onClick={handleUnassignCoach}>
+              <button type="button" className="auc-btn" onClick={handleUnassignCoach} disabled={!assignedCoachId}>
+                <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />
                 Quitar coach
               </button>
             </div>
@@ -513,7 +479,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
 
       {activeTab === "cuenta" && (
         <div className="auc-card">
-          <div className="auc-title">Cuenta</div>
+          <SectionTitle emoji="⚙️" title="Cuenta" />
 
           <div className="auc-note">
             Estado actual: <strong>{user?.estado || "activo"}</strong>
@@ -521,27 +487,49 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
 
           <div className="auc-subtitle">Plan</div>
           <div className="auc-actions">
-            <button className="auc-btn" onClick={() => handlePlanChange("free")}>Free</button>
-            <button className="auc-btn" onClick={() => handlePlanChange("premium")}>Pro</button>
-            <button className="auc-btn" onClick={() => handlePlanChange("premium2")}>VIP</button>
+            <button type="button" className="auc-btn" onClick={() => handlePlanChange("free")}>Free</button>
+            <button type="button" className="auc-btn" onClick={() => handlePlanChange("premium")}>Pro</button>
+            <button type="button" className="auc-btn" onClick={() => handlePlanChange("premium2")}>VIP</button>
           </div>
 
           <div className="auc-subtitle">Seguridad</div>
           <div className="auc-actions">
-            <button className="auc-btn" onClick={handleBlock}>
+            <button type="button" className="auc-btn" onClick={handleBlock}>
+              <Ban size={16} strokeWidth={2.2} aria-hidden="true" />
               {user?.estado === "bloqueado" ? "Desbloquear" : "Bloquear"}
             </button>
-            <button className="auc-btn auc-btnDanger" onClick={handleDeleteUser}>
+            <button type="button" className="auc-btn auc-btnDanger" onClick={handleDeleteUser}>
+              <Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />
               Eliminar usuario
             </button>
-            <button className="auc-btn auc-btnGold" onClick={handleViewAsClient}>
-              👁 Ver como cliente
+            <button type="button" className="auc-btn auc-btnGold" onClick={handleViewAsClient}>
+              <Eye size={16} strokeWidth={2.2} aria-hidden="true" />
+              Ver como cliente
             </button>
           </div>
         </div>
       )}
 
-      {err ? <div className="auc-error">• {err}</div> : null}
+      {err ? <div className="auc-error">{err}</div> : null}
+    </div>
+  );
+}
+
+function SectionTitle({ emoji, title }) {
+  return (
+    <div className="auc-titleLine">
+      <span className="auc-titleEmoji" aria-hidden="true">{emoji}</span>
+      <div className="auc-title">{title}</div>
+    </div>
+  );
+}
+
+function MetricCard({ emoji, label, value }) {
+  return (
+    <div className="auc-summaryItem">
+      <div className="auc-summaryIcon" aria-hidden="true">{emoji}</div>
+      <span className="auc-summaryLabel">{label}</span>
+      <strong>{displayValue(value)}</strong>
     </div>
   );
 }
@@ -619,35 +607,47 @@ function dateLabel(value) {
 function formatCoachOption(coach) {
   const nombre = fullName(coach);
   const email = coach?.email || "";
-  return email ? `${nombre} — ${email}` : nombre;
+  return email ? `${nombre} - ${email}` : nombre;
 }
 
-function sanitizeNumInput(x) {
-  return String(x ?? "").replace(/[^\d]/g, "");
+function displayValue(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  return String(v);
 }
 
-function inputToNumOrNull(x) {
-  const s = String(x ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
+function firstPresent(...values) {
+  return values.find((value) => value !== null && value !== undefined && value !== "");
 }
 
-function numToInput(v) {
-  if (v === null || v === undefined) return "";
+function fmtKcal(v) {
+  if (v === null || v === undefined || v === "") return "-";
   const n = Number(v);
-  return Number.isFinite(n) ? String(n) : "";
+  return Number.isFinite(n) ? `${Math.round(n)} kcal` : String(v);
 }
 
-function fmtNumOrDash(v) {
-  if (v === null || v === undefined || v === "") return "—";
+function fmtMacro(v) {
+  if (v === null || v === undefined || v === "") return "-";
   const n = Number(v);
-  return Number.isFinite(n) ? String(n) : "—";
+  return Number.isFinite(n) ? `${Math.round(n)} g` : String(v);
+}
+
+function fmtUnit(v, unit) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  return Number.isFinite(n) ? `${n} ${unit}` : `${v} ${unit}`;
+}
+
+function goalTargetLabel(goal) {
+  const range = goal?.targetRangeKg || goal?.rangoObjetivoKg;
+  if (range?.min != null && range?.max != null) return `${range.min} - ${range.max} kg`;
+
+  const target = firstPresent(goal?.targetWeightKg, goal?.pesoObjetivoKg, goal?.target?.weightKg);
+  return fmtUnit(target, "kg");
 }
 
 function goalLabel(obj) {
-  if (!obj) return "—";
-  if (obj === "perder_peso") return "Pérdida de grasa";
+  if (!obj) return "-";
+  if (obj === "perder_peso") return "Perdida de grasa";
   if (obj === "ganar_peso") return "Ganancia muscular";
   if (obj === "mantener_peso") return "Mantenimiento";
   return String(obj);

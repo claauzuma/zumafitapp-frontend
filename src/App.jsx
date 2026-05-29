@@ -16,6 +16,9 @@ import AdminLayout from "./admin/AdminLayout.jsx";
 import ProfesionalLayout from "./profesional/ProfesionalLayout.jsx";
 import InicioProfesional from "./profesional/InicioProfesional.jsx";
 import ProfesionalPlaceholder from "./profesional/ProfesionalPlaceholder.jsx";
+import ClientesProfesional from "./profesional/ClientesProfesional.jsx";
+import ClienteDetalleProfesional from "./profesional/ClienteDetalleProfesional.jsx";
+import PerfilProfesional from "./profesional/PerfilProfesional.jsx";
 
 // ✅ Onboarding v2 (wizard con basics/goal/program)
 import OnboardingWizard from "./onboarding_v2/OnboardingWizard.jsx";
@@ -119,11 +122,12 @@ export default function App() {
         }
       >
         <Route index element={<InicioProfesional />} />
-        <Route path="clientes" element={<ProfesionalPlaceholder type="clientes" />} />
+        <Route path="clientes" element={<ClientesProfesional />} />
+        <Route path="clientes/:clientId" element={<ClienteDetalleProfesional />} />
         <Route path="rutinas" element={<ProfesionalPlaceholder type="rutinas" />} />
         <Route path="menus" element={<ProfesionalPlaceholder type="menus" />} />
         <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
-        <Route path="perfil" element={<ProfesionalPlaceholder type="perfil" />} />
+        <Route path="perfil" element={<PerfilProfesional />} />
       </Route>
 
       {/* ✅ APP (CLIENTE) */}

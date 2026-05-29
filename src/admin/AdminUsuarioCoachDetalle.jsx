@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Ban,
+  Eye,
+  RefreshCw,
+  Save,
+  SlidersHorizontal,
+  Trash2,
+  UserCheck,
+  UserMinus,
+  Users,
+} from "lucide-react";
+import {
   updateAdminUserStatus,
   updateAdminCoachPlan,
   getAdminCoachClients,
@@ -419,19 +430,24 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
           <div className="auco-card">
             <div className="auco-title">Acciones rapidas</div>
             <div className="auco-actions">
-              <button className="auco-btn" onClick={() => setActiveTab("clientes")}>
+              <button type="button" className="auco-btn" onClick={() => setActiveTab("clientes")}>
+                <Users size={16} strokeWidth={2.2} aria-hidden="true" />
                 Ver clientes
               </button>
-              <button className="auco-btn" onClick={() => setActiveTab("plan")}>
+              <button type="button" className="auco-btn" onClick={() => setActiveTab("plan")}>
+                <SlidersHorizontal size={16} strokeWidth={2.2} aria-hidden="true" />
                 Cambiar plan
               </button>
-              <button className="auco-btn" onClick={() => setActiveTab("permisos")}>
+              <button type="button" className="auco-btn" onClick={() => setActiveTab("permisos")}>
+                <UserCheck size={16} strokeWidth={2.2} aria-hidden="true" />
                 Editar permisos
               </button>
-              <button className="auco-btn auco-btnGold" onClick={handleViewAsCoach}>
-                👁 Ver como coach
+              <button type="button" className="auco-btn auco-btnGold" onClick={handleViewAsCoach}>
+                <Eye size={16} strokeWidth={2.2} aria-hidden="true" />
+                Ver como
               </button>
-              <button className="auco-btn" onClick={() => setActiveTab("cuenta")}>
+              <button type="button" className="auco-btn" onClick={() => setActiveTab("cuenta")}>
+                <Ban size={16} strokeWidth={2.2} aria-hidden="true" />
                 Cuenta
               </button>
             </div>
@@ -453,7 +469,8 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
               </div>
             </div>
 
-            <button className="auco-btn" onClick={loadClients} disabled={loadingClients}>
+            <button type="button" className="auco-btn" onClick={loadClients} disabled={loadingClients}>
+              <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
               {loadingClients ? "Cargando..." : "Recargar"}
             </button>
           </div>
@@ -492,21 +509,25 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                   </div>
 
                   <div className="auco-clientActions">
-                    <button className="auco-btn" onClick={() => navigate(`/admin/usuarios/${client.id}`)}>
+                    <button type="button" className="auco-btn" onClick={() => navigate(`/admin/usuarios/${client.id}`)}>
                       Ver detalle
                     </button>
                     <button
+                      type="button"
                       className="auco-btn"
                       onClick={() => handleRemoveClient(client)}
                       disabled={busyClientId === client.id}
                     >
+                      <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />
                       {busyClientId === client.id ? "Procesando..." : "Quitar del coach"}
                     </button>
                     <button
+                      type="button"
                       className="auco-btn auco-btnDanger"
                       onClick={() => handleDeleteClient(client)}
                       disabled={busyClientId === client.id}
                     >
+                      <Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />
                       Eliminar cliente
                     </button>
                   </div>
@@ -566,10 +587,12 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
           <div className="auco-actions">
             <button
+              type="button"
               className="auco-btn auco-btnGold"
               onClick={handleSavePlan}
               disabled={savingPlan || (!currentPlanChanged && !resetOverridesOnPlanChange)}
             >
+              <Save size={16} strokeWidth={2.2} aria-hidden="true" />
               {savingPlan ? "Guardando..." : "Guardar plan"}
             </button>
           </div>
@@ -667,10 +690,12 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
           </div>
 
           <div className="auco-actions">
-            <button className="auco-btn auco-btnGold" onClick={handleSavePermissions} disabled={savingPermissions}>
+            <button type="button" className="auco-btn auco-btnGold" onClick={handleSavePermissions} disabled={savingPermissions}>
+              <Save size={16} strokeWidth={2.2} aria-hidden="true" />
               {savingPermissions ? "Guardando..." : "Guardar permisos personalizados"}
             </button>
-            <button className="auco-btn" onClick={handleResetPermissions} disabled={savingPermissions}>
+            <button type="button" className="auco-btn" onClick={handleResetPermissions} disabled={savingPermissions}>
+              <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
               Restaurar plan
             </button>
           </div>
@@ -692,7 +717,8 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                   </option>
                 ))}
               </select>
-              <button className="auco-btn auco-btnGold" onClick={handleSaveSpecialties} disabled={savingAccount}>
+              <button type="button" className="auco-btn auco-btnGold" onClick={handleSaveSpecialties} disabled={savingAccount}>
+                <Save size={16} strokeWidth={2.2} aria-hidden="true" />
                 Guardar especialidad
               </button>
             </div>
@@ -703,7 +729,8 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
           </div>
 
           <div className="auco-actions">
-            <button className="auco-btn" onClick={handleToggleBlock} disabled={savingAccount}>
+            <button type="button" className="auco-btn" onClick={handleToggleBlock} disabled={savingAccount}>
+              <Ban size={16} strokeWidth={2.2} aria-hidden="true" />
               {savingAccount
                 ? "Procesando..."
                 : user?.estado === "bloqueado"
@@ -711,11 +738,13 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                 : "Bloquear coach"}
             </button>
 
-            <button className="auco-btn auco-btnDanger" onClick={handleDeleteCoach} disabled={savingAccount}>
+            <button type="button" className="auco-btn auco-btnDanger" onClick={handleDeleteCoach} disabled={savingAccount}>
+              <Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />
               {savingAccount ? "Eliminando..." : "Eliminar coach"}
             </button>
-            <button className="auco-btn auco-btnGold" onClick={handleViewAsCoach} disabled={savingAccount}>
-              👁 Ver como coach
+            <button type="button" className="auco-btn auco-btnGold" onClick={handleViewAsCoach} disabled={savingAccount}>
+              <Eye size={16} strokeWidth={2.2} aria-hidden="true" />
+              Ver como coach
             </button>
           </div>
         </div>

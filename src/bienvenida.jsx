@@ -24,15 +24,15 @@ const CSS = `
   position:sticky;
   top:0;
   z-index:50;
-  backdrop-filter:saturate(150%) blur(3px);
-  background: linear-gradient(180deg, rgba(11,11,11,0.9), rgba(11,11,11,0));
-  border-bottom:1px solid #1b1b1b;
+  backdrop-filter:saturate(145%) blur(14px);
+  background: rgba(9,9,9,.9);
+  border-bottom:1px solid rgba(255,255,255,.08);
 }
 
 .nav-inner{
-  max-width:960px;
+  max-width:1120px;
   margin:0 auto;
-  padding:12px 16px;
+  padding:12px 18px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -45,7 +45,40 @@ const CSS = `
   cursor:pointer;
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:11px;
+  min-width:0;
+}
+
+.brand-mark{
+  width:38px;
+  height:38px;
+  border-radius:14px;
+  border:1px solid rgba(245,215,110,.22);
+  background:linear-gradient(180deg, rgba(245,215,110,.12), rgba(255,255,255,.03));
+  color:var(--accent);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:1000;
+  flex:0 0 auto;
+}
+
+.brand-copy{
+  display:grid;
+  gap:2px;
+}
+
+.brand-title{
+  line-height:1;
+  color:var(--accent);
+}
+
+.brand-sub{
+  color:#aeb4be;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
 }
 
 .btn{
@@ -67,9 +100,9 @@ const CSS = `
 }
 
 .btn.ghost{
-  background:#0f0f0f;
+  background:rgba(255,255,255,.035);
   color:#eaeaea;
-  border:1px solid #2b2b2b;
+  border:1px solid rgba(255,255,255,.10);
 }
 
 .hero{
@@ -157,6 +190,22 @@ h1{
     align-items:start;
   }
 }
+
+@media (max-width: 640px){
+  .nav-inner{
+    padding:10px 12px;
+  }
+
+  .brand-mark{
+    width:36px;
+    height:36px;
+    border-radius:13px;
+  }
+
+  .brand-sub{
+    display:none;
+  }
+}
 `;
 
 export default function Bienvenida() {
@@ -169,7 +218,11 @@ export default function Bienvenida() {
       <header className="lw-nav">
         <div className="nav-inner">
           <div className="brand" onClick={() => nav("/")}>
-            🍏 ZumaFit
+            <span className="brand-mark">ZF</span>
+            <span className="brand-copy">
+              <span className="brand-title">ZumaFit</span>
+              <span className="brand-sub">Fitness & nutricion</span>
+            </span>
           </div>
 
           <button className="btn ghost" onClick={() => nav("/login")}>
@@ -202,10 +255,10 @@ export default function Bienvenida() {
             </div>
 
             <ul className="bullets">
-              <li>🍽️ Menús y macros</li>
-              <li>🏋️ Rutinas</li>
-              <li>📈 Progresos</li>
-              <li>👤 Perfil / Ajustes</li>
+              <li>Menus y macros</li>
+              <li>Rutinas</li>
+              <li>Progresos</li>
+              <li>Perfil / Ajustes</li>
             </ul>
           </div>
 

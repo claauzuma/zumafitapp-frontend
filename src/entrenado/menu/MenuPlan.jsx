@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Sparkles,
   RefreshCw,
@@ -14,6 +14,7 @@ import {
   Trash2,
   Heart,
 } from "lucide-react";
+import { apiFetch } from "../../Api.js";
 
 /**
  * ✅ Lo que implementa ESTE archivo (todo en 1):
@@ -338,6 +339,22 @@ export default function MenuPlan() {
   const [showSheet, setShowSheet] = useState(null);
   const [logs, setLogs] = useState([]); // reservado por si querés “comí otra cosa”
   const [genPressed, setGenPressed] = useState(false);
+  const [coachMenu, setCoachMenu] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch("/api/usuarios/users/me", { silent401: true })
+      .then((user) => {
+        if (active && hasCoachMenu(user?.menu)) {
+          setCoachMenu(user.menu);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const snacksSum = useMemo(() => sumMacros(snacks), [snacks]);
   const snackRemaining = useMemo(() => Math.max(0, snackBudget - snacksSum.kcal), [snackBudget, snacksSum.kcal]);
@@ -690,6 +707,8 @@ export default function MenuPlan() {
           </button>
         </div>
 
+        <CoachAssignedMenu menu={coachMenu} />
+
         {/* Meta de hoy */}
         <div className="mt-4 rounded-3xl border border-[#D4AF37]/25 bg-[#0b0b0b]/80 p-4 shadow-[0_0_0_1px_rgba(212,175,55,0.06)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
@@ -908,6 +927,53 @@ export default function MenuPlan() {
 
 /* ===================== UI COMPONENTS ===================== */
 
+function CoachAssignedMenu({ menu }) {
+  if (!hasCoachMenu(menu)) return null;
+
+  const mealsByDay = menu?.weeklyPlan?.mealsByDay || {};
+  const days = Object.entries(mealsByDay).filter(([, meals]) => meals && typeof meals === "object");
+
+  return (
+    <div className="mt-4 rounded-3xl border border-[#D4AF37]/30 bg-[#0b0b0b]/90 p-4 shadow-[0_12px_36px_rgba(0,0,0,0.35)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-[#D4AF37]">🍽️ Menu indicado por tu coach</div>
+          <div className="mt-1 text-xs text-zinc-400">Usalo como plan principal. Abajo podes seguir registrando o ajustando tu dia.</div>
+        </div>
+        <span className="rounded-full border border-[#D4AF37]/20 bg-[#D4AF37]/10 px-3 py-1 text-xs font-semibold text-[#D4AF37]">
+          {menu?.mode?.type || "manual"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {days.slice(0, 7).map(([day, meals]) => (
+          <details key={day} className="rounded-2xl border border-white/10 bg-[#080808] p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-zinc-100">{day}</summary>
+            <div className="mt-2 grid gap-2 text-sm text-zinc-300">
+              {Object.entries(meals).map(([meal, text]) => (
+                <div key={meal} className="rounded-xl bg-white/[0.03] p-2">
+                  <span className="font-semibold text-[#D4AF37]">{meal}: </span>
+                  {text || "Sin definir"}
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+
+      {menu?.coachNotes ? <div className="mt-3 text-sm text-zinc-300">{menu.coachNotes}</div> : null}
+    </div>
+  );
+}
+
+function hasCoachMenu(menu) {
+  const mealsByDay = menu?.weeklyPlan?.mealsByDay;
+  if (!mealsByDay || typeof mealsByDay !== "object") return false;
+  return Object.values(mealsByDay).some((meals) =>
+    meals && typeof meals === "object" && Object.values(meals).some((value) => String(value || "").trim())
+  );
+}
+
 function MacroPill({ label, value, accent }) {
   return (
     <div
@@ -945,7 +1011,7 @@ function MealCard({ meal, onDone, onDetail, onManualAdd, onChangeMeal, onToggleF
   const hasDish = Boolean(meal.dish);
 
   const actual = useMemo(() => calcMealFromIngredients(meal.ingredients), [meal.ingredients]);
-  const target = useMemo(() => getMealTargets(meal), [meal.kcalTarget, meal.targetOverride]);
+  const target = useMemo(() => getMealTargets(meal), [meal]);
 
   const hasReal = useMemo(
     () => meal.ingredients?.some((i) => typeof i.qty === "number" && i.qty > 0),
@@ -1217,20 +1283,20 @@ function MealTargetsSheet({ meal, onClose, onSave, onClear }) {
     toastTimerRef.current = setTimeout(() => setToast(null), 2200);
   }
 
-  if (!meal) {
-    return (
-      <SheetSection title="Meta" subtitle="No se encontró la comida">
-        <Button label="Cerrar" variant="primary" onClick={onClose} />
-      </SheetSection>
-    );
-  }
-
   const current = getMealTargets(meal);
 
   const [kcal, setKcal] = useState(String(current.kcal ?? ""));
   const [p, setP] = useState(String(current.p ?? ""));
   const [c, setC] = useState(String(current.c ?? ""));
   const [g, setG] = useState(String(current.g ?? ""));
+
+  if (!meal) {
+    return (
+      <SheetSection title="Meta" subtitle="No se encontro la comida">
+        <Button label="Cerrar" variant="primary" onClick={onClose} />
+      </SheetSection>
+    );
+  }
 
   function parseNum(v) {
     const n = Number(v);
@@ -1340,16 +1406,9 @@ function MealDetailSheet({ meal, mode = "plan", onClose, onUpdateMeal, onAddFood
     toastTimerRef.current = setTimeout(() => setToast(null), 2200);
   }
 
-  if (!meal) {
-    return (
-      <SheetSection title="Detalle" subtitle="No se encontró la comida">
-        <Button label="Cerrar" variant="primary" onClick={onClose} />
-      </SheetSection>
-    );
-  }
-
-  const mealMacros = calcMealFromIngredients(meal.ingredients);
-  const hasAnyFoods = meal.ingredients.length > 0;
+  const mealIngredients = Array.isArray(meal?.ingredients) ? meal.ingredients : [];
+  const mealMacros = calcMealFromIngredients(mealIngredients);
+  const hasAnyFoods = mealIngredients.length > 0;
 
   const q = foodQuery.trim().toLowerCase();
   const shouldShowResults = q.length >= 2;
@@ -1393,6 +1452,14 @@ function MealDetailSheet({ meal, mode = "plan", onClose, onUpdateMeal, onAddFood
   const filteredFoods = shouldShowResults
     ? remoteFoods.filter((f) => (f.name || "").toLowerCase().includes(q)).slice(0, 12)
     : [];
+
+  if (!meal) {
+    return (
+      <SheetSection title="Detalle" subtitle="No se encontro la comida">
+        <Button label="Cerrar" variant="primary" onClick={onClose} />
+      </SheetSection>
+    );
+  }
 
   function canEditIngredient(ing) {
     if (mode === "manual") return true;

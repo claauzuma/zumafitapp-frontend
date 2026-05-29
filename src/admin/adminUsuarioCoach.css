@@ -6,16 +6,20 @@
 
 .auco-tabs{
   display:flex;
-  gap:10px;
+  gap:8px;
   flex-wrap:wrap;
+  padding:4px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.025);
+  border-radius:16px;
 }
 
 .auco-tab{
-  min-height:46px;
-  padding:0 18px;
-  border-radius:16px;
-  border:1px solid #2a2f36;
-  background:#0d1117;
+  min-height:40px;
+  padding:0 14px;
+  border-radius:12px;
+  border:1px solid transparent;
+  background:transparent;
   color:#edf2f7;
   font-weight:900;
   cursor:pointer;
@@ -23,14 +27,14 @@
 }
 
 .auco-tab:hover{
-  border-color:rgba(245,215,110,.26);
+  border-color:rgba(245,215,110,.18);
+  background:rgba(245,215,110,.05);
 }
 
 .auco-tab.active{
-  border-color:rgba(245,215,110,.42);
-  background:rgba(245,215,110,.08);
+  border-color:rgba(245,215,110,.32);
+  background:rgba(245,215,110,.10);
   color:#f5d76e;
-  box-shadow:0 0 0 4px rgba(245,215,110,.08);
 }
 
 .auco-grid{
@@ -40,19 +44,20 @@
 }
 
 .auco-card{
-  border:1px solid rgba(245,215,110,.12);
-  background:linear-gradient(180deg, rgba(12,14,19,.96), rgba(8,10,14,.98));
-  border-radius:24px;
-  padding:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg, rgba(17,17,17,.98), rgba(9,10,12,.98));
+  border-radius:18px;
+  padding:18px;
   box-shadow:
     0 16px 50px rgba(0,0,0,.22),
-    inset 0 1px 0 rgba(255,255,255,.02);
+    inset 0 1px 0 rgba(255,255,255,.03);
 }
 
 .auco-title{
   font-size:18px;
   font-weight:1000;
   color:#f5d76e;
+  letter-spacing:0;
 }
 
 .auco-profileHead{
@@ -67,11 +72,11 @@
 }
 
 .auco-avatar{
-  width:64px;
-  height:64px;
+  width:62px;
+  height:62px;
   border-radius:18px;
   overflow:hidden;
-  border:1px solid rgba(245,215,110,.18);
+  border:1px solid rgba(245,215,110,.20);
   background:rgba(245,215,110,.05);
   flex:0 0 auto;
 }
@@ -105,6 +110,7 @@
   margin-top:6px;
   color:#aeb8c4;
   line-height:1.5;
+  overflow-wrap:anywhere;
 }
 
 .auco-row{
@@ -117,37 +123,47 @@
 
 .auco-actions{
   display:flex;
-  gap:10px;
+  gap:9px;
   flex-wrap:wrap;
   margin-top:14px;
 }
 
 .auco-btn{
-  min-height:44px;
-  padding:0 14px;
-  border-radius:14px;
-  border:1px solid #2a3038;
+  min-height:42px;
+  padding:0 13px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.10);
   background:#0d1117;
   color:#edf2f7;
   font-weight:900;
   cursor:pointer;
   transition:.18s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
 }
 
-.auco-btn:hover{
+.auco-btn:hover:not(:disabled){
   transform:translateY(-1px);
   border-color:rgba(245,215,110,.26);
+  box-shadow:0 0 0 3px rgba(245,215,110,.08);
+}
+
+.auco-btn:disabled{
+  opacity:.48;
+  cursor:not-allowed;
 }
 
 .auco-btnGold{
   border-color:rgba(245,215,110,.38);
-  background:rgba(245,215,110,.08);
+  background:rgba(245,215,110,.09);
   color:#f5d76e;
 }
 
 .auco-btnDanger{
   border-color:rgba(255,90,90,.32);
-  background:rgba(255,90,90,.09);
+  background:rgba(255,90,90,.08);
   color:#ffbcbc;
 }
 
@@ -159,10 +175,11 @@
 }
 
 .auco-box{
-  border:1px solid rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.07);
   background:#0f141b;
-  border-radius:18px;
+  border-radius:16px;
   padding:14px;
+  min-width:0;
 }
 
 .auco-kicker{
@@ -178,6 +195,7 @@
   font-size:18px;
   font-weight:1000;
   color:#f5f7fa;
+  overflow-wrap:anywhere;
 }
 
 .auco-searchWrap{
@@ -187,8 +205,8 @@
 .auco-input{
   width:100%;
   min-height:48px;
-  border-radius:16px;
-  border:1px solid #2a313b;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.11);
   background:#0b0f15;
   color:#edf2f7;
   padding:0 14px;
@@ -217,9 +235,9 @@
 }
 
 .auco-clientCard{
-  border:1px solid rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
   background:#0f141b;
-  border-radius:20px;
+  border-radius:16px;
   padding:14px;
 }
 
@@ -264,10 +282,11 @@
 }
 
 .auco-clientName{
-  font-size:22px;
+  font-size:21px;
   font-weight:1000;
   color:#f3f6fa;
   line-height:1.1;
+  overflow-wrap:anywhere;
 }
 
 .auco-clientEmail{
@@ -286,10 +305,10 @@
 .auco-chip{
   display:inline-flex;
   align-items:center;
-  min-height:32px;
+  min-height:30px;
   padding:0 10px;
   border-radius:999px;
-  border:1px solid #2d343d;
+  border:1px solid rgba(255,255,255,.10);
   background:#10151c;
   color:#e4ebf2;
   font-size:12px;
@@ -320,7 +339,7 @@
 
 .auco-clientActions{
   display:flex;
-  gap:10px;
+  gap:9px;
   flex-wrap:wrap;
   margin-top:14px;
 }
@@ -369,7 +388,7 @@
 .auco-select{
   min-height:44px;
   border-radius:14px;
-  border:1px solid #2a313b;
+  border:1px solid rgba(255,255,255,.11);
   background:#0b0f15;
   color:#edf2f7;
   padding:0 12px;
@@ -410,10 +429,10 @@
 
 .auco-planBtn{
   min-width:120px;
-  min-height:52px;
+  min-height:50px;
   padding:0 18px;
-  border-radius:16px;
-  border:1px solid #2a3038;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
   background:#0d1117;
   color:#edf2f7;
   font-weight:1000;
@@ -428,7 +447,7 @@
 
 .auco-planBtn.active{
   border-color:rgba(245,215,110,.42);
-  background:rgba(245,215,110,.08);
+  background:rgba(245,215,110,.10);
   color:#f5d76e;
   box-shadow:0 0 0 4px rgba(245,215,110,.08);
 }
@@ -436,8 +455,8 @@
 .auco-note{
   margin-top:14px;
   border:1px dashed rgba(245,215,110,.18);
-  background:rgba(245,215,110,.04);
-  border-radius:16px;
+  background:rgba(245,215,110,.045);
+  border-radius:14px;
   padding:12px 14px;
   color:#d3dbe5;
   line-height:1.5;
@@ -445,17 +464,18 @@
 
 .auco-empty{
   margin-top:14px;
-  border:1px dashed rgba(255,255,255,.10);
-  border-radius:18px;
-  padding:18px;
+  border:1px dashed rgba(255,255,255,.12);
+  border-radius:16px;
+  padding:20px;
   color:#bfc8d2;
+  background:rgba(255,255,255,.025);
 }
 
 .auco-error{
   border:1px solid rgba(255,90,90,.24);
   background:rgba(255,90,90,.08);
   color:#ffbcbc;
-  border-radius:16px;
+  border-radius:14px;
   padding:12px 14px;
   font-weight:800;
 }
@@ -471,11 +491,17 @@
     flex-wrap:nowrap;
     overflow:auto;
     padding-bottom:4px;
+    scrollbar-width:thin;
   }
 
   .auco-tab{
     flex:0 0 auto;
     white-space:nowrap;
+  }
+
+  .auco-card{
+    padding:14px;
+    border-radius:16px;
   }
 
   .auco-infoGrid{
@@ -519,4 +545,3 @@
     grid-template-columns:1fr;
   }
 }
-

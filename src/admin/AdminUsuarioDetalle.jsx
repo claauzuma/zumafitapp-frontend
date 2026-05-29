@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { getAdminUserById } from "./adminUsuariosApi.js";
 import AdminUsuarioClienteDetalle from "./AdminUsuarioClienteDetalle.jsx";
 import AdminUsuarioCoachDetalle from "./AdminUsuarioCoachDetalle.jsx";
@@ -45,7 +46,8 @@ export default function AdminUsuarioDetalle() {
       <div className="aud-page">
         <div className="aud-top">
           <button className="aud-btn" onClick={() => navigate("/admin/usuarios")}>
-            ← Volver
+            <ArrowLeft size={17} strokeWidth={2.2} aria-hidden="true" />
+            Volver
           </button>
         </div>
 
@@ -70,12 +72,14 @@ export default function AdminUsuarioDetalle() {
     <div className="aud-page">
       <div className="aud-top">
         <button className="aud-btn" onClick={() => navigate("/admin/usuarios")}>
-          ← Volver
+          <ArrowLeft size={17} strokeWidth={2.2} aria-hidden="true" />
+          Volver
         </button>
 
         <div className="aud-actions">
           <button className="aud-btn" onClick={load}>
-            ↻ Refrescar
+            <RefreshCw size={17} strokeWidth={2.2} aria-hidden="true" />
+            Refrescar
           </button>
         </div>
       </div>
@@ -99,14 +103,14 @@ export default function AdminUsuarioDetalle() {
           <div className="aud-name">{fullName(user)}</div>
 
           <div className="aud-sub">
-            <span className="aud-email">{user?.email || "—"}</span>
-            <span className="aud-dot">•</span>
+            <span className="aud-email">{user?.email || "-"}</span>
+            <span className="aud-dot">|</span>
             <span className="aud-id">ID: {user?.id || user?._id || id}</span>
           </div>
 
           <div className="aud-badges">
-            <span className="aud-badge">{user?.role || "—"}</span>
-            <span className="aud-badge">{user?.tipo || "—"}</span>
+            <span className="aud-badge">{user?.role || "-"}</span>
+            <span className="aud-badge">{user?.tipo || "-"}</span>
             <span className="aud-badge aud-badgeInfo">{planLabel(user?.plan)}</span>
             <span
               className={`aud-badge ${
@@ -115,7 +119,7 @@ export default function AdminUsuarioDetalle() {
                   : "aud-badgeOk"
               }`}
             >
-              {user?.estado || "—"}
+              {user?.estado || "-"}
             </span>
 
             {roleNorm === "cliente" ? (
@@ -133,7 +137,7 @@ export default function AdminUsuarioDetalle() {
           </div>
 
           <div className="aud-metaRow">
-            <span>Último login</span>
+            <span>Ultimo login</span>
             <b>{fmtDate(user?.lastLoginAt)}</b>
           </div>
 
@@ -152,7 +156,7 @@ export default function AdminUsuarioDetalle() {
         <div className="aud-card">
           <div className="aud-sectionTitle">Detalle del usuario</div>
           <div className="aud-empty">
-            Todavía no armamos una vista específica para este rol.
+            Todavia no armamos una vista especifica para este rol.
           </div>
         </div>
       )}
@@ -184,13 +188,13 @@ function initials(nombre = "", apellido = "") {
 }
 
 function fmtDate(v) {
-  if (!v) return "—";
+  if (!v) return "-";
   try {
     const d = new Date(v);
-    if (!Number.isFinite(d.getTime())) return "—";
+    if (!Number.isFinite(d.getTime())) return "-";
     return d.toISOString().slice(0, 10);
   } catch {
-    return "—";
+    return "-";
   }
 }
 

@@ -21,30 +21,36 @@
 }
 
 .aud-card{
-  border:1px solid rgba(245,215,110,.12);
-  background:linear-gradient(180deg, rgba(12,14,19,.96), rgba(8,10,14,.98));
-  border-radius:24px;
-  padding:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:
+    linear-gradient(180deg, rgba(17,17,17,.98), rgba(9,10,12,.98));
+  border-radius:18px;
+  padding:18px;
   box-shadow:
-    0 16px 50px rgba(0,0,0,.28),
-    inset 0 1px 0 rgba(255,255,255,.02);
+    0 18px 52px rgba(0,0,0,.26),
+    inset 0 1px 0 rgba(255,255,255,.03);
 }
 
 .aud-btn{
-  min-height:46px;
-  padding:0 16px;
-  border-radius:14px;
-  border:1px solid #2b2f37;
+  min-height:42px;
+  padding:0 14px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.10);
   background:#0d1117;
   color:#eaeaea;
   font-weight:900;
   cursor:pointer;
   transition:.18s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
 }
 
 .aud-btn:hover{
   transform:translateY(-1px);
   border-color:rgba(245,215,110,.28);
+  box-shadow:0 0 0 3px rgba(245,215,110,.08);
 }
 
 .aud-btnGold{
@@ -55,22 +61,38 @@
 
 .aud-header{
   display:grid;
-  grid-template-columns:96px minmax(0, 1fr) 240px;
-  gap:18px;
+  grid-template-columns:100px minmax(0, 1fr) minmax(220px, 260px);
+  gap:20px;
   align-items:center;
   margin-bottom:14px;
+  border-color:rgba(245,215,110,.13);
+  position:relative;
+  overflow:hidden;
+}
+
+.aud-header::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(90deg, rgba(245,215,110,.055), transparent 42%);
+  pointer-events:none;
+}
+
+.aud-header > *{
+  position:relative;
 }
 
 .aud-avatarWrap{
   width:88px;
   height:88px;
-  border-radius:24px;
-  border:1px solid rgba(245,215,110,.22);
+  border-radius:20px;
+  border:1px solid rgba(245,215,110,.24);
   background:rgba(245,215,110,.05);
   overflow:hidden;
   display:flex;
   align-items:center;
   justify-content:center;
+  box-shadow:0 14px 30px rgba(0,0,0,.25);
 }
 
 .aud-avatarImg{
@@ -86,10 +108,10 @@
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:32px;
+  font-size:30px;
   font-weight:1000;
   color:#f5d76e;
-  background:radial-gradient(circle at top, rgba(245,215,110,.15), rgba(255,255,255,.02));
+  background:radial-gradient(circle at top, rgba(245,215,110,.16), rgba(255,255,255,.02));
 }
 
 .aud-info{
@@ -97,10 +119,12 @@
 }
 
 .aud-name{
-  font-size:24px;
+  font-size:26px;
   font-weight:1000;
   color:#f5d76e;
-  line-height:1.1;
+  line-height:1.08;
+  letter-spacing:0;
+  overflow-wrap:anywhere;
 }
 
 .aud-sub{
@@ -117,8 +141,13 @@
   word-break:break-word;
 }
 
+.aud-id{
+  color:#9fa9b7;
+  font-size:13px;
+}
+
 .aud-dot{
-  opacity:.55;
+  opacity:.38;
 }
 
 .aud-badges{
@@ -132,13 +161,13 @@
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-height:34px;
-  padding:0 12px;
+  min-height:30px;
+  padding:0 11px;
   border-radius:999px;
-  border:1px solid #2a2f36;
+  border:1px solid rgba(255,255,255,.10);
   background:#0f1319;
   color:#edf1f5;
-  font-size:13px;
+  font-size:12px;
   font-weight:900;
 }
 
@@ -161,7 +190,7 @@
 }
 
 .aud-meta{
-  border-left:1px solid rgba(255,255,255,.06);
+  border-left:1px solid rgba(255,255,255,.07);
   padding-left:16px;
   display:grid;
   gap:10px;
@@ -169,13 +198,24 @@
 
 .aud-metaRow{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:12px;
+  min-width:0;
 }
 
 .aud-metaRow span{
   color:#aeb7c4;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.aud-metaRow b{
+  color:#eef3f7;
+  text-align:right;
+  word-break:break-word;
 }
 
 .aud-sectionTitle{
@@ -198,23 +238,24 @@
 
 @media (max-width: 900px){
   .aud-header{
-    grid-template-columns:76px 1fr;
+    grid-template-columns:78px minmax(0,1fr);
+    gap:14px;
   }
 
   .aud-avatarWrap{
     width:72px;
     height:72px;
-    border-radius:20px;
+    border-radius:18px;
   }
 
   .aud-avatarFallback{
-    font-size:28px;
+    font-size:26px;
   }
 
   .aud-meta{
     grid-column:1 / -1;
     border-left:none;
-    border-top:1px solid rgba(255,255,255,.06);
+    border-top:1px solid rgba(255,255,255,.07);
     padding-left:0;
     padding-top:14px;
   }
@@ -227,11 +268,11 @@
 
   .aud-card{
     padding:14px;
-    border-radius:20px;
+    border-radius:16px;
   }
 
   .aud-name{
-    font-size:20px;
+    font-size:21px;
   }
 
   .aud-sub{
@@ -253,5 +294,14 @@
 
   .aud-actions .aud-btn{
     flex:1 1 100%;
+  }
+
+  .aud-metaRow{
+    display:grid;
+    gap:4px;
+  }
+
+  .aud-metaRow b{
+    text-align:left;
   }
 }

@@ -1,5 +1,6 @@
 // src/Rutinas.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../Api.js";
 
 const CSS = `
 .r-wrap{ min-height: calc(100dvh - 56px); background:#0b0b0b; color:#eaeaea; padding:14px 16px 28px; }
@@ -53,12 +54,29 @@ const MOCK = [
 
 export default function Rutinas() {
   const [q, setQ] = useState("");
+  const [coachRoutine, setCoachRoutine] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch("/api/usuarios/users/me", { silent401: true })
+      .then((user) => {
+        if (active && hasCoachRoutine(user?.routine)) {
+          setCoachRoutine(user.routine);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return MOCK;
-    return MOCK.filter((x) => x.name.toLowerCase().includes(s) || x.items.join(" ").toLowerCase().includes(s));
-  }, [q]);
+    const base = coachRoutine ? routineToList(coachRoutine) : MOCK;
+    if (!s) return base;
+    return base.filter((x) => x.name.toLowerCase().includes(s) || x.items.join(" ").toLowerCase().includes(s));
+  }, [q, coachRoutine]);
 
   return (
     <div className="r-wrap">
@@ -104,4 +122,16 @@ export default function Rutinas() {
       </div>
     </div>
   );
+}
+
+function hasCoachRoutine(routine) {
+  return Array.isArray(routine?.currentPlan?.days) && routine.currentPlan.days.length > 0;
+}
+
+function routineToList(routine) {
+  return (routine?.currentPlan?.days || []).map((day, index) => ({
+    name: day?.name || `Dia ${index + 1}`,
+    tag: day?.focus || routine?.currentPlan?.name || "Rutina",
+    items: Array.isArray(day?.exercises) && day.exercises.length ? day.exercises : ["Sin ejercicios cargados"],
+  }));
 }

@@ -108,8 +108,11 @@ function capacityLabel(user) {
 const styles = `
 .pp-wrap{
   color:#eaeaea;
+  min-width:0;
+  width:100%;
 }
 .pp-card{
+  min-width:0;
   border:1px solid rgba(245,215,110,.15);
   background:linear-gradient(180deg, #0e1117, #0b0f15);
   border-radius:22px;
@@ -147,6 +150,7 @@ const styles = `
   gap:12px;
 }
 .pp-box{
+  min-width:0;
   border:1px solid rgba(255,255,255,.08);
   background:#0b1016;
   border-radius:16px;
@@ -163,10 +167,21 @@ const styles = `
 }
 .pp-box strong{
   color:#f5f7fa;
+  overflow-wrap:anywhere;
 }
 @media (max-width: 900px){
   .pp-grid{
     grid-template-columns:1fr;
+  }
+}
+@media (max-width: 430px){
+  .pp-card{
+    padding:14px;
+    border-radius:18px;
+  }
+
+  .pp-title{
+    font-size:25px;
   }
 }
 `;
