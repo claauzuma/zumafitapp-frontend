@@ -1,39 +1,25 @@
-// src/authCache.js
-
-// Estado de auth ultra simple y rápido (para evitar loaders)
-// "unknown" = no sabemos todavía (ej: primera carga)
-// "guest"   = deslogueado
-// "logged"  = logueado
-
 const KEY_STATUS = "auth_status_v1";
 const KEY_ROLE = "auth_role_v1";
 const KEY_USER = "auth_user_v1";
-
-// ✅ NUEVO: token fallback (por si el navegador no guarda cookies)
 const KEY_TOKEN = "auth_token_v1";
 
-/**
- * Guarda estado logged + (opcional) user/role y token si viene.
- *
- * Backwards compatible:
- * - setAuthLogged(user)
- * - setAuthLogged()
- *
- * Y soporta:
- * - setAuthLogged(user, token)
- * - setAuthLogged({ user, token })  (por si querés pasar el payload entero)
- */
+const KEY_IMP_ACTIVE = "impersonation_active_v1";
+const KEY_IMP_TOKEN = "impersonation_token_v1";
+const KEY_IMP_ADMIN_TOKEN = "impersonation_admin_token_v1";
+const KEY_IMP_ADMIN_USER = "impersonation_admin_user_v1";
+const KEY_IMP_TARGET_USER = "impersonation_target_user_v1";
+const KEY_IMP_RETURN_TO = "impersonation_return_to_v1";
+const KEY_IMP_EXPIRES_AT = "impersonation_expires_at_v1";
+
 export function setAuthLogged(user = null, token = null) {
   try {
     localStorage.setItem(KEY_STATUS, "logged");
 
-    // Si te pasan un objeto tipo { user, token }
     if (user && typeof user === "object" && user.user && user.token && token == null) {
       token = user.token;
       user = user.user;
     }
 
-    // Intentamos inferir role de varias formas comunes
     const role =
       user?.role ||
       user?.rol ||
@@ -44,42 +30,38 @@ export function setAuthLogged(user = null, token = null) {
     if (role) localStorage.setItem(KEY_ROLE, String(role));
     else localStorage.removeItem(KEY_ROLE);
 
-    // Guardar user completo es opcional (pero útil)
     if (user) localStorage.setItem(KEY_USER, JSON.stringify(user));
     else localStorage.removeItem(KEY_USER);
 
-    // ✅ Guardar token si viene (fallback)
     if (token && typeof token === "string") localStorage.setItem(KEY_TOKEN, token);
-    // no lo borro si no viene, para no romper flows viejos
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
-/**
- * Devuelve el token cacheado (Bearer fallback) o null.
- */
 export function getCachedToken() {
   try {
+    if (isImpersonating()) {
+      return localStorage.getItem(KEY_IMP_TOKEN) || localStorage.getItem(KEY_TOKEN) || null;
+    }
     return localStorage.getItem(KEY_TOKEN) || null;
   } catch {
     return null;
   }
 }
 
-/**
- * Marca como guest y limpia role + user + token.
- */
 export function setAuthGuest() {
   try {
     localStorage.setItem(KEY_STATUS, "guest");
     localStorage.removeItem(KEY_ROLE);
     localStorage.removeItem(KEY_USER);
     localStorage.removeItem(KEY_TOKEN);
-  } catch {}
+    clearImpersonationStorage();
+  } catch {
+    return;
+  }
 }
 
-/**
- * Devuelve: "logged" | "guest" | "unknown"
- */
 export function getCachedStatus() {
   try {
     return localStorage.getItem(KEY_STATUS) || "unknown";
@@ -88,9 +70,6 @@ export function getCachedStatus() {
   }
 }
 
-/**
- * Devuelve el rol cacheado (ej: "admin") o null si no existe.
- */
 export function getCachedRole() {
   try {
     return localStorage.getItem(KEY_ROLE) || null;
@@ -99,9 +78,6 @@ export function getCachedRole() {
   }
 }
 
-/**
- * Devuelve el user cacheado (obj) o null.
- */
 export function getCachedUser() {
   try {
     const raw = localStorage.getItem(KEY_USER);
@@ -111,14 +87,104 @@ export function getCachedUser() {
   }
 }
 
-/**
- * Limpia todo el cache de auth.
- */
 export function clearAuthCache() {
   try {
     localStorage.removeItem(KEY_STATUS);
     localStorage.removeItem(KEY_ROLE);
     localStorage.removeItem(KEY_USER);
     localStorage.removeItem(KEY_TOKEN);
-  } catch {}
+    clearImpersonationStorage();
+  } catch {
+    return;
+  }
+}
+
+export function isImpersonating() {
+  try {
+    return localStorage.getItem(KEY_IMP_ACTIVE) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function getImpersonationSession() {
+  try {
+    if (!isImpersonating()) return null;
+
+    const targetRaw = localStorage.getItem(KEY_IMP_TARGET_USER);
+    const adminRaw = localStorage.getItem(KEY_IMP_ADMIN_USER);
+
+    return {
+      active: true,
+      token: localStorage.getItem(KEY_IMP_TOKEN) || null,
+      targetUser: targetRaw ? JSON.parse(targetRaw) : null,
+      adminUser: adminRaw ? JSON.parse(adminRaw) : null,
+      returnTo: localStorage.getItem(KEY_IMP_RETURN_TO) || "/admin/usuarios",
+      expiresAt: localStorage.getItem(KEY_IMP_EXPIRES_AT) || null,
+      readOnly: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function startImpersonationCache({ token, targetUser, expiresAt, returnTo = "/admin/usuarios" }) {
+  try {
+    const adminToken = localStorage.getItem(KEY_TOKEN) || "";
+    const adminUser = getCachedUser();
+
+    localStorage.setItem(KEY_IMP_ACTIVE, "true");
+    localStorage.setItem(KEY_IMP_TOKEN, token || "");
+    localStorage.setItem(KEY_IMP_ADMIN_TOKEN, adminToken);
+    localStorage.setItem(KEY_IMP_ADMIN_USER, JSON.stringify(adminUser || null));
+    localStorage.setItem(KEY_IMP_TARGET_USER, JSON.stringify(targetUser || null));
+    localStorage.setItem(KEY_IMP_RETURN_TO, returnTo || "/admin/usuarios");
+    localStorage.setItem(KEY_IMP_EXPIRES_AT, expiresAt || "");
+
+    localStorage.setItem(KEY_STATUS, "logged");
+    localStorage.setItem(KEY_ROLE, String(targetUser?.role || ""));
+    localStorage.setItem(KEY_USER, JSON.stringify(targetUser || null));
+    if (token) localStorage.setItem(KEY_TOKEN, token);
+  } catch {
+    return;
+  }
+}
+
+export function restoreAdminAfterImpersonation() {
+  try {
+    const adminToken = localStorage.getItem(KEY_IMP_ADMIN_TOKEN) || "";
+    const adminRaw = localStorage.getItem(KEY_IMP_ADMIN_USER);
+    const adminUser = adminRaw ? JSON.parse(adminRaw) : null;
+
+    clearImpersonationStorage();
+
+    localStorage.setItem(KEY_STATUS, "logged");
+    if (adminUser) {
+      localStorage.setItem(KEY_USER, JSON.stringify(adminUser));
+      if (adminUser?.role) localStorage.setItem(KEY_ROLE, String(adminUser.role));
+      else localStorage.removeItem(KEY_ROLE);
+    } else {
+      localStorage.removeItem(KEY_USER);
+      localStorage.setItem(KEY_ROLE, "admin");
+    }
+
+    if (adminToken) localStorage.setItem(KEY_TOKEN, adminToken);
+    else localStorage.removeItem(KEY_TOKEN);
+  } catch {
+    clearImpersonationStorage();
+  }
+}
+
+export function clearImpersonationStorage() {
+  try {
+    localStorage.removeItem(KEY_IMP_ACTIVE);
+    localStorage.removeItem(KEY_IMP_TOKEN);
+    localStorage.removeItem(KEY_IMP_ADMIN_TOKEN);
+    localStorage.removeItem(KEY_IMP_ADMIN_USER);
+    localStorage.removeItem(KEY_IMP_TARGET_USER);
+    localStorage.removeItem(KEY_IMP_RETURN_TO);
+    localStorage.removeItem(KEY_IMP_EXPIRES_AT);
+  } catch {
+    return;
+  }
 }

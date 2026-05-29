@@ -35,6 +35,66 @@ export async function updateAdminUserPlan(id, plan) {
   return data?.user || data;
 }
 
+export async function getAdminCoachPlans() {
+  const data = await apiFetch("/api/usuarios/admin/coach-plans", {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return data?.plans || [];
+}
+
+export async function updateAdminCoachPlanConfig(planCode, payload) {
+  const data = await apiFetch(`/api/usuarios/admin/coach-plans/${planCode}`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.plan || data;
+}
+
+export async function resetAdminCoachPlanConfig(planCode) {
+  const data = await apiFetch(`/api/usuarios/admin/coach-plans/${planCode}/reset`, {
+    method: "POST",
+    body: {},
+    timeoutMs: 12000,
+  });
+  return data?.plan || data;
+}
+
+export async function updateAdminCoachPlan(id, payload) {
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/coach-plan`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.user || data;
+}
+
+export async function updateAdminCoachOverrides(id, payload) {
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/coach-overrides`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.user || data;
+}
+
+export async function deleteAdminCoachOverrides(id) {
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/coach-overrides`, {
+    method: "DELETE",
+    timeoutMs: 12000,
+  });
+  return data?.user || data;
+}
+
+export async function getAdminCoachEffectiveCapabilities(id) {
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/effective-capabilities`, {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return data?.effectiveCapabilities || null;
+}
+
 export async function updateAdminUserGoals(id, payload) {
   const data = await apiFetch(`/api/usuarios/admin/users/${id}/goals`, {
     method: "PATCH",

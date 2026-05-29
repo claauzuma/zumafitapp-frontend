@@ -11,12 +11,16 @@ export default function InicioProfesional() {
 
   const canTraining = useMemo(() => {
     if (role !== "coach") return false;
-    return !!me?.coachProfile?.specialties?.training;
+    const hasSpecialty = !!me?.coachProfile?.specialties?.training;
+    const routines = me?.effectiveCapabilities?.features?.routines || {};
+    return hasSpecialty && (!me?.effectiveCapabilities || Object.values(routines).some(Boolean));
   }, [me, role]);
 
   const canNutrition = useMemo(() => {
     if (role !== "coach") return false;
-    return !!me?.coachProfile?.specialties?.nutrition;
+    const hasSpecialty = !!me?.coachProfile?.specialties?.nutrition;
+    const menus = me?.effectiveCapabilities?.features?.menus || {};
+    return hasSpecialty && (!me?.effectiveCapabilities || Object.values(menus).some(Boolean));
   }, [me, role]);
 
   const showWelcome = role === "coach" && me?.coachWelcome?.show === true;
@@ -34,6 +38,7 @@ export default function InicioProfesional() {
 
 
 async function handleCloseWelcome() {
+  setClosingWelcome(true);
   const optimisticUser = me
     ? {
         ...me,
@@ -54,6 +59,8 @@ async function handleCloseWelcome() {
     });
   } catch (error) {
     console.error("No se pudo marcar coachWelcome como visto:", error);
+  } finally {
+    setClosingWelcome(false);
   }
 }
 
@@ -80,7 +87,7 @@ async function handleCloseWelcome() {
 
             <div className="pro-welcomeMeta">
               <span className="pro-chip">
-                Plan: {String(me?.coachWelcome?.plan || "free").toUpperCase()}
+                Plan: {planLabel(me?.effectiveCapabilities?.planCode || me?.coachWelcome?.plan || me?.plan)}
               </span>
               <span className="pro-chip">
                 Especialidad: {specialtyLabel}
@@ -144,6 +151,12 @@ async function handleCloseWelcome() {
             <div className="pro-cardText">Datos, foto y configuración.</div>
           </Link>
         </div>
+
+        {me?.effectiveCapabilities?.isTrialExpired ? (
+          <div className="pro-note">
+            Tu prueba esta vencida. Conservas datos y clientes, pero las nuevas acciones de gestion quedan limitadas hasta pasar a Pro o VIP.
+          </div>
+        ) : null}
       </div>
 
       <style>{styles}</style>
@@ -332,6 +345,17 @@ const styles = `
   color:#9ea8b7;
 }
 
+.pro-note{
+  margin-top:14px;
+  border:1px solid rgba(255,190,80,.22);
+  background:rgba(255,190,80,.08);
+  color:#ffd8a3;
+  border-radius:16px;
+  padding:12px 14px;
+  font-weight:800;
+  line-height:1.5;
+}
+
 @media (max-width: 700px){
   .pro-grid{
     grid-template-columns:1fr;
@@ -350,3 +374,10 @@ const styles = `
   }
 }
 `;
+
+function planLabel(plan) {
+  const p = String(plan || "").toLowerCase();
+  if (p === "premium2" || p === "vip") return "VIP";
+  if (p === "premium" || p === "pro") return "Pro";
+  return "Prueba Pro";
+}

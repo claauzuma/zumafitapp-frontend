@@ -7,7 +7,7 @@ export default function AdminUsuarioHeader({ user, onBack, onRefresh }) {
   const email = user?.email || "—";
   const role = user?.role || "—";
   const tipo = user?.tipo || "—";
-  const plan = user?.plan || "free";
+  const plan = planLabel(user?.effectiveCapabilities?.planCode || user?.plan || "free");
   const estado = user?.estado || "activo";
 
   return (
@@ -46,4 +46,12 @@ export default function AdminUsuarioHeader({ user, onBack, onRefresh }) {
       </div>
     </>
   );
+}
+
+function planLabel(plan) {
+  const p = String(plan || "").toLowerCase();
+  if (p === "premium2" || p === "vip") return "VIP";
+  if (p === "premium" || p === "pro") return "Pro";
+  if (p === "trial_pro" || p === "trial" || p === "free") return "Prueba Pro";
+  return "Prueba Pro";
 }

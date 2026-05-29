@@ -198,5 +198,6 @@ function planLabel(plan) {
   const p = String(plan || "").toLowerCase();
   if (p === "premium2" || p === "vip") return "VIP";
   if (p === "premium" || p === "pro") return "Pro";
-  return "Free";
+  if (p === "trial_pro" || p === "trial" || p === "free") return "Prueba Pro";
+  return "Prueba Pro";
 }

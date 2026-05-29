@@ -157,7 +157,6 @@ export default function AdminInvitaciones() {
             const planMeta = getInvitePlanMeta(it?.plan);
             const specialtyText = getInviteSpecialtyText(it);
             const invitedAt = formatDateTime(it?.invitedAt || it?.createdAt);
-            const acceptedAt = formatDateTime(it?.acceptedAt);
             const email = String(it?.email || "");
 
             return (
@@ -268,6 +267,12 @@ function getInvitePlanMeta(planRaw) {
   const plan = String(planRaw || "").toLowerCase().trim();
 
   if (!plan) return null;
+  if (plan === "trial_pro" || plan === "trial" || plan === "free") {
+    return { emoji: "", label: "Prueba Pro", className: "free" };
+  }
+  if (plan === "premium" || plan === "pro" || plan === "plus") {
+    return { emoji: "", label: "Pro", className: "plus" };
+  }
   if (plan === "premium2" || plan === "vip") {
     return { emoji: "💎", label: "VIP", className: "vip" };
   }

@@ -8,7 +8,7 @@ const ROLE_OPTIONS = [
 ];
 
 const PLAN_OPTIONS = [
-  { value: "free", label: "Free" },
+  { value: "trial_pro", label: "Prueba Pro" },
   { value: "pro", label: "Pro" },
   { value: "vip", label: "VIP" },
 ];
@@ -25,7 +25,7 @@ export default function CrearUsuario() {
     apellido: "",
     email: "",
     role: "coach",
-    plan: "free",
+    plan: "trial_pro",
     coachProfile: {
       specialties: {
         training: true,
@@ -39,7 +39,6 @@ export default function CrearUsuario() {
     [form.role]
   );
 
-  const isAdmin = form.role === "admin";
   const isCoach = form.role === "coach";
   const showPlan = isCoach;
 

@@ -335,6 +335,7 @@ function getUserPlanMeta(u) {
   }
 
   const rawPlan =
+    u?.effectiveCapabilities?.planCode ||
     u?.plan ||
     u?.planActual ||
     u?.subscription?.tier ||
@@ -347,6 +348,14 @@ function getUserPlanMeta(u) {
     "free";
 
   const plan = String(rawPlan || "free").toLowerCase().trim();
+
+  if (plan === "trial_pro" || plan === "trial" || plan === "free") {
+    return { emoji: "", label: "Prueba Pro", className: "free" };
+  }
+
+  if (plan === "premium" || plan === "pro" || plan === "plus") {
+    return { emoji: "", label: "Plan Pro", className: "plus" };
+  }
 
   if (plan === "premium2" || plan === "vip") {
     return { emoji: "💎", label: "Plan VIP", className: "vip" };

@@ -1,5 +1,5 @@
 import { API_BASE } from "./apiCredentials";
-import { getCachedToken } from "./authCache.js";
+import { getCachedToken, isImpersonating } from "./authCache.js";
 
 function joinUrl(base, path) {
   const b = (base || "").replace(/\/+$/, "");
@@ -38,6 +38,18 @@ export async function apiFetch(path, options = {}) {
     silent401 = false,
     timeoutMs = 12000,
   } = options;
+
+  const upperMethod = String(method || "GET").toUpperCase();
+  const isSafeRead = ["GET", "HEAD", "OPTIONS"].includes(upperMethod);
+  const isStopImpersonation = String(path || "").includes("/api/usuarios/admin/impersonation/stop");
+
+  if (isImpersonating() && !isSafeRead && !isStopImpersonation) {
+    const err = new Error("Modo simulacion de solo lectura: esta accion no esta permitida");
+    err.status = 403;
+    err.impersonation = true;
+    err.readOnly = true;
+    throw err;
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

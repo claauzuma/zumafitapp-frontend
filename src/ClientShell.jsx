@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
-import { setAuthGuest, getCachedUser } from "./authCache.js";
+import { setAuthGuest, getCachedUser, isImpersonating } from "./authCache.js";
+import ImpersonationBanner from "./ImpersonationBanner.jsx";
 
 const CSS = `
 :root{
@@ -465,6 +466,7 @@ export default function ClientShell() {
   }, [open]);
 
   async function logout() {
+    if (isImpersonating()) return;
     if (loading) return;
     setLoading(true);
     try {
@@ -518,6 +520,7 @@ export default function ClientShell() {
   return (
     <div className="cs-wrap">
       <style>{CSS}</style>
+      <ImpersonationBanner />
 
       {loading && (
         <div className="cn-ov" role="status" aria-live="polite" aria-busy="true">
@@ -553,11 +556,11 @@ export default function ClientShell() {
             <button
               className={`cs-btn ${loading ? "is-loading" : ""}`}
               onClick={logout}
-              disabled={loading}
-              aria-label={loading ? "Cerrando sesión…" : "Cerrar sesión"}
-              title={loading ? "Cerrando sesión…" : "Cerrar sesión"}
+              disabled={loading || isImpersonating()}
+              aria-label={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión…" : "Cerrar sesión"}
+              title={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión…" : "Cerrar sesión"}
             >
-              {loading ? "…" : "⎋"}
+              {isImpersonating() ? "SL" : loading ? "…" : "⎋"}
             </button>
           </div>
         </div>
@@ -606,10 +609,10 @@ export default function ClientShell() {
           <button
             className="cs-btn cs-foot-item"
             onClick={logout}
-            disabled={loading}
+            disabled={loading || isImpersonating()}
             style={{ width: "100%", justifyContent: "center" }}
           >
-            {loading ? "Cerrando…" : "Salir"}
+            {isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando…" : "Salir"}
           </button>
         </div>
       </aside>

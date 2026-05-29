@@ -10,7 +10,9 @@ export default function AdminNavBar() {
   async function logout() {
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
-    } catch {}
+    } catch (error) {
+      console.warn("No se pudo cerrar sesion en el servidor:", error);
+    }
     setAuthGuest();
     navigate("/", { replace: true });
   }
@@ -51,6 +53,9 @@ export default function AdminNavBar() {
             </NavLink>
             <NavLink to="/admin/rutinas" className={linkClass}>
               Rutinas
+            </NavLink>
+            <NavLink to="/admin/coach-planes" className={linkClass}>
+              Planes
             </NavLink>
           </nav>
 
@@ -139,6 +144,9 @@ export default function AdminNavBar() {
           </NavLink>
           <NavLink to="/admin/rutinas" className={mobileLinkClass} onClick={() => setOpen(false)}>
             Rutinas
+          </NavLink>
+          <NavLink to="/admin/coach-planes" className={mobileLinkClass} onClick={() => setOpen(false)}>
+            Planes
           </NavLink>
         </nav>
 

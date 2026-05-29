@@ -1,49 +1,69 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { canNutrition, canTraining } from "../utils/roles.js";
+import { getCachedUser } from "../authCache.js";
+import ImpersonationBanner from "../ImpersonationBanner.jsx";
 
-export default function ProfesionalLayout({ me }) {
-  const role = me?.role || "";
+export default function ProfesionalLayout({ me: meProp }) {
+  const me = meProp || getCachedUser() || null;
+  const navItems = useMemo(() => buildNavItems(me), [me]);
 
   return (
-    <div className="pl-wrap">
-      <aside className="pl-side">
-        <div className="pl-brand">Panel profesional</div>
+    <>
+      <ImpersonationBanner />
+      <div className="pl-wrap">
+        <aside className="pl-side">
+          <div className="pl-brand">Panel profesional</div>
+          <div className="pl-plan">{planLabel(me?.effectiveCapabilities?.planCode || me?.plan)}</div>
 
-        <nav className="pl-nav">
-          <NavLink to="/profesional" end className="pl-link">
-            Inicio
-          </NavLink>
+          <nav className="pl-nav">
+            {navItems.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end} className="pl-link">
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </aside>
 
-          <NavLink to="/profesional/clientes" className="pl-link">
-            Clientes
-          </NavLink>
+        <main className="pl-main">
+          <Outlet context={{ me }} />
+        </main>
 
-          {canTraining(role) && (
-            <NavLink to="/profesional/rutinas" className="pl-link">
-              Rutinas
-            </NavLink>
-          )}
-
-          {canNutrition(role) && (
-            <NavLink to="/profesional/menus" className="pl-link">
-              Menús
-            </NavLink>
-          )}
-
-          <NavLink to="/profesional/perfil" className="pl-link">
-            Perfil
-          </NavLink>
-        </nav>
-      </aside>
-
-      <main className="pl-main">
-        <Outlet />
-      </main>
-
-      <style>{styles}</style>
-    </div>
+        <style>{styles}</style>
+      </div>
+    </>
   );
+}
+
+function buildNavItems(me) {
+  const specialties = me?.coachProfile?.specialties || {};
+  const features = me?.effectiveCapabilities?.features || {};
+
+  const canRoutines =
+    !!specialties.training &&
+    (!me?.effectiveCapabilities || Object.values(features?.routines || {}).some(Boolean));
+  const canMenus =
+    !!specialties.nutrition &&
+    (!me?.effectiveCapabilities || Object.values(features?.menus || {}).some(Boolean));
+
+  const items = [
+    { to: "/profesional", label: "Inicio", end: true },
+    { to: "/profesional/clientes", label: "Clientes" },
+  ];
+
+  if (canRoutines) items.push({ to: "/profesional/rutinas", label: "Rutinas" });
+  if (canMenus) items.push({ to: "/profesional/menus", label: "Menus" });
+
+  items.push({ to: "/profesional/progreso", label: "Progreso" });
+  items.push({ to: "/profesional/perfil", label: "Perfil" });
+
+  return items;
+}
+
+function planLabel(plan) {
+  const p = String(plan || "").toLowerCase();
+  if (p === "premium2" || p === "vip") return "VIP";
+  if (p === "premium" || p === "pro") return "Pro";
+  return "Prueba Pro";
 }
 
 const styles = `
@@ -62,7 +82,19 @@ const styles = `
 .pl-brand{
   font-size:22px;
   font-weight:1000;
-  margin-bottom:18px;
+}
+.pl-plan{
+  margin:8px 0 18px;
+  display:inline-flex;
+  min-height:30px;
+  align-items:center;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid rgba(245,215,110,.18);
+  background:rgba(245,215,110,.07);
+  color:#f5d76e;
+  font-size:12px;
+  font-weight:900;
 }
 .pl-nav{
   display:flex;
@@ -74,6 +106,7 @@ const styles = `
   border-radius:12px;
   color:#d9dee6;
   text-decoration:none;
+  font-weight:850;
 }
 .pl-link.active{
   background:rgba(245,215,110,.08);
@@ -90,6 +123,14 @@ const styles = `
   .pl-side{
     border-right:none;
     border-bottom:1px solid #1a2230;
+  }
+  .pl-nav{
+    flex-direction:row;
+    overflow:auto;
+    padding-bottom:4px;
+  }
+  .pl-link{
+    flex:0 0 auto;
   }
 }
 `;

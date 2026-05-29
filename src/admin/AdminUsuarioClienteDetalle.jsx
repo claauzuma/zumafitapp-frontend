@@ -10,6 +10,7 @@ import {
   getAdminUserById,
   deleteAdminUser,
 } from "./adminUsuariosApi.js";
+import { startAdminImpersonation } from "../impersonationApi.js";
 import "./adminUsuarioCliente.css";
 
 export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
@@ -220,6 +221,23 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
     }
   }
 
+  async function handleViewAsClient() {
+    const ok = window.confirm(
+      `Vas a ingresar en modo simulacion de solo lectura como ${fullName(user)}.`
+    );
+    if (!ok) return;
+
+    try {
+      setErr("");
+      await startAdminImpersonation(user.id, {
+        returnTo: `/admin/usuarios/${user.id}`,
+      });
+      navigate("/app/inicio", { replace: true });
+    } catch (e) {
+      setErr(e?.message || "No se pudo iniciar la simulacion");
+    }
+  }
+
   function handleCoachInputChange(e) {
     setCoachQuery(e.target.value);
     setSelectedCoach(null);
@@ -291,6 +309,9 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
             <div className="auc-actions">
               <button className="auc-btn auc-btnGold" onClick={() => setActiveTab("relacion")}>
                 Asignar coach
+              </button>
+              <button className="auc-btn" onClick={handleViewAsClient}>
+                👁 Ver como cliente
               </button>
               <button className="auc-btn" onClick={handleUnassignCoach}>
                 Quitar coach
@@ -397,8 +418,21 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
 
             {assignedCoach ? (
               <div className="auc-currentCoachCard">
-                <div className="auc-currentCoachName">{fullName(assignedCoach)}</div>
+                <div className="auc-currentCoachTop">
+                  <Avatar user={assignedCoach} />
+                  <div className="auc-currentCoachInfo">
+                    <div className="auc-currentCoachName">{fullName(assignedCoach)}</div>
+                    <div className="auc-currentCoachMeta">
+                      <span>{specialtyLabel(assignedCoach)}</span>
+                      <span>{planLabel(assignedCoach?.effectiveCapabilities?.planCode || assignedCoach?.plan)}</span>
+                      <span>{capacityLabel(assignedCoach)}</span>
+                    </div>
                 <div className="auc-currentCoachEmail">{assignedCoach?.email || "—"}</div>
+                  </div>
+                </div>
+                <div className="auc-helperText">
+                  Asignado el {dateLabel(user?.coach?.assignedAt)}.
+                </div>
               </div>
             ) : null}
 
@@ -444,11 +478,14 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                         >
                           <div className="auc-optionMain">
                             <div className="auc-optionName">{fullName(coach)}</div>
+                            <div className="auc-optionSub">
+                              {specialtyLabel(coach)} - {capacityLabel(coach)}
+                            </div>
                             <div className="auc-optionEmail">{coach?.email || "—"}</div>
                           </div>
 
                           <div className="auc-optionMeta">
-                            {coach?.plan ? String(coach.plan).toUpperCase() : "FREE"}
+                            {planLabel(coach?.effectiveCapabilities?.planCode || coach?.plan)}
                           </div>
                         </button>
                       ))
@@ -497,6 +534,9 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
             <button className="auc-btn auc-btnDanger" onClick={handleDeleteUser}>
               Eliminar usuario
             </button>
+            <button className="auc-btn auc-btnGold" onClick={handleViewAsClient}>
+              👁 Ver como cliente
+            </button>
           </div>
         </div>
       )}
@@ -510,6 +550,70 @@ function fullName(u) {
   const nombre = String(u?.profile?.nombre || "").trim();
   const apellido = String(u?.profile?.apellido || "").trim();
   return `${nombre} ${apellido}`.trim() || "Sin nombre";
+}
+
+function Avatar({ user }) {
+  const avatarUrl = getAvatarUrl(user);
+  return (
+    <div className="auc-avatar">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={fullName(user)} className="auc-avatarImg" />
+      ) : (
+        <div className="auc-avatarFallback">{initials(user?.profile?.nombre, user?.profile?.apellido)}</div>
+      )}
+    </div>
+  );
+}
+
+function getAvatarUrl(user) {
+  return (
+    user?.profile?.avatarUrl ||
+    user?.profile?.foto ||
+    user?.profile?.avatar ||
+    user?.avatarUrl ||
+    user?.avatar ||
+    ""
+  );
+}
+
+function initials(nombre = "", apellido = "") {
+  const a = String(nombre || "").trim()[0] || "U";
+  const b = String(apellido || "").trim()[0] || "X";
+  return `${a}${b}`.toUpperCase();
+}
+
+function specialtyLabel(user) {
+  const training = !!user?.coachProfile?.specialties?.training;
+  const nutrition = !!user?.coachProfile?.specialties?.nutrition;
+
+  if (training && nutrition) return "Entrenamiento + Nutricion";
+  if (training) return "Entrenamiento";
+  if (nutrition) return "Nutricion";
+  return "Sin especialidad";
+}
+
+function planLabel(plan) {
+  const p = String(plan || "").toLowerCase();
+  if (p === "premium2" || p === "vip") return "VIP";
+  if (p === "premium" || p === "pro") return "Pro";
+  if (p === "free" || p === "trial_pro" || p === "trial") return "Prueba Pro";
+  return "Prueba Pro";
+}
+
+function capacityLabel(coach) {
+  const effective = coach?.effectiveCapabilities || {};
+  const current = effective?.currentClients ?? coach?.coachStats?.currentClients ?? 0;
+  const max = effective?.maxClients ?? "sin limite";
+  if (effective?.isTrialExpired) return `${current}/${max} - prueba vencida`;
+  if (effective?.canReceiveClients === false) return `${current}/${max} - sin cupo`;
+  return `${current}/${max} clientes`;
+}
+
+function dateLabel(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatCoachOption(coach) {

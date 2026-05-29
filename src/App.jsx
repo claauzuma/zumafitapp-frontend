@@ -15,6 +15,7 @@ import AdminLayout from "./admin/AdminLayout.jsx";
 
 import ProfesionalLayout from "./profesional/ProfesionalLayout.jsx";
 import InicioProfesional from "./profesional/InicioProfesional.jsx";
+import ProfesionalPlaceholder from "./profesional/ProfesionalPlaceholder.jsx";
 
 // ✅ Onboarding v2 (wizard con basics/goal/program)
 import OnboardingWizard from "./onboarding_v2/OnboardingWizard.jsx";
@@ -41,6 +42,7 @@ import AdminUsuarioDetalle from "./admin/AdminUsuarioDetalle.jsx";
 import AdminComidas from "./admin/AdminComidas.jsx";
 import AdminAlimentos from "./admin/AdminAlimentos.jsx";
 import AdminRutinas from "./admin/AdminRutinas.jsx";
+import AdminCoachPlanes from "./admin/AdminCoachPlanes.jsx";
 
 export default function App() {
   return (
@@ -102,6 +104,7 @@ export default function App() {
         <Route path="comidas" element={<AdminComidas />} />
         <Route path="alimentos" element={<AdminAlimentos />} />
         <Route path="rutinas" element={<AdminRutinas />} />
+        <Route path="coach-planes" element={<AdminCoachPlanes />} />
       </Route>
 
       {/* ✅ PROFESIONAL */}
@@ -116,10 +119,11 @@ export default function App() {
         }
       >
         <Route index element={<InicioProfesional />} />
-        {/* <Route path="clientes" element={<ClientesProfesional />} /> */}
-        {/* <Route path="rutinas" element={<RutinasProfesional />} /> */}
-        {/* <Route path="menus" element={<MenusProfesional />} /> */}
-        {/* <Route path="perfil" element={<PerfilProfesional />} /> */}
+        <Route path="clientes" element={<ProfesionalPlaceholder type="clientes" />} />
+        <Route path="rutinas" element={<ProfesionalPlaceholder type="rutinas" />} />
+        <Route path="menus" element={<ProfesionalPlaceholder type="menus" />} />
+        <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
+        <Route path="perfil" element={<ProfesionalPlaceholder type="perfil" />} />
       </Route>
 
       {/* ✅ APP (CLIENTE) */}
