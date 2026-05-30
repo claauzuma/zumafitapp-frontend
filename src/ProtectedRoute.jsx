@@ -4,32 +4,48 @@ import { Navigate } from "react-router-dom";
 import FullPageLoader from "./FullPageLoader.jsx";
 import { getCachedStatus, setAuthGuest, setAuthLogged } from "./authCache.js";
 import { useAuthMe } from "./authQueries.js";
+import { clearPrivateQueryCache } from "./queryClient.js";
 
 export default function ProtectedRoute({ children }) {
-  const cached = getCachedStatus();
-  const [status, setStatus] = useState(() => (cached === "logged" ? "ok" : "loading"));
-  const meQuery = useAuthMe({ enabled: status !== "no", silent401: true });
+  const [sessionStatus, setSessionStatus] = useState(() => getCachedStatus());
+  const shouldCheck = sessionStatus !== "guest";
+  const meQuery = useAuthMe({
+    enabled: shouldCheck,
+    silent401: true,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
 
   useEffect(() => {
-    if (meQuery.isPending) return;
+    if (!shouldCheck || meQuery.isPending || meQuery.isFetching) return;
 
     if (meQuery.data) {
       setAuthLogged(meQuery.data);
-      setStatus("ok");
+      setSessionStatus("logged");
       return;
     }
 
     if (meQuery.isError || meQuery.data === null) {
+      setSessionStatus("guest");
       setAuthGuest();
-      setStatus("no");
+      clearPrivateQueryCache();
     }
-  }, [meQuery.data, meQuery.dataUpdatedAt, meQuery.isError, meQuery.isPending]);
+  }, [
+    meQuery.data,
+    meQuery.dataUpdatedAt,
+    meQuery.isError,
+    meQuery.isFetching,
+    meQuery.isPending,
+    shouldCheck,
+  ]);
 
-  if (status === "loading") {
+  if (!shouldCheck) return <Navigate to="/login" replace />;
+
+  if (meQuery.isPending || meQuery.isFetching) {
     return <FullPageLoader title="Verificando sesion..." sub="Entrando a tu panel." />;
   }
 
-  if (status === "no") return <Navigate to="/login" replace />;
+  if (!meQuery.data) return <Navigate to="/login" replace />;
 
   return children;
 }

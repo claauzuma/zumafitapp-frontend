@@ -28,22 +28,32 @@ export async function fetchAuthMe(options = {}) {
 }
 
 export function fetchAuthMeQuery(options = {}) {
+  const { staleTime = 0 } = options;
+
   return queryClient.fetchQuery({
     queryKey: queryKeys.authMe(),
     queryFn: () => fetchAuthMe(options),
-    staleTime: STALE_TIMES.authMe,
+    staleTime,
+    retry: false,
   });
 }
 
 export function useAuthMe(options = {}) {
-  const { enabled = true, silent401 = true, initialFromCache = false } = options;
+  const {
+    enabled = true,
+    silent401 = true,
+    initialFromCache = false,
+    refetchOnMount,
+    staleTime = STALE_TIMES.authMe,
+  } = options;
 
   return useQuery({
     queryKey: queryKeys.authMe(),
     queryFn: () => fetchAuthMe({ silent401 }),
     enabled,
-    staleTime: STALE_TIMES.authMe,
+    staleTime,
     retry: false,
+    refetchOnMount,
     initialData: initialFromCache && getCachedStatus() === "logged" ? getCachedUser() || undefined : undefined,
   });
 }

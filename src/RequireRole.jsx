@@ -8,6 +8,7 @@ export default function RequireRole({ role, children }) {
   const r = String(getCachedRole() || "").toLowerCase();
 
   if (status !== "logged") return <Navigate to="/login" replace />;
+  if (!r) return <Navigate to="/login" replace />;
 
   const allowed = Array.isArray(role)
     ? role.map((x) => String(x).toLowerCase()).includes(r)

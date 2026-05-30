@@ -36,6 +36,8 @@ export default function RequireOnboarding({ children }) {
   if (status !== "logged") return children;
 
   const role = normalizeRole(user?.role || user?.rol);
+  if (!user || !role) return <Navigate to="/login" replace />;
+
   const tipo = normalizeTipo(user?.tipo);
   const done = Boolean(user?.onboarding?.done);
   const enabled = user?.onboarding?.enabled === true;

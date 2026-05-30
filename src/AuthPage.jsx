@@ -8,6 +8,7 @@ import { clearPrivateQueryCache, setAuthUserQueryData } from "./queryClient.js";
 import {
   setAuthLogged,
   clearAuthCache,
+  getCachedStatus,
   getCachedToken, // ✅ fallback token
 } from "./authCache.js";
 
@@ -90,13 +91,8 @@ export default function AuthPage({ defaultMode = "login" }) {
 
   // ✅ booting: evita “flash” del form en Safari/WebView cuando hay token/fallback/OAuth
   const [booting, setBooting] = useState(() => {
-    const pb = isProblemBrowser();
-    if (!pb) return false;
-
-    // Si volvimos de OAuth con token en query o ya existe token fallback, no muestres form
-    const urlHasToken = hasOAuthTokenInUrl();
-    const hasFallback = !!getCachedToken();
-    return urlHasToken || hasFallback;
+    if (hasOAuthTokenInUrl()) return true;
+    return isProblemBrowser() && !!getCachedToken();
   });
 
   const [mode, setMode] = useState(defaultMode === "register" ? "register" : "login");
@@ -140,6 +136,7 @@ export default function AuthPage({ defaultMode = "login" }) {
   const [success, setSuccess] = useState(null);
 
   const skipClearOnModeChangeRef = useRef(false);
+  const oauthHandlingRef = useRef(false);
   const isVerifyLocked = useMemo(() => attemptsLeft <= 0, [attemptsLeft]);
 
   // ---- logs ----
@@ -193,11 +190,7 @@ export default function AuthPage({ defaultMode = "login" }) {
     setGoogleLoading(false);
 
     // ✅ si cambias de modo manualmente, dejá booting en false (salvo que problem browser + token fallback)
-    if (problemBrowserRef.current) {
-      setBooting(!!getCachedToken() || hasOAuthTokenInUrl());
-    } else {
-      setBooting(false);
-    }
+    setBooting(hasOAuthTokenInUrl() || (problemBrowserRef.current && !!getCachedToken()));
   }, [mode]);
 
   useEffect(() => {
@@ -216,20 +209,22 @@ export default function AuthPage({ defaultMode = "login" }) {
 
     if (oauthError) {
       console.log(`🔴 [OAuth ${debugIdRef.current}] error query:`, oauthError);
+      oauthHandlingRef.current = false;
       setError(decodeURIComponent(oauthError));
       removeQueryParams(["error", "token", "oauth"]);
       setBooting(false);
       return;
     }
 
-    if (oauthToken) {
+    if (oauthToken || oauthFlag) {
       console.log(`🟡 [OAuth ${debugIdRef.current}] token por query -> guardando fallback y resolviendo /me sin flash`);
       // ✅ bloqueá UI (evita ver el form)
+      oauthHandlingRef.current = true;
       setBooting(true);
 
       // ✅ guarda token fallback
       clearPrivateQueryCache();
-      setAuthLogged(null, oauthToken);
+      if (oauthToken) setAuthLogged(null, oauthToken);
 
       // ✅ limpiá la URL (no dejes token en la barra)
       removeQueryParams(["token", "error", "oauth"]);
@@ -238,6 +233,7 @@ export default function AuthPage({ defaultMode = "login" }) {
       (async () => {
         try {
           const user = await fetchAuthMeQuery({ timeoutMs: 8000 });
+          if (!user) throw new Error("No se pudo validar la sesion de Google");
           const role = normalizeRole(user?.role || user?.rol);
 
           console.log(`🟢 [OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
@@ -251,6 +247,9 @@ export default function AuthPage({ defaultMode = "login" }) {
             message: err?.message,
             err,
           });
+          clearAuthCache();
+          clearPrivateQueryCache();
+          oauthHandlingRef.current = false;
           setError("No se pudo completar el login con Google. Probá de nuevo.");
           // Si falla, dejá que el usuario vea el form
           setBooting(false);
@@ -271,7 +270,16 @@ export default function AuthPage({ defaultMode = "login" }) {
     (async () => {
       try {
         const hasFallbackToken = !!getCachedToken();
+        const cachedStatus = getCachedStatus();
         const isPB = problemBrowserRef.current;
+        const shouldTryAutoLogin = cachedStatus === "logged" || hasFallbackToken;
+
+        if (oauthHandlingRef.current || hasOAuthTokenInUrl()) return;
+
+        if (!shouldTryAutoLogin) {
+          setBooting(false);
+          return;
+        }
 
         // ✅ si es Safari/WebView y hay token fallback, evita el form hasta resolver
         if (isPB && hasFallbackToken) setBooting(true);
@@ -281,10 +289,12 @@ export default function AuthPage({ defaultMode = "login" }) {
           mode,
           href: window.location.href,
           hasFallbackToken,
+          cachedStatus,
           isProblemBrowser: isPB,
         });
 
         const user = await fetchAuthMeQuery({ timeoutMs: 6000 });
+        if (!user) throw new Error("No se pudo validar la sesion");
         if (cancelled) return;
 
         const role = normalizeRole(user?.role || user?.rol);
@@ -310,14 +320,10 @@ navigate(getHomeByUser(user), { replace: true });
           isProblemBrowser: problemBrowserRef.current,
         });
 
-        // ✅ SOLO limpiamos si realmente NO está autenticado
+        // Un 401 de /me confirma que la sesion local ya no es valida.
         if (err?.status === 401) {
-          // Si NO hay token fallback, limpiá todo
-          if (!getCachedToken()) {
-            clearAuthCache();
-            clearPrivateQueryCache();
-          }
-          // Si hay token fallback, NO lo borres (Safari timing)
+          clearAuthCache();
+          clearPrivateQueryCache();
         }
 
         // ✅ si falló y estamos en booting, dejá ver el form (pero sin flash previo)
