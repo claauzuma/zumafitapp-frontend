@@ -1,36 +1,27 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { getAdminUserById } from "./adminUsuariosApi.js";
+import { useAdminUser } from "./adminUsuariosQueries.js";
 import AdminUsuarioClienteDetalle from "./AdminUsuarioClienteDetalle.jsx";
 import AdminUsuarioCoachDetalle from "./AdminUsuarioCoachDetalle.jsx";
+import { setAdminUserQueryData } from "../queryClient.js";
 import "./adminUsuarioDetalle.css";
 
 export default function AdminUsuarioDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const userQuery = useAdminUser(id);
+  const loading = userQuery.isLoading;
+  const refreshing = userQuery.isFetching && !userQuery.isLoading;
+  const err = userQuery.error?.message || "";
+  const user = userQuery.data || null;
 
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [user, setUser] = useState(null);
+  function load() {
+    return userQuery.refetch();
+  }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  async function load() {
-    setLoading(true);
-    setErr("");
-    try {
-      const u = await getAdminUserById(id);
-      setUser(u || null);
-    } catch (e) {
-      setErr(e?.message || "No se pudo cargar el usuario");
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+  function handleUserChange(updated) {
+    setAdminUserQueryData(id, updated);
   }
 
   if (loading) {
@@ -79,7 +70,7 @@ export default function AdminUsuarioDetalle() {
         <div className="aud-actions">
           <button className="aud-btn" onClick={load}>
             <RefreshCw size={17} strokeWidth={2.2} aria-hidden="true" />
-            Refrescar
+            {refreshing ? "Actualizando..." : "Refrescar"}
           </button>
         </div>
       </div>
@@ -149,9 +140,9 @@ export default function AdminUsuarioDetalle() {
       </div>
 
       {roleNorm === "coach" ? (
-        <AdminUsuarioCoachDetalle user={user} onUserChange={setUser} onRefresh={load} />
+        <AdminUsuarioCoachDetalle user={user} onUserChange={handleUserChange} onRefresh={load} />
       ) : roleNorm === "cliente" ? (
-        <AdminUsuarioClienteDetalle user={user} onUserChange={setUser} onRefresh={load} />
+        <AdminUsuarioClienteDetalle user={user} onUserChange={handleUserChange} onRefresh={load} />
       ) : (
         <div className="aud-card">
           <div className="aud-sectionTitle">Detalle del usuario</div>

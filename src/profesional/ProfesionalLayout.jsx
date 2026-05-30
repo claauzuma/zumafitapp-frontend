@@ -1,23 +1,45 @@
 import React, { useMemo, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
   Dumbbell,
   LayoutDashboard,
+  LogOut,
   Menu,
   UserCircle,
   Users,
   Utensils,
   X,
 } from "lucide-react";
-import { getCachedUser } from "../authCache.js";
+import { apiFetch } from "../Api.js";
+import { getCachedUser, isImpersonating, setAuthGuest } from "../authCache.js";
+import { useProfessionalMe } from "../authQueries.js";
+import { clearPrivateQueryCache } from "../queryClient.js";
 import ImpersonationBanner from "../ImpersonationBanner.jsx";
 
 export default function ProfesionalLayout({ me: meProp }) {
-  const me = meProp || getCachedUser() || null;
+  const navigate = useNavigate();
+  const meQuery = useProfessionalMe();
+  const me = meProp || meQuery.data || getCachedUser() || null;
   const navItems = useMemo(() => buildNavItems(me), [me]);
   const plan = planLabel(me?.effectiveCapabilities?.planCode || me?.plan);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function logout() {
+    if (loggingOut || isImpersonating()) return;
+
+    setLoggingOut(true);
+    try {
+      await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.warn("No se pudo cerrar sesion en el servidor:", error);
+    }
+
+    setAuthGuest();
+    clearPrivateQueryCache();
+    navigate("/", { replace: true });
+  }
 
   return (
     <>
@@ -37,9 +59,22 @@ export default function ProfesionalLayout({ me: meProp }) {
         </header>
 
         <aside className="pl-side" aria-label="Panel profesional">
-          <BrandBlock />
-          <div className="pl-plan">{plan}</div>
-          <ProfesionalNav items={navItems} className="pl-nav" />
+          <div>
+            <BrandBlock />
+            <div className="pl-plan">{plan}</div>
+            <ProfesionalNav items={navItems} className="pl-nav" />
+          </div>
+
+          <button
+            type="button"
+            className="pl-logout"
+            onClick={logout}
+            disabled={loggingOut || isImpersonating()}
+            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
+          >
+            <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
+            <span>{loggingOut ? "Saliendo..." : "Salir"}</span>
+          </button>
         </aside>
 
         {mobileOpen && (
@@ -67,6 +102,17 @@ export default function ProfesionalLayout({ me: meProp }) {
           <BrandBlock />
           <div className="pl-plan">{plan}</div>
           <ProfesionalNav items={navItems} className="pl-drawerNav" onNavigate={() => setMobileOpen(false)} />
+
+          <button
+            type="button"
+            className="pl-logout drawer"
+            onClick={logout}
+            disabled={loggingOut || isImpersonating()}
+            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
+          >
+            <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
+            <span>{loggingOut ? "Saliendo..." : "Salir"}</span>
+          </button>
         </aside>
 
         <main className="pl-main">
@@ -167,6 +213,10 @@ const styles = `
   border-right:1px solid var(--pl-line);
   padding:18px 16px;
   background:linear-gradient(180deg, rgba(18,18,18,.98), rgba(9,9,9,.98));
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:18px;
 }
 .pl-mobileBar{
   display:none;
@@ -247,6 +297,35 @@ const styles = `
   background:rgba(245,215,110,.09);
   color:var(--pl-gold);
   border-color:rgba(245,215,110,.26);
+}
+.pl-logout{
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  border-radius:14px;
+  border:1px solid rgba(255,90,90,.24);
+  background:rgba(255,90,90,.08);
+  color:#ffd0d0;
+  font-weight:900;
+  cursor:pointer;
+  transition:transform .12s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.pl-logout:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,90,90,.42);
+  box-shadow:0 0 0 3px rgba(255,90,90,.10);
+}
+.pl-logout:disabled{
+  opacity:.58;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+.pl-logout.drawer{
+  margin-top:auto;
 }
 .pl-main{
   min-width:0;

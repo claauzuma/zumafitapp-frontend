@@ -1,9 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Save, Sparkles } from "lucide-react";
-import { apiFetch } from "../Api.js";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import { fmtDate, fmtKcal, fullName, goalLabel, planLabel, specialtyLabel } from "./profesionalFormat.js";
+import {
+  updateProfessionalClientMenu,
+  updateProfessionalClientNutrition,
+  updateProfessionalClientRoutine,
+} from "./profesionalApi.js";
+import { useProfessionalClientDetail } from "./profesionalQueries.js";
+import { invalidateProfessionalClient, queryClient, queryKeys } from "../queryClient.js";
 import "./profesionalPanel.css";
 
 const DAYS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
@@ -17,38 +23,19 @@ const MODE_LABELS = {
 
 export default function ClienteDetalleProfesional() {
   const { clientId } = useParams();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [coach, setCoach] = useState(null);
-  const [client, setClient] = useState(null);
   const [activeTab, setActiveTab] = useState("resumen");
+  const detailQuery = useProfessionalClientDetail(clientId);
+  const loading = detailQuery.isLoading;
+  const loadErr = detailQuery.error?.message || "";
+  const coach = detailQuery.data?.coach || null;
+  const client = detailQuery.data?.client || null;
 
   const [nutritionDraft, setNutritionDraft] = useState(() => createNutritionDraft(null));
   const [menuDraft, setMenuDraft] = useState(() => createMenuDraft(null));
   const [routineDraft, setRoutineDraft] = useState(() => createRoutineDraft(null));
-
-  const loadDetail = useCallback(async () => {
-    try {
-      setLoading(true);
-      setErr("");
-      setOk("");
-      const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}`);
-      setCoach(data?.coach || null);
-      setClient(data?.client || null);
-    } catch (error) {
-      setErr(error?.message || "No se pudo cargar el detalle del cliente");
-      setCoach(null);
-      setClient(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-
-  useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
 
   useEffect(() => {
     setNutritionDraft(createNutritionDraft(client));
@@ -63,22 +50,19 @@ export default function ClienteDetalleProfesional() {
       setSaving("nutrition");
       setErr("");
       setOk("");
-      const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/nutrition`, {
-        method: "PATCH",
-        body: {
-          kcal: toNullableNumber(nutritionDraft.kcal),
-          macros: {
-            p: toNullableNumber(nutritionDraft.p),
-            c: toNullableNumber(nutritionDraft.c),
-            g: toNullableNumber(nutritionDraft.g),
-          },
-          goalType: nutritionDraft.goalType,
-          targetWeightKg: toNullableNumber(nutritionDraft.targetWeightKg),
-          approach: nutritionDraft.approach,
+      const data = await updateProfessionalClientNutrition(clientId, {
+        kcal: toNullableNumber(nutritionDraft.kcal),
+        macros: {
+          p: toNullableNumber(nutritionDraft.p),
+          c: toNullableNumber(nutritionDraft.c),
+          g: toNullableNumber(nutritionDraft.g),
         },
+        goalType: nutritionDraft.goalType,
+        targetWeightKg: toNullableNumber(nutritionDraft.targetWeightKg),
+        approach: nutritionDraft.approach,
       });
-      setClient(data?.client || null);
-      setCoach(data?.coach || coach);
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
       setOk("Nutricion actualizada para el cliente.");
     } catch (error) {
       setErr(error?.message || "No se pudo guardar nutricion");
@@ -92,28 +76,25 @@ export default function ClienteDetalleProfesional() {
       setSaving("menu");
       setErr("");
       setOk("");
-      const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/menu`, {
-        method: "PATCH",
-        body: {
-          menu: {
-            mode: { type: menuDraft.modeType, lockedByCoach: menuDraft.lockedByCoach },
-            mealConfig: {
-              mealsPerDay: toNullableNumber(menuDraft.mealsPerDay),
-              distribution: menuDraft.distribution,
-              snackLibre: menuDraft.snackLibre,
-              snackLibreKcal: toNullableNumber(menuDraft.snackLibreKcal),
-            },
-            weeklyPlan: {
-              mealsByDay: menuDraft.mealsByDay,
-              caloriesByDay: {},
-              macrosByDay: {},
-            },
-            coachNotes: menuDraft.coachNotes,
+      const data = await updateProfessionalClientMenu(clientId, {
+        menu: {
+          mode: { type: menuDraft.modeType, lockedByCoach: menuDraft.lockedByCoach },
+          mealConfig: {
+            mealsPerDay: toNullableNumber(menuDraft.mealsPerDay),
+            distribution: menuDraft.distribution,
+            snackLibre: menuDraft.snackLibre,
+            snackLibreKcal: toNullableNumber(menuDraft.snackLibreKcal),
           },
+          weeklyPlan: {
+            mealsByDay: menuDraft.mealsByDay,
+            caloriesByDay: {},
+            macrosByDay: {},
+          },
+          coachNotes: menuDraft.coachNotes,
         },
       });
-      setClient(data?.client || null);
-      setCoach(data?.coach || coach);
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
       setOk("Menu guardado para el cliente.");
     } catch (error) {
       setErr(error?.message || "No se pudo guardar el menu");
@@ -127,37 +108,34 @@ export default function ClienteDetalleProfesional() {
       setSaving("routine");
       setErr("");
       setOk("");
-      const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/routine`, {
-        method: "PATCH",
-        body: {
-          routine: {
-            mode: { type: routineDraft.modeType },
-            structure: {
-              split: routineDraft.split,
-              trainingDaysPerWeek: toNullableNumber(routineDraft.trainingDaysPerWeek),
-              sessionDurationMin: toNullableNumber(routineDraft.sessionDurationMin),
-              focus: splitCsv(routineDraft.focusCsv),
-            },
-            currentPlan: {
-              name: routineDraft.name,
-              description: routineDraft.description,
-              isActive: true,
-              days: routineDraft.days.map((day) => ({
-                name: day.name,
-                focus: day.focus,
-                exercises: splitLines(day.exercises),
-              })),
-            },
-            progression: {
-              mode: routineDraft.progressionMode,
-              progressionRule: routineDraft.progressionRule,
-            },
-            coachNotes: routineDraft.coachNotes,
+      const data = await updateProfessionalClientRoutine(clientId, {
+        routine: {
+          mode: { type: routineDraft.modeType },
+          structure: {
+            split: routineDraft.split,
+            trainingDaysPerWeek: toNullableNumber(routineDraft.trainingDaysPerWeek),
+            sessionDurationMin: toNullableNumber(routineDraft.sessionDurationMin),
+            focus: splitCsv(routineDraft.focusCsv),
           },
+          currentPlan: {
+            name: routineDraft.name,
+            description: routineDraft.description,
+            isActive: true,
+            days: routineDraft.days.map((day) => ({
+              name: day.name,
+              focus: day.focus,
+              exercises: splitLines(day.exercises),
+            })),
+          },
+          progression: {
+            mode: routineDraft.progressionMode,
+            progressionRule: routineDraft.progressionRule,
+          },
+          coachNotes: routineDraft.coachNotes,
         },
       });
-      setClient(data?.client || null);
-      setCoach(data?.coach || coach);
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
       setOk("Rutina guardada para el cliente.");
     } catch (error) {
       setErr(error?.message || "No se pudo guardar la rutina");
@@ -196,7 +174,7 @@ export default function ClienteDetalleProfesional() {
     return (
       <div className="prof-page">
         <section className="prof-shell">
-          <div className="prof-error">{err || "Cliente no encontrado"}</div>
+          <div className="prof-error">{err || loadErr || "Cliente no encontrado"}</div>
         </section>
       </div>
     );
@@ -242,6 +220,8 @@ export default function ClienteDetalleProfesional() {
           ))}
         </div>
 
+        {detailQuery.isFetching && !detailQuery.isLoading ? <div className="prof-empty compact">Actualizando datos...</div> : null}
+        {loadErr ? <div className="prof-error">{loadErr}</div> : null}
         {err ? <div className="prof-error">{err}</div> : null}
         {ok ? <div className="prof-success">{ok}</div> : null}
 

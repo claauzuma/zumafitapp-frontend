@@ -1,13 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { apiFetch } from "../Api.js";
+import { useAdminUsers } from "./adminUsuariosQueries.js";
 
 export default function AdminUsuarios() {
   const navigate = useNavigate();
-
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [users, setUsers] = useState([]);
 
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("todos");
@@ -15,38 +11,24 @@ export default function AdminUsuarios() {
   const [estado, setEstado] = useState("todos");
 
   const showSpecialtyFilter = role === "coach";
-
-  async function load() {
-    setLoading(true);
-    setErr("");
-
-    try {
-      const qs = new URLSearchParams();
-
-      if (search.trim()) qs.set("search", search.trim());
-      if (role !== "todos") qs.set("role", role);
-      if (estado !== "todos") qs.set("estado", estado);
-      qs.set("limit", "100");
-
-      const data = await apiFetch(`/api/usuarios/admin/users?${qs.toString()}`, {
-        method: "GET",
-        timeoutMs: 9000,
-      });
-
-      const arr = data?.users || data?.usuarios || data || [];
-      setUsers(Array.isArray(arr) ? arr : []);
-    } catch (e) {
-      setErr(e?.message || "No se pudo cargar usuarios");
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const queryFilters = useMemo(
+    () => ({
+      search: debouncedSearch,
+      role,
+      estado,
+      limit: 100,
+    }),
+    [debouncedSearch, estado, role]
+  );
+  const usersQuery = useAdminUsers(queryFilters);
+  const loading = usersQuery.isLoading;
+  const refreshing = usersQuery.isFetching && !usersQuery.isLoading;
+  const err = usersQuery.error?.message || "";
+  const users = useMemo(
+    () => (Array.isArray(usersQuery.data?.users) ? usersQuery.data.users : []),
+    [usersQuery.data]
+  );
 
   const filtered = useMemo(() => {
     let arr = [...users];
@@ -108,7 +90,9 @@ export default function AdminUsuarios() {
         </div>
 
         <div className="au-headBtns">
-          <button className="au-btn" onClick={load}>↻ Refrescar</button>
+          <button className="au-btn" onClick={() => usersQuery.refetch()} disabled={usersQuery.isFetching}>
+            {usersQuery.isFetching ? "Actualizando..." : "↻ Refrescar"}
+          </button>
 
           <button
             className="au-btn gold"
@@ -180,6 +164,7 @@ export default function AdminUsuarios() {
       <div className="au-row">
         <div className="au-muted">
           {loading ? "Cargando..." : `Mostrando ${filtered.length} usuario(s)`}
+          {refreshing ? " - actualizando..." : ""}
           {err ? <span className="au-err"> • {err}</span> : null}
         </div>
       </div>
@@ -263,6 +248,17 @@ export default function AdminUsuarios() {
       <style>{styles}</style>
     </div>
   );
+}
+
+function useDebouncedValue(value, delayMs) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
 }
 
 function IconBtn({ title, onClick, children }) {

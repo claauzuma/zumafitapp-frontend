@@ -13,11 +13,16 @@ import {
   unassignCoachFromClient,
   updateAdminUserStatus,
   updateAdminUserPlan,
-  getAdminCoaches,
-  getAdminUserById,
   deleteAdminUser,
 } from "./adminUsuariosApi.js";
+import { useAdminCoaches, useAdminUser } from "./adminUsuariosQueries.js";
 import { startAdminImpersonation } from "../impersonationApi.js";
+import {
+  invalidateAfterAdminUserUpdate,
+  invalidateAfterAssignCoach,
+  invalidateAfterDeleteUser,
+  invalidateAfterUnassignCoach,
+} from "../queryClient.js";
 import "./adminUsuarioCliente.css";
 
 export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
@@ -27,13 +32,8 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const [err, setErr] = useState("");
 
   const [coachQuery, setCoachQuery] = useState("");
-  const [coachOptions, setCoachOptions] = useState([]);
-  const [coachesLoading, setCoachesLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedCoach, setSelectedCoach] = useState(null);
-
-  const [assignedCoach, setAssignedCoach] = useState(null);
-  const [assignedCoachLoading, setAssignedCoachLoading] = useState(false);
 
   const tabs = [
     { key: "resumen", label: "Resumen", emoji: "📋" },
@@ -45,69 +45,14 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   ];
 
   const assignedCoachId = user?.coach?.entrenadorId || null;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAssignedCoach() {
-      if (!assignedCoachId) {
-        setAssignedCoach(null);
-        return;
-      }
-
-      try {
-        setAssignedCoachLoading(true);
-        const coach = await getAdminUserById(assignedCoachId);
-        if (!cancelled) {
-          setAssignedCoach(coach || null);
-        }
-      } catch {
-        if (!cancelled) {
-          setAssignedCoach(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setAssignedCoachLoading(false);
-        }
-      }
-    }
-
-    loadAssignedCoach();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [assignedCoachId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const timer = setTimeout(async () => {
-      if (activeTab !== "relacion") return;
-      if (!dropdownOpen && !coachQuery.trim()) return;
-
-      try {
-        setCoachesLoading(true);
-        const coaches = await getAdminCoaches(coachQuery.trim());
-        if (!cancelled) {
-          setCoachOptions(Array.isArray(coaches) ? coaches : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setCoachOptions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setCoachesLoading(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [coachQuery, activeTab, dropdownOpen]);
+  const debouncedCoachQuery = useDebouncedValue(coachQuery, 250);
+  const shouldLoadCoaches = activeTab === "relacion" && (dropdownOpen || Boolean(coachQuery.trim()));
+  const assignedCoachQuery = useAdminUser(assignedCoachId, { enabled: Boolean(assignedCoachId) });
+  const coachesQuery = useAdminCoaches(debouncedCoachQuery.trim(), { enabled: shouldLoadCoaches });
+  const assignedCoach = assignedCoachQuery.data || null;
+  const assignedCoachLoading = Boolean(assignedCoachId) && assignedCoachQuery.isLoading;
+  const coachOptions = Array.isArray(coachesQuery.data) ? coachesQuery.data : [];
+  const coachesLoading = shouldLoadCoaches && (coachesQuery.isLoading || coachesQuery.isFetching);
 
   const coachActualNombre = useMemo(() => {
     if (!assignedCoach) return "-";
@@ -120,6 +65,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       const next = user?.estado === "bloqueado" ? "activo" : "bloqueado";
       const updated = await updateAdminUserStatus(user.id, next);
       onUserChange(updated);
+      await invalidateAfterAdminUserUpdate(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudo cambiar el estado");
     }
@@ -130,6 +76,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       setErr("");
       const updated = await updateAdminUserPlan(user.id, plan);
       onUserChange(updated);
+      await invalidateAfterAdminUserUpdate(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudo cambiar el plan");
     }
@@ -144,12 +91,18 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
         return;
       }
 
+      const previousCoachId = assignedCoachId;
       const updated = await assignCoachToClient(user.id, selectedCoach.id);
       onUserChange(updated);
-      setAssignedCoach(selectedCoach);
       setCoachQuery("");
       setSelectedCoach(null);
       setDropdownOpen(false);
+      await invalidateAfterAssignCoach({
+        clientId: user.id,
+        previousCoachId,
+        nextCoachId: selectedCoach.id,
+        updatedClient: updated,
+      });
     } catch (e) {
       setErr(e?.message || "No se pudo asignar coach");
     }
@@ -158,12 +111,17 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   async function handleUnassignCoach() {
     try {
       setErr("");
+      const previousCoachId = assignedCoachId;
       const updated = await unassignCoachFromClient(user.id);
       onUserChange(updated);
-      setAssignedCoach(null);
       setCoachQuery("");
       setSelectedCoach(null);
       setDropdownOpen(false);
+      await invalidateAfterUnassignCoach({
+        clientId: user.id,
+        previousCoachId,
+        updatedClient: updated,
+      });
     } catch (e) {
       setErr(e?.message || "No se pudo quitar el coach");
     }
@@ -179,6 +137,11 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
     try {
       setErr("");
       await deleteAdminUser(user.id);
+      await invalidateAfterDeleteUser({
+        deletedUser: user,
+        userId: user.id,
+        previousCoachId: assignedCoachId,
+      });
       navigate("/admin/usuarios");
     } catch (e) {
       setErr(e?.message || "No se pudo eliminar el usuario");
@@ -418,7 +381,7 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                   className="auc-searchReload"
                   onClick={() => {
                     setDropdownOpen(true);
-                    setCoachQuery((v) => v);
+                    coachesQuery.refetch();
                   }}
                 >
                   <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
@@ -513,6 +476,17 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       {err ? <div className="auc-error">{err}</div> : null}
     </div>
   );
+}
+
+function useDebouncedValue(value, delayMs) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
 }
 
 function SectionTitle({ emoji, title }) {

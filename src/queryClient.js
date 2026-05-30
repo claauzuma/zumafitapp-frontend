@@ -1,0 +1,242 @@
+import { QueryClient } from "@tanstack/react-query";
+
+export const STALE_TIMES = {
+  authMe: 60 * 1000,
+  adminUsers: 2 * 60 * 1000,
+  adminUser: 2 * 60 * 1000,
+  adminCoaches: 60 * 1000,
+  adminUnassignedClients: 60 * 1000,
+  adminCoachClients: 2 * 60 * 1000,
+  adminCoachPlans: 5 * 60 * 1000,
+  adminEffectiveCapabilities: 2 * 60 * 1000,
+  professionalMe: 60 * 1000,
+  professionalClients: 2 * 60 * 1000,
+  professionalClientDetail: 2 * 60 * 1000,
+};
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
+
+function cleanText(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function cleanId(value = "") {
+  return String(value || "").trim();
+}
+
+function cleanFilter(value = "todos") {
+  const normalized = cleanText(value);
+  return normalized || "todos";
+}
+
+export function normalizeAdminUsersFilters(filters = {}) {
+  return {
+    search: cleanText(filters.search),
+    role: cleanFilter(filters.role),
+    estado: cleanFilter(filters.estado),
+    limit: Number(filters.limit) || 100,
+  };
+}
+
+export const queryKeys = {
+  authMe: () => ["auth", "me"],
+  adminUsersRoot: () => ["admin", "users"],
+  adminUsers: (filters = {}) => ["admin", "users", normalizeAdminUsersFilters(filters)],
+  adminUser: (userId) => ["admin", "user", cleanId(userId)],
+  adminCoachesRoot: () => ["admin", "coaches"],
+  adminCoaches: (search = "") => ["admin", "coaches", cleanText(search)],
+  adminUnassignedClientsRoot: () => ["admin", "unassignedClients"],
+  adminUnassignedClients: (search = "") => ["admin", "unassignedClients", cleanText(search)],
+  adminCoachClients: (coachId) => ["admin", "coachClients", cleanId(coachId)],
+  adminCoachPlans: () => ["admin", "coachPlans"],
+  adminEffectiveCapabilities: (coachId) => ["admin", "effectiveCapabilities", cleanId(coachId)],
+  professionalMe: () => ["professional", "me"],
+  professionalClients: () => ["professional", "clients"],
+  professionalClientDetail: (clientId) => ["professional", "client", cleanId(clientId)],
+};
+
+export function getUserId(user) {
+  return cleanId(user?.id || user?._id || "");
+}
+
+export function getAssignedCoachId(user) {
+  return cleanId(user?.coach?.entrenadorId || user?.coach?.coachId || "");
+}
+
+export function setAuthUserQueryData(user) {
+  if (!user) return;
+  queryClient.setQueryData(queryKeys.authMe(), user);
+  if (String(user?.role || user?.rol || "").toLowerCase() === "coach") {
+    queryClient.setQueryData(queryKeys.professionalMe(), user);
+  }
+}
+
+export function clearPrivateQueryCache() {
+  queryClient.clear();
+}
+
+export function setAdminUserQueryData(userId, user) {
+  const id = cleanId(userId || getUserId(user));
+  if (!id || !user) return;
+  queryClient.setQueryData(queryKeys.adminUser(id), user);
+}
+
+export function removeAdminUserQueryData(userId) {
+  const id = cleanId(userId);
+  if (!id) return;
+  queryClient.removeQueries({ queryKey: queryKeys.adminUser(id), exact: true });
+}
+
+function invalidate(queryKey, options = {}) {
+  return queryClient.invalidateQueries({ queryKey, ...options });
+}
+
+export async function invalidateAuthMe() {
+  await Promise.all([
+    invalidate(queryKeys.authMe()),
+    invalidate(queryKeys.professionalMe()),
+  ]);
+}
+
+export async function invalidateAdminUsersList() {
+  await invalidate(queryKeys.adminUsersRoot());
+}
+
+export async function invalidateAdminCoachesList() {
+  await invalidate(queryKeys.adminCoachesRoot());
+}
+
+export async function invalidateAdminUnassignedClientsList() {
+  await invalidate(queryKeys.adminUnassignedClientsRoot());
+}
+
+export async function invalidateAdminCoachPlans() {
+  await invalidate(queryKeys.adminCoachPlans());
+}
+
+export async function invalidateCoachRelated(coachIds = []) {
+  const unique = [...new Set(coachIds.map(cleanId).filter(Boolean))];
+  await Promise.all([
+    ...unique.map((coachId) => invalidate(queryKeys.adminUser(coachId))),
+    ...unique.map((coachId) => invalidate(queryKeys.adminCoachClients(coachId))),
+    ...unique.map((coachId) => invalidate(queryKeys.adminEffectiveCapabilities(coachId))),
+    invalidate(queryKeys.adminCoachesRoot()),
+    invalidate(queryKeys.professionalClients()),
+    invalidate(queryKeys.professionalMe()),
+  ]);
+}
+
+export async function invalidateAfterAdminUserUpdate(userId, user = null) {
+  const id = cleanId(userId || getUserId(user));
+  const assignedCoachId = getAssignedCoachId(user);
+  if (user && id) setAdminUserQueryData(id, user);
+
+  await Promise.all([
+    id ? invalidate(queryKeys.adminUser(id)) : Promise.resolve(),
+    invalidate(queryKeys.adminUsersRoot()),
+    assignedCoachId ? invalidate(queryKeys.adminCoachClients(assignedCoachId)) : Promise.resolve(),
+    assignedCoachId ? invalidate(queryKeys.professionalClients()) : Promise.resolve(),
+  ]);
+
+  if (String(user?.role || "").toLowerCase() === "coach") {
+    await invalidateCoachRelated([id]);
+  }
+}
+
+export async function invalidateAfterAssignCoach({ clientId, previousCoachId, nextCoachId, updatedClient }) {
+  const ids = [previousCoachId, nextCoachId].map(cleanId).filter(Boolean);
+  if (updatedClient) setAdminUserQueryData(clientId, updatedClient);
+
+  await Promise.all([
+    invalidate(queryKeys.adminUser(clientId)),
+    invalidate(queryKeys.adminUsersRoot()),
+    invalidate(queryKeys.adminUnassignedClientsRoot()),
+    ...ids.map((coachId) => invalidate(queryKeys.adminCoachClients(coachId))),
+    ...ids.map((coachId) => invalidate(queryKeys.adminUser(coachId))),
+    ...ids.map((coachId) => invalidate(queryKeys.adminEffectiveCapabilities(coachId))),
+    invalidate(queryKeys.adminCoachesRoot()),
+    invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateAfterUnassignCoach({ clientId, previousCoachId, updatedClient }) {
+  await invalidateAfterAssignCoach({
+    clientId,
+    previousCoachId,
+    nextCoachId: "",
+    updatedClient,
+  });
+}
+
+export async function invalidateAfterDeleteUser({ deletedUser, userId, previousCoachId }) {
+  const id = cleanId(userId || getUserId(deletedUser));
+  const role = String(deletedUser?.role || "").toLowerCase();
+  const coachId = cleanId(previousCoachId || getAssignedCoachId(deletedUser));
+
+  if (id) removeAdminUserQueryData(id);
+
+  await Promise.all([
+    invalidate(queryKeys.adminUsersRoot()),
+    invalidate(queryKeys.adminUnassignedClientsRoot()),
+    role === "coach" ? invalidate(queryKeys.adminCoachesRoot()) : Promise.resolve(),
+    role === "coach" && id ? invalidate(queryKeys.adminCoachClients(id)) : Promise.resolve(),
+    role === "coach" && id ? invalidate(queryKeys.adminEffectiveCapabilities(id)) : Promise.resolve(),
+    coachId ? invalidate(queryKeys.adminCoachClients(coachId)) : Promise.resolve(),
+    coachId ? invalidate(queryKeys.adminEffectiveCapabilities(coachId)) : Promise.resolve(),
+    invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateAfterCoachCapabilitiesChange(coachId, updatedCoach = null) {
+  const id = cleanId(coachId || getUserId(updatedCoach));
+  if (updatedCoach && id) setAdminUserQueryData(id, updatedCoach);
+
+  await Promise.all([
+    id ? invalidate(queryKeys.adminUser(id)) : Promise.resolve(),
+    id ? invalidate(queryKeys.adminEffectiveCapabilities(id)) : Promise.resolve(),
+    id ? invalidate(queryKeys.adminCoachClients(id)) : Promise.resolve(),
+    invalidate(queryKeys.adminCoachesRoot()),
+    invalidate(queryKeys.adminUsersRoot()),
+    invalidate(queryKeys.professionalMe()),
+    invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateAfterCoachPlansChange() {
+  await Promise.all([
+    invalidate(queryKeys.adminCoachPlans()),
+    invalidate(queryKeys.adminCoachesRoot()),
+    invalidate(queryKeys.adminUsersRoot()),
+    invalidate(["admin", "effectiveCapabilities"]),
+    invalidate(queryKeys.professionalMe()),
+    invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateProfessionalClient(clientId, updatedClient = null) {
+  const id = cleanId(clientId || getUserId(updatedClient));
+  if (updatedClient && id) {
+    queryClient.setQueryData(queryKeys.professionalClientDetail(id), (old) => ({
+      ...(old || {}),
+      client: updatedClient,
+    }));
+  }
+
+  await Promise.all([
+    id ? invalidate(queryKeys.professionalClientDetail(id)) : Promise.resolve(),
+    invalidate(queryKeys.professionalClients()),
+    invalidate(queryKeys.professionalMe()),
+  ]);
+}

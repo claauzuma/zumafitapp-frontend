@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Ban,
@@ -21,7 +22,16 @@ import {
   deleteAdminCoachOverrides,
   updateAdminCoachProfile,
 } from "./adminUsuariosApi.js";
+import { useAdminCoachClients } from "./adminUsuariosQueries.js";
 import { startAdminImpersonation } from "../impersonationApi.js";
+import {
+  STALE_TIMES,
+  invalidateAfterAdminUserUpdate,
+  invalidateAfterCoachCapabilitiesChange,
+  invalidateAfterDeleteUser,
+  invalidateAfterUnassignCoach,
+  queryKeys,
+} from "../queryClient.js";
 import "./adminUsuarioCoach.css";
 
 const PLAN_OPTIONS = [
@@ -97,6 +107,7 @@ const PERMISSION_SECTIONS = [
 
 export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState("resumen");
   const [err, setErr] = useState("");
@@ -114,10 +125,16 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
   const [specialtyDraft, setSpecialtyDraft] = useState(() => getSpecialtyValue(user));
 
-  const [loadingClients, setLoadingClients] = useState(false);
-  const [clients, setClients] = useState([]);
   const [clientsSearch, setClientsSearch] = useState("");
   const [busyClientId, setBusyClientId] = useState("");
+
+  const coachClientsQuery = useAdminCoachClients(user?.id, { enabled: activeTab === "clientes" });
+  const clients = useMemo(
+    () => (Array.isArray(coachClientsQuery.data?.clients) ? coachClientsQuery.data.clients : []),
+    [coachClientsQuery.data]
+  );
+  const loadingClients = coachClientsQuery.isLoading;
+  const refreshingClients = coachClientsQuery.isFetching && !coachClientsQuery.isLoading;
 
   const effective = user?.effectiveCapabilities || null;
   const specialties = user?.coachProfile?.specialties || {};
@@ -133,27 +150,10 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
     setSpecialtyDraft(getSpecialtyValue(user));
   }, [user]);
 
-  useEffect(() => {
-    if (activeTab === "clientes") {
-      loadClients();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, user?.id]);
-
   async function loadClients() {
     if (!user?.id) return;
-    try {
-      setLoadingClients(true);
-      setErr("");
-
-      const data = await getAdminCoachClients(user.id);
-      setClients(Array.isArray(data?.clients) ? data.clients : []);
-    } catch (e) {
-      setErr(e?.message || "No se pudieron cargar los clientes");
-      setClients([]);
-    } finally {
-      setLoadingClients(false);
-    }
+    setErr("");
+    return coachClientsQuery.refetch();
   }
 
   async function handleSavePlan() {
@@ -169,6 +169,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       });
       onUserChange?.(updated);
       setResetOverridesOnPlanChange(false);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudo guardar el plan");
     } finally {
@@ -189,6 +190,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
       const updated = await updateAdminCoachOverrides(user.id, payload);
       onUserChange?.(updated);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudieron guardar los permisos personalizados");
     } finally {
@@ -205,6 +207,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       setErr("");
       const updated = await deleteAdminCoachOverrides(user.id);
       onUserChange?.(updated);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudieron restaurar los permisos del plan");
     } finally {
@@ -220,6 +223,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       const nextEstado = user?.estado === "bloqueado" ? "activo" : "bloqueado";
       const updated = await updateAdminUserStatus(user.id, nextEstado);
       onUserChange?.(updated);
+      await invalidateAfterAdminUserUpdate(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudo cambiar el estado");
     } finally {
@@ -238,6 +242,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
         specialties: option?.specialties || { training: true, nutrition: false },
       });
       onUserChange?.(updated);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudieron guardar las especialidades");
     } finally {
@@ -249,10 +254,13 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
     let assignedCount = currentClients;
 
     try {
-      const data = await getAdminCoachClients(user.id);
+      const data = await queryClient.fetchQuery({
+        queryKey: queryKeys.adminCoachClients(user.id),
+        queryFn: () => getAdminCoachClients(user.id),
+        staleTime: STALE_TIMES.adminCoachClients,
+      });
       const coachClients = Array.isArray(data?.clients) ? data.clients : [];
       assignedCount = coachClients.length;
-      setClients(coachClients);
     } catch {
       assignedCount = currentClients;
     }
@@ -268,6 +276,10 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       setErr("");
 
       await deleteAdminUser(user.id);
+      await invalidateAfterDeleteUser({
+        deletedUser: user,
+        userId: user.id,
+      });
       navigate("/admin/usuarios");
     } catch (e) {
       setErr(e?.message || "No se pudo eliminar el coach");
@@ -302,6 +314,11 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       setErr("");
 
       await unassignCoachFromClient(client.id);
+      await invalidateAfterUnassignCoach({
+        clientId: client.id,
+        previousCoachId: user.id,
+        updatedClient: null,
+      });
       await loadClients();
       if (typeof onRefresh === "function") await onRefresh();
     } catch (e) {
@@ -322,6 +339,11 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       setErr("");
 
       await deleteAdminUser(client.id);
+      await invalidateAfterDeleteUser({
+        deletedUser: client,
+        userId: client.id,
+        previousCoachId: user.id,
+      });
       await loadClients();
     } catch (e) {
       setErr(e?.message || "No se pudo eliminar el cliente");
@@ -471,7 +493,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
             <button type="button" className="auco-btn" onClick={loadClients} disabled={loadingClients}>
               <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
-              {loadingClients ? "Cargando..." : "Recargar"}
+              {loadingClients ? "Cargando..." : refreshingClients ? "Actualizando..." : "Recargar"}
             </button>
           </div>
 

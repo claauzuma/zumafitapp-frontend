@@ -3,8 +3,10 @@ import {
   startImpersonationCache,
   restoreAdminAfterImpersonation,
   getImpersonationSession,
+  getCachedUser,
   isImpersonating,
 } from "./authCache.js";
+import { clearPrivateQueryCache, setAuthUserQueryData } from "./queryClient.js";
 
 export async function startAdminImpersonation(targetUserId, { returnTo = "/admin/usuarios" } = {}) {
   if (isImpersonating()) {
@@ -17,12 +19,14 @@ export async function startAdminImpersonation(targetUserId, { returnTo = "/admin
     timeoutMs: 12000,
   });
 
+  clearPrivateQueryCache();
   startImpersonationCache({
     token: data?.token,
     targetUser: data?.targetUser,
     expiresAt: data?.expiresAt,
     returnTo,
   });
+  setAuthUserQueryData(data?.targetUser);
 
   return data;
 }
@@ -36,6 +40,8 @@ export async function getCurrentImpersonation() {
 
     if (!data?.active) {
       restoreAdminAfterImpersonation();
+      clearPrivateQueryCache();
+      setAuthUserQueryData(getCachedUser());
       return null;
     }
 
@@ -46,6 +52,8 @@ export async function getCurrentImpersonation() {
     };
   } catch {
     restoreAdminAfterImpersonation();
+    clearPrivateQueryCache();
+    setAuthUserQueryData(getCachedUser());
     return null;
   }
 }
@@ -61,6 +69,8 @@ export async function stopAdminImpersonation() {
     });
   } finally {
     restoreAdminAfterImpersonation();
+    clearPrivateQueryCache();
+    setAuthUserQueryData(getCachedUser());
   }
 
   return session?.returnTo || "/admin/usuarios";

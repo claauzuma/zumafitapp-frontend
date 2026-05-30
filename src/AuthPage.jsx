@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { API_BASE } from "./apiCredentials";
+import { fetchAuthMeQuery } from "./authQueries.js";
+import { clearPrivateQueryCache, setAuthUserQueryData } from "./queryClient.js";
 import {
   setAuthLogged,
   clearAuthCache,
@@ -226,6 +228,7 @@ export default function AuthPage({ defaultMode = "login" }) {
       setBooting(true);
 
       // ✅ guarda token fallback
+      clearPrivateQueryCache();
       setAuthLogged(null, oauthToken);
 
       // ✅ limpiá la URL (no dejes token en la barra)
@@ -234,13 +237,13 @@ export default function AuthPage({ defaultMode = "login" }) {
       // ✅ ahora resolvemos /me y redirigimos (sin recargar)
       (async () => {
         try {
-          const me = await apiFetch("/api/usuarios/auth/me");
-          const user = me?.user || me;
+          const user = await fetchAuthMeQuery({ timeoutMs: 8000 });
           const role = normalizeRole(user?.role || user?.rol);
 
           console.log(`🟢 [OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
 
           setAuthLogged(user);
+          setAuthUserQueryData(user);
          navigate(getHomeByUser(user), { replace: true });
         } catch (err) {
           console.log(`🔴 [OAuth ${debugIdRef.current}] /me FAIL luego de token query`, {
@@ -281,15 +284,15 @@ export default function AuthPage({ defaultMode = "login" }) {
           isProblemBrowser: isPB,
         });
 
-        const me = await apiFetch("/api/usuarios/auth/me");
+        const user = await fetchAuthMeQuery({ timeoutMs: 6000 });
         if (cancelled) return;
 
-        const user = me?.user || me;
         const role = normalizeRole(user?.role || user?.rol);
 
         console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { role, user });
 
         setAuthLogged(user);
+        setAuthUserQueryData(user);
 
 // ✅ una vez que tenemos /me, ya no hay “flash”
 setBooting(false);
@@ -310,7 +313,10 @@ navigate(getHomeByUser(user), { replace: true });
         // ✅ SOLO limpiamos si realmente NO está autenticado
         if (err?.status === 401) {
           // Si NO hay token fallback, limpiá todo
-          if (!getCachedToken()) clearAuthCache();
+          if (!getCachedToken()) {
+            clearAuthCache();
+            clearPrivateQueryCache();
+          }
           // Si hay token fallback, NO lo borres (Safari timing)
         }
 
@@ -330,6 +336,7 @@ navigate(getHomeByUser(user), { replace: true });
 
     // ✅ podés limpiar estado/user/role (no rompe Chrome)
     clearAuthCache();
+    clearPrivateQueryCache();
 
     setGoogleLoading(true);
 
@@ -391,16 +398,17 @@ navigate(getHomeByUser(user), { replace: true });
           });
 
           // 2) Fallback: si viene token
+          clearPrivateQueryCache();
           if (r?.token) setAuthLogged(null, r.token);
 
           // 3) /me
-          const me = await apiFetch("/api/usuarios/auth/me");
-          const user = me?.user || me;
+          const user = await fetchAuthMeQuery({ timeoutMs: 8000 });
           const role = normalizeRole(user?.role || user?.rol);
 
           console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
 
           setAuthLogged(user);
+          setAuthUserQueryData(user);
 
 navigate(getHomeByUser(user), { replace: true });
 

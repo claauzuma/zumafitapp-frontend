@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import { RefreshCw } from "lucide-react";
-import { apiFetch } from "../Api.js";
-import { getCachedUser, setAuthLogged } from "../authCache.js";
+import { useProfessionalMe } from "../authQueries.js";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import {
   capacityLabel,
@@ -13,28 +12,10 @@ import {
 import "./profesionalPanel.css";
 
 export default function PerfilProfesional() {
-  const [me, setMe] = useState(() => getCachedUser() || null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-
-  const refreshProfile = useCallback(async () => {
-    try {
-      setLoading(true);
-      setErr("");
-      const data = await apiFetch("/api/usuarios/auth/me");
-      const user = data?.user || data || null;
-      setMe(user);
-      if (user) setAuthLogged(user);
-    } catch (error) {
-      setErr(error?.message || "No se pudo cargar el perfil profesional");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshProfile();
-  }, [refreshProfile]);
+  const meQuery = useProfessionalMe();
+  const me = meQuery.data || null;
+  const loading = meQuery.isFetching;
+  const err = meQuery.error?.message || "";
 
   const effective = me?.effectiveCapabilities || {};
   const features = effective?.features || {};
@@ -52,7 +33,7 @@ export default function PerfilProfesional() {
           </div>
 
           <div className="prof-actions">
-            <button type="button" className="prof-btn" onClick={refreshProfile} disabled={loading}>
+            <button type="button" className="prof-btn" onClick={() => meQuery.refetch()} disabled={loading}>
               <RefreshCw size={17} strokeWidth={2.2} aria-hidden="true" />
               {loading ? "Actualizando..." : "Actualizar"}
             </button>

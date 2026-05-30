@@ -1,15 +1,15 @@
 // src/PublicOnlyRoute.jsx
 import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { apiFetch } from "./Api.js";
 import FullPageLoader from "./FullPageLoader.jsx";
 import {
-  getCachedStatus,
   getCachedRole,
+  getCachedStatus,
   getCachedUser,
-  setAuthLogged,
   setAuthGuest,
+  setAuthLogged,
 } from "./authCache.js";
+import { useAuthMe } from "./authQueries.js";
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -36,57 +36,32 @@ function getHomeByUser(user, roleCached = null) {
 export default function PublicOnlyRoute({ children }) {
   const cached = getCachedStatus();
   const roleCached = getCachedRole?.() || null;
-
   const [status, setStatus] = useState(cached);
+  const shouldCheck = cached === "unknown";
+  const meQuery = useAuthMe({ enabled: shouldCheck, silent401: true });
 
   useEffect(() => {
-    let alive = true;
-
-    if (cached === "guest") {
-      setStatus("guest");
-      return () => {
-        alive = false;
-      };
+    if (!shouldCheck) {
+      setStatus(cached);
+      return;
     }
-    if (cached === "logged") {
+
+    if (meQuery.isPending) return;
+
+    if (meQuery.data) {
+      setAuthLogged(meQuery.data);
       setStatus("logged");
-      return () => {
-        alive = false;
-      };
+      return;
     }
 
-    (async () => {
-      try {
-        const me = await apiFetch("/api/usuarios/auth/me", {
-          method: "GET",
-          silent401: true,
-          timeoutMs: 6000,
-        });
-
-        if (!alive) return;
-
-        const user = me?.user || me;
-        if (user) {
-          setAuthLogged(user);
-          setStatus("logged");
-        } else {
-          setAuthGuest();
-          setStatus("guest");
-        }
-      } catch {
-        if (!alive) return;
-        setAuthGuest();
-        setStatus("guest");
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [cached]);
+    if (meQuery.isError || meQuery.data === null) {
+      setAuthGuest();
+      setStatus("guest");
+    }
+  }, [cached, meQuery.data, meQuery.dataUpdatedAt, meQuery.isError, meQuery.isPending, shouldCheck]);
 
   if (status === "unknown") {
-    return <FullPageLoader title="Verificando sesión…" sub="Un segundo…" />;
+    return <FullPageLoader title="Verificando sesion..." sub="Un segundo..." />;
   }
 
   if (status === "logged") {

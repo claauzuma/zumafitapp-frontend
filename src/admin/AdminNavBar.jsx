@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../Api.js";
 import { setAuthGuest } from "../authCache.js";
+import { clearPrivateQueryCache } from "../queryClient.js";
 
 const NAV_ITEMS = [
   { to: "/admin/inicio", label: "Inicio", icon: Home },
@@ -35,6 +36,7 @@ export default function AdminNavBar() {
       console.warn("No se pudo cerrar sesion en el servidor:", error);
     }
     setAuthGuest();
+    clearPrivateQueryCache();
     navigate("/", { replace: true });
   }
 

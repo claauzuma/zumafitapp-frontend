@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Eye, RefreshCw, Search } from "lucide-react";
-import { apiFetch } from "../Api.js";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
+import { useProfessionalClients } from "./profesionalQueries.js";
 import {
   capacityLabel,
   fmtDate,
@@ -14,30 +14,16 @@ import {
 import "./profesionalPanel.css";
 
 export default function ClientesProfesional() {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [coach, setCoach] = useState(null);
-  const [clients, setClients] = useState([]);
   const [query, setQuery] = useState("");
-
-  const loadClients = useCallback(async () => {
-    try {
-      setLoading(true);
-      setErr("");
-      const data = await apiFetch("/api/usuarios/users/me/coach-clients");
-      setCoach(data?.coach || null);
-      setClients(Array.isArray(data?.clients) ? data.clients : []);
-    } catch (error) {
-      setErr(error?.message || "No se pudieron cargar tus clientes");
-      setClients([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadClients();
-  }, [loadClients]);
+  const clientsQuery = useProfessionalClients();
+  const loading = clientsQuery.isLoading;
+  const refreshing = clientsQuery.isFetching && !clientsQuery.isLoading;
+  const err = clientsQuery.error?.message || "";
+  const coach = clientsQuery.data?.coach || null;
+  const clients = useMemo(
+    () => (Array.isArray(clientsQuery.data?.clients) ? clientsQuery.data.clients : []),
+    [clientsQuery.data]
+  );
 
   const filteredClients = useMemo(() => {
     const s = query.trim().toLowerCase();
@@ -67,9 +53,9 @@ export default function ClientesProfesional() {
           </div>
 
           <div className="prof-actions">
-            <button type="button" className="prof-btn" onClick={loadClients} disabled={loading}>
+            <button type="button" className="prof-btn" onClick={() => clientsQuery.refetch()} disabled={clientsQuery.isFetching}>
               <RefreshCw size={17} strokeWidth={2.2} aria-hidden="true" />
-              {loading ? "Cargando..." : "Actualizar"}
+              {clientsQuery.isFetching ? "Actualizando..." : "Actualizar"}
             </button>
           </div>
         </div>
@@ -93,6 +79,7 @@ export default function ClientesProfesional() {
           </div>
         </div>
 
+        {refreshing ? <div className="prof-empty compact">Actualizando datos...</div> : null}
         {err ? <div className="prof-error">{err}</div> : null}
 
         {loading ? (

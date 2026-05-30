@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  getAdminCoachPlans,
   updateAdminCoachPlanConfig,
   resetAdminCoachPlanConfig,
 } from "./adminUsuariosApi.js";
+import { useAdminCoachPlans } from "./adminUsuariosQueries.js";
+import { invalidateAfterCoachPlansChange, queryKeys } from "../queryClient.js";
 
 const FEATURE_SECTIONS = [
   {
@@ -51,13 +53,19 @@ const FEATURE_SECTIONS = [
 ];
 
 export default function AdminCoachPlanes() {
-  const [plans, setPlans] = useState([]);
+  const queryClient = useQueryClient();
+  const plansQuery = useAdminCoachPlans();
+  const plans = useMemo(
+    () => (Array.isArray(plansQuery.data) ? plansQuery.data : []),
+    [plansQuery.data]
+  );
   const [selectedCode, setSelectedCode] = useState("trial_pro");
   const [draft, setDraft] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const loading = plansQuery.isLoading;
+  const queryErr = plansQuery.error?.message || "";
 
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === selectedCode) || plans[0] || null,
@@ -65,28 +73,20 @@ export default function AdminCoachPlanes() {
   );
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     if (selectedPlan) setDraft(clone(selectedPlan));
   }, [selectedPlan]);
 
-  async function load() {
-    try {
-      setLoading(true);
-      setErr("");
-      const data = await getAdminCoachPlans();
-      setPlans(Array.isArray(data) ? data : []);
-      if (Array.isArray(data) && data.length && !data.find((p) => p.code === selectedCode)) {
-        setSelectedCode(data[0].code);
-      }
-    } catch (e) {
-      setErr(e?.message || "No se pudieron cargar los planes");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (plans.length && !plans.find((plan) => plan.code === selectedCode)) {
+      setSelectedCode(plans[0].code);
     }
+  }, [plans, selectedCode]);
+
+  function updatePlanCache(updated) {
+    queryClient.setQueryData(queryKeys.adminCoachPlans(), (prev) => {
+      const arr = Array.isArray(prev) ? prev : [];
+      return arr.map((plan) => (plan.code === updated.code ? updated : plan));
+    });
   }
 
   function patchDraft(path, value) {
@@ -109,7 +109,8 @@ export default function AdminCoachPlanes() {
       setErr("");
       setOk("");
       const updated = await updateAdminCoachPlanConfig(draft.code, draft);
-      setPlans((prev) => prev.map((plan) => (plan.code === updated.code ? updated : plan)));
+      updatePlanCache(updated);
+      await invalidateAfterCoachPlansChange();
       setOk("Plan guardado.");
     } catch (e) {
       setErr(e?.message || "No se pudo guardar el plan");
@@ -128,8 +129,9 @@ export default function AdminCoachPlanes() {
       setErr("");
       setOk("");
       const updated = await resetAdminCoachPlanConfig(draft.code);
-      setPlans((prev) => prev.map((plan) => (plan.code === updated.code ? updated : plan)));
+      updatePlanCache(updated);
       setDraft(clone(updated));
+      await invalidateAfterCoachPlansChange();
       setOk("Plan restaurado.");
     } catch (e) {
       setErr(e?.message || "No se pudo restaurar el plan");
@@ -145,11 +147,12 @@ export default function AdminCoachPlanes() {
           <h1>Planes de coaches</h1>
           <p>Configura reglas base para Prueba Pro, Pro y VIP. Los overrides por coach se editan desde el detalle del coach.</p>
         </div>
-        <button className="acp-btn" onClick={load} disabled={loading}>
-          {loading ? "Cargando..." : "Recargar"}
+        <button className="acp-btn" onClick={() => plansQuery.refetch()} disabled={plansQuery.isFetching}>
+          {plansQuery.isFetching ? "Actualizando..." : "Recargar"}
         </button>
       </div>
 
+      {queryErr ? <div className="acp-alert error">{queryErr}</div> : null}
       {err ? <div className="acp-alert error">{err}</div> : null}
       {ok ? <div className="acp-alert ok">{ok}</div> : null}
 

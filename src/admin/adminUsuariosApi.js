@@ -1,5 +1,28 @@
 import { apiFetch } from "../Api.js";
 
+export async function listAdminUsers(filters = {}) {
+  const qs = new URLSearchParams();
+  const search = String(filters.search || "").trim();
+  const role = String(filters.role || "todos").trim();
+  const estado = String(filters.estado || "todos").trim();
+  const limit = Number(filters.limit) || 100;
+
+  if (search) qs.set("search", search);
+  if (role && role !== "todos") qs.set("role", role);
+  if (estado && estado !== "todos") qs.set("estado", estado);
+  qs.set("limit", String(limit));
+
+  const data = await apiFetch(`/api/usuarios/admin/users?${qs.toString()}`, {
+    method: "GET",
+    timeoutMs: 9000,
+  });
+
+  return {
+    users: data?.users || data?.usuarios || data || [],
+    total: data?.total ?? data?.count ?? null,
+  };
+}
+
 export async function getAdminUserById(id) {
   const data = await apiFetch(`/api/usuarios/admin/users/${id}`, {
     method: "GET",

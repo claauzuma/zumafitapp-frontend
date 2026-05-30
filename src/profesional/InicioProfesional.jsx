@@ -2,10 +2,14 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import { getCachedUser, setAuthLogged } from "../authCache.js";
+import { useProfessionalMe } from "../authQueries.js";
+import { setAuthUserQueryData } from "../queryClient.js";
 
 export default function InicioProfesional() {
-  const [me, setMe] = useState(() => getCachedUser() || null);
+  const meQuery = useProfessionalMe();
+  const [optimisticMe, setOptimisticMe] = useState(null);
   const [closingWelcome, setClosingWelcome] = useState(false);
+  const me = optimisticMe || meQuery.data || getCachedUser() || null;
 
   const role = String(me?.role || "").toLowerCase();
 
@@ -50,8 +54,9 @@ async function handleCloseWelcome() {
       }
     : me;
 
-  setMe(optimisticUser);
+  setOptimisticMe(optimisticUser);
   if (optimisticUser) setAuthLogged(optimisticUser);
+  if (optimisticUser) setAuthUserQueryData(optimisticUser);
 
   try {
     await apiFetch("/api/usuarios/users/me/coach-welcome-seen", {

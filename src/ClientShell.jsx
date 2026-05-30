@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { setAuthGuest, getCachedUser, isImpersonating } from "./authCache.js";
 import ImpersonationBanner from "./ImpersonationBanner.jsx";
+import { clearPrivateQueryCache } from "./queryClient.js";
 
 const CSS = `
 :root{
@@ -475,6 +476,7 @@ export default function ClientShell() {
       console.log("[ClientShell] logout FAIL (igual limpiamos)", err);
     } finally {
       setAuthGuest();
+      clearPrivateQueryCache();
       nav("/", { replace: true });
       setTimeout(() => setLoading(false), 200);
     }
