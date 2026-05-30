@@ -19,6 +19,7 @@ import ProfesionalPlaceholder from "./profesional/ProfesionalPlaceholder.jsx";
 import ClientesProfesional from "./profesional/ClientesProfesional.jsx";
 import ClienteDetalleProfesional from "./profesional/ClienteDetalleProfesional.jsx";
 import PerfilProfesional from "./profesional/PerfilProfesional.jsx";
+import RutinasProfesional from "./profesional/RutinasProfesional.jsx";
 
 // ✅ Onboarding v2 (wizard con basics/goal/program)
 import OnboardingWizard from "./onboarding_v2/OnboardingWizard.jsx";
@@ -124,7 +125,7 @@ export default function App() {
         <Route index element={<InicioProfesional />} />
         <Route path="clientes" element={<ClientesProfesional />} />
         <Route path="clientes/:clientId" element={<ClienteDetalleProfesional />} />
-        <Route path="rutinas" element={<ProfesionalPlaceholder type="rutinas" />} />
+        <Route path="rutinas" element={<RutinasProfesional />} />
         <Route path="menus" element={<ProfesionalPlaceholder type="menus" />} />
         <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
         <Route path="perfil" element={<PerfilProfesional />} />

@@ -12,6 +12,12 @@ export const STALE_TIMES = {
   professionalMe: 60 * 1000,
   professionalClients: 2 * 60 * 1000,
   professionalClientDetail: 2 * 60 * 1000,
+  rutinas: 3 * 60 * 1000,
+  rutina: 3 * 60 * 1000,
+  ejercicios: 5 * 60 * 1000,
+  clienteRutinas: 2 * 60 * 1000,
+  clienteRutinaActiva: 2 * 60 * 1000,
+  rutinaAssignableClients: 2 * 60 * 1000,
 };
 
 export const queryClient = new QueryClient({
@@ -65,6 +71,19 @@ export const queryKeys = {
   professionalMe: () => ["professional", "me"],
   professionalClients: () => ["professional", "clients"],
   professionalClientDetail: (clientId) => ["professional", "client", cleanId(clientId)],
+  rutinasRoot: () => ["rutinas"],
+  rutinas: (filters = {}) => ["rutinas", normalizeRoutineFilters(filters)],
+  rutina: (rutinaId) => ["rutina", cleanId(rutinaId)],
+  ejerciciosRoot: () => ["ejercicios"],
+  ejercicios: (filters = {}) => ["ejercicios", normalizeRoutineFilters(filters)],
+  clienteRutinas: (clientId) => ["clienteRutinas", cleanId(clientId)],
+  clienteRutinaActiva: (clientId) => ["clienteRutinaActiva", cleanId(clientId)],
+  rutinaAssignableClients: (scope = "coach", search = "") => [
+    "rutinas",
+    "assignableClients",
+    cleanText(scope),
+    cleanText(search),
+  ],
 };
 
 export function getUserId(user) {
@@ -238,5 +257,45 @@ export async function invalidateProfessionalClient(clientId, updatedClient = nul
     id ? invalidate(queryKeys.professionalClientDetail(id)) : Promise.resolve(),
     invalidate(queryKeys.professionalClients()),
     invalidate(queryKeys.professionalMe()),
+  ]);
+}
+
+export function normalizeRoutineFilters(filters = {}) {
+  return {
+    search: cleanText(filters.search),
+    objetivo: cleanFilter(filters.objetivo || filters.goal),
+    nivel: cleanFilter(filters.nivel || filters.level),
+    diasPorSemana: Number(filters.diasPorSemana) || 0,
+    visibilidad: cleanFilter(filters.visibilidad || filters.visibility),
+    estado: cleanFilter(filters.estado || filters.status),
+    grupoMuscular: cleanFilter(filters.grupoMuscular),
+    patronMovimiento: cleanFilter(filters.patronMovimiento),
+    equipamiento: cleanFilter(filters.equipamiento),
+    dificultad: cleanFilter(filters.dificultad),
+  };
+}
+
+export async function invalidateRoutinesLibrary() {
+  await Promise.all([
+    invalidate(queryKeys.rutinasRoot()),
+    invalidate(queryKeys.ejerciciosRoot()),
+  ]);
+}
+
+export async function invalidateRoutineDetail(rutinaId) {
+  const id = cleanId(rutinaId);
+  await Promise.all([
+    id ? invalidate(queryKeys.rutina(id)) : Promise.resolve(),
+    invalidate(queryKeys.rutinasRoot()),
+  ]);
+}
+
+export async function invalidateClienteRutinas(clientId) {
+  const id = cleanId(clientId);
+  await Promise.all([
+    id ? invalidate(queryKeys.clienteRutinas(id)) : Promise.resolve(),
+    id ? invalidate(queryKeys.clienteRutinaActiva(id)) : Promise.resolve(),
+    invalidate(queryKeys.professionalClientDetail(id)),
+    invalidate(queryKeys.professionalClients()),
   ]);
 }
