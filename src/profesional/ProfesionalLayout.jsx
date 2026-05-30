@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Settings,
   UserCircle,
   Users,
   Utensils,
@@ -179,6 +180,7 @@ function buildNavItems(me) {
   if (canMenus) items.push({ to: "/profesional/menus", label: "Menus", icon: Utensils });
 
   items.push({ to: "/profesional/progreso", label: "Progreso", icon: Activity });
+  items.push({ to: "/profesional/ajustes", label: "Ajustes", icon: Settings });
   items.push({ to: "/profesional/perfil", label: "Perfil", icon: UserCircle });
 
   return items;

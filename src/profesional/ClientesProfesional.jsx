@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Eye, RefreshCw, Search } from "lucide-react";
+import { Eye, RefreshCw, Search, Users } from "lucide-react";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import { useProfessionalClients } from "./profesionalQueries.js";
 import {
@@ -43,19 +43,28 @@ export default function ClientesProfesional() {
   return (
     <div className="prof-page">
       <section className="prof-shell">
-        <div className="prof-hero">
-          <div>
+        <div className="prof-hero prof-heroClean">
+          <div className="prof-titleRow">
             <div className="prof-kicker">👥 Clientes</div>
-            <h1 className="prof-title">Tus clientes</h1>
+            <div className="prof-titleWithIcon">
+              <Users size={22} strokeWidth={2.4} aria-hidden="true" />
+              <h1 className="prof-title">Tus clientes</h1>
+            </div>
             <p className="prof-sub">
               Vista profesional para seguir personas asignadas, objetivos, kcal y estado general.
             </p>
           </div>
 
           <div className="prof-actions">
-            <button type="button" className="prof-btn" onClick={() => clientsQuery.refetch()} disabled={clientsQuery.isFetching}>
-              <RefreshCw size={17} strokeWidth={2.2} aria-hidden="true" />
-              {clientsQuery.isFetching ? "Actualizando..." : "Actualizar"}
+            <button
+              type="button"
+              className="prof-iconBtn"
+              onClick={() => clientsQuery.refetch()}
+              disabled={clientsQuery.isFetching}
+              title={clientsQuery.isFetching ? "Actualizando" : "Actualizar"}
+              aria-label={clientsQuery.isFetching ? "Actualizando clientes" : "Actualizar clientes"}
+            >
+              <RefreshCw size={18} strokeWidth={2.3} aria-hidden="true" />
             </button>
           </div>
         </div>

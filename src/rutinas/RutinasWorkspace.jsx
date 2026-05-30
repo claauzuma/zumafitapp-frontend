@@ -89,7 +89,6 @@ const EXERCISE_FILTERS = [
 export default function RutinasWorkspace({ mode = "coach" }) {
   const queryClient = useQueryClient();
   const scope = mode === "admin" ? "admin" : "coach";
-  const isAdmin = scope === "admin";
   const [tab, setTab] = useState("rutinas");
   const [filters, setFilters] = useState({
     search: "",
@@ -300,25 +299,28 @@ export default function RutinasWorkspace({ mode = "coach" }) {
   return (
     <section className="rt-page">
       <div className="rt-shell">
-        <header className="rt-hero">
-          <div>
-            <div className="rt-kicker">
-              <Dumbbell size={15} strokeWidth={2.4} />
-              {isAdmin ? "Admin" : "Panel profesional"}
+        <header className="rt-hero rt-heroClean">
+          <div className="rt-heroContent">
+            <div className="rt-titleRow">
+              <div className="rt-titleWithIcon">
+                <Dumbbell size={22} strokeWidth={2.4} aria-hidden="true" />
+                <h1>Rutinas</h1>
+              </div>
+              <button
+                type="button"
+                className="rt-iconBtn rt-refreshIcon"
+                onClick={refreshVisible}
+                title="Actualizar"
+                aria-label="Actualizar rutinas"
+              >
+                <RefreshCcw size={18} strokeWidth={2.3} aria-hidden="true" />
+              </button>
             </div>
-            <h1>Rutinas</h1>
             <p>
               Biblioteca de ejercicios, plantillas reutilizables y rutinas asignadas con peso,
               reps y RIR por serie.
             </p>
-          </div>
-
-          <div className="rt-actions">
-            <button type="button" className="rt-btn ghost" onClick={refreshVisible}>
-              <RefreshCcw size={17} />
-              <span>Actualizar</span>
-            </button>
-            <button type="button" className="rt-btn gold" onClick={() => openRoutineEditor()}>
+            <button type="button" className="rt-btn gold rt-createBtn" onClick={() => openRoutineEditor()}>
               <Plus size={17} />
               <span>Crear rutina</span>
             </button>
