@@ -12,6 +12,7 @@ export const STALE_TIMES = {
   professionalMe: 60 * 1000,
   professionalClients: 2 * 60 * 1000,
   professionalClientDetail: 2 * 60 * 1000,
+  professionalClientInvitations: 60 * 1000,
   rutinas: 3 * 60 * 1000,
   rutina: 3 * 60 * 1000,
   ejercicios: 5 * 60 * 1000,
@@ -71,6 +72,15 @@ export const queryKeys = {
   professionalMe: () => ["professional", "me"],
   professionalClients: () => ["professional", "clients"],
   professionalClientDetail: (clientId) => ["professional", "client", cleanId(clientId)],
+  professionalClientInvitations: (filters = {}) => [
+    "professional",
+    "clientInvitations",
+    {
+      search: cleanText(filters.search),
+      status: cleanFilter(filters.status),
+    },
+  ],
+  professionalClientInvitationsRoot: () => ["professional", "clientInvitations"],
   rutinasRoot: () => ["rutinas"],
   rutinas: (filters = {}) => ["rutinas", normalizeRoutineFilters(filters)],
   rutina: (rutinaId) => ["rutina", cleanId(rutinaId)],
@@ -255,6 +265,14 @@ export async function invalidateProfessionalClient(clientId, updatedClient = nul
 
   await Promise.all([
     id ? invalidate(queryKeys.professionalClientDetail(id)) : Promise.resolve(),
+    invalidate(queryKeys.professionalClients()),
+    invalidate(queryKeys.professionalMe()),
+  ]);
+}
+
+export async function invalidateProfessionalClientInvitations() {
+  await Promise.all([
+    invalidate(queryKeys.professionalClientInvitationsRoot()),
     invalidate(queryKeys.professionalClients()),
     invalidate(queryKeys.professionalMe()),
   ]);

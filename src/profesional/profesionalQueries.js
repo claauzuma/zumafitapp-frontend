@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { STALE_TIMES, queryKeys } from "../queryClient.js";
 import {
   getProfessionalClientDetail,
+  getProfessionalClientInvitations,
   getProfessionalClients,
 } from "./profesionalApi.js";
 
@@ -19,5 +20,13 @@ export function useProfessionalClientDetail(clientId) {
     queryFn: () => getProfessionalClientDetail(clientId),
     enabled: Boolean(clientId),
     staleTime: STALE_TIMES.professionalClientDetail,
+  });
+}
+
+export function useProfessionalClientInvitations(filters = {}) {
+  return useQuery({
+    queryKey: queryKeys.professionalClientInvitations(filters),
+    queryFn: () => getProfessionalClientInvitations(filters),
+    staleTime: STALE_TIMES.professionalClientInvitations,
   });
 }
