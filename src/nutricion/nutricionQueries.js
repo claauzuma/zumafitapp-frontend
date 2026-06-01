@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { STALE_TIMES, queryKeys } from "../queryClient.js";
-import { listAlimentos, listComidas } from "./nutricionApi.js";
+import { getComida, listAlimentos, listComidas } from "./nutricionApi.js";
 import {
   DEMO_MENUS,
   getDemoMenuRanges,
@@ -25,6 +25,15 @@ export function useComidas(filters = {}, foods = [], options = {}) {
     enabled: options.enabled !== false,
     staleTime: STALE_TIMES.comidas,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useComida(comidaId, foods = []) {
+  return useQuery({
+    queryKey: queryKeys.comida(comidaId),
+    queryFn: () => getComida(comidaId, foods),
+    enabled: Boolean(comidaId),
+    staleTime: STALE_TIMES.comidas,
   });
 }
 

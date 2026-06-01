@@ -112,19 +112,42 @@ export function buildMenuItemSnapshot(food = {}, cantidad = 100, unidad = food?.
 }
 
 export function normalizeMeal(raw = {}, foods = []) {
+  if (!raw) return null;
   const items = Array.isArray(raw?.items) ? raw.items : [];
-  const totals = calculateMealMacros(items, foods);
+  const rawTotals = raw?.totales || raw?.totals || null;
+  const calculatedTotals = calculateMealMacros(items, foods);
+  const totals = rawTotals
+    ? {
+        kcal: toNumber(rawTotals.kcal, calculatedTotals.kcal),
+        protein: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals.protein),
+        proteina: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals.protein),
+        carbs: toNumber(rawTotals.carbs, calculatedTotals.carbs),
+        fat: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals.fat),
+        grasas: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals.fat),
+        matched: items.length,
+      }
+    : calculatedTotals;
   const name = raw?.nombre || raw?.name || "Comida sin nombre";
+  const type = normalizeDisplayMealType(raw?.tipoComida || raw?.type || inferMealType(name));
 
   return {
     id: String(raw?.id || raw?._id || slugify(`${name}-${raw?.userId || ""}`)),
     userId: raw?.userId || "",
     name,
-    type: inferMealType(name),
+    nombre: name,
+    descripcion: raw?.descripcion || raw?.description || "",
+    type,
+    tipoComida: normalizeMealTypeToken(raw?.tipoComida || type),
+    grupoComida: raw?.grupoComida || groupFromMealType(raw?.tipoComida || type),
     items,
     totals,
     demo: !!raw?.demo,
     tags: Array.isArray(raw?.tags) ? raw.tags : [],
+    visibility: raw?.visibilidad || raw?.visibility || "",
+    visibilidad: raw?.visibilidad || raw?.visibility || "",
+    ownerType: raw?.ownerType || "",
+    ownerId: raw?.ownerId || "",
+    estado: raw?.estado || raw?.status || "",
     raw,
   };
 }
@@ -184,6 +207,37 @@ export function inferMealType(name = "") {
   return "Comida";
 }
 
+export function normalizeMealTypeToken(value = "") {
+  const text = slugify(value);
+  if (text.includes("desayuno")) return "desayuno";
+  if (text.includes("almuerzo")) return "almuerzo";
+  if (text.includes("merienda")) return "merienda";
+  if (text.includes("cena")) return "cena";
+  if (text.includes("snack") || text.includes("colacion")) return "snack";
+  return "otro";
+}
+
+export function normalizeDisplayMealType(value = "") {
+  const token = normalizeMealTypeToken(value);
+  const labels = {
+    desayuno: "Desayuno",
+    almuerzo: "Almuerzo",
+    merienda: "Merienda",
+    cena: "Cena",
+    snack: "Snack",
+    otro: "Sin clasificar",
+  };
+  return labels[token] || "Sin clasificar";
+}
+
+export function groupFromMealType(value = "") {
+  const token = normalizeMealTypeToken(value);
+  if (["desayuno", "merienda"].includes(token)) return "desayuno_merienda";
+  if (["almuerzo", "cena"].includes(token)) return "almuerzo_cena";
+  if (token === "snack") return "snack";
+  return "otro";
+}
+
 export function filterFoods(foods = [], filters = {}) {
   const search = cleanText(filters.search);
   const category = cleanText(filters.category || "todos");
@@ -214,7 +268,11 @@ export function filterMeals(meals = [], filters = {}) {
       cleanText(mealName).includes(search) ||
       cleanText(itemsText).includes(search) ||
       cleanText(meal.type).includes(search);
-    const matchesType = type === "todos" || cleanText(meal.type) === type;
+    const matchesType =
+      type === "todos" ||
+      cleanText(meal.type) === type ||
+      cleanText(meal.tipoComida) === type ||
+      cleanText(meal.grupoComida) === type;
     return matchesSearch && matchesType;
   });
 }

@@ -1,0 +1,488 @@
+.td-page{
+  color:#eef2f7;
+  min-width:0;
+}
+
+.td-shell{
+  border:1px solid rgba(245,215,110,.14);
+  background:
+    radial-gradient(circle at 0 0, rgba(60,135,190,.14), transparent 34%),
+    linear-gradient(180deg, rgba(14,18,24,.98), rgba(8,10,14,.98));
+  border-radius:22px;
+  padding:20px;
+  box-shadow:0 18px 54px rgba(0,0,0,.28);
+}
+
+.td-hero{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+  margin-bottom:12px;
+}
+
+.td-kicker{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:26px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  font-size:12px;
+  font-weight:950;
+}
+
+.td-hero h1{
+  margin:10px 0 0;
+  font-size:34px;
+  line-height:1.05;
+  font-weight:1000;
+}
+
+.td-hero p{
+  margin:8px 0 0;
+  color:#b7c2d0;
+  font-weight:700;
+  line-height:1.45;
+}
+
+.td-dateNav{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.td-dateNav button{
+  width:38px;
+  height:38px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,.10);
+  background:#0a1017;
+  color:#f5d76e;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.td-date{
+  flex:0 0 auto;
+  border:1px solid rgba(255,255,255,.10);
+  background:#0a1017;
+  border-radius:14px;
+  padding:10px 12px;
+  color:#fff2bc;
+  font-weight:950;
+  text-transform:capitalize;
+}
+
+.td-saveNotice,
+.td-demoNotice,
+.td-empty,
+.td-error{
+  border:1px solid rgba(80,190,255,.18);
+  background:rgba(80,190,255,.08);
+  color:#cdeeff;
+  border-radius:15px;
+  padding:12px;
+  font-weight:850;
+  line-height:1.4;
+  margin:10px 0;
+}
+
+.td-saveNotice{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border-color:rgba(245,215,110,.20);
+  background:rgba(245,215,110,.07);
+  color:#fff2bc;
+}
+
+.td-error{
+  border-color:rgba(255,95,95,.28);
+  background:rgba(255,95,95,.08);
+  color:#ffc6c6;
+}
+
+.td-spin{
+  animation:td-spin .85s linear infinite;
+}
+
+.td-summary{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+
+.td-macro{
+  border:1px solid rgba(120,170,230,.13);
+  background:linear-gradient(160deg, rgba(15,27,39,.98), rgba(8,13,20,.98));
+  border-radius:16px;
+  padding:13px;
+}
+
+.td-macroTop{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+}
+
+.td-macro span,
+.td-macro small{
+  color:#9faec0;
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.td-macro strong{
+  color:#fff8db;
+  font-size:20px;
+  font-weight:1000;
+}
+
+.td-bar{
+  height:8px;
+  margin:10px 0 7px;
+  border-radius:999px;
+  overflow:hidden;
+  background:#071018;
+  border:1px solid rgba(255,255,255,.07);
+}
+
+.td-bar span{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background:#f5d76e;
+}
+
+.td-macro.protein .td-bar span{ background:#8fd4ff; }
+.td-macro.carbs .td-bar span{ background:#94f0bf; }
+.td-macro.fat .td-bar span{ background:#ffb26f; }
+
+.td-planCard{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:10px;
+  border:1px solid rgba(245,215,110,.15);
+  background:rgba(245,215,110,.06);
+  border-radius:16px;
+  padding:12px;
+  margin:12px 0;
+}
+
+.td-planCard span{
+  display:block;
+  color:#9fb0c3;
+  font-size:11px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.td-planCard strong{
+  display:block;
+  margin-top:4px;
+  color:#f8fafc;
+  font-weight:1000;
+}
+
+.td-planCard small{
+  display:block;
+  margin-top:4px;
+  color:#9fb0c3;
+  font-size:11px;
+  font-weight:850;
+}
+
+.td-meals{
+  display:grid;
+  gap:12px;
+}
+
+.td-meal{
+  border:1px solid rgba(120,170,230,.13);
+  background:linear-gradient(180deg, rgba(11,18,27,.98), rgba(7,12,18,.98));
+  border-radius:18px;
+  padding:14px;
+}
+
+.td-mealHead,
+.td-modalTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.td-meal h2,
+.td-modal h3{
+  margin:0;
+  color:#f8fafc;
+  font-size:20px;
+  font-weight:1000;
+}
+
+.td-meal p{
+  margin:5px 0 0;
+  color:#b7c2d0;
+  font-weight:800;
+}
+
+.td-iconBtn{
+  width:40px;
+  height:40px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,.10);
+  background:#0d1117;
+  color:#f5d76e;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.td-iconBtn:disabled,
+.td-foodActions button:disabled,
+.td-pickCard:disabled{
+  opacity:.62;
+  cursor:not-allowed;
+}
+
+.td-foodList{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+
+.td-food{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid rgba(255,255,255,.08);
+  background:#080e15;
+  border-radius:14px;
+  padding:10px;
+}
+
+.td-foodMain strong,
+.td-pickCard strong{
+  display:block;
+  color:#f8fafc;
+  font-weight:1000;
+}
+
+.td-foodMain span,
+.td-pickCard span{
+  display:block;
+  margin-top:4px;
+  color:#aebdcd;
+  font-size:12px;
+  font-weight:800;
+}
+
+.td-foodActions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.td-foodActions input,
+.td-qty input,
+.td-search input{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.10);
+  background:#091017;
+  color:#eef2f7;
+  border-radius:11px;
+  min-height:38px;
+  padding:0 10px;
+  font-weight:850;
+  outline:none;
+}
+
+.td-foodActions input{
+  width:70px;
+}
+
+.td-foodActions span{
+  color:#9fb0c3;
+  font-weight:900;
+}
+
+.td-foodActions button{
+  width:36px;
+  height:36px;
+  border-radius:11px;
+  border:1px solid rgba(255,95,95,.20);
+  background:rgba(255,95,95,.08);
+  color:#ffb5b5;
+  cursor:pointer;
+}
+
+.td-modalBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  background:rgba(0,0,0,.70);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+}
+
+.td-modal{
+  width:min(760px, 100%);
+  max-height:min(760px, 92vh);
+  overflow:auto;
+  border:1px solid rgba(245,215,110,.24);
+  background:linear-gradient(180deg, #0b121b, #060a0f);
+  border-radius:20px;
+  padding:16px;
+  box-shadow:0 26px 70px rgba(0,0,0,.55);
+}
+
+.td-modal h3{
+  margin-top:10px;
+}
+
+.td-addGrid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 130px;
+  gap:10px;
+  margin:14px 0;
+}
+
+.td-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,255,255,.10);
+  background:#091017;
+  border-radius:13px;
+  padding:0 11px;
+}
+
+.td-search input{
+  border:none;
+  background:transparent;
+  width:100%;
+  padding:0;
+}
+
+.td-qty{
+  display:grid;
+  gap:5px;
+}
+
+.td-qty span{
+  color:#9fb0c3;
+  font-size:11px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.td-foodPicker{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:9px;
+}
+
+.td-pickCard{
+  text-align:left;
+  border:1px solid rgba(120,170,230,.13);
+  background:linear-gradient(180deg, rgba(11,18,27,.98), rgba(7,12,18,.98));
+  border-radius:14px;
+  padding:12px;
+  cursor:pointer;
+}
+
+@keyframes td-spin{
+  to{ transform:rotate(360deg); }
+}
+
+@media (max-width: 760px){
+  .td-shell{
+    padding:12px;
+    border-radius:18px;
+  }
+
+  .td-hero{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .td-hero h1{
+    font-size:27px;
+  }
+
+  .td-hero p{
+    font-size:13px;
+    line-height:1.35;
+  }
+
+  .td-dateNav{
+    width:100%;
+    justify-content:space-between;
+  }
+
+  .td-date{
+    flex:1 1 auto;
+    text-align:center;
+    padding:8px 10px;
+    font-size:12px;
+  }
+
+  .td-summary{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:8px;
+  }
+
+  .td-macro{
+    padding:10px;
+    border-radius:14px;
+  }
+
+  .td-macro strong{
+    font-size:17px;
+  }
+
+  .td-planCard{
+    grid-template-columns:1fr;
+  }
+
+  .td-food{
+    grid-template-columns:1fr;
+  }
+
+  .td-foodActions{
+    justify-content:flex-start;
+  }
+
+  .td-addGrid,
+  .td-foodPicker{
+    grid-template-columns:1fr;
+  }
+
+  .td-modalBackdrop{
+    align-items:flex-end;
+    padding:0;
+  }
+
+  .td-modal{
+    border-radius:22px 22px 0 0;
+    max-height:88vh;
+    border-left:none;
+    border-right:none;
+    border-bottom:none;
+  }
+}

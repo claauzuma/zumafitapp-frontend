@@ -4,7 +4,7 @@ export const DEMO_COMIDAS = [
     demo: true,
     nombre: "Desayuno proteico simple",
     type: "Desayuno",
-    tags: ["alto en proteína", "rápido"],
+    tags: ["alto en proteina", "rapido"],
     totals: { kcal: 390, protein: 34, carbs: 42, fat: 9, matched: 3 },
     items: [
       { alimento: "Yogur griego", cantidad: 250 },
@@ -17,7 +17,7 @@ export const DEMO_COMIDAS = [
     demo: true,
     nombre: "Almuerzo pollo y arroz",
     type: "Almuerzo",
-    tags: ["económico", "meal prep"],
+    tags: ["economico", "meal prep"],
     totals: { kcal: 560, protein: 48, carbs: 68, fat: 11, matched: 4 },
     items: [
       { alimento: "Pechuga de pollo", cantidad: 160 },
@@ -44,7 +44,7 @@ export const DEMO_COMIDAS = [
     demo: true,
     nombre: "Cena carne magra y papa",
     type: "Cena",
-    tags: ["saciante", "clásica"],
+    tags: ["saciante", "clasica"],
     totals: { kcal: 520, protein: 42, carbs: 54, fat: 16, matched: 3 },
     items: [
       { alimento: "Carne magra", cantidad: 150 },
@@ -55,9 +55,9 @@ export const DEMO_COMIDAS = [
   {
     id: "demo-snack-proteico",
     demo: true,
-    nombre: "Snack alto en proteína",
+    nombre: "Snack alto en proteina",
     type: "Snack",
-    tags: ["alto en proteína", "portátil"],
+    tags: ["alto en proteina", "portable"],
     totals: { kcal: 260, protein: 28, carbs: 18, fat: 8, matched: 2 },
     items: [
       { alimento: "Whey protein", cantidad: 30 },
@@ -80,154 +80,65 @@ export const DEMO_COMIDAS = [
   },
 ];
 
-const BASE_MEALS_100 = [
-  {
-    name: "Desayuno",
-    kcal: 340,
-    protein: 27,
-    carbs: 42,
-    fat: 7,
-    foods: [
-      { name: "Yogur griego descremado", amount: "220 g" },
-      { name: "Avena", amount: "35 g" },
-      { name: "Frutillas", amount: "100 g" },
-    ],
-  },
-  {
-    name: "Almuerzo",
-    kcal: 450,
-    protein: 33,
-    carbs: 58,
-    fat: 10,
-    foods: [
-      { name: "Pechuga de pollo", amount: "120 g" },
-      { name: "Arroz cocido", amount: "180 g" },
-      { name: "Ensalada verde", amount: "180 g" },
-    ],
-  },
-  {
-    name: "Merienda",
-    kcal: 260,
-    protein: 20,
-    carbs: 32,
-    fat: 6,
-    foods: [
-      { name: "Queso untable light", amount: "70 g" },
-      { name: "Pan integral", amount: "60 g" },
-      { name: "Manzana", amount: "1 unidad" },
-    ],
-  },
-  {
-    name: "Cena",
-    kcal: 430,
-    protein: 31,
-    carbs: 45,
-    fat: 13,
-    foods: [
-      { name: "Carne magra", amount: "120 g" },
-      { name: "Papa", amount: "230 g" },
-      { name: "Verduras al horno", amount: "180 g" },
-    ],
-  },
+const FOODS = {
+  yogurt: { name: "Yogur griego descremado", unit: "g", kcal: 59, protein: 10, carbs: 3.6, fat: 0.4, category: "Proteica" },
+  oats: { name: "Avena", unit: "g", kcal: 389, protein: 16.9, carbs: 66, fat: 6.9, category: "Carbohidrato" },
+  strawberries: { name: "Frutillas", unit: "g", kcal: 32, protein: 0.7, carbs: 7.7, fat: 0.3, category: "Fruta" },
+  banana: { name: "Banana", unit: "g", kcal: 89, protein: 1.1, carbs: 23, fat: 0.3, category: "Fruta" },
+  whey: { name: "Whey protein", unit: "g", kcal: 400, protein: 80, carbs: 10, fat: 6.7, category: "Proteica" },
+  chicken: { name: "Pechuga de pollo", unit: "g", kcal: 165, protein: 31, carbs: 0, fat: 3.6, category: "Proteica" },
+  rice: { name: "Arroz cocido", unit: "g", kcal: 130, protein: 2.7, carbs: 28, fat: 0.3, category: "Carbohidrato" },
+  vegetables: { name: "Verduras mixtas", unit: "g", kcal: 30, protein: 2, carbs: 5, fat: 0.2, category: "Verdura" },
+  oliveOil: { name: "Aceite de oliva", unit: "g", kcal: 900, protein: 0, carbs: 0, fat: 100, category: "Grasa" },
+  bread: { name: "Pan integral", unit: "g", kcal: 250, protein: 10, carbs: 45, fat: 4, category: "Carbohidrato" },
+  cheese: { name: "Queso untable light", unit: "g", kcal: 110, protein: 12, carbs: 6, fat: 4, category: "Lacteo" },
+  almonds: { name: "Almendras", unit: "g", kcal: 579, protein: 21, carbs: 22, fat: 50, category: "Grasa" },
+  beef: { name: "Carne magra", unit: "g", kcal: 176, protein: 26, carbs: 0, fat: 8, category: "Proteica" },
+  potato: { name: "Papa", unit: "g", kcal: 77, protein: 2, carbs: 17, fat: 0.1, category: "Carbohidrato" },
+  tuna: { name: "Atun al natural", unit: "g", kcal: 116, protein: 25, carbs: 0, fat: 1, category: "Proteica" },
+  pasta: { name: "Pasta cocida", unit: "g", kcal: 157, protein: 5.8, carbs: 31, fat: 0.9, category: "Carbohidrato" },
+  egg: { name: "Huevo", unit: "g", kcal: 143, protein: 13, carbs: 1, fat: 10, category: "Proteica" },
+  lentils: { name: "Lentejas cocidas", unit: "g", kcal: 116, protein: 9, carbs: 20, fat: 0.4, category: "Carbohidrato" },
+  apple: { name: "Manzana", unit: "g", kcal: 52, protein: 0.3, carbs: 14, fat: 0.2, category: "Fruta" },
+};
+
+const MENU_CONFIGS = [
+  { range: [1300, 1400], proteins: [100, 120], goals: ["definicion", "saciante"], names: ["Definicion simple 1400", "Dia simple sin complicarse"] },
+  { range: [1400, 1500], proteins: [100, 120, 140], goals: ["definicion", "salud"], names: ["Menu saciante economico", "Desayunos simples + cenas livianas", "Fitness clasico pollo/arroz"] },
+  { range: [1500, 1600], proteins: [100, 120, 140], goals: ["recomposicion", "mantenimiento"], names: ["Recomposicion equilibrada", "Dia practico oficina", "Alto en proteina 1600"] },
+  { range: [1600, 1700], proteins: [120, 140, 160], goals: ["recomposicion", "rendimiento"], names: ["Mantenimiento flexible", "Fitness clasico pollo/arroz", "Alto en proteina 1600"] },
+  { range: [1700, 1800], proteins: [120, 140, 160], goals: ["mantenimiento", "rendimiento"], names: ["Dia practico oficina", "Rendimiento limpio", "Menu saciante economico"] },
+  { range: [1800, 1900], proteins: [140, 160, 180], goals: ["rendimiento", "volumen limpio"], names: ["Rendimiento limpio", "Alto en proteina 1800", "Fitness clasico pollo/arroz"] },
+  { range: [1900, 2000], proteins: [140, 160, 180], goals: ["rendimiento", "volumen limpio"], names: ["Mantenimiento flexible", "Dia practico oficina", "Volumen limpio moderado"] },
+  { range: [2000, 2100], proteins: [160, 180, 200], goals: ["volumen limpio", "rendimiento"], names: ["Volumen limpio 2000", "Rendimiento limpio", "Alto en proteina 2000"] },
+  { range: [2100, 2200], proteins: [160, 180, 200], goals: ["volumen limpio", "rendimiento"], names: ["Volumen limpio 2200", "Fitness clasico pollo/arroz", "Dia fuerte de entrenamiento"] },
+  { range: [2200, 2300], proteins: [180, 200], goals: ["volumen limpio", "rendimiento"], names: ["Volumen limpio 2200", "Rendimiento limpio alto en proteina"] },
 ];
 
-const BASE_MEALS_180 = [
-  {
-    name: "Desayuno",
-    kcal: 470,
-    protein: 48,
-    carbs: 44,
-    fat: 11,
-    foods: [
-      { name: "Claras y huevo", amount: "250 g" },
-      { name: "Avena", amount: "45 g" },
-      { name: "Banana", amount: "80 g" },
-    ],
-  },
-  {
-    name: "Almuerzo",
-    kcal: 650,
-    protein: 58,
-    carbs: 70,
-    fat: 15,
-    foods: [
-      { name: "Pechuga de pollo", amount: "200 g" },
-      { name: "Arroz cocido", amount: "240 g" },
-      { name: "Aceite de oliva", amount: "8 g" },
-      { name: "Verduras", amount: "180 g" },
-    ],
-  },
-  {
-    name: "Merienda",
-    kcal: 390,
-    protein: 39,
-    carbs: 38,
-    fat: 8,
-    foods: [
-      { name: "Whey protein", amount: "30 g" },
-      { name: "Yogur griego", amount: "180 g" },
-      { name: "Fruta", amount: "120 g" },
-    ],
-  },
-  {
-    name: "Cena",
-    kcal: 600,
-    protein: 50,
-    carbs: 56,
-    fat: 18,
-    foods: [
-      { name: "Pescado blanco", amount: "220 g" },
-      { name: "Papa o batata", amount: "260 g" },
-      { name: "Ensalada completa", amount: "220 g" },
-    ],
-  },
-];
-
-const RANGE_CONFIG = [
-  { min: 1300, max: 1400, goals: ["definición", "recomposición"], kcal100: 1360, kcal180: 1380 },
-  { min: 1400, max: 1500, goals: ["definición", "salud"], kcal100: 1460, kcal180: 1490 },
-  { min: 1500, max: 1600, goals: ["recomposición", "mantenimiento"], kcal100: 1560, kcal180: 1590 },
-  { min: 1600, max: 1700, goals: ["mantenimiento", "rendimiento"], kcal100: 1660, kcal180: 1690 },
-  { min: 1800, max: 1900, goals: ["volumen limpio", "rendimiento"], kcal100: 1860, kcal180: 1890 },
-];
-
-export const DEMO_MENUS = RANGE_CONFIG.flatMap((range) => [
-  buildMenu(range, 100, range.kcal100, BASE_MEALS_100, ["simple", "moderado", range.goals[0]]),
-  buildMenu(range, 180, range.kcal180, BASE_MEALS_180, ["alto en proteína", "entrenamiento", range.goals[1]]),
-]);
-
-function buildMenu(range, protein, kcal, meals, tags) {
-  const proteinScale = protein / meals.reduce((acc, meal) => acc + meal.protein, 0);
-  const fat = Math.max(35, Math.round(kcal * 0.27 / 9));
-  const carbs = Math.max(80, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return {
-    id: `demo-menu-${range.min}-${range.max}-${protein}`,
-    demo: true,
-    name: `${range.min}-${range.max} kcal / ${protein} g proteína`,
-    description: protein >= 180 ? "Distribución alta en proteína para días de entrenamiento." : "Menú simple con comidas fáciles de sostener.",
-    range: { min: range.min, max: range.max, label: `${range.min}-${range.max} kcal` },
-    kcal,
-    protein,
-    carbs,
-    fat,
-    mealsCount: meals.length,
-    goals: range.goals,
-    tags,
-    meals: meals.map((meal, index) => ({
-      ...meal,
-      protein: Math.round(meal.protein * proteinScale),
-      order: index + 1,
-    })),
-  };
-}
+export const DEMO_MENUS = MENU_CONFIGS.flatMap((config) =>
+  config.proteins.map((protein, index) =>
+    buildMenu({
+      min: config.range[0],
+      max: config.range[1],
+      kcal: config.range[0] + 60 + index * 15,
+      protein,
+      goals: config.goals,
+      name: config.names[index % config.names.length],
+      variant: index,
+    })
+  )
+);
 
 export function getDemoMenuRanges() {
-  return RANGE_CONFIG.map((range) => {
-    const menus = DEMO_MENUS.filter((menu) => menu.range.min === range.min && menu.range.max === range.max);
+  return MENU_CONFIGS.map((config) => {
+    const label = `${config.range[0]}-${config.range[1]} kcal`;
+    const menus = DEMO_MENUS.filter((menu) => menu.range.label === label);
     const proteins = [...new Set(menus.map((menu) => menu.protein))].sort((a, b) => a - b);
     return {
-      ...range,
-      label: `${range.min}-${range.max} kcal`,
+      min: config.range[0],
+      max: config.range[1],
+      goals: config.goals,
+      label,
       menuCount: menus.length,
       proteins,
       proteinMin: proteins[0],
@@ -242,4 +153,160 @@ export function getDemoMenusByRange(rangeLabel) {
 
 export function getDemoMenusByProtein(rangeLabel, protein) {
   return DEMO_MENUS.filter((menu) => menu.range.label === rangeLabel && Number(menu.protein) === Number(protein));
+}
+
+function buildMenu({ min, max, kcal, protein, goals, name, variant }) {
+  const meals = buildMeals({ kcal, protein, variant });
+  const totals = totalMeals(meals);
+  const tags = buildTags({ protein, goals, kcal, variant });
+
+  return {
+    id: `demo-menu-${min}-${max}-${protein}-${variant}`,
+    demo: true,
+    name,
+    description: descriptionFor({ protein, goals, kcal }),
+    range: { min, max, label: `${min}-${max} kcal` },
+    kcal: Math.round(totals.kcal),
+    protein,
+    carbs: Math.round(totals.carbs),
+    fat: Math.round(totals.fat),
+    mealsCount: meals.length,
+    goals,
+    tags,
+    meals,
+  };
+}
+
+function buildMeals({ kcal, protein, variant }) {
+  const p = protein / 140;
+  const k = kcal / 1700;
+  const meals = [
+    meal("Desayuno", [
+      item("yogurt", 170 * p + 20),
+      item("oats", 28 * k + 8),
+      item(variant % 2 ? "banana" : "strawberries", variant % 2 ? 80 * k : 110 * k),
+      ...(protein >= 160 ? [item("whey", 12 + (protein - 160) * 0.18)] : []),
+    ]),
+    meal("Almuerzo", [
+      item(variant % 3 === 1 ? "tuna" : "chicken", 115 * p + 15),
+      item(variant % 3 === 2 ? "pasta" : "rice", 145 * k + 20),
+      item("vegetables", 160),
+      item("oliveOil", 5 * k + 2),
+    ]),
+    meal("Merienda", [
+      item(protein >= 160 ? "whey" : "cheese", protein >= 160 ? 18 * p : 80 * p),
+      item("bread", 45 * k + 6),
+      item(variant % 2 ? "apple" : "banana", 95 * k),
+      ...(kcal >= 1800 ? [item("almonds", 8 * k)] : []),
+    ]),
+    meal("Cena", [
+      item(variant % 2 ? "beef" : "chicken", 105 * p + 12),
+      item(variant % 2 ? "potato" : "rice", 210 * k + 25),
+      item("vegetables", 190),
+      item("oliveOil", 5 * k + 2),
+    ]),
+  ];
+
+  if (kcal >= 1950 || protein >= 180) {
+    meals.push(
+      meal("Snack", [
+        item("yogurt", 110 * p),
+        item("whey", 10 + (protein >= 200 ? 8 : 0)),
+        item("banana", 75 * k),
+      ])
+    );
+  }
+
+  return tuneCalories(meals, kcal);
+}
+
+function tuneCalories(meals, targetKcal) {
+  const current = totalMeals(meals);
+  const diff = targetKcal - current.kcal;
+  if (diff <= 45) return meals;
+
+  const extraItems =
+    diff > 260
+      ? [item("rice", (diff * 0.58) / 1.3), item("almonds", (diff * 0.22) / 5.79), item("banana", (diff * 0.2) / 0.89)]
+      : diff > 130
+        ? [item("rice", (diff * 0.7) / 1.3), item("banana", (diff * 0.3) / 0.89)]
+        : [item("banana", diff / 0.89)];
+
+  const index = meals.findIndex((mealItem) => mealItem.name === "Merienda");
+  const next = meals.map((mealItem, mealIndex) => {
+    if (mealIndex !== index) return mealItem;
+    return meal(mealItem.name, [...mealItem.foods, ...extraItems]);
+  });
+
+  return next;
+}
+
+function item(key, rawQty) {
+  const food = FOODS[key];
+  const cantidad = Math.max(1, Math.round(rawQty));
+  const factor = cantidad / 100;
+  return {
+    name: food.name,
+    amount: `${cantidad} ${food.unit}`,
+    cantidad,
+    unidad: food.unit,
+    kcal: round(food.kcal * factor),
+    protein: round(food.protein * factor),
+    carbs: round(food.carbs * factor),
+    fat: round(food.fat * factor),
+    category: food.category,
+  };
+}
+
+function meal(name, foods) {
+  const totals = foods.reduce(
+    (acc, food) => ({
+      kcal: acc.kcal + food.kcal,
+      protein: acc.protein + food.protein,
+      carbs: acc.carbs + food.carbs,
+      fat: acc.fat + food.fat,
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  return {
+    name,
+    kcal: round(totals.kcal),
+    protein: round(totals.protein),
+    carbs: round(totals.carbs),
+    fat: round(totals.fat),
+    foods,
+  };
+}
+
+function totalMeals(meals) {
+  return meals.reduce(
+    (acc, mealItem) => ({
+      kcal: round(acc.kcal + mealItem.kcal),
+      protein: round(acc.protein + mealItem.protein),
+      carbs: round(acc.carbs + mealItem.carbs),
+      fat: round(acc.fat + mealItem.fat),
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+}
+
+function buildTags({ protein, goals, kcal, variant }) {
+  const tags = [protein >= 160 ? "alto en proteina" : "simple", goals[0]];
+  if (kcal <= 1600) tags.push("saciante");
+  if (variant % 2 === 0) tags.push("facil de preparar");
+  if (variant % 3 === 1) tags.push("economico");
+  if (kcal >= 2000) tags.push("volumen limpio");
+  return [...new Set(tags)].slice(0, 4);
+}
+
+function descriptionFor({ protein, goals, kcal }) {
+  if (kcal >= 2000) return "Plan pensado para entrenamientos fuertes, con carbohidratos claros y proteina alta.";
+  if (protein >= 160) return "Distribucion alta en proteina con comidas simples para sostener adherencia.";
+  if (goals.includes("definicion")) return "Menu liviano y saciante para definicion sin cocinar demasiado.";
+  return "Menu equilibrado para recomposicion, mantenimiento o dias de oficina.";
+}
+
+function round(value) {
+  return Math.round(Number(value || 0) * 10) / 10;
 }

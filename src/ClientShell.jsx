@@ -427,6 +427,7 @@ const NAV_SECTIONS = [
     title: "Tu plan",
     items: [
       { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: "🍽️", enabled: true },
+      { to: "/app/tracking", label: "Tracking", sub: "Registro diario", icon: "T", enabled: true },
       { to: "/app/rutinas", label: "Rutina", sub: "Entrenamiento", icon: "🏋️", enabled: true },
       { to: "/app/equivalencias", label: "Equivalencias", sub: "Intercambios de alimentos", icon: "🧠", enabled: false },
     ],

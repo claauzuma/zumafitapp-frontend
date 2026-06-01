@@ -4,26 +4,42 @@ import {
   BadgeInfo,
   BarChart3,
   Beef,
+  BookOpen,
+  ChefHat,
   ChevronRight,
+  Copy,
   Eye,
   Flame,
+  Layers,
+  Pencil,
+  Plus,
   RefreshCcw,
   Search,
   ShieldAlert,
   Sparkles,
   Target,
+  Trash2,
   Utensils,
   X,
 } from "lucide-react";
 
-import { useMenusDemo } from "../nutricion/nutricionQueries.js";
+import { MealRecipeEditor, MenuBaseEditor } from "../nutricion/NutritionEditors.jsx";
+import { createComida, deleteComida, duplicateComida, updateComida } from "../nutricion/nutricionApi.js";
+import { useAlimentos, useComidas, useMenusDemo } from "../nutricion/nutricionQueries.js";
 import { formatNumber, macroLine } from "../nutricion/nutricionUtils.js";
 import AppToast from "../ui/AppToast.jsx";
-import { createMenuBaseFromDisplay, duplicateMenuBase, assignMenuToClient } from "../menus/menusApi.js";
+import {
+  assignMenuToClient,
+  createMenuBase,
+  createMenuBaseFromDisplay,
+  deleteMenuBase,
+  duplicateMenuBase,
+  updateMenuBase,
+} from "../menus/menusApi.js";
 import { useMenusBase } from "../menus/menusQueries.js";
 import { normalizeDemoMenu } from "../menus/menusUtils.js";
 import { useProfessionalClients } from "./profesionalQueries.js";
-import { invalidateClientMenus, invalidateMenusLibrary } from "../queryClient.js";
+import { invalidateClientMenus, invalidateComidasLibrary, invalidateMenusLibrary } from "../queryClient.js";
 import "../nutricion/nutricion.css";
 
 const GOALS = [
@@ -33,6 +49,16 @@ const GOALS = [
   ["mantenimiento", "Mantenimiento"],
   ["volumen limpio", "Volumen limpio"],
   ["rendimiento", "Rendimiento"],
+];
+
+const TAB_MENUS = "menus";
+const TAB_COMIDAS = "comidas";
+
+const MEAL_GROUPS = [
+  { id: "desayuno_merienda", label: "Desayuno / Merienda", icon: ChefHat },
+  { id: "almuerzo_cena", label: "Almuerzo / Cena", icon: Utensils },
+  { id: "snack", label: "Snacks", icon: Beef },
+  { id: "todos", label: "Todas", icon: Layers },
 ];
 
 export default function MenusProfesional() {
@@ -47,10 +73,14 @@ export default function MenusProfesional() {
 }
 
 function MenusWorkspace({ me }) {
+  const [activeTab, setActiveTab] = useState(TAB_MENUS);
   const [filters, setFilters] = useState({ search: "", goal: "todos", meals: 0 });
   const [selectedRange, setSelectedRange] = useState("");
   const [selectedProtein, setSelectedProtein] = useState("");
   const [selectedMenuId, setSelectedMenuId] = useState("");
+  const [selectedMealGroup, setSelectedMealGroup] = useState("");
+  const [menuEditor, setMenuEditor] = useState(null);
+  const [mealEditor, setMealEditor] = useState(null);
   const [assignMenu, setAssignMenu] = useState(null);
   const [assignClientId, setAssignClientId] = useState("");
   const [busy, setBusy] = useState("");
@@ -59,6 +89,11 @@ function MenusWorkspace({ me }) {
   const menusQuery = useMenusDemo(filters);
   const realMenusQuery = useMenusBase({ search: filters.search, estado: "activo", includeComidas: true });
   const clientsQuery = useProfessionalClients();
+  const foodsQuery = useAlimentos({});
+  const foods = foodsQuery.data?.all || [];
+  const comidasQuery = useComidas({ search: "" }, foods, { enabled: !foodsQuery.isLoading });
+  const meals = comidasQuery.data?.comidas || [];
+  const permissions = menuPermissions(me);
 
   const realMenus = useMemo(() => realMenusQuery.data?.menus || [], [realMenusQuery.data?.menus]);
   const demoMenus = useMemo(
@@ -135,6 +170,14 @@ function MenusWorkspace({ me }) {
   }
 
   async function saveTemplate(menu) {
+    if (!permissions.canCreateMenu && menu.demo) {
+      setToast({ type: "warning", message: "Tu plan no permite crear plantillas propias." });
+      return;
+    }
+    if (!permissions.canDuplicateMenu && !menu.demo) {
+      setToast({ type: "warning", message: "Tu plan no permite duplicar plantillas." });
+      return;
+    }
     try {
       setBusy(`save-${menu.id}`);
       if (menu.demo) {
@@ -151,6 +194,82 @@ function MenusWorkspace({ me }) {
       }
     } catch (error) {
       setToast({ type: "error", message: error?.message || "No se pudo guardar la plantilla." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveMenuDraft(payload) {
+    try {
+      const current = menuEditor?.menu;
+      const editingOwn = current?.id && !current?.demo && canEditOwnMenu(current, me);
+      setBusy("menu-save");
+      const saved = editingOwn
+        ? await updateMenuBase(current.baseId || current.id, payload)
+        : await createMenuBase(payload);
+      await invalidateMenusLibrary(saved?.id || current?.id);
+      setMenuEditor(null);
+      setToast({ type: "success", message: editingOwn ? "Plantilla actualizada." : "Plantilla creada." });
+    } catch (error) {
+      setToast({ type: "error", message: error?.message || "No se pudo guardar la plantilla." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeMenu(menu) {
+    if (!canEditOwnMenu(menu, me)) return;
+    try {
+      setBusy(`menu-delete-${menu.id}`);
+      await deleteMenuBase(menu.baseId || menu.id);
+      await invalidateMenusLibrary(menu.id);
+      setToast({ type: "success", message: "Plantilla eliminada." });
+    } catch (error) {
+      setToast({ type: "error", message: error?.message || "No se pudo eliminar la plantilla." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveMealRecipe(payload) {
+    try {
+      const current = mealEditor?.meal;
+      const editingOwn = current?.id && !current?.demo && canEditOwnMeal(current, me);
+      setBusy("meal-save");
+      const saved = editingOwn ? await updateComida(current.id, payload) : await createComida(payload);
+      await invalidateComidasLibrary(saved?.id || current?.id);
+      setMealEditor(null);
+      setToast({ type: "success", message: editingOwn ? "Comida actualizada." : "Comida creada." });
+    } catch (error) {
+      setToast({ type: "error", message: error?.message || "No se pudo guardar la comida." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function duplicateMealRecipe(meal) {
+    if (!meal?.id || meal.demo || !permissions.canDuplicateMenu) return;
+    try {
+      setBusy(`meal-duplicate-${meal.id}`);
+      const duplicated = await duplicateComida(meal.id, { nombre: `${meal.name || meal.nombre} copia` });
+      await invalidateComidasLibrary(duplicated?.id || meal.id);
+      setToast({ type: "success", message: "Comida duplicada." });
+    } catch (error) {
+      setToast({ type: "error", message: error?.message || "No se pudo duplicar la comida." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeMealRecipe(meal) {
+    if (!canEditOwnMeal(meal, me)) return;
+    try {
+      setBusy(`meal-delete-${meal.id}`);
+      await deleteComida(meal.id);
+      await invalidateComidasLibrary(meal.id);
+      setToast({ type: "success", message: "Comida eliminada." });
+    } catch (error) {
+      setToast({ type: "error", message: error?.message || "No se pudo eliminar la comida." });
     } finally {
       setBusy("");
     }
@@ -226,6 +345,44 @@ function MenusWorkspace({ me }) {
           <Stat label="Proteinas" value={proteinSummary(filteredMenus)} icon={Beef} />
           <Stat label="Permiso" value={permissionLabel} icon={Sparkles} />
         </div>
+
+        <div className="nf-tabs" role="tablist" aria-label="Nutricion profesional">
+          <button
+            type="button"
+            className={`nf-tab ${activeTab === TAB_MENUS ? "active" : ""}`}
+            onClick={() => setActiveTab(TAB_MENUS)}
+            role="tab"
+            aria-selected={activeTab === TAB_MENUS}
+          >
+            <BookOpen size={16} strokeWidth={2.3} aria-hidden="true" />
+            Menus
+          </button>
+          <button
+            type="button"
+            className={`nf-tab ${activeTab === TAB_COMIDAS ? "active" : ""}`}
+            onClick={() => setActiveTab(TAB_COMIDAS)}
+            role="tab"
+            aria-selected={activeTab === TAB_COMIDAS}
+          >
+            <ChefHat size={16} strokeWidth={2.3} aria-hidden="true" />
+            Comidas / Recetas
+          </button>
+        </div>
+
+        {activeTab === TAB_MENUS ? (
+          <>
+            <div className="nf-sectionHead">
+              <div>
+                <h2>Biblioteca de menus</h2>
+                <p>Explora, crea plantillas propias y asigna snapshots editables a tus clientes.</p>
+              </div>
+              {permissions.canCreateMenu ? (
+                <button type="button" className="nf-btn gold" onClick={() => setMenuEditor({ mode: "create", menu: null })}>
+                  <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
+                  Crear menu
+                </button>
+              ) : null}
+            </div>
 
         <div className="nf-toolbar">
           <label className="nf-searchWrap">
@@ -330,12 +487,31 @@ function MenusWorkspace({ me }) {
                     selected={selectedMenu?.id === menu.id}
                     onSelect={() => setSelectedMenuId(menu.id)}
                     onSave={() => saveTemplate(menu)}
+                    onEdit={
+                      canEditOwnMenu(menu, me)
+                        ? () => setMenuEditor({ mode: "edit", menu })
+                        : permissions.canCreateMenu
+                          ? () => setMenuEditor({ mode: "create", menu })
+                          : null
+                    }
+                    onDelete={canEditOwnMenu(menu, me) ? () => removeMenu(menu) : null}
                     onAssign={() => openAssign(menu)}
                     busy={busy === `save-${menu.id}`}
                   />
                 ))}
               </div>
-              <MenuDetail menu={selectedMenu} onAssign={selectedMenu ? () => openAssign(selectedMenu) : null} />
+              <MenuDetail
+                menu={selectedMenu}
+                onAssign={selectedMenu ? () => openAssign(selectedMenu) : null}
+                onEdit={
+                  selectedMenu && canEditOwnMenu(selectedMenu, me)
+                    ? () => setMenuEditor({ mode: "edit", menu: selectedMenu })
+                    : selectedMenu && permissions.canCreateMenu
+                      ? () => setMenuEditor({ mode: "create", menu: selectedMenu })
+                      : null
+                }
+                onDelete={selectedMenu && canEditOwnMenu(selectedMenu, me) ? () => removeMenu(selectedMenu) : null}
+              />
             </div>
           ) : (
             <div className="nf-empty">No hay menus para esa proteina y esos filtros.</div>
@@ -352,9 +528,207 @@ function MenusWorkspace({ me }) {
             saving={busy === "assign"}
           />
         ) : null}
+          </>
+        ) : (
+          <CoachComidasTab
+            meals={meals}
+            selectedGroup={selectedMealGroup}
+            setSelectedGroup={setSelectedMealGroup}
+            loading={foodsQuery.isLoading || comidasQuery.isLoading}
+            error={foodsQuery.error || comidasQuery.error}
+            permissions={permissions}
+            me={me}
+            onCreate={() => setMealEditor({ mode: "create", meal: null })}
+            onEdit={(meal) => setMealEditor({ mode: canEditOwnMeal(meal, me) ? "edit" : "create", meal })}
+            onDuplicate={duplicateMealRecipe}
+            onDelete={removeMealRecipe}
+            busy={busy}
+          />
+        )}
       </section>
+      {menuEditor ? (
+        <MenuBaseEditor
+          initialMenu={menuEditor.menu}
+          foods={foods}
+          foodsLoading={foodsQuery.isLoading}
+          mealLibrary={meals}
+          onSave={saveMenuDraft}
+          onClose={() => setMenuEditor(null)}
+          saving={busy === "menu-save"}
+          title={menuEditor.mode === "edit" ? "Editar plantilla propia" : "Crear plantilla propia"}
+          submitLabel={menuEditor.mode === "edit" ? "Guardar cambios" : "Crear menu"}
+          allowSystemVisibility={false}
+        />
+      ) : null}
+      {mealEditor ? (
+        <MealRecipeEditor
+          initialMeal={mealEditor.meal}
+          foods={foods}
+          foodsLoading={foodsQuery.isLoading}
+          onSave={saveMealRecipe}
+          onClose={() => setMealEditor(null)}
+          saving={busy === "meal-save"}
+          title={mealEditor.mode === "edit" ? "Editar comida propia" : "Crear comida propia"}
+          submitLabel={mealEditor.mode === "edit" ? "Guardar cambios" : "Crear comida"}
+          allowSystemVisibility={false}
+        />
+      ) : null}
       <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
+  );
+}
+
+function CoachComidasTab({
+  meals,
+  selectedGroup,
+  setSelectedGroup,
+  loading,
+  error,
+  permissions,
+  me,
+  onCreate,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  busy,
+}) {
+  const groupCards = useMemo(() => {
+    return MEAL_GROUPS.map((group) => {
+      const groupMeals = mealsForGroup(meals, group.id);
+      return {
+        ...group,
+        meals: groupMeals,
+        count: groupMeals.length,
+        avg: averageTotals(groupMeals),
+      };
+    });
+  }, [meals]);
+  const visibleMeals = selectedGroup ? mealsForGroup(meals, selectedGroup) : [];
+  const selectedLabel = MEAL_GROUPS.find((group) => group.id === selectedGroup)?.label || "";
+
+  return (
+    <div className="nf-tabPanel">
+      <div className="nf-sectionHead">
+        <div>
+          <h2>Comidas / Recetas</h2>
+          <p>Crea bloques propios para armar plantillas de menu mas rapido.</p>
+        </div>
+        {permissions.canCreateMeal ? (
+          <button type="button" className="nf-btn gold" onClick={onCreate}>
+            <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
+            Crear comida
+          </button>
+        ) : null}
+      </div>
+
+      {loading ? <SkeletonGrid /> : null}
+      {error ? <div className="nf-error">{error.message || "No se pudieron cargar comidas."}</div> : null}
+
+      {!loading && !error && !selectedGroup ? (
+        <div className="nf-rangeGrid">
+          {groupCards.map((group) => {
+            const Icon = group.icon;
+            return (
+              <article className="nf-card nf-rangeCard" key={group.id} onClick={() => setSelectedGroup(group.id)}>
+                <div className="nf-cardTop">
+                  <span className="nf-pill good">{group.count} receta(s)</span>
+                  <span className="nf-arrowBubble">
+                    <ChevronRight size={18} strokeWidth={2.5} aria-hidden="true" />
+                  </span>
+                </div>
+                <div className="nf-proteinIcon" aria-hidden="true">
+                  <Icon size={28} strokeWidth={2.2} />
+                </div>
+                <div className="nf-proteinBig">{group.label}</div>
+                <div className="nf-rangeMeta">
+                  <span><Flame size={14} strokeWidth={2.3} /> {formatNumber(group.avg.kcal)} kcal prom.</span>
+                  <span><Beef size={14} strokeWidth={2.3} /> {formatNumber(group.avg.protein)} g P</span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!loading && !error && selectedGroup ? (
+        <>
+          <nav className="nf-flow" aria-label="Navegacion de comidas">
+            <button type="button" onClick={() => setSelectedGroup("")}>
+              <Utensils size={14} strokeWidth={2.4} aria-hidden="true" />
+              Comidas
+            </button>
+            <button type="button" className="active">{selectedLabel}</button>
+          </nav>
+          {visibleMeals.length ? (
+            <div className="nf-cardGrid">
+              {visibleMeals.map((meal) => {
+                const own = canEditOwnMeal(meal, me);
+                return (
+                  <CoachMealCard
+                    key={meal.id}
+                    meal={meal}
+                    own={own}
+                    canDuplicate={permissions.canDuplicateMenu}
+                    onEdit={() => onEdit(meal)}
+                    onDuplicate={() => onDuplicate(meal)}
+                    onDelete={() => onDelete(meal)}
+                    busy={busy}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="nf-empty">No hay comidas para este grupo.</div>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function CoachMealCard({ meal, own, canDuplicate, onEdit, onDuplicate, onDelete, busy }) {
+  return (
+    <article className="nf-card">
+      <div className="nf-cardTop">
+        <span className={`nf-pill ${own ? "good" : "demo"}`}>{own ? "Propia" : "Biblioteca"}</span>
+        <span className="nf-pill">{meal.type}</span>
+      </div>
+      <h3>{meal.name || meal.nombre}</h3>
+      <p>{meal.descripcion || "Receta reutilizable para tus menus."}</p>
+      <div className="nf-macroGrid">
+        <Macro label="Kcal" value={formatNumber(meal.totals?.kcal)} icon={Flame} />
+        <Macro label="Prot." value={`${formatNumber(meal.totals?.protein || meal.totals?.proteina)} g`} icon={Beef} />
+        <Macro label="Carbs" value={`${formatNumber(meal.totals?.carbs)} g`} />
+        <Macro label="Grasas" value={`${formatNumber(meal.totals?.fat || meal.totals?.grasas)} g`} />
+      </div>
+      <div className="nf-items">
+        {(meal.items || []).slice(0, 5).map((item, index) => (
+          <span className="nf-itemChip" key={`${meal.id}-${index}`}>
+            {item.nombreSnapshot || item.alimento || "Alimento"}
+          </span>
+        ))}
+      </div>
+      <div className="nf-cardActions compact">
+        {(own || canDuplicate) ? (
+          <button type="button" className="nf-btn ghost" onClick={onEdit}>
+            <Pencil size={16} strokeWidth={2.3} aria-hidden="true" />
+            {own ? "Editar" : "Usar como base"}
+          </button>
+        ) : null}
+        {!own && canDuplicate ? (
+          <button type="button" className="nf-btn ghost" onClick={onDuplicate} disabled={busy === `meal-duplicate-${meal.id}`}>
+            <Copy size={16} strokeWidth={2.3} aria-hidden="true" />
+            Duplicar
+          </button>
+        ) : null}
+        {own ? (
+          <button type="button" className="nf-btn ghost" onClick={onDelete} disabled={busy === `meal-delete-${meal.id}`}>
+            <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
+            Eliminar
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -442,7 +816,7 @@ function ProteinCard({ protein, menus, onSelect }) {
   );
 }
 
-function MenuCard({ menu, selected, onSelect, onSave, onAssign, busy }) {
+function MenuCard({ menu, selected, onSelect, onSave, onEdit, onDelete, onAssign, busy }) {
   return (
     <article className={`nf-card nf-menuCard ${selected ? "selected" : ""}`}>
       <div className="nf-cardTop">
@@ -465,9 +839,21 @@ function MenuCard({ menu, selected, onSelect, onSave, onAssign, busy }) {
         ))}
       </div>
       <div className="nf-cardActions">
+        {onEdit ? (
+          <button type="button" className="nf-btn ghost" onClick={onEdit}>
+            <Pencil size={16} strokeWidth={2.3} aria-hidden="true" />
+            {menu.demo ? "Usar demo" : "Editar"}
+          </button>
+        ) : null}
         <button type="button" className="nf-btn ghost" onClick={onSave} disabled={busy}>
           {menu.demo ? "Guardar demo" : "Duplicar"}
         </button>
+        {onDelete ? (
+          <button type="button" className="nf-btn ghost" onClick={onDelete}>
+            <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
+            Eliminar
+          </button>
+        ) : null}
         <button type="button" className="nf-btn gold" onClick={onAssign}>
           Asignar
         </button>
@@ -476,7 +862,7 @@ function MenuCard({ menu, selected, onSelect, onSave, onAssign, busy }) {
   );
 }
 
-function MenuDetail({ menu, onAssign }) {
+function MenuDetail({ menu, onAssign, onEdit, onDelete }) {
   if (!menu) {
     return (
       <aside className="nf-card nf-detail">
@@ -496,9 +882,21 @@ function MenuDetail({ menu, onAssign }) {
       <p>{formatNumber(menu.kcal)} kcal · {macroLine(menu)}</p>
       {onAssign ? (
         <div className="nf-cardActions compact">
+          {onEdit ? (
+            <button type="button" className="nf-btn ghost" onClick={onEdit}>
+              <Pencil size={16} strokeWidth={2.3} aria-hidden="true" />
+              {menu.demo ? "Usar como base" : "Editar"}
+            </button>
+          ) : null}
           <button type="button" className="nf-btn gold" onClick={onAssign}>
             Asignar a cliente
           </button>
+          {onDelete ? (
+            <button type="button" className="nf-btn ghost" onClick={onDelete}>
+              <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
+              Eliminar
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="nf-macroGrid nf-detailMacros">
@@ -662,6 +1060,61 @@ function proteinSummary(menus = []) {
   if (!proteins.length) return "-";
   if (proteins.length === 1) return `${proteins[0]} g`;
   return `${proteins[0]} / ${proteins[proteins.length - 1]} g`;
+}
+
+function menuPermissions(user) {
+  const features = user?.effectiveCapabilities?.features?.menus || {};
+  return {
+    canCreateMenu: !!(features.ownTemplates || features.manualBuilder),
+    canCreateMeal: !!(features.ownTemplates || features.manualBuilder || features.foodLibrarySearch),
+    canDuplicateMenu: !!features.duplicatePlans,
+    canUseLibrary: !!(features.menuLibrarySearch || features.foodLibrarySearch || features.manualBuilder || features.ownTemplates),
+  };
+}
+
+function getUserId(user) {
+  return String(user?.id || user?._id || "").trim();
+}
+
+function canEditOwnMenu(menu, user) {
+  if (!menu || menu.demo) return false;
+  return String(menu.ownerType || "").toLowerCase() === "coach" && String(menu.ownerId || "") === getUserId(user);
+}
+
+function canEditOwnMeal(meal, user) {
+  if (!meal || meal.demo) return false;
+  return String(meal.ownerType || "").toLowerCase() === "coach" && String(meal.ownerId || meal.userId || "") === getUserId(user);
+}
+
+function mealsForGroup(meals = [], groupId = "todos") {
+  if (!groupId || groupId === "todos") return meals;
+  return meals.filter((meal) => {
+    if (meal.grupoComida === groupId) return true;
+    if (groupId === "desayuno_merienda") return ["desayuno", "merienda"].includes(meal.tipoComida);
+    if (groupId === "almuerzo_cena") return ["almuerzo", "cena"].includes(meal.tipoComida);
+    if (groupId === "snack") return meal.tipoComida === "snack";
+    return false;
+  });
+}
+
+function averageTotals(meals = []) {
+  if (!meals.length) return { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  const totals = meals.reduce(
+    (acc, meal) => ({
+      kcal: acc.kcal + Number(meal.totals?.kcal || 0),
+      protein: acc.protein + Number(meal.totals?.protein || meal.totals?.proteina || 0),
+      carbs: acc.carbs + Number(meal.totals?.carbs || 0),
+      fat: acc.fat + Number(meal.totals?.fat || meal.totals?.grasas || 0),
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  return {
+    kcal: totals.kcal / meals.length,
+    protein: totals.protein / meals.length,
+    carbs: totals.carbs / meals.length,
+    fat: totals.fat / meals.length,
+  };
 }
 
 function canUseMenus(user) {

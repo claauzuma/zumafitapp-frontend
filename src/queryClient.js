@@ -26,6 +26,7 @@ export const STALE_TIMES = {
   menuBase: 3 * 60 * 1000,
   clientMenus: 2 * 60 * 1000,
   clientActiveMenu: 2 * 60 * 1000,
+  trackingDay: 60 * 1000,
 };
 
 export const queryClient = new QueryClient({
@@ -125,7 +126,9 @@ export const queryKeys = {
     cleanText(search),
   ],
   alimentos: (filters = {}) => ["alimentos", normalizeNutritionFilters(filters)],
+  comidasRoot: () => ["comidas"],
   comidas: (filters = {}) => ["comidas", normalizeNutritionFilters(filters)],
+  comida: (comidaId) => ["comida", cleanId(comidaId)],
   menusDemo: (filters = {}) => ["menusDemo", normalizeNutritionFilters(filters)],
   menuRanges: () => ["menuRanges"],
   menusByRange: (rango = "") => ["menusByRange", cleanText(rango)],
@@ -143,6 +146,7 @@ export const queryKeys = {
     String(payload?.cantidad || payload?.alimentoOriginal?.cantidad || ""),
     cleanText(payload?.objetivo || ""),
   ],
+  trackingDay: (date = "") => ["trackingDay", cleanId(date)],
 };
 
 export function getUserId(user) {
@@ -375,6 +379,14 @@ export async function invalidateMenusLibrary(menuId = "") {
   ]);
 }
 
+export async function invalidateComidasLibrary(comidaId = "") {
+  const id = cleanId(comidaId);
+  await Promise.all([
+    invalidate(queryKeys.comidasRoot()),
+    id ? invalidate(queryKeys.comida(id)) : Promise.resolve(),
+  ]);
+}
+
 export async function invalidateClientMenus(clientId, menuAsignadoId = "") {
   const id = cleanId(clientId);
   const menuId = cleanId(menuAsignadoId);
@@ -385,4 +397,9 @@ export async function invalidateClientMenus(clientId, menuAsignadoId = "") {
     id ? invalidate(queryKeys.professionalClientDetail(id)) : Promise.resolve(),
     invalidate(queryKeys.professionalClients()),
   ]);
+}
+
+export async function invalidateTrackingDay(date = "") {
+  const id = cleanId(date);
+  await invalidate(queryKeys.trackingDay(id));
 }

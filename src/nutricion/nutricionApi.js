@@ -29,3 +29,45 @@ export async function listComidas(filters = {}, foods = []) {
     total: meals.length,
   };
 }
+
+export async function getComida(comidaId, foods = []) {
+  const data = await apiFetch(`/api/comidas/${comidaId}`, {
+    method: "GET",
+    timeoutMs: 12000,
+  });
+  return normalizeMeal(data?.comida || null, foods);
+}
+
+export async function createComida(payload) {
+  const data = await apiFetch("/api/comidas", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 14000,
+  });
+  return data?.comida || null;
+}
+
+export async function updateComida(comidaId, payload) {
+  const data = await apiFetch(`/api/comidas/${comidaId}`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 14000,
+  });
+  return data?.comida || null;
+}
+
+export async function deleteComida(comidaId) {
+  return await apiFetch(`/api/comidas/${comidaId}`, {
+    method: "DELETE",
+    timeoutMs: 12000,
+  });
+}
+
+export async function duplicateComida(comidaId, payload = {}) {
+  const data = await apiFetch(`/api/comidas/${comidaId}/duplicar`, {
+    method: "POST",
+    body: payload,
+    timeoutMs: 14000,
+  });
+  return data?.comida || null;
+}

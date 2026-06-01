@@ -39,6 +39,7 @@ import Perfil from "./entrenado/Perfil.jsx";
 import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
 import Ajustes from "./entrenado/Ajustes.jsx";
+import TrackingDiario from "./entrenado/TrackingDiario.jsx";
 
 // ✅ Admin
 import AdminInicio from "./admin/AdminInicio.jsx";
@@ -157,6 +158,7 @@ export default function App() {
 
         <Route path="perfil" element={<Perfil />} />
         <Route path="rutinas" element={<Rutinas />} />
+        <Route path="tracking" element={<TrackingDiario />} />
         <Route path="progresos" element={<Progresos />} />
         <Route path="ajustes" element={<Ajustes />} />
 
