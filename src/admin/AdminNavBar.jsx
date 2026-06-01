@@ -4,6 +4,7 @@ import {
   Apple,
   Dumbbell,
   Home,
+  LoaderCircle,
   LogOut,
   Menu,
   ShieldCheck,
@@ -15,6 +16,7 @@ import {
 import { apiFetch } from "../Api.js";
 import { setAuthGuest } from "../authCache.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
+import AppToast from "../ui/AppToast.jsx";
 
 const NAV_ITEMS = [
   { to: "/admin/inicio", label: "Inicio", icon: Home },
@@ -28,13 +30,26 @@ const NAV_ITEMS = [
 export default function AdminNavBar() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [toast, setToast] = useState(null);
 
   async function logout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setToast(null);
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
     } catch (error) {
       console.warn("No se pudo cerrar sesion en el servidor:", error);
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo cerrar sesion. Proba de nuevo.",
+      });
+      setLoggingOut(false);
+      return;
     }
+
     setAuthGuest();
     clearPrivateQueryCache();
     navigate("/", { replace: true });
@@ -74,9 +89,13 @@ export default function AdminNavBar() {
           </nav>
 
           <div className="an-right an-right-desktop">
-            <button className="an-btn danger" type="button" onClick={logout}>
-              <LogOut size={17} strokeWidth={2.2} aria-hidden="true" />
-              <span>Salir</span>
+            <button className="an-btn danger" type="button" onClick={logout} disabled={loggingOut}>
+              {loggingOut ? (
+                <LoaderCircle className="an-spin" size={17} strokeWidth={2.2} aria-hidden="true" />
+              ) : (
+                <LogOut size={17} strokeWidth={2.2} aria-hidden="true" />
+              )}
+              <span>{loggingOut ? "Cerrando sesión..." : "Salir"}</span>
             </button>
           </div>
 
@@ -136,12 +155,18 @@ export default function AdminNavBar() {
         </nav>
 
         <div className="an-drawer-actions">
-          <button className="an-btn danger" type="button" onClick={logout}>
-            <LogOut size={17} strokeWidth={2.2} aria-hidden="true" />
-            <span>Salir</span>
+          <button className="an-btn danger" type="button" onClick={logout} disabled={loggingOut}>
+            {loggingOut ? (
+              <LoaderCircle className="an-spin" size={17} strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <LogOut size={17} strokeWidth={2.2} aria-hidden="true" />
+            )}
+            <span>{loggingOut ? "Cerrando sesión..." : "Salir"}</span>
           </button>
         </div>
       </aside>
+
+      <AppToast toast={toast} onClose={() => setToast(null)} />
 
       <style>{`
         :root{
@@ -291,6 +316,21 @@ export default function AdminNavBar() {
           border-color: rgba(255,90,90,.25);
           background: rgba(255,90,90,.08);
           color: #ffd0d0;
+        }
+
+        .an-btn:disabled{
+          opacity: .68;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+
+        .an-spin{
+          animation: an-spin .8s linear infinite;
+        }
+
+        @keyframes an-spin{
+          to{ transform: rotate(360deg); }
         }
 
         .an-btn.danger:hover{

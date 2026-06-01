@@ -19,6 +19,13 @@ export const STALE_TIMES = {
   clienteRutinas: 2 * 60 * 1000,
   clienteRutinaActiva: 2 * 60 * 1000,
   rutinaAssignableClients: 2 * 60 * 1000,
+  alimentos: 5 * 60 * 1000,
+  comidas: 3 * 60 * 1000,
+  menusDemo: 5 * 60 * 1000,
+  menusBase: 3 * 60 * 1000,
+  menuBase: 3 * 60 * 1000,
+  clientMenus: 2 * 60 * 1000,
+  clientActiveMenu: 2 * 60 * 1000,
 };
 
 export const queryClient = new QueryClient({
@@ -46,6 +53,29 @@ function cleanId(value = "") {
 function cleanFilter(value = "todos") {
   const normalized = cleanText(value);
   return normalized || "todos";
+}
+
+function normalizeNutritionFilters(filters = {}) {
+  return {
+    search: cleanText(filters.search),
+    category: cleanFilter(filters.category),
+    type: cleanFilter(filters.type),
+    goal: cleanFilter(filters.goal || filters.objetivo),
+    meals: Number(filters.meals || filters.comidas) || 0,
+  };
+}
+
+function normalizeMenuFilters(filters = {}) {
+  return {
+    search: cleanText(filters.search),
+    objetivo: cleanFilter(filters.objetivo || filters.goal),
+    visibilidad: cleanFilter(filters.visibilidad || filters.visibility),
+    estado: cleanFilter(filters.estado || filters.status),
+    rangoKcal: cleanFilter(filters.rangoKcal || filters.range),
+    proteina: Number(filters.proteina || filters.protein) || 0,
+    cantidadComidas: Number(filters.cantidadComidas || filters.meals) || 0,
+    includeComidas: filters.includeComidas === true,
+  };
 }
 
 export function normalizeAdminUsersFilters(filters = {}) {
@@ -93,6 +123,25 @@ export const queryKeys = {
     "assignableClients",
     cleanText(scope),
     cleanText(search),
+  ],
+  alimentos: (filters = {}) => ["alimentos", normalizeNutritionFilters(filters)],
+  comidas: (filters = {}) => ["comidas", normalizeNutritionFilters(filters)],
+  menusDemo: (filters = {}) => ["menusDemo", normalizeNutritionFilters(filters)],
+  menuRanges: () => ["menuRanges"],
+  menusByRange: (rango = "") => ["menusByRange", cleanText(rango)],
+  menusByProtein: (rango = "", proteina = "") => ["menusByProtein", cleanText(rango), String(proteina || "")],
+  menusBaseRoot: () => ["menusBase"],
+  menusBase: (filters = {}) => ["menusBase", normalizeMenuFilters(filters)],
+  menuBase: (menuId) => ["menuBase", cleanId(menuId)],
+  clientMenus: (clientId, filters = {}) => ["clientMenus", cleanId(clientId), normalizeMenuFilters(filters)],
+  clientMenusRoot: (clientId = "") => ["clientMenus", cleanId(clientId)],
+  clientActiveMenu: (clientId) => ["clientActiveMenu", cleanId(clientId)],
+  clientMenu: (clientId, menuAsignadoId) => ["clientMenu", cleanId(clientId), cleanId(menuAsignadoId)],
+  foodEquivalents: (payload = {}) => [
+    "foodEquivalents",
+    cleanText(payload?.alimentoOriginal?.nombreSnapshot || payload?.original?.nombre || ""),
+    String(payload?.cantidad || payload?.alimentoOriginal?.cantidad || ""),
+    cleanText(payload?.objetivo || ""),
   ],
 };
 
@@ -314,6 +363,26 @@ export async function invalidateClienteRutinas(clientId) {
     id ? invalidate(queryKeys.clienteRutinas(id)) : Promise.resolve(),
     id ? invalidate(queryKeys.clienteRutinaActiva(id)) : Promise.resolve(),
     invalidate(queryKeys.professionalClientDetail(id)),
+    invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateMenusLibrary(menuId = "") {
+  const id = cleanId(menuId);
+  await Promise.all([
+    invalidate(queryKeys.menusBaseRoot()),
+    id ? invalidate(queryKeys.menuBase(id)) : Promise.resolve(),
+  ]);
+}
+
+export async function invalidateClientMenus(clientId, menuAsignadoId = "") {
+  const id = cleanId(clientId);
+  const menuId = cleanId(menuAsignadoId);
+  await Promise.all([
+    id ? invalidate(queryKeys.clientMenusRoot(id)) : Promise.resolve(),
+    id ? invalidate(queryKeys.clientActiveMenu(id)) : Promise.resolve(),
+    id && menuId ? invalidate(queryKeys.clientMenu(id, menuId)) : Promise.resolve(),
+    id ? invalidate(queryKeys.professionalClientDetail(id)) : Promise.resolve(),
     invalidate(queryKeys.professionalClients()),
   ]);
 }

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api.js";
+import AppToast from "../ui/AppToast.jsx";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin", emoji: "👑" },
@@ -19,6 +20,7 @@ export default function CrearUsuario() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
+  const [toast, setToast] = useState(null);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -120,6 +122,7 @@ export default function CrearUsuario() {
     const validationError = validate();
     if (validationError) {
       setErr(validationError);
+      setToast({ type: "warning", message: validationError });
       return;
     }
 
@@ -135,12 +138,15 @@ export default function CrearUsuario() {
       });
 
       setOkMsg("Invitación creada correctamente.");
+      setToast({ type: "success", message: "Invitación creada correctamente." });
 
       setTimeout(() => {
         navigate("/admin/usuarios");
       }, 700);
     } catch (e2) {
-      setErr(e2?.message || "No se pudo crear la invitación.");
+      const message = e2?.message || "No se pudo crear la invitación.";
+      setErr(message);
+      setToast({ type: "error", message });
     } finally {
       setSaving(false);
     }
@@ -372,6 +378,7 @@ export default function CrearUsuario() {
       </div>
 
       <style>{styles}</style>
+      <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

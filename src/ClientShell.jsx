@@ -5,6 +5,7 @@ import { apiFetch } from "./Api.js";
 import { setAuthGuest, getCachedUser, isImpersonating } from "./authCache.js";
 import ImpersonationBanner from "./ImpersonationBanner.jsx";
 import { clearPrivateQueryCache } from "./queryClient.js";
+import AppToast from "./ui/AppToast.jsx";
 
 const CSS = `
 :root{
@@ -451,6 +452,7 @@ export default function ClientShell() {
   const user = useMemo(() => getCachedUser(), []);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
 
   // ✅ cierra drawer cuando cambia la ruta
   useEffect(() => {
@@ -470,16 +472,23 @@ export default function ClientShell() {
     if (isImpersonating()) return;
     if (loading) return;
     setLoading(true);
+    setToast(null);
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
     } catch (err) {
-      console.log("[ClientShell] logout FAIL (igual limpiamos)", err);
-    } finally {
-      setAuthGuest();
-      clearPrivateQueryCache();
-      nav("/", { replace: true });
-      setTimeout(() => setLoading(false), 200);
+      console.warn("[ClientShell] logout FAIL", err);
+      setToast({
+        type: "error",
+        message: err?.message || "No se pudo cerrar sesion. Proba de nuevo.",
+      });
+      setLoading(false);
+      return;
     }
+
+    setAuthGuest();
+    clearPrivateQueryCache();
+    nav("/", { replace: true });
+    setTimeout(() => setLoading(false), 200);
   }
 
   const fullName = user?.profile?.nombre || user?.nombre || "";
@@ -523,6 +532,7 @@ export default function ClientShell() {
     <div className="cs-wrap">
       <style>{CSS}</style>
       <ImpersonationBanner />
+      <AppToast toast={toast} onClose={() => setToast(null)} />
 
       {loading && (
         <div className="cn-ov" role="status" aria-live="polite" aria-busy="true">
@@ -531,7 +541,7 @@ export default function ClientShell() {
             <div className="cn-ov-row">
               <div className="cn-ov-spin" />
               <div>
-                <p className="cn-ov-title">Cerrando sesión…</p>
+                <p className="cn-ov-title">Cerrando sesión...</p>
                 <p className="cn-ov-sub">Guardando cambios y asegurando tu cuenta.</p>
               </div>
             </div>
@@ -559,8 +569,8 @@ export default function ClientShell() {
               className={`cs-btn ${loading ? "is-loading" : ""}`}
               onClick={logout}
               disabled={loading || isImpersonating()}
-              aria-label={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión…" : "Cerrar sesión"}
-              title={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión…" : "Cerrar sesión"}
+              aria-label={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión..." : "Cerrar sesión"}
+              title={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión..." : "Cerrar sesión"}
             >
               {isImpersonating() ? "SL" : loading ? "…" : "⎋"}
             </button>
@@ -614,7 +624,7 @@ export default function ClientShell() {
             disabled={loading || isImpersonating()}
             style={{ width: "100%", justifyContent: "center" }}
           >
-            {isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando…" : "Salir"}
+            {isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando..." : "Salir"}
           </button>
         </div>
       </aside>

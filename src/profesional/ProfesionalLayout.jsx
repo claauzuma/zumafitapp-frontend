@@ -4,6 +4,7 @@ import {
   Activity,
   Dumbbell,
   LayoutDashboard,
+  LoaderCircle,
   LogOut,
   Menu,
   Settings,
@@ -17,6 +18,7 @@ import { getCachedUser, isImpersonating, setAuthGuest } from "../authCache.js";
 import { useProfessionalMe } from "../authQueries.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
 import ImpersonationBanner from "../ImpersonationBanner.jsx";
+import AppToast from "../ui/AppToast.jsx";
 
 export default function ProfesionalLayout({ me: meProp }) {
   const navigate = useNavigate();
@@ -26,15 +28,23 @@ export default function ProfesionalLayout({ me: meProp }) {
   const plan = planLabel(me?.effectiveCapabilities?.planCode || me?.plan);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [toast, setToast] = useState(null);
 
   async function logout() {
     if (loggingOut || isImpersonating()) return;
 
     setLoggingOut(true);
+    setToast(null);
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
     } catch (error) {
       console.warn("No se pudo cerrar sesion en el servidor:", error);
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo cerrar sesion. Proba de nuevo.",
+      });
+      setLoggingOut(false);
+      return;
     }
 
     setAuthGuest();
@@ -73,8 +83,12 @@ export default function ProfesionalLayout({ me: meProp }) {
             disabled={loggingOut || isImpersonating()}
             title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
           >
-            <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
-            <span>{loggingOut ? "Saliendo..." : "Salir"}</span>
+            {loggingOut ? (
+              <LoaderCircle className="pl-spin" size={18} strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
+            )}
+            <span>{loggingOut ? "Cerrando sesión..." : "Salir"}</span>
           </button>
         </aside>
 
@@ -111,8 +125,12 @@ export default function ProfesionalLayout({ me: meProp }) {
             disabled={loggingOut || isImpersonating()}
             title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
           >
-            <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
-            <span>{loggingOut ? "Saliendo..." : "Salir"}</span>
+            {loggingOut ? (
+              <LoaderCircle className="pl-spin" size={18} strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
+            )}
+            <span>{loggingOut ? "Cerrando sesión..." : "Salir"}</span>
           </button>
         </aside>
 
@@ -122,6 +140,7 @@ export default function ProfesionalLayout({ me: meProp }) {
 
         <style>{styles}</style>
       </div>
+      <AppToast toast={toast} onClose={() => setToast(null)} />
     </>
   );
 }
@@ -325,6 +344,12 @@ const styles = `
   cursor:not-allowed;
   transform:none;
   box-shadow:none;
+}
+.pl-spin{
+  animation:pl-spin .8s linear infinite;
+}
+@keyframes pl-spin{
+  to{ transform:rotate(360deg); }
 }
 .pl-logout.drawer{
   margin-top:auto;

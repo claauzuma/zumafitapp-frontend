@@ -271,17 +271,41 @@
     border-radius:16px;
   }
 
+  .aud-header{
+    grid-template-columns:64px minmax(0,1fr);
+    align-items:center;
+    gap:12px;
+  }
+
+  .aud-avatarWrap{
+    width:64px;
+    height:64px;
+    border-radius:17px;
+  }
+
   .aud-name{
     font-size:21px;
   }
 
   .aud-sub{
-    flex-direction:column;
+    margin-top:5px;
     align-items:flex-start;
+    gap:5px;
+    font-size:13px;
   }
 
   .aud-dot{
     display:none;
+  }
+
+  .aud-id{
+    display:none;
+  }
+
+  .aud-badges{
+    grid-column:1 / -1;
+    margin-top:10px;
+    gap:7px;
   }
 
   .aud-btn{

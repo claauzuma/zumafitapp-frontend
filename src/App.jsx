@@ -21,6 +21,7 @@ import ClienteDetalleProfesional from "./profesional/ClienteDetalleProfesional.j
 import PerfilProfesional from "./profesional/PerfilProfesional.jsx";
 import RutinasProfesional from "./profesional/RutinasProfesional.jsx";
 import AjustesProfesional from "./profesional/AjustesProfesional.jsx";
+import MenusProfesional from "./profesional/MenusProfesional.jsx";
 
 // ✅ Onboarding v2 (wizard con basics/goal/program)
 import OnboardingWizard from "./onboarding_v2/OnboardingWizard.jsx";
@@ -127,7 +128,7 @@ export default function App() {
         <Route path="clientes" element={<ClientesProfesional />} />
         <Route path="clientes/:clientId" element={<ClienteDetalleProfesional />} />
         <Route path="rutinas" element={<RutinasProfesional />} />
-        <Route path="menus" element={<ProfesionalPlaceholder type="menus" />} />
+        <Route path="menus" element={<MenusProfesional />} />
         <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
         <Route path="ajustes" element={<AjustesProfesional />} />
         <Route path="perfil" element={<PerfilProfesional />} />

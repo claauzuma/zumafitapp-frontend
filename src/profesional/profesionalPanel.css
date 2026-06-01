@@ -1217,8 +1217,11 @@
   }
 
   .prof-detailHero{
-    grid-template-columns:1fr;
-    padding:14px;
+    grid-template-columns:64px minmax(0,1fr);
+    align-items:center;
+    gap:12px;
+    padding:13px;
+    border-radius:17px;
   }
 
   .prof-cardActions{
@@ -1230,9 +1233,36 @@
   }
 
   .prof-avatar.large{
-    width:82px;
-    height:82px;
-    border-radius:22px;
+    width:64px;
+    height:64px;
+    border-radius:18px;
+  }
+
+  .prof-detailHero .prof-detailInfo{
+    align-self:center;
+  }
+
+  .prof-detailHero .prof-kicker{
+    display:none;
+  }
+
+  .prof-detailHero .prof-title{
+    font-size:22px;
+    line-height:1.08;
+    margin:0;
+  }
+
+  .prof-detailHero .prof-sub{
+    margin-top:5px;
+    font-size:13px;
+    line-height:1.35;
+    overflow-wrap:anywhere;
+  }
+
+  .prof-detailHero .prof-chipRow{
+    grid-column:1 / -1;
+    margin-top:10px;
+    gap:7px;
   }
 
   .prof-section .prof-grid.three{
@@ -1277,6 +1307,16 @@
 
   .prof-clientTop{
     gap:10px;
+  }
+
+  .prof-detailHero{
+    grid-template-columns:56px minmax(0,1fr);
+  }
+
+  .prof-avatar.large{
+    width:56px;
+    height:56px;
+    border-radius:16px;
   }
 
   .prof-avatar{

@@ -566,6 +566,10 @@
     border-radius:16px;
   }
 
+  .auc-currentCoachCard{
+    padding:12px;
+  }
+
   .auc-actions{
     flex-direction:column;
   }
@@ -576,6 +580,12 @@
 
   .auc-currentCoachTop{
     align-items:flex-start;
+  }
+
+  .auc-avatar{
+    width:48px;
+    height:48px;
+    border-radius:14px;
   }
 
   .auc-currentCoachMeta{

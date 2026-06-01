@@ -19,6 +19,7 @@ import {
   goalLabel,
   planLabel,
 } from "./profesionalFormat.js";
+import AppToast from "../ui/AppToast.jsx";
 import "./profesionalPanel.css";
 
 const EMPTY_INVITE_FORM = {
@@ -53,8 +54,7 @@ export default function ClientesProfesional() {
   const [query, setQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState(() => structuredCloneSafe(EMPTY_INVITE_FORM));
-  const [inviteErr, setInviteErr] = useState("");
-  const [inviteOk, setInviteOk] = useState("");
+  const [toast, setToast] = useState(null);
   const clientsQuery = useProfessionalClients();
   const invitationsQuery = useProfessionalClientInvitations({ status: "pending" });
   const loading = clientsQuery.isLoading;
@@ -90,26 +90,45 @@ export default function ClientesProfesional() {
   const createInviteMutation = useMutation({
     mutationFn: createProfessionalClientInvitation,
     onSuccess: async () => {
-      setInviteOk("Invitacion creada correctamente.");
-      setInviteErr("");
+      setToast({ type: "success", message: "Invitacion creada correctamente." });
       setInviteForm(structuredCloneSafe(EMPTY_INVITE_FORM));
       setInviteOpen(false);
       await invalidateProfessionalClientInvitations();
     },
     onError: (error) => {
-      setInviteOk("");
-      setInviteErr(error?.message || "No se pudo crear la invitacion.");
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo crear la invitacion.",
+      });
     },
   });
 
   const cancelInviteMutation = useMutation({
     mutationFn: cancelProfessionalClientInvitation,
-    onSuccess: invalidateProfessionalClientInvitations,
+    onSuccess: async () => {
+      setToast({ type: "success", message: "Invitacion cancelada." });
+      await invalidateProfessionalClientInvitations();
+    },
+    onError: (error) => {
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo cancelar la invitacion.",
+      });
+    },
   });
 
   const deleteInviteMutation = useMutation({
     mutationFn: deleteProfessionalClientInvitation,
-    onSuccess: invalidateProfessionalClientInvitations,
+    onSuccess: async () => {
+      setToast({ type: "success", message: "Invitacion eliminada." });
+      await invalidateProfessionalClientInvitations();
+    },
+    onError: (error) => {
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo eliminar la invitacion.",
+      });
+    },
   });
 
   function updateInviteField(field, value) {
@@ -130,9 +149,13 @@ export default function ClientesProfesional() {
   }
 
   function openInviteDialog() {
-    if (!inviteAccess.canInvite) return;
-    setInviteErr("");
-    setInviteOk("");
+    if (!inviteAccess.canInvite) {
+      setToast({
+        type: "warning",
+        message: inviteAccess.reason || "No podes invitar clientes en este momento.",
+      });
+      return;
+    }
     setInviteOpen(true);
   }
 
@@ -143,21 +166,30 @@ export default function ClientesProfesional() {
 
   function submitInvite(event) {
     event.preventDefault();
-    setInviteErr("");
-    setInviteOk("");
 
     if (!inviteAccess.canInvite) {
-      return setInviteErr(inviteAccess.reason || "No podes invitar clientes en este momento.");
+      setToast({
+        type: "warning",
+        message: inviteAccess.reason || "No podes invitar clientes en este momento.",
+      });
+      return;
     }
 
     const nombre = inviteForm.nombre.trim();
     const apellido = inviteForm.apellido.trim();
     const email = inviteForm.email.trim().toLowerCase();
 
-    if (!nombre) return setInviteErr("Ingresa el nombre.");
-    if (!apellido) return setInviteErr("Ingresa el apellido.");
+    if (!nombre) {
+      setToast({ type: "warning", message: "Ingresa el nombre." });
+      return;
+    }
+    if (!apellido) {
+      setToast({ type: "warning", message: "Ingresa el apellido." });
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return setInviteErr("Ingresa un email valido.");
+      setToast({ type: "warning", message: "Ingresa un email valido." });
+      return;
     }
 
     createInviteMutation.mutate({
@@ -229,8 +261,6 @@ export default function ClientesProfesional() {
           <div className="prof-lock compact">{inviteAccess.reason}</div>
         ) : null}
 
-        {inviteOk ? <div className="prof-success compact">{inviteOk}</div> : null}
-
         <ClientInvitationsPanel
           invitations={pendingInvitations}
           loading={invitationsQuery.isLoading}
@@ -288,7 +318,6 @@ export default function ClientesProfesional() {
         <InviteClientDialog
           form={inviteForm}
           access={inviteAccess}
-          error={inviteErr}
           saving={createInviteMutation.isPending}
           onField={updateInviteField}
           onPermission={updatePermission}
@@ -296,6 +325,7 @@ export default function ClientesProfesional() {
           onClose={closeInviteDialog}
         />
       ) : null}
+      <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }
@@ -373,7 +403,6 @@ function ClientInvitationsPanel({
 function InviteClientDialog({
   form,
   access,
-  error,
   saving,
   onField,
   onPermission,
@@ -518,8 +547,6 @@ function InviteClientDialog({
               </PermissionSection>
             ) : null}
           </div>
-
-          {error ? <div className="prof-error compact">{error}</div> : null}
 
           <div className="prof-inviteFooter">
             <button type="button" className="prof-btn" onClick={onClose} disabled={saving}>

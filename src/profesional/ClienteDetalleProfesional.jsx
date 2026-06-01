@@ -10,6 +10,8 @@ import {
 } from "./profesionalApi.js";
 import { useProfessionalClientDetail } from "./profesionalQueries.js";
 import { invalidateProfessionalClient, queryClient, queryKeys } from "../queryClient.js";
+import AssignedMenuEditor from "../menus/AssignedMenuEditor.jsx";
+import AppToast from "../ui/AppToast.jsx";
 import "./profesionalPanel.css";
 
 const DAYS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
@@ -26,6 +28,7 @@ export default function ClienteDetalleProfesional() {
   const [saving, setSaving] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState("resumen");
   const detailQuery = useProfessionalClientDetail(clientId);
   const loading = detailQuery.isLoading;
@@ -297,6 +300,13 @@ export default function ClienteDetalleProfesional() {
             locked={!access.nutrition}
             lockedText="No disponible: tu especialidad o plan efectivo no permite gestionar menus."
           >
+            <AssignedMenuEditor clientId={clientId} client={client} access={access} onToast={setToast} />
+
+            <div className="prof-sectionTitle" style={{ marginTop: 18 }}>
+              <span aria-hidden="true">ðŸ§­</span>
+              Configuracion simple
+            </div>
+
             <ModePicker
               modes={access.menuModes}
               value={menuDraft.modeType}
@@ -427,6 +437,7 @@ export default function ClienteDetalleProfesional() {
           </div>
         )}
       </section>
+      <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }
