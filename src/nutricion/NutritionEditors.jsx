@@ -342,9 +342,10 @@ export function MealRecipeEditor({
   }
 
   function updateItem(index, patch) {
-    update({
-      items: (draft.items || []).map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
-    });
+    setDraft((current) => recalcMealDraft({
+      ...current,
+      items: (current.items || []).map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    }));
   }
 
   function removeItem(index) {
@@ -1977,7 +1978,10 @@ function FoodItemsEditor({
   emptyText = "Todavia no agregaste alimentos.",
 }) {
   const [editingIndex, setEditingIndex] = useState(null);
-  const highlightedSet = new Set((highlightedNames || []).map(cleanText));
+  const highlightedSet = useMemo(
+    () => new Set((highlightedNames || []).map(cleanText)),
+    [highlightedNames]
+  );
 
   if (!items.length) {
     return <div className="nf-empty">{emptyText}</div>;
@@ -2110,45 +2114,84 @@ function FoodItemsEditor({
   );
 }
 
+const INLINE_QUANTITY_COMMIT_DELAY = 1200;
+
 function InlineQuantityInput({ item = {}, pending = false, automatic = false, onCommit }) {
   const externalValue = pending ? "" : String(item.cantidad ?? "");
-  const [value, setValue] = useState(externalValue);
+  const inputRef = useRef(null);
+  const draftValueRef = useRef(externalValue);
+  const externalValueRef = useRef(externalValue);
+  const itemRef = useRef(item);
+  const onCommitRef = useRef(onCommit);
   const focusedRef = useRef(false);
+  const composingRef = useRef(false);
   const timerRef = useRef(null);
   const skipBlurCommitRef = useRef(false);
+  const lastCommittedValueRef = useRef(null);
+
+  itemRef.current = item;
+  onCommitRef.current = onCommit;
 
   useEffect(() => {
-    if (!focusedRef.current) setValue(externalValue);
+    externalValueRef.current = externalValue;
+    if (!focusedRef.current && inputRef.current) {
+      inputRef.current.value = externalValue;
+      draftValueRef.current = externalValue;
+      lastCommittedValueRef.current = null;
+    }
   }, [externalValue]);
 
   useEffect(() => () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
   }, []);
 
-  function commit(nextValue = value) {
+  const clearScheduledCommit = useCallback(() => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = null;
-    if (String(nextValue) === externalValue) return;
-    onCommit?.(rescaleItem(item, nextValue, item.unidad));
-  }
+  }, []);
 
-  function scheduleCommit(nextValue) {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => commit(nextValue), 360);
-  }
+  const commit = useCallback((nextValue = draftValueRef.current) => {
+    clearScheduledCommit();
+    const normalizedValue = String(nextValue ?? "").trim();
+    if (
+      normalizedValue === externalValueRef.current ||
+      normalizedValue === lastCommittedValueRef.current
+    ) {
+      return;
+    }
+    lastCommittedValueRef.current = normalizedValue;
+    onCommitRef.current?.(rescaleItem(itemRef.current, normalizedValue, itemRef.current.unidad));
+  }, [clearScheduledCommit]);
+
+  const scheduleCommit = useCallback((nextValue) => {
+    clearScheduledCommit();
+    timerRef.current = window.setTimeout(() => {
+      if (!composingRef.current) commit(nextValue);
+    }, INLINE_QUANTITY_COMMIT_DELAY);
+  }, [clearScheduledCommit, commit]);
 
   return (
     <label className={`ne-inlineQuantity ${pending ? "pending" : ""} ${automatic ? "automatic" : ""}`}>
       <input
-        value={value}
+        ref={inputRef}
+        defaultValue={externalValue}
         onFocus={(event) => {
           focusedRef.current = true;
-          event.currentTarget.select();
+          if (window.matchMedia?.("(pointer: fine)")?.matches) event.currentTarget.select();
         }}
         onChange={(event) => {
           const nextValue = event.target.value;
-          setValue(nextValue);
-          scheduleCommit(nextValue);
+          draftValueRef.current = nextValue;
+          if (!composingRef.current) scheduleCommit(nextValue);
+        }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+          clearScheduledCommit();
+        }}
+        onCompositionEnd={(event) => {
+          composingRef.current = false;
+          draftValueRef.current = event.currentTarget.value;
+          scheduleCommit(event.currentTarget.value);
         }}
         onBlur={() => {
           focusedRef.current = false;
@@ -2156,22 +2199,26 @@ function InlineQuantityInput({ item = {}, pending = false, automatic = false, on
             skipBlurCommitRef.current = false;
             return;
           }
-          commit(value);
+          commit(draftValueRef.current);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
-            commit(value);
+            commit(draftValueRef.current);
             event.currentTarget.blur();
           }
           if (event.key === "Escape") {
-            if (timerRef.current) window.clearTimeout(timerRef.current);
+            clearScheduledCommit();
             skipBlurCommitRef.current = true;
-            setValue(externalValue);
+            draftValueRef.current = externalValueRef.current;
+            event.currentTarget.value = externalValueRef.current;
             event.currentTarget.blur();
           }
         }}
         placeholder="--"
         inputMode="decimal"
+        enterKeyHint="done"
+        autoComplete="off"
+        spellCheck={false}
         aria-label={`Cantidad de ${item.nombreSnapshot}`}
       />
       <span>{item.unidad || "g"}</span>

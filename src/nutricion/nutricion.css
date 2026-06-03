@@ -2045,6 +2045,10 @@
   box-shadow:0 0 0 3px rgba(245,215,110,.08);
 }
 
+.ne-item:focus-within{
+  animation:none;
+}
+
 .ne-inlineQuantity span{
   color:#d7e0ea;
   font-size:13px;
@@ -3265,6 +3269,12 @@ button.ne-quantityStateBadge.manual:focus-visible{
     width:76px;
     min-height:40px;
     font-size:18px;
+    transition:none;
+  }
+
+  .ne-inlineQuantity input:hover,
+  .ne-inlineQuantity input:focus{
+    box-shadow:none;
   }
 
   .ne-itemNumbers{
