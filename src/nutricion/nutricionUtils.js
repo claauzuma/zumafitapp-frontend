@@ -11,12 +11,28 @@ export function slugify(value = "") {
 }
 
 export function toNumber(value, fallback = 0) {
-  const n = Number(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const text = String(value ?? "").trim().replace(/\s+/g, "");
+  if (!text) return fallback;
+  const hasComma = text.includes(",");
+  const hasDot = text.includes(".");
+  let normalized = text;
+
+  if (hasComma && hasDot) {
+    normalized =
+      text.lastIndexOf(",") > text.lastIndexOf(".")
+        ? text.replace(/\./g, "").replace(",", ".")
+        : text.replace(/,/g, "");
+  } else if (hasComma) {
+    normalized = text.replace(",", ".");
+  }
+
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : fallback;
 }
 
 export function formatNumber(value, digits = 0) {
-  const n = Number(value);
+  const n = toNumber(value, Number.NaN);
   if (!Number.isFinite(n)) return "-";
   return n.toLocaleString("es-AR", {
     maximumFractionDigits: digits,
@@ -74,7 +90,9 @@ export function inferMacroBasis(unit = "", raw = {}) {
   if (explicit.includes("unidad") || explicit.includes("porcion") || explicit.includes("porci")) return "perUnit";
 
   const normalizedUnit = normalizeUnit(unit);
-  if (["g", "gr", "gramo", "gramos", "ml"].includes(normalizedUnit)) return "per100";
+  if (["g", "gr", "gramo", "gramos", "ml"].includes(normalizedUnit)) {
+    return looksLikeMacroPerGram(raw) ? "perUnit" : "per100";
+  }
   return "perUnit";
 }
 
@@ -156,7 +174,7 @@ export function calculateMealMacros(items = [], foods = []) {
   const index = buildFoodIndex(foods);
   return items.reduce(
     (acc, item) => {
-      const food = index.get(cleanText(item?.alimento || item?.nombre || item?.name));
+      const food = index.get(cleanText(item?.nombreSnapshot || item?.alimento || item?.nombre || item?.name));
       const qty = toNumber(item?.cantidad ?? item?.qty, 0);
       if (!food || qty <= 0) return acc;
 
@@ -289,6 +307,18 @@ export function macroLine(macros = {}) {
 
 function normalizeUnit(unit = "") {
   return cleanText(unit).replace(".", "");
+}
+
+function looksLikeMacroPerGram(raw = {}) {
+  if (raw?.perUnit === true || raw?.porUnidad === true) return true;
+
+  const kcal = toNumber(raw?.Calorias ?? raw?.calorias ?? raw?.kcal ?? raw?.kcalPerUnit, 0);
+  const protein = toNumber(raw?.Proteinas ?? raw?.proteinas ?? raw?.proteina ?? raw?.protein ?? raw?.proteinPerUnit, 0);
+  const carbs = toNumber(raw?.Carbohidratos ?? raw?.carbohidratos ?? raw?.carbs ?? raw?.hidratos ?? raw?.carbsPerUnit, 0);
+  const fat = toNumber(raw?.Grasas ?? raw?.grasas ?? raw?.fat ?? raw?.fatPerUnit, 0);
+
+  if (kcal <= 0 && protein <= 0 && carbs <= 0 && fat <= 0) return false;
+  return kcal > 0 && kcal <= 15 && protein <= 5 && carbs <= 5 && fat <= 5;
 }
 
 function roundMacro(value) {

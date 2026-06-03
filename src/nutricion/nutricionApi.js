@@ -71,3 +71,11 @@ export async function duplicateComida(comidaId, payload = {}) {
   });
   return data?.comida || null;
 }
+
+export async function generateMealQuantities(payload = {}) {
+  return await apiFetch("/api/alimentos/generar-cantidades", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 18000,
+  });
+}
