@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Beef,
   BookOpen,
@@ -1217,17 +1218,12 @@ export function MenuBaseEditor({
                     <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
                     Agregar alimento
                   </button>
-                  {(meal.objetivoKcal || meal.objetivoProteina) && countCalculableItems(meal.items) ? (
-                    <div className="ne-quantityQuickActions">
-                      <button
-                        type="button"
-                        className="nf-btn ghost mini"
-                        onClick={() => calculateQuantitiesInline(mealIndex)}
-                        disabled={quantityQuickState[mealIndex]?.loading}
-                      >
-                        <Sparkles size={16} strokeWidth={2.3} aria-hidden="true" />
-                        {quantityQuickState[mealIndex]?.loading ? "Calculando..." : "Calcular cantidades"}
-                      </button>
+                   {(meal.objetivoKcal || meal.objetivoProteina) && countCalculableItems(meal.items) ? (
+                     <div className="ne-quantityQuickActions">
+                       <ImmediateQuantityCalculateButton
+                         loading={quantityQuickState[mealIndex]?.loading}
+                         onCalculate={() => calculateQuantitiesInline(mealIndex)}
+                       />
                       {canGenerateQuantityVariant(meal.items) ? (
                         <button
                           type="button"
@@ -2099,6 +2095,168 @@ const MemoizedMealShell = React.memo(function MemoizedMealShell({ children }) {
   previous.mealLibraryLength === next.mealLibraryLength
 ));
 
+const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCalculateButton({
+  loading = false,
+  onCalculate,
+}) {
+  const [starting, setStarting] = useState(false);
+  const busy = loading || starting;
+
+  const handleClick = useCallback(async () => {
+    if (busy) return;
+    setStarting(true);
+    try {
+      await waitForNextPaint();
+      await onCalculate?.();
+    } finally {
+      setStarting(false);
+    }
+  }, [busy, onCalculate]);
+
+  return (
+    <button
+      type="button"
+      className="nf-btn ghost mini"
+      onClick={handleClick}
+      disabled={busy}
+      aria-busy={busy}
+    >
+      <Sparkles size={16} strokeWidth={2.3} aria-hidden="true" />
+      {busy ? "Calculando..." : "Calcular cantidades"}
+    </button>
+  );
+});
+
+const MobileQuantityTrigger = React.memo(function MobileQuantityTrigger({
+  item = {},
+  pending = false,
+  automatic = false,
+  onClick,
+}) {
+  return (
+    <button
+      type="button"
+      className={`ne-mobileQuantityTrigger ${pending ? "pending" : ""} ${automatic ? "automatic" : ""}`}
+      onClick={onClick}
+      aria-label={`Editar cantidad de ${item.nombreSnapshot || "alimento"}`}
+    >
+      <strong>{pending ? "Sin cantidad" : `${formatNumber(item.cantidad, 1)} ${item.unidad || "g"}`}</strong>
+      <small>{pending ? "Pendiente" : automatic ? "Automatico" : "Manual"}</small>
+    </button>
+  );
+});
+
+const MobileQuantityEditor = React.memo(function MobileQuantityEditor({
+  item = {},
+  allowQuantityAutomation = false,
+  onApply,
+  onClose,
+}) {
+  const pending = isQuantityPending(item);
+  const automatic = isQuantityAutomatic(item);
+  const [quantityLocal, setQuantityLocal] = useState(pending ? "" : String(item.cantidad ?? ""));
+  const [unitLocal, setUnitLocal] = useState(item.unidad || "g");
+
+  const nextItemFromLocal = useCallback(() => {
+    const normalizedQuantity = String(quantityLocal ?? "").trim();
+    if (!normalizedQuantity || toNumber(normalizedQuantity, 0) <= 0) {
+      return markItemPending(item, unitLocal);
+    }
+    return rescaleItem(item, normalizedQuantity, unitLocal);
+  }, [item, quantityLocal, unitLocal]);
+
+  const saveChanges = useCallback(() => {
+    onApply?.(nextItemFromLocal());
+  }, [nextItemFromLocal, onApply]);
+
+  const leavePending = useCallback(() => {
+    onApply?.(markItemPending(item, unitLocal));
+  }, [item, onApply, unitLocal]);
+
+  const toggleQuantitySource = useCallback(() => {
+    const nextItem = nextItemFromLocal();
+    if (isQuantityPending(nextItem)) return;
+    onApply?.(automatic ? markItemManual(nextItem) : markItemAutomatic(nextItem));
+  }, [automatic, nextItemFromLocal, onApply]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="ne-mobileQuantityBackdrop" role="presentation" onClick={onClose}>
+      <section
+        className="ne-mobileQuantityDrawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ne-mobileQuantityTitle"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="ne-mobileQuantityHead">
+          <div>
+            <span>Editar alimento</span>
+            <h3 id="ne-mobileQuantityTitle">{item.nombreSnapshot || "Alimento"}</h3>
+          </div>
+          <button type="button" className="nf-iconBtn" onClick={onClose} aria-label="Cerrar edicion">
+            <X size={18} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="ne-mobileQuantityFields">
+          <label className="ne-mobileQuantityField">
+            <span>Cantidad</span>
+            <input
+              value={quantityLocal}
+              onChange={(event) => setQuantityLocal(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") saveChanges();
+                if (event.key === "Escape") onClose?.();
+              }}
+              placeholder="Sin cantidad"
+              inputMode="decimal"
+              enterKeyHint="done"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="ne-mobileQuantityField unit">
+            <span>Unidad</span>
+            <input
+              value={unitLocal}
+              onChange={(event) => setUnitLocal(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") saveChanges();
+                if (event.key === "Escape") onClose?.();
+              }}
+              placeholder="g"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+
+        <p className="ne-mobileQuantityHint">
+          Los macros se recalculan una sola vez cuando guardas.
+        </p>
+
+        {!pending && allowQuantityAutomation ? (
+          <button type="button" className="nf-btn ghost ne-mobileQuantitySourceBtn" onClick={toggleQuantitySource}>
+            {automatic ? "Fijar manual" : "Volver a automatico"}
+          </button>
+        ) : null}
+
+        <div className="ne-mobileQuantityActions">
+          <button type="button" className="nf-btn ghost" onClick={onClose}>Cancelar</button>
+          <button type="button" className="nf-btn ghost" onClick={leavePending}>Dejar pendiente</button>
+          <button type="button" className="nf-btn gold" onClick={saveChanges}>
+            <Save size={16} strokeWidth={2.3} aria-hidden="true" />
+            Guardar cambios
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+});
+
 const FoodItemsEditor = React.memo(function FoodItemsEditor({
   items = [],
   onUpdate,
@@ -2109,139 +2267,181 @@ const FoodItemsEditor = React.memo(function FoodItemsEditor({
   emptyText = "Todavia no agregaste alimentos.",
 }) {
   const [editingIndex, setEditingIndex] = useState(null);
+  const [mobileEditingIndex, setMobileEditingIndex] = useState(null);
+  const [pendingAction, setPendingAction] = useState("");
+  const isMobile = useMediaQuery("(max-width: 720px)");
   const highlightedSet = useMemo(
     () => new Set((highlightedNames || []).map(cleanText)),
     [highlightedNames]
   );
+
+  const runItemAction = useCallback((actionKey, action) => {
+    setPendingAction(actionKey);
+    runAfterNextPaint(() => {
+      action();
+      setPendingAction("");
+    });
+  }, []);
 
   if (!items.length) {
     return <div className="nf-empty">{emptyText}</div>;
   }
 
   return (
-    <div className="ne-items">
-      {items.map((item, index) => {
-        const isEditing = editingIndex === index;
-        const pending = isQuantityPending(item);
-        const automatic = isQuantityAutomatic(item);
-        const quantitySource = quantitySourceOf(item);
-        const highlighted = highlightedSet.has(cleanText(item.nombreSnapshot || item.nombre || item.name));
-        return (
-          <article
-            className={`ne-item ${isEditing ? "is-editing" : ""} is-${quantitySource} ${highlighted ? "is-calculated" : ""}`}
-            key={`${item.id || item.nombreSnapshot}-${index}`}
-          >
-            <div className="ne-itemSummary">
-              <div className="ne-itemIdentity">
-                <strong>{item.nombreSnapshot}</strong>
-                <InlineQuantityInput
-                  item={item}
-                  pending={pending}
-                  automatic={automatic}
-                  onCommit={(nextItem) => onUpdate(index, nextItem)}
-                />
-              </div>
-              <div className={`ne-itemNumbers ${pending ? "pending" : ""}`}>
-                {pending ? (
-                  <span>Macros pendientes</span>
-                ) : (
-                  <>
-                    <strong>{formatNumber(item.kcal)} kcal</strong>
-                    <span>P {formatNumber(item.proteina, 1)}</span>
-                    <span>C {formatNumber(item.carbs, 1)}</span>
-                    <span>G {formatNumber(item.grasas, 1)}</span>
-                  </>
-                )}
-              </div>
-              <div className="ne-itemActions">
-                {automatic ? (
+    <>
+      <div className="ne-items">
+        {items.map((item, index) => {
+          const isEditing = !isMobile && editingIndex === index;
+          const pending = isQuantityPending(item);
+          const automatic = isQuantityAutomatic(item);
+          const quantitySource = quantitySourceOf(item);
+          const highlighted = highlightedSet.has(cleanText(item.nombreSnapshot || item.nombre || item.name));
+          const actionBusy = pendingAction.endsWith(`-${index}`);
+          return (
+            <article
+              className={`ne-item ${isEditing ? "is-editing" : ""} is-${quantitySource} ${highlighted ? "is-calculated" : ""} ${actionBusy ? "is-actionPending" : ""}`}
+              key={`${item.id || item.nombreSnapshot}-${index}`}
+            >
+              <div className="ne-itemSummary">
+                <div className="ne-itemIdentity">
+                  <strong>{item.nombreSnapshot}</strong>
+                  {isMobile ? (
+                    <MobileQuantityTrigger
+                      item={item}
+                      pending={pending}
+                      automatic={automatic}
+                      onClick={() => setMobileEditingIndex(index)}
+                    />
+                  ) : (
+                    <InlineQuantityInput
+                      item={item}
+                      pending={pending}
+                      automatic={automatic}
+                      onCommit={(nextItem) => onUpdate(index, nextItem)}
+                    />
+                  )}
+                </div>
+                <div className={`ne-itemNumbers ${pending ? "pending" : ""}`}>
+                  {pending ? (
+                    <span>Macros pendientes</span>
+                  ) : (
+                    <>
+                      <strong>{formatNumber(item.kcal)} kcal</strong>
+                      <span>P {formatNumber(item.proteina, 1)}</span>
+                      <span>C {formatNumber(item.carbs, 1)}</span>
+                      <span>G {formatNumber(item.grasas, 1)}</span>
+                    </>
+                  )}
+                </div>
+                <div className="ne-itemActions">
+                  {automatic ? (
+                    <button
+                      type="button"
+                      className="ne-quantityStateBadge automatic"
+                      onClick={() => runItemAction(`source-${index}`, () => onUpdate(index, markItemManual(item)))}
+                      title="Cantidad generada. Se recalcula si volves a calcular cantidades. Toca para fijarla."
+                      aria-label="Fijar cantidad automatica como manual"
+                      disabled={actionBusy}
+                    >
+                      Automatico
+                    </button>
+                  ) : !pending && allowQuantityAutomation ? (
+                    <button
+                      type="button"
+                      className="ne-quantityStateBadge manual"
+                      onClick={() => runItemAction(`source-${index}`, () => onUpdate(index, markItemAutomatic(item)))}
+                      title="Cantidad fija. Toca para permitir que vuelva a calcularse automaticamente."
+                      aria-label="Volver cantidad manual a automatica"
+                      disabled={actionBusy}
+                    >
+                      Manual
+                    </button>
+                  ) : (
+                    <span
+                      className={`ne-quantityStateBadge ${pending ? "pending" : "manual"}`}
+                      title={pending ? "Sin cantidad. Entra en el proximo calculo." : "Cantidad fija. No se modifica al recalcular."}
+                    >
+                      {pending ? "Pendiente" : "Manual"}
+                    </span>
+                  )}
                   <button
                     type="button"
-                    className="ne-quantityStateBadge automatic"
-                    onClick={() => onUpdate(index, markItemManual(item))}
-                    title="Cantidad generada. Se recalcula si volves a calcular cantidades. Toca para fijarla."
-                    aria-label="Fijar cantidad automatica como manual"
+                    className={`nf-iconBtn ${isEditing ? "active" : ""}`}
+                    onClick={() => {
+                      if (isMobile) setMobileEditingIndex(index);
+                      else setEditingIndex(isEditing ? null : index);
+                    }}
+                    aria-label={isEditing ? "Cerrar edicion de alimento" : "Editar alimento"}
                   >
-                    Automatico
+                    <Pencil size={15} strokeWidth={2.3} aria-hidden="true" />
                   </button>
-                ) : !pending && allowQuantityAutomation ? (
+                  {onReplace ? (
+                    <button type="button" className="nf-iconBtn" onClick={() => onReplace(index, item)} aria-label="Reemplazar alimento">
+                      <Replace size={15} strokeWidth={2.3} aria-hidden="true" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    className="ne-quantityStateBadge manual"
-                    onClick={() => onUpdate(index, markItemAutomatic(item))}
-                    title="Cantidad fija. Toca para permitir que vuelva a calcularse automaticamente."
-                    aria-label="Volver cantidad manual a automatica"
+                    className="nf-iconBtn"
+                    onClick={() => {
+                      setEditingIndex(null);
+                      setMobileEditingIndex(null);
+                      runItemAction(`remove-${index}`, () => onRemove(index));
+                    }}
+                    aria-label="Eliminar alimento"
+                    disabled={actionBusy}
                   >
-                    Manual
+                    <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
                   </button>
-                ) : (
-                  <span
-                    className={`ne-quantityStateBadge ${pending ? "pending" : "manual"}`}
-                    title={pending ? "Sin cantidad. Entra en el proximo calculo." : "Cantidad fija. No se modifica al recalcular."}
-                  >
-                    {pending ? "Pendiente" : "Manual"}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={`nf-iconBtn ${isEditing ? "active" : ""}`}
-                  onClick={() => setEditingIndex(isEditing ? null : index)}
-                  aria-label={isEditing ? "Cerrar edicion de alimento" : "Editar alimento"}
-                >
-                  <Pencil size={15} strokeWidth={2.3} aria-hidden="true" />
-                </button>
-                {onReplace ? (
-                  <button type="button" className="nf-iconBtn" onClick={() => onReplace(index, item)} aria-label="Reemplazar alimento">
-                    <Replace size={15} strokeWidth={2.3} aria-hidden="true" />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="nf-iconBtn"
-                  onClick={() => {
-                    setEditingIndex(null);
-                    onRemove(index);
-                  }}
-                  aria-label="Eliminar alimento"
-                >
-                  <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
-                </button>
+                </div>
               </div>
-            </div>
-            {isEditing ? (
-              <div className="ne-itemGrid">
-                <Field
-                  label="Cant."
-                  value={pending ? "" : item.cantidad}
-                  placeholder="Pendiente"
-                  onChange={(value) => onUpdate(index, rescaleItem(item, value, item.unidad))}
-                />
-                <Field label="Unidad" value={item.unidad} onChange={(value) => onUpdate(index, markItemManual({ ...item, unidad: value }))} />
-                <Field label="Kcal" value={item.kcal} onChange={(value) => onUpdate(index, markItemManual({ ...item, kcal: value }))} />
-                <Field label="P" value={item.proteina} onChange={(value) => onUpdate(index, markItemManual({ ...item, proteina: value }))} />
-                <Field label="C" value={item.carbs} onChange={(value) => onUpdate(index, markItemManual({ ...item, carbs: value }))} />
-                <Field label="G" value={item.grasas} onChange={(value) => onUpdate(index, markItemManual({ ...item, grasas: value }))} />
-                {!pending ? (
-                  <button
-                    type="button"
-                    className="nf-btn ghost mini ne-sourceEditBtn"
-                    onClick={() => onUpdate(index, automatic ? markItemManual(item) : markItemAutomatic(item))}
-                  >
-                    {automatic ? "Fijar manual" : "Volver a automatico"}
+              {isEditing ? (
+                <div className="ne-itemGrid">
+                  <Field
+                    label="Cant."
+                    value={pending ? "" : item.cantidad}
+                    placeholder="Pendiente"
+                    onChange={(value) => onUpdate(index, rescaleItem(item, value, item.unidad))}
+                  />
+                  <Field label="Unidad" value={item.unidad} onChange={(value) => onUpdate(index, markItemManual({ ...item, unidad: value }))} />
+                  <Field label="Kcal" value={item.kcal} onChange={(value) => onUpdate(index, markItemManual({ ...item, kcal: value }))} />
+                  <Field label="P" value={item.proteina} onChange={(value) => onUpdate(index, markItemManual({ ...item, proteina: value }))} />
+                  <Field label="C" value={item.carbs} onChange={(value) => onUpdate(index, markItemManual({ ...item, carbs: value }))} />
+                  <Field label="G" value={item.grasas} onChange={(value) => onUpdate(index, markItemManual({ ...item, grasas: value }))} />
+                  {!pending ? (
+                    <button
+                      type="button"
+                      className="nf-btn ghost mini ne-sourceEditBtn"
+                      onClick={() => onUpdate(index, automatic ? markItemManual(item) : markItemAutomatic(item))}
+                    >
+                      {automatic ? "Fijar manual" : "Volver a automatico"}
+                    </button>
+                  ) : null}
+                  <button type="button" className="nf-btn ghost mini ne-pendingEditBtn" onClick={() => onUpdate(index, markItemPending(item))}>
+                    Dejar pendiente
                   </button>
-                ) : null}
-                <button type="button" className="nf-btn ghost mini ne-pendingEditBtn" onClick={() => onUpdate(index, markItemPending(item))}>
-                  Dejar pendiente
-                </button>
-                <button type="button" className="nf-btn ghost mini ne-closeEditBtn" onClick={() => setEditingIndex(null)}>
-                  Cerrar
-                </button>
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
+                  <button type="button" className="nf-btn ghost mini ne-closeEditBtn" onClick={() => setEditingIndex(null)}>
+                    Cerrar
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+      {isMobile && mobileEditingIndex !== null && items[mobileEditingIndex] ? (
+        <MobileQuantityEditor
+          item={items[mobileEditingIndex]}
+          allowQuantityAutomation={allowQuantityAutomation}
+          onApply={(nextItem) => {
+            const itemIndex = mobileEditingIndex;
+            setMobileEditingIndex(null);
+            runItemAction(`edit-${itemIndex}`, () => onUpdate(itemIndex, nextItem));
+          }}
+          onClose={() => setMobileEditingIndex(null)}
+        />
+      ) : null}
+    </>
   );
 }, (previous, next) => (
   previous.items === next.items &&
@@ -2860,6 +3060,27 @@ function parseAmount(value = "") {
 
 function round(value) {
   return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function useMediaQuery(query) {
+  const getMatches = useCallback(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(query).matches
+      : false,
+    [query]
+  );
+  const [matches, setMatches] = useState(getMatches);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const mediaQuery = window.matchMedia(query);
+    const updateMatches = () => setMatches(mediaQuery.matches);
+    updateMatches();
+    mediaQuery.addEventListener?.("change", updateMatches);
+    return () => mediaQuery.removeEventListener?.("change", updateMatches);
+  }, [query]);
+
+  return matches;
 }
 
 function runAfterNextPaint(callback) {

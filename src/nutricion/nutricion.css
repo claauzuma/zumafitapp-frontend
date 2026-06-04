@@ -2071,6 +2071,44 @@
   color:#cfe7ff;
 }
 
+.ne-mobileQuantityTrigger{
+  width:max-content;
+  max-width:100%;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  background:rgba(4,9,15,.46);
+  color:#eef4fb;
+  padding:6px 9px;
+  text-align:left;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+.ne-mobileQuantityTrigger strong{
+  color:inherit;
+  font-size:15px;
+  line-height:1;
+}
+
+.ne-mobileQuantityTrigger small{
+  color:#93a4b8;
+  font-size:10px;
+  font-weight:900;
+}
+
+.ne-mobileQuantityTrigger.pending{
+  border-color:rgba(245,215,110,.25);
+  color:#ffe8a3;
+}
+
+.ne-mobileQuantityTrigger.automatic{
+  border-color:rgba(78,163,255,.28);
+  color:#cfe7ff;
+}
+
 .ne-item.is-pending .ne-itemIdentity span{
   color:#ffe8a3;
 }
@@ -2131,6 +2169,12 @@
   border-radius:11px;
 }
 
+.ne-item.is-actionPending{
+  border-color:rgba(245,215,110,.42);
+  opacity:.72;
+  pointer-events:none;
+}
+
 .ne-quantityStateBadge{
   min-height:28px;
   display:inline-flex;
@@ -2178,6 +2222,104 @@ button.ne-quantityStateBadge.manual:focus-visible{
   color:#cfe7ff;
   border-color:rgba(78,163,255,.35);
   background:rgba(78,163,255,.12);
+}
+
+.ne-mobileQuantityBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:260;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  padding:14px;
+  background:rgba(2,6,11,.72);
+}
+
+.ne-mobileQuantityDrawer{
+  width:min(100%, 560px);
+  display:grid;
+  gap:13px;
+  border:1px solid rgba(245,215,110,.24);
+  border-radius:18px;
+  background:#101824;
+  color:#f8fafc;
+  padding:15px;
+}
+
+.ne-mobileQuantityHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.ne-mobileQuantityHead span,
+.ne-mobileQuantityField span{
+  display:block;
+  color:#9fb0c3;
+  font-size:10px;
+  font-weight:1000;
+  text-transform:uppercase;
+}
+
+.ne-mobileQuantityHead h3{
+  margin:4px 0 0;
+  color:#f8fafc;
+  font-size:20px;
+  line-height:1.15;
+}
+
+.ne-mobileQuantityFields{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 100px;
+  gap:9px;
+}
+
+.ne-mobileQuantityField{
+  display:grid;
+  gap:6px;
+}
+
+.ne-mobileQuantityField input{
+  width:100%;
+  min-width:0;
+  min-height:50px;
+  border:1px solid rgba(120,170,230,.20);
+  border-radius:12px;
+  background:#08111b;
+  color:#f8fafc;
+  padding:0 12px;
+  outline:none;
+  font-size:20px;
+  font-weight:1000;
+  touch-action:manipulation;
+}
+
+.ne-mobileQuantityField input:focus{
+  border-color:rgba(245,215,110,.52);
+}
+
+.ne-mobileQuantityHint{
+  margin:0;
+  color:#a8b5c5;
+  font-size:12px;
+  line-height:1.4;
+  font-weight:750;
+}
+
+.ne-mobileQuantitySourceBtn{
+  justify-self:start;
+}
+
+.ne-mobileQuantityActions{
+  display:grid;
+  grid-template-columns:auto auto minmax(0,1fr);
+  gap:8px;
+}
+
+.ne-mobileQuantityActions .nf-btn{
+  min-width:0;
+  justify-content:center;
 }
 
 .ne-itemGrid{
@@ -2744,6 +2886,7 @@ button.ne-quantityStateBadge.manual:focus-visible{
   .ne-item{
     background:#182231;
     box-shadow:none;
+    transition:none;
   }
 
   .ne-item.is-pending,
@@ -2756,6 +2899,51 @@ button.ne-quantityStateBadge.manual:focus-visible{
     animation:none;
     border-color:rgba(77,224,153,.58);
     background:#152c27;
+  }
+
+  .ne-item .nf-iconBtn,
+  .ne-item .ne-quantityStateBadge,
+  .ne-mobileQuantityTrigger,
+  .ne-quantityQuickActions .nf-btn{
+    transition:none;
+    touch-action:manipulation;
+  }
+
+  .ne-mobileQuantityTrigger{
+    min-height:38px;
+    padding:7px 10px;
+  }
+
+  .ne-mobileQuantityBackdrop{
+    padding:0;
+  }
+
+  .ne-mobileQuantityDrawer{
+    width:100%;
+    max-width:none;
+    max-height:88dvh;
+    overflow:auto;
+    overscroll-behavior:contain;
+    border-left:0;
+    border-right:0;
+    border-bottom:0;
+    border-radius:20px 20px 0 0;
+    background:#101824;
+    box-shadow:none;
+    padding:14px;
+  }
+
+  .ne-mobileQuantityActions{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .ne-mobileQuantityActions .nf-btn{
+    width:100%;
+  }
+
+  .ne-mobileQuantityActions .nf-btn.gold{
+    grid-column:1 / -1;
+    grid-row:1;
   }
 
   .ne-foodPick,
