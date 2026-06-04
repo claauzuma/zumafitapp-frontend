@@ -2359,6 +2359,12 @@ button.ne-quantityStateBadge.manual:focus-visible{
   box-shadow:0 16px 34px rgba(0,0,0,.22);
 }
 
+.ne-mealBlock.is-actionPending{
+  border-color:rgba(245,215,110,.38);
+  opacity:.76;
+  pointer-events:none;
+}
+
 .ne-mealTop{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
@@ -2881,6 +2887,7 @@ button.ne-quantityStateBadge.manual:focus-visible{
     contain-intrinsic-size:auto 520px;
     background:#151f2d;
     box-shadow:none;
+    transition:none;
   }
 
   .ne-item{

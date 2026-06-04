@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   Beef,
   BookOpen,
@@ -884,6 +884,32 @@ export function MenuBaseEditor({
     });
   }, [prepareQuantityGeneration]);
 
+  const openFoodPicker = useCallback((mealIndex) => {
+    setPickerMealIndex(mealIndex);
+  }, []);
+
+  const openMealEquivalent = useCallback((mealIndex, meal) => {
+    setMealEquivalentRequest({ mealIndex, meal });
+  }, []);
+
+  const openItemEquivalent = useCallback((mealIndex, itemIndex, item) => {
+    setEquivalentRequest({ mealIndex, itemIndex, item });
+  }, []);
+
+  const updateMenuField = useCallback((field, value) => {
+    update({ [field]: value });
+  }, [update]);
+
+  const updateMenuMacro = useCallback((field, value) => {
+    setDraft((current) => ({
+      ...current,
+      macrosObjetivo: {
+        ...(current.macrosObjetivo || {}),
+        [field]: value,
+      },
+    }));
+  }, []);
+
   const applyQuantityGeneration = useCallback((mealIndex, result, options = {}) => {
     const meal = draftRef.current.comidas?.[mealIndex];
     if (!meal || !result?.foods?.length) return [];
@@ -928,7 +954,6 @@ export function MenuBaseEditor({
     }));
 
     try {
-      await waitForNextPaint();
       const latestMeal = draftRef.current.comidas?.[mealIndex] || meal;
       const settings = quantitySettingsRef.current;
       const result = await generateMealQuantities(buildQuantityGenerationRequest(latestMeal, {
@@ -1070,30 +1095,30 @@ export function MenuBaseEditor({
     <EditorShell title={title} icon={BookOpen} onClose={onClose}>
       <div className="ne-editorGrid">
         <aside className="ne-side">
-          <Field label="Nombre" value={draft.nombre} onChange={(value) => update({ nombre: value })} />
-          <label className="ne-field">
-            <span>Descripcion</span>
-            <textarea value={draft.descripcion || ""} onChange={(event) => update({ descripcion: event.target.value })} />
-          </label>
+          <BufferedField label="Nombre" value={draft.nombre} fieldKey="nombre" onCommit={updateMenuField} />
+          <BufferedTextarea label="Descripcion" value={draft.descripcion || ""} fieldKey="descripcion" onCommit={updateMenuField} />
           <div className="ne-two">
-            <Field label="Kcal objetivo" value={draft.kcalObjetivo} onChange={(value) => update({ kcalObjetivo: value })} />
-            <Field label="Rango kcal" value={draft.rangoKcal} onChange={(value) => update({ rangoKcal: value })} />
+            <BufferedField label="Kcal objetivo" value={draft.kcalObjetivo} fieldKey="kcalObjetivo" onCommit={updateMenuField} />
+            <BufferedField label="Rango kcal" value={draft.rangoKcal} fieldKey="rangoKcal" onCommit={updateMenuField} />
           </div>
           <div className="ne-three">
-            <Field
+            <BufferedField
               label="Proteina"
               value={draft.macrosObjetivo?.proteina}
-              onChange={(value) => update({ macrosObjetivo: { ...(draft.macrosObjetivo || {}), proteina: value } })}
+              fieldKey="proteina"
+              onCommit={updateMenuMacro}
             />
-            <Field
+            <BufferedField
               label="Carbs"
               value={draft.macrosObjetivo?.carbs}
-              onChange={(value) => update({ macrosObjetivo: { ...(draft.macrosObjetivo || {}), carbs: value } })}
+              fieldKey="carbs"
+              onCommit={updateMenuMacro}
             />
-            <Field
+            <BufferedField
               label="Grasas"
               value={draft.macrosObjetivo?.grasas}
-              onChange={(value) => update({ macrosObjetivo: { ...(draft.macrosObjetivo || {}), grasas: value } })}
+              fieldKey="grasas"
+              onCommit={updateMenuMacro}
             />
           </div>
           <div className="ne-two">
@@ -1105,7 +1130,7 @@ export function MenuBaseEditor({
             />
             <SelectField label="Estado" value={draft.estado} options={STATUS} onChange={(value) => update({ estado: value })} />
           </div>
-          <Field label="Tags" value={tagsFromInput(draft.tags).join(", ")} onChange={(value) => update({ tags: value })} />
+          <BufferedField label="Tags" value={tagsFromInput(draft.tags).join(", ")} fieldKey="tags" onCommit={updateMenuField} />
           <button type="button" className="nf-btn ghost" onClick={useCurrentTotals}>Usar totales actuales</button>
           <MacroSummary totals={menuTotals} />
         </aside>
@@ -1131,134 +1156,25 @@ export function MenuBaseEditor({
 
           <div className="ne-meals">
             {draft.comidas.map((meal, mealIndex) => (
-              <MemoizedMealShell
+              <MealEditorBlock
                 meal={meal}
+                mealIndex={mealIndex}
                 quickState={quantityQuickState[mealIndex]}
                 mealLibraryLength={mealLibrary.length}
                 key={`${meal.id || "meal"}-${mealIndex}`}
-              >
-                <div className="ne-mealTop">
-                  <div className="ne-two">
-                    <Field label="Nombre" value={meal.nombre} onChange={(value) => updateMeal(mealIndex, { nombre: value })} />
-                    <SelectField
-                      label="Tipo"
-                      value={meal.tipoComida}
-                      options={MEAL_TYPES}
-                      onChange={(value) => updateMeal(mealIndex, { tipoComida: value, grupoComida: groupFromMealType(value) })}
-                    />
-                  </div>
-                  <div className="ne-mealActions">
-                    {mealLibrary.length && (meal.items || []).length ? (
-                      <button
-                        type="button"
-                        className="nf-btn ghost mini"
-                        onClick={() => setMealEquivalentRequest({ mealIndex, meal })}
-                      >
-                        <Replace size={16} strokeWidth={2.3} aria-hidden="true" />
-                        Buscar receta compatible
-                      </button>
-                    ) : null}
-                    <button type="button" className="nf-iconBtn" onClick={() => duplicateMeal(mealIndex)} aria-label="Duplicar comida">
-                      <Copy size={16} strokeWidth={2.3} aria-hidden="true" />
-                    </button>
-                    <button type="button" className="nf-iconBtn" onClick={() => removeMeal(mealIndex)} aria-label="Eliminar comida">
-                      <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-                <p className="ne-muted">{macroSentence(meal.totales)}</p>
-                {meal.objetivoKcal || meal.objetivoProteina ? (
-                  <div className="ne-mealTarget">
-                    Objetivo: {meal.objetivoKcal ? `${formatNumber(meal.objetivoKcal)} kcal` : "kcal libre"}
-                    {meal.objetivoProteina ? ` · P ${formatNumber(meal.objetivoProteina, 1)} g` : ""}
-                  </div>
-                ) : null}
-                {meal.objetivoKcal || meal.objetivoProteina ? (
-                  <MealGoalPanel
-                    meal={meal}
-                    onSearchCompatible={
-                      mealLibrary.length ? () => setMealEquivalentRequest({ mealIndex, meal }) : null
-                    }
-                  />
-                ) : null}
-                <FoodItemsEditor
-                  items={meal.items}
-                  onUpdate={(itemIndex, patch) => updateItem(mealIndex, itemIndex, patch)}
-                  onRemove={(itemIndex) => removeItem(mealIndex, itemIndex)}
-                  onReplace={(itemIndex, item) => setEquivalentRequest({ mealIndex, itemIndex, item })}
-                  allowQuantityAutomation={!!(meal.objetivoKcal || meal.objetivoProteina)}
-                  highlightedNames={quantityQuickState[mealIndex]?.highlightedNames}
-                  emptyText="Agrega alimentos para construir esta comida."
-                />
-                {quantityQuickState[mealIndex]?.message ? (
-                  <div className={`ne-quantityInlineFeedback ${quantityQuickState[mealIndex].type || "warning"}`}>
-                    <span>{quantityQuickState[mealIndex].message}</span>
-                    {quantityQuickState[mealIndex].pendingResult ? (
-                      <div className="ne-quantityInlineFeedbackActions">
-                        <button
-                          type="button"
-                          className="nf-btn gold mini"
-                          onClick={() => applyInlineQuantityResult(mealIndex)}
-                        >
-                          Aplicar igual
-                        </button>
-                        <button
-                          type="button"
-                          className="nf-btn ghost mini"
-                          onClick={() => openQuantityGenerationSettings(mealIndex)}
-                        >
-                          Revisar ajustes
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <div className="ne-mealFooterActions">
-                  <button type="button" className="nf-btn gold mini" onClick={() => setPickerMealIndex(mealIndex)}>
-                    <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
-                    Agregar alimento
-                  </button>
-                   {(meal.objetivoKcal || meal.objetivoProteina) && countCalculableItems(meal.items) ? (
-                     <div className="ne-quantityQuickActions">
-                       <ImmediateQuantityCalculateButton
-                         loading={quantityQuickState[mealIndex]?.loading}
-                         onCalculate={() => calculateQuantitiesInline(mealIndex)}
-                       />
-                      {canGenerateQuantityVariant(meal.items) ? (
-                        <button
-                          type="button"
-                          className="nf-btn ghost mini ne-quantityVariantBtn"
-                          onClick={() => generateQuantityVariantInline(mealIndex)}
-                          disabled={quantityQuickState[mealIndex]?.loading}
-                          title="Redistribuye cantidades entre alimentos automaticos del mismo grupo manteniendo el objetivo."
-                        >
-                          <Shuffle size={15} strokeWidth={2.3} aria-hidden="true" />
-                          <span>Variante</span>
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="nf-iconBtn ne-quantitySettingsBtn"
-                        onClick={() => openQuantityGenerationSettings(mealIndex)}
-                        aria-label="Ajustar calculo"
-                        title="Ajustar calculo"
-                      >
-                        <Settings size={16} strokeWidth={2.3} aria-hidden="true" />
-                      </button>
-                    </div>
-                  ) : null}
-                  {mealLibrary.length && !(meal.items || []).length ? (
-                    <button
-                      type="button"
-                      className="nf-btn ghost mini"
-                      onClick={() => setMealEquivalentRequest({ mealIndex, meal })}
-                    >
-                      <Replace size={16} strokeWidth={2.3} aria-hidden="true" />
-                      Buscar receta compatible
-                    </button>
-                  ) : null}
-                </div>
-              </MemoizedMealShell>
+                onUpdateMeal={updateMeal}
+                onDuplicateMeal={duplicateMeal}
+                onRemoveMeal={removeMeal}
+                onOpenMealEquivalent={openMealEquivalent}
+                onUpdateItem={updateItem}
+                onRemoveItem={removeItem}
+                onOpenItemEquivalent={openItemEquivalent}
+                onOpenFoodPicker={openFoodPicker}
+                onCalculateQuantities={calculateQuantitiesInline}
+                onGenerateVariant={generateQuantityVariantInline}
+                onApplyInlineResult={applyInlineQuantityResult}
+                onOpenQuantitySettings={openQuantityGenerationSettings}
+              />
             ))}
           </div>
 
@@ -1554,11 +1470,19 @@ function QuantityGenerationPreview({ result = {} }) {
 }
 
 const MealGoalPanel = React.memo(function MealGoalPanel({ meal = {}, onSearchCompatible }) {
-  const target = mealTargetFromMeal(meal);
-  const actual = meal.totales || totalsFromItems(meal.items || []);
-  const status = mealGoalStatus(meal);
+  const summary = useMemo(() => {
+    const target = mealTargetFromMeal(meal);
+    const actual = meal.totales || totalsFromItems(meal.items || []);
+    const pendingCount = countPendingItems(meal.items || []);
+    return {
+      target,
+      actual,
+      pendingCount,
+      status: mealGoalStatus(meal, { target, actual, pendingCount }),
+    };
+  }, [meal]);
+  const { target, actual, pendingCount, status } = summary;
   const hasItems = !!meal.items?.length;
-  const pendingCount = countPendingItems(meal.items || []);
 
   return (
     <div className={`ne-mealGoalPanel ${status.level}`}>
@@ -2087,15 +2011,184 @@ function EditorShell({ title, icon: Icon, onClose, children }) {
   );
 }
 
-const MemoizedMealShell = React.memo(function MemoizedMealShell({ children }) {
-  return <section className="ne-mealBlock">{children}</section>;
-}, (previous, next) => (
-  previous.meal === next.meal &&
-  previous.quickState === next.quickState &&
-  previous.mealLibraryLength === next.mealLibraryLength
-));
+const MealEditorBlock = React.memo(function MealEditorBlock({
+  meal = {},
+  mealIndex,
+  quickState,
+  mealLibraryLength = 0,
+  onUpdateMeal,
+  onDuplicateMeal,
+  onRemoveMeal,
+  onOpenMealEquivalent,
+  onUpdateItem,
+  onRemoveItem,
+  onOpenItemEquivalent,
+  onOpenFoodPicker,
+  onCalculateQuantities,
+  onGenerateVariant,
+  onApplyInlineResult,
+  onOpenQuantitySettings,
+}) {
+  const [pendingMealAction, setPendingMealAction] = useState("");
+  const items = useMemo(() => meal.items || [], [meal.items]);
+  const hasTarget = Boolean(meal.objetivoKcal || meal.objetivoProteina);
+  const hasItems = items.length > 0;
+  const macroLine = useMemo(() => macroSentence(meal.totales), [meal.totales]);
+  const calculableCount = useMemo(() => countCalculableItems(items), [items]);
+  const variantAvailable = useMemo(() => canGenerateQuantityVariant(items), [items]);
+
+  const updateName = useCallback((value) => {
+    onUpdateMeal(mealIndex, { nombre: value });
+  }, [mealIndex, onUpdateMeal]);
+
+  const updateType = useCallback((value) => {
+    onUpdateMeal(mealIndex, { tipoComida: value, grupoComida: groupFromMealType(value) });
+  }, [mealIndex, onUpdateMeal]);
+
+  const updateItem = useCallback((itemIndex, patch) => {
+    onUpdateItem(mealIndex, itemIndex, patch);
+  }, [mealIndex, onUpdateItem]);
+
+  const removeItem = useCallback((itemIndex) => {
+    onRemoveItem(mealIndex, itemIndex);
+  }, [mealIndex, onRemoveItem]);
+
+  const openItemEquivalent = useCallback((itemIndex, item) => {
+    onOpenItemEquivalent(mealIndex, itemIndex, item);
+  }, [mealIndex, onOpenItemEquivalent]);
+
+  const openMealEquivalent = useCallback(() => {
+    onOpenMealEquivalent(mealIndex, meal);
+  }, [meal, mealIndex, onOpenMealEquivalent]);
+
+  const openFoodPicker = useCallback(() => {
+    onOpenFoodPicker(mealIndex);
+  }, [mealIndex, onOpenFoodPicker]);
+
+  const runMealAction = useCallback((actionName, action) => {
+    flushSync(() => setPendingMealAction(actionName));
+    runAfterNextPaint(() => {
+      action(mealIndex);
+      setPendingMealAction("");
+    });
+  }, [mealIndex]);
+
+  const duplicateMeal = useCallback(() => {
+    runMealAction("duplicate", onDuplicateMeal);
+  }, [onDuplicateMeal, runMealAction]);
+
+  const removeMeal = useCallback(() => {
+    runMealAction("remove", onRemoveMeal);
+  }, [onRemoveMeal, runMealAction]);
+
+  return (
+    <section className={`ne-mealBlock ${pendingMealAction ? "is-actionPending" : ""}`}>
+      <div className="ne-mealTop">
+        <div className="ne-two">
+          <BufferedField label="Nombre" value={meal.nombre} onCommit={updateName} />
+          <SelectField label="Tipo" value={meal.tipoComida} options={MEAL_TYPES} onChange={updateType} />
+        </div>
+        <div className="ne-mealActions">
+          {mealLibraryLength && hasItems ? (
+            <button type="button" className="nf-btn ghost mini" onClick={openMealEquivalent}>
+              <Replace size={16} strokeWidth={2.3} aria-hidden="true" />
+              Buscar receta compatible
+            </button>
+          ) : null}
+          <button type="button" className="nf-iconBtn" onClick={duplicateMeal} aria-label="Duplicar comida" disabled={!!pendingMealAction}>
+            <Copy size={16} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+          <button type="button" className="nf-iconBtn" onClick={removeMeal} aria-label="Eliminar comida" disabled={!!pendingMealAction}>
+            <Trash2 size={16} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <p className="ne-muted">{macroLine}</p>
+      {hasTarget ? (
+        <div className="ne-mealTarget">
+          Objetivo: {meal.objetivoKcal ? `${formatNumber(meal.objetivoKcal)} kcal` : "kcal libre"}
+          {meal.objetivoProteina ? ` · P ${formatNumber(meal.objetivoProteina, 1)} g` : ""}
+        </div>
+      ) : null}
+      {hasTarget ? (
+        <MealGoalPanel meal={meal} onSearchCompatible={mealLibraryLength ? openMealEquivalent : null} />
+      ) : null}
+
+      <FoodItemsEditor
+        items={items}
+        onUpdate={updateItem}
+        onRemove={removeItem}
+        onReplace={openItemEquivalent}
+        allowQuantityAutomation={hasTarget}
+        highlightedNames={quickState?.highlightedNames}
+        emptyText="Agrega alimentos para construir esta comida."
+      />
+
+      {quickState?.message ? (
+        <div className={`ne-quantityInlineFeedback ${quickState.type || "warning"}`}>
+          <span>{quickState.message}</span>
+          {quickState.pendingResult ? (
+            <div className="ne-quantityInlineFeedbackActions">
+              <button type="button" className="nf-btn gold mini" onClick={() => onApplyInlineResult(mealIndex)}>
+                Aplicar igual
+              </button>
+              <button type="button" className="nf-btn ghost mini" onClick={() => onOpenQuantitySettings(mealIndex)}>
+                Revisar ajustes
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="ne-mealFooterActions">
+        <button type="button" className="nf-btn gold mini" onClick={openFoodPicker}>
+          <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
+          Agregar alimento
+        </button>
+        {hasTarget && calculableCount ? (
+          <div className="ne-quantityQuickActions">
+            <ImmediateQuantityCalculateButton
+              mealIndex={mealIndex}
+              loading={quickState?.loading}
+              onCalculate={onCalculateQuantities}
+            />
+            {variantAvailable ? (
+              <button
+                type="button"
+                className="nf-btn ghost mini ne-quantityVariantBtn"
+                onClick={() => onGenerateVariant(mealIndex)}
+                disabled={quickState?.loading}
+                title="Redistribuye cantidades entre alimentos automaticos del mismo grupo manteniendo el objetivo."
+              >
+                <Shuffle size={15} strokeWidth={2.3} aria-hidden="true" />
+                <span>Variante</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="nf-iconBtn ne-quantitySettingsBtn"
+              onClick={() => onOpenQuantitySettings(mealIndex)}
+              aria-label="Ajustar calculo"
+              title="Ajustar calculo"
+            >
+              <Settings size={16} strokeWidth={2.3} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+        {mealLibraryLength && !hasItems ? (
+          <button type="button" className="nf-btn ghost mini" onClick={openMealEquivalent}>
+            <Replace size={16} strokeWidth={2.3} aria-hidden="true" />
+            Buscar receta compatible
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+});
 
 const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCalculateButton({
+  mealIndex,
   loading = false,
   onCalculate,
 }) {
@@ -2104,14 +2197,14 @@ const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCa
 
   const handleClick = useCallback(async () => {
     if (busy) return;
-    setStarting(true);
+    flushSync(() => setStarting(true));
     try {
       await waitForNextPaint();
-      await onCalculate?.();
+      await onCalculate?.(mealIndex);
     } finally {
       setStarting(false);
     }
-  }, [busy, onCalculate]);
+  }, [busy, mealIndex, onCalculate]);
 
   return (
     <button
@@ -2276,7 +2369,7 @@ const FoodItemsEditor = React.memo(function FoodItemsEditor({
   );
 
   const runItemAction = useCallback((actionKey, action) => {
-    setPendingAction(actionKey);
+    flushSync(() => setPendingAction(actionKey));
     runAfterNextPaint(() => {
       action();
       setPendingAction("");
@@ -2587,6 +2680,176 @@ function MacroBox({ label, value, suffix = "", icon: Icon }) {
   );
 }
 
+const BUFFERED_FIELD_COMMIT_DELAY = 1600;
+
+const BufferedField = React.memo(function BufferedField({
+  label,
+  value,
+  onCommit,
+  fieldKey,
+  placeholder = "",
+}) {
+  const externalValue = String(value ?? "");
+  const [localValue, setLocalValue] = useState(externalValue);
+  const focusedRef = useRef(false);
+  const timerRef = useRef(null);
+  const onCommitRef = useRef(onCommit);
+  const externalValueRef = useRef(externalValue);
+  const lastCommittedRef = useRef(null);
+  const skipBlurCommitRef = useRef(false);
+
+  onCommitRef.current = onCommit;
+  externalValueRef.current = externalValue;
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setLocalValue(externalValue);
+      lastCommittedRef.current = null;
+    }
+  }, [externalValue]);
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+  }, []);
+
+  const clearCommit = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const commit = useCallback((nextValue) => {
+    clearCommit();
+    const normalized = String(nextValue ?? "");
+    if (normalized === externalValueRef.current || normalized === lastCommittedRef.current) return;
+    lastCommittedRef.current = normalized;
+    if (fieldKey !== undefined) onCommitRef.current?.(fieldKey, normalized);
+    else onCommitRef.current?.(normalized);
+  }, [clearCommit, fieldKey]);
+
+  const scheduleCommit = useCallback((nextValue) => {
+    clearCommit();
+    timerRef.current = window.setTimeout(() => commit(nextValue), BUFFERED_FIELD_COMMIT_DELAY);
+  }, [clearCommit, commit]);
+
+  return (
+    <label className="ne-field">
+      <span>{label}</span>
+      <input
+        value={localValue}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setLocalValue(nextValue);
+          scheduleCommit(nextValue);
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          if (skipBlurCommitRef.current) {
+            skipBlurCommitRef.current = false;
+            return;
+          }
+          commit(localValue);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commit(localValue);
+            event.currentTarget.blur();
+          }
+          if (event.key === "Escape") {
+            clearCommit();
+            skipBlurCommitRef.current = true;
+            setLocalValue(externalValueRef.current);
+            event.currentTarget.blur();
+          }
+        }}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+});
+
+const BufferedTextarea = React.memo(function BufferedTextarea({
+  label,
+  value,
+  onCommit,
+  fieldKey,
+  placeholder = "",
+}) {
+  const externalValue = String(value ?? "");
+  const [localValue, setLocalValue] = useState(externalValue);
+  const focusedRef = useRef(false);
+  const timerRef = useRef(null);
+  const onCommitRef = useRef(onCommit);
+  const externalValueRef = useRef(externalValue);
+  const lastCommittedRef = useRef(null);
+  const skipBlurCommitRef = useRef(false);
+
+  onCommitRef.current = onCommit;
+  externalValueRef.current = externalValue;
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setLocalValue(externalValue);
+      lastCommittedRef.current = null;
+    }
+  }, [externalValue]);
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+  }, []);
+
+  const clearCommit = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const commit = useCallback((nextValue) => {
+    clearCommit();
+    const normalized = String(nextValue ?? "");
+    if (normalized === externalValueRef.current || normalized === lastCommittedRef.current) return;
+    lastCommittedRef.current = normalized;
+    if (fieldKey !== undefined) onCommitRef.current?.(fieldKey, normalized);
+    else onCommitRef.current?.(normalized);
+  }, [clearCommit, fieldKey]);
+
+  return (
+    <label className="ne-field">
+      <span>{label}</span>
+      <textarea
+        value={localValue}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setLocalValue(nextValue);
+          clearCommit();
+          timerRef.current = window.setTimeout(() => commit(nextValue), BUFFERED_FIELD_COMMIT_DELAY);
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          if (skipBlurCommitRef.current) {
+            skipBlurCommitRef.current = false;
+            return;
+          }
+          commit(localValue);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            clearCommit();
+            skipBlurCommitRef.current = true;
+            setLocalValue(externalValueRef.current);
+            event.currentTarget.blur();
+          }
+        }}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+});
+
 function Field({ label, value, onChange, placeholder = "" }) {
   return (
     <label className="ne-field">
@@ -2610,12 +2873,14 @@ function SelectField({ label, value, options = [], onChange }) {
 }
 
 function normalizeItems(items = [], foodsOrLookup = []) {
+  const sourceItems = Array.isArray(items) ? items : [];
+  if (sourceItems.every(isNormalizedMenuItem)) return sourceItems;
   const foodLookup = foodsOrLookup?.byName && foodsOrLookup?.byId
     ? foodsOrLookup
     : foodsOrLookup?.length
       ? buildFoodLookup(foodsOrLookup)
       : null;
-  return (Array.isArray(items) ? items : []).map((item, index) => {
+  return sourceItems.map((item, index) => {
     if (isNormalizedMenuItem(item)) return item;
     const rawQuantity = item.cantidad ?? item.amount ?? item.qty;
     const quantitySource = quantitySourceOf({ ...item, cantidad: rawQuantity });
@@ -2998,7 +3263,10 @@ function recalcMenuDraft(draft = {}) {
 }
 
 function totalsFromItems(items = []) {
-  return totalsFromNormalizedItems(normalizeItems(items));
+  const sourceItems = Array.isArray(items) ? items : [];
+  return totalsFromNormalizedItems(
+    sourceItems.every(isNormalizedMenuItem) ? sourceItems : normalizeItems(sourceItems)
+  );
 }
 
 function totalsFromNormalizedItems(items = []) {
@@ -3182,11 +3450,11 @@ function mealTargetFromMeal(meal = {}) {
   };
 }
 
-function mealGoalStatus(meal = {}) {
-  const target = mealTargetFromMeal(meal);
-  const actual = meal.totales || totalsFromItems(meal.items || []);
+function mealGoalStatus(meal = {}, derived = {}) {
+  const target = derived.target || mealTargetFromMeal(meal);
+  const actual = derived.actual || meal.totales || totalsFromItems(meal.items || []);
   const compatibility = recipeCompatibility({ totales: actual }, target);
-  const pendingCount = countPendingItems(meal.items || []);
+  const pendingCount = derived.pendingCount ?? countPendingItems(meal.items || []);
   if (!meal.items?.length) {
     return {
       level: "empty",
