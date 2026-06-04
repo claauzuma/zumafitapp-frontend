@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   Beef,
   BookOpen,
@@ -337,32 +337,41 @@ export function MealRecipeEditor({
     setDraft(normalizeMealDraft(initialMeal || createEmptyMealDraft()));
   }, [initialMeal]);
 
-  function update(patch) {
+  const update = useCallback((patch) => {
     setDraft((current) => recalcMealDraft({ ...current, ...patch }));
-  }
+  }, []);
 
-  function updateItem(index, patch) {
+  const updateItem = useCallback((index, patch) => {
     setDraft((current) => recalcMealDraft({
       ...current,
       items: (current.items || []).map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
     }));
-  }
+  }, []);
 
-  function removeItem(index) {
-    update({ items: (draft.items || []).filter((_, itemIndex) => itemIndex !== index) });
-  }
+  const removeItem = useCallback((index) => {
+    setDraft((current) => recalcMealDraft({
+      ...current,
+      items: (current.items || []).filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }, []);
 
-  function addItem(item) {
-    update({ items: [...(draft.items || []), withMacroBase(item)] });
+  const addItem = useCallback((item) => {
     setPickerOpen(false);
-  }
-
-  function replaceItem(index, nextItem) {
-    update({
-      items: (draft.items || []).map((item, itemIndex) => (itemIndex === index ? withMacroBase(nextItem) : item)),
+    runAfterNextPaint(() => {
+      setDraft((current) => recalcMealDraft({
+        ...current,
+        items: [...(current.items || []), withMacroBase(item)],
+      }));
     });
+  }, []);
+
+  const replaceItem = useCallback((index, nextItem) => {
+    setDraft((current) => recalcMealDraft({
+      ...current,
+      items: (current.items || []).map((item, itemIndex) => (itemIndex === index ? withMacroBase(nextItem) : item)),
+    }));
     setEquivalentRequest(null);
-  }
+  }, []);
 
   return (
     <EditorShell title={title} icon={ChefHat} onClose={onClose}>
@@ -696,6 +705,15 @@ export function MenuBaseEditor({
   const [quantityNotice, setQuantityNotice] = useState("");
   const [quantityQuickState, setQuantityQuickState] = useState({});
   const [quantityVariantSeeds, setQuantityVariantSeeds] = useState({});
+  const draftRef = useRef(draft);
+  const quantitySettingsRef = useRef(quantitySettings);
+  const quantityQuickStateRef = useRef(quantityQuickState);
+  const quantityVariantSeedsRef = useRef(quantityVariantSeeds);
+
+  draftRef.current = draft;
+  quantitySettingsRef.current = quantitySettings;
+  quantityQuickStateRef.current = quantityQuickState;
+  quantityVariantSeedsRef.current = quantityVariantSeeds;
 
   useEffect(() => {
     setDraft(normalizeMenuDraft(initialMenu || createEmptyMenuDraft()));
@@ -705,44 +723,78 @@ export function MenuBaseEditor({
     setQuantityVariantSeeds({});
   }, [initialMenu]);
 
-  function update(patch) {
-    setDraft((current) => recalcMenuDraft({ ...current, ...patch }));
-  }
+  const update = useCallback((patch) => {
+    setDraft((current) => ({
+      ...current,
+      ...patch,
+      ...(Object.prototype.hasOwnProperty.call(patch, "tags") ? { tags: tagsFromInput(patch.tags) } : {}),
+    }));
+  }, []);
 
-  function updateMeal(index, patch) {
-    update({
-      comidas: (draft.comidas || []).map((meal, mealIndex) =>
-        mealIndex === index ? recalcMealDraft({ ...meal, ...patch }) : meal
-      ),
+  const updateMeal = useCallback((index, patch) => {
+    setDraft((current) => {
+      const meals = current.comidas || [];
+      const meal = meals[index];
+      if (!meal) return current;
+      const nextDraft = { ...meal, ...patch };
+      const nextMeal = Object.prototype.hasOwnProperty.call(patch, "items")
+        ? recalcMealDraft(nextDraft)
+        : {
+            ...nextDraft,
+            ...(Object.prototype.hasOwnProperty.call(patch, "tags") ? { tags: tagsFromInput(patch.tags) } : {}),
+          };
+      return {
+        ...current,
+        comidas: meals.map((currentMeal, mealIndex) => (mealIndex === index ? nextMeal : currentMeal)),
+      };
     });
-  }
+  }, []);
 
-  function addMeal(meal = null) {
-    const next = meal
-      ? mealFromLibrary(meal)
-      : recalcMealDraft({ ...createEmptyMealDraft(), nombre: `Comida manual ${draft.comidas.length + 1}` });
-    update({ comidas: [...(draft.comidas || []), next] });
-    setAddMealOpen(false);
-  }
-
-  function mealFromLibrary(meal) {
+  const mealFromLibrary = useCallback((meal) => {
     return {
       ...normalizeMealDraft(meal, foods),
       id: generatedClientId("meal"),
     };
-  }
+  }, [foods]);
 
-  function duplicateMeal(index) {
-    const meal = draft.comidas[index];
-    if (!meal) return;
-    addMeal({ ...meal, id: "", nombre: `${meal.nombre} copia` });
-  }
+  const addMeal = useCallback((meal = null) => {
+    setAddMealOpen(false);
+    runAfterNextPaint(() => {
+      setDraft((current) => {
+        const meals = current.comidas || [];
+        const nextMeal = meal
+          ? mealFromLibrary(meal)
+          : recalcMealDraft({
+              ...createEmptyMealDraft(),
+              nombre: `Comida manual ${meals.length + 1}`,
+            });
+        return { ...current, comidas: [...meals, nextMeal] };
+      });
+    });
+  }, [mealFromLibrary]);
 
-  function removeMeal(index) {
-    update({ comidas: draft.comidas.filter((_, mealIndex) => mealIndex !== index) });
-  }
+  const duplicateMeal = useCallback((index) => {
+    setDraft((current) => {
+      const meals = current.comidas || [];
+      const meal = meals[index];
+      if (!meal) return current;
+      const duplicate = recalcMealDraft({
+        ...meal,
+        id: generatedClientId("meal"),
+        nombre: `${meal.nombre} copia`,
+      });
+      return { ...current, comidas: [...meals, duplicate] };
+    });
+  }, []);
 
-  function updateItem(mealIndex, itemIndex, patch) {
+  const removeMeal = useCallback((index) => {
+    setDraft((current) => ({
+      ...current,
+      comidas: (current.comidas || []).filter((_, mealIndex) => mealIndex !== index),
+    }));
+  }, []);
+
+  const updateItem = useCallback((mealIndex, itemIndex, patch) => {
     setDraft((current) => {
       const meals = current.comidas || [];
       const meal = meals[mealIndex];
@@ -756,36 +808,64 @@ export function MenuBaseEditor({
         comidas: meals.map((currentMeal, index) => (index === mealIndex ? nextMeal : currentMeal)),
       };
     });
-  }
+  }, []);
 
-  function removeItem(mealIndex, itemIndex) {
-    const meal = draft.comidas[mealIndex];
-    if (!meal) return;
-    updateMeal(mealIndex, {
-      items: meal.items.filter((_, index) => index !== itemIndex),
+  const removeItem = useCallback((mealIndex, itemIndex) => {
+    setDraft((current) => {
+      const meals = current.comidas || [];
+      const meal = meals[mealIndex];
+      if (!meal) return current;
+      const nextMeal = recalcMealDraft({
+        ...meal,
+        items: (meal.items || []).filter((_, index) => index !== itemIndex),
+      });
+      return {
+        ...current,
+        comidas: meals.map((currentMeal, index) => (index === mealIndex ? nextMeal : currentMeal)),
+      };
     });
-  }
+  }, []);
 
-  function replaceItem(mealIndex, itemIndex, nextItem) {
-    const meal = draft.comidas[mealIndex];
-    if (!meal) return;
-    updateMeal(mealIndex, {
-      items: meal.items.map((item, index) => (index === itemIndex ? withMacroBase(nextItem) : item)),
+  const replaceItem = useCallback((mealIndex, itemIndex, nextItem) => {
+    setDraft((current) => {
+      const meals = current.comidas || [];
+      const meal = meals[mealIndex];
+      if (!meal) return current;
+      const nextMeal = recalcMealDraft({
+        ...meal,
+        items: (meal.items || []).map((item, index) => (index === itemIndex ? withMacroBase(nextItem) : item)),
+      });
+      return {
+        ...current,
+        comidas: meals.map((currentMeal, index) => (index === mealIndex ? nextMeal : currentMeal)),
+      };
     });
     setEquivalentRequest(null);
-  }
+  }, []);
 
-  function addItem(item) {
+  const addItem = useCallback((item) => {
     if (pickerMealIndex === null) return;
-    const meal = draft.comidas[pickerMealIndex];
-    updateMeal(pickerMealIndex, {
-      items: [...(meal.items || []), withMacroBase(item)],
-    });
+    const targetMealIndex = pickerMealIndex;
     setPickerMealIndex(null);
-  }
+    runAfterNextPaint(() => {
+      setDraft((current) => {
+        const meals = current.comidas || [];
+        const meal = meals[targetMealIndex];
+        if (!meal) return current;
+        const nextMeal = recalcMealDraft({
+          ...meal,
+          items: [...(meal.items || []), withMacroBase(item)],
+        });
+        return {
+          ...current,
+          comidas: meals.map((currentMeal, index) => (index === targetMealIndex ? nextMeal : currentMeal)),
+        };
+      });
+    });
+  }, [pickerMealIndex]);
 
-  function prepareQuantityGeneration(mealIndex, options = {}) {
-    const meal = draft.comidas[mealIndex];
+  const prepareQuantityGeneration = useCallback((mealIndex, options = {}) => {
+    const meal = draftRef.current.comidas?.[mealIndex];
     if (!meal) return;
     setQuantityGenerationRequest({
       mealIndex,
@@ -794,17 +874,17 @@ export function MenuBaseEditor({
       autoCalculate: options.autoCalculate !== false,
     });
     setQuantityNotice("");
-  }
+  }, []);
 
-  function openQuantityGenerationSettings(mealIndex) {
+  const openQuantityGenerationSettings = useCallback((mealIndex) => {
     prepareQuantityGeneration(mealIndex, {
       showSettings: true,
       autoCalculate: false,
     });
-  }
+  }, [prepareQuantityGeneration]);
 
-  function applyQuantityGeneration(mealIndex, result, options = {}) {
-    const meal = draft.comidas[mealIndex];
+  const applyQuantityGeneration = useCallback((mealIndex, result, options = {}) => {
+    const meal = draftRef.current.comidas?.[mealIndex];
     if (!meal || !result?.foods?.length) return [];
     const generatedByName = new Map(
       result.foods.map((food) => [cleanText(food.name || food.nombre), food])
@@ -834,10 +914,10 @@ export function MenuBaseEditor({
     if (options.closeModal !== false) setQuantityGenerationRequest(null);
     if (options.showNotice !== false) setQuantityNotice(result.message || "Cantidades aplicadas correctamente.");
     return [...appliedNames];
-  }
+  }, [updateMeal]);
 
-  async function calculateQuantitiesInline(mealIndex, options = {}) {
-    const meal = draft.comidas[mealIndex];
+  const calculateQuantitiesInline = useCallback(async (mealIndex, options = {}) => {
+    const meal = draftRef.current.comidas?.[mealIndex];
     if (!meal) return;
     const generateVariant = options.generateVariant === true;
 
@@ -847,8 +927,11 @@ export function MenuBaseEditor({
     }));
 
     try {
-      const result = await generateMealQuantities(buildQuantityGenerationRequest(meal, {
-        ...quantitySettings,
+      await waitForNextPaint();
+      const latestMeal = draftRef.current.comidas?.[mealIndex] || meal;
+      const settings = quantitySettingsRef.current;
+      const result = await generateMealQuantities(buildQuantityGenerationRequest(latestMeal, {
+        ...settings,
         generateVariant,
         variantSeed: options.variantSeed || 1,
       }));
@@ -880,7 +963,7 @@ export function MenuBaseEditor({
         return;
       }
 
-      const feedback = quantityResultFeedback(result, quantitySettings.mode);
+      const feedback = quantityResultFeedback(result, settings.mode);
       if (feedback.type !== "success") {
         setQuantityQuickState((current) => ({
           ...current,
@@ -930,19 +1013,21 @@ export function MenuBaseEditor({
         },
       }));
     }
-  }
+  }, [applyQuantityGeneration]);
 
-  function generateQuantityVariantInline(mealIndex) {
-    const nextSeed = (quantityVariantSeeds[mealIndex] || 0) + 1;
-    setQuantityVariantSeeds((current) => ({ ...current, [mealIndex]: nextSeed }));
+  const generateQuantityVariantInline = useCallback((mealIndex) => {
+    const nextSeed = (quantityVariantSeedsRef.current[mealIndex] || 0) + 1;
+    const nextSeeds = { ...quantityVariantSeedsRef.current, [mealIndex]: nextSeed };
+    quantityVariantSeedsRef.current = nextSeeds;
+    setQuantityVariantSeeds(nextSeeds);
     calculateQuantitiesInline(mealIndex, {
       generateVariant: true,
       variantSeed: nextSeed,
     });
-  }
+  }, [calculateQuantitiesInline]);
 
-  function applyInlineQuantityResult(mealIndex) {
-    const quickState = quantityQuickState[mealIndex];
+  const applyInlineQuantityResult = useCallback((mealIndex) => {
+    const quickState = quantityQuickStateRef.current[mealIndex];
     if (!quickState?.pendingResult) return;
     const highlightedNames = applyQuantityGeneration(mealIndex, quickState.pendingResult, {
       closeModal: false,
@@ -959,10 +1044,10 @@ export function MenuBaseEditor({
         pendingResult: null,
       },
     }));
-  }
+  }, [applyQuantityGeneration]);
 
   function useCurrentTotals() {
-    const totals = totalsFromMeals(draft.comidas || []);
+    const totals = menuTotals;
     update({
       kcalObjetivo: totals.kcal,
       macrosObjetivo: {
@@ -974,7 +1059,11 @@ export function MenuBaseEditor({
     });
   }
 
-  const pendingMenuItems = countMenuPendingItems(draft);
+  const menuTotals = useMemo(() => totalsFromMeals(draft.comidas || []), [draft.comidas]);
+  const pendingMenuItems = useMemo(
+    () => (draft.comidas || []).reduce((total, meal) => total + countPendingItems(meal.items || []), 0),
+    [draft.comidas]
+  );
 
   return (
     <EditorShell title={title} icon={BookOpen} onClose={onClose}>
@@ -1017,7 +1106,7 @@ export function MenuBaseEditor({
           </div>
           <Field label="Tags" value={tagsFromInput(draft.tags).join(", ")} onChange={(value) => update({ tags: value })} />
           <button type="button" className="nf-btn ghost" onClick={useCurrentTotals}>Usar totales actuales</button>
-          <MacroSummary totals={totalsFromMeals(draft.comidas || [])} />
+          <MacroSummary totals={menuTotals} />
         </aside>
 
         <main className="ne-main">
@@ -1031,7 +1120,7 @@ export function MenuBaseEditor({
           <div className="ne-sectionTop">
             <div>
               <h3>Comidas del menu</h3>
-              <p>{draft.comidas.length} comida(s) - {macroSentence(totalsFromMeals(draft.comidas || []))}</p>
+              <p>{draft.comidas.length} comida(s) - {macroSentence(menuTotals)}</p>
             </div>
             <button type="button" className="nf-btn gold" onClick={() => setAddMealOpen(true)}>
               <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
@@ -1041,7 +1130,12 @@ export function MenuBaseEditor({
 
           <div className="ne-meals">
             {draft.comidas.map((meal, mealIndex) => (
-              <section className="ne-mealBlock" key={`${meal.id || "meal"}-${mealIndex}`}>
+              <MemoizedMealShell
+                meal={meal}
+                quickState={quantityQuickState[mealIndex]}
+                mealLibraryLength={mealLibrary.length}
+                key={`${meal.id || "meal"}-${mealIndex}`}
+              >
                 <div className="ne-mealTop">
                   <div className="ne-two">
                     <Field label="Nombre" value={meal.nombre} onChange={(value) => updateMeal(mealIndex, { nombre: value })} />
@@ -1168,7 +1262,7 @@ export function MenuBaseEditor({
                     </button>
                   ) : null}
                 </div>
-              </section>
+              </MemoizedMealShell>
             ))}
           </div>
 
@@ -1272,6 +1366,7 @@ function QuantityGenerationPicker({
         mode: nextMode,
         generationType: nextGenerationType,
       });
+      await waitForNextPaint();
       const response = await generateMealQuantities(buildQuantityGenerationRequest(meal, {
         mode: nextMode,
         generationType: nextGenerationType,
@@ -1462,7 +1557,7 @@ function QuantityGenerationPreview({ result = {} }) {
   );
 }
 
-function MealGoalPanel({ meal = {}, onSearchCompatible }) {
+const MealGoalPanel = React.memo(function MealGoalPanel({ meal = {}, onSearchCompatible }) {
   const target = mealTargetFromMeal(meal);
   const actual = meal.totales || totalsFromItems(meal.items || []);
   const status = mealGoalStatus(meal);
@@ -1506,34 +1601,47 @@ function MealGoalPanel({ meal = {}, onSearchCompatible }) {
       </div>
     </div>
   );
-}
+}, (previous, next) => (
+  previous.meal === next.meal &&
+  Boolean(previous.onSearchCompatible) === Boolean(next.onSearchCompatible)
+));
 
 function AddMenuMealPicker({ mealLibrary = [], foods = [], onManual, onRecipe, onClose }) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("todas");
   const [kcalFilter, setKcalFilter] = useState("todas");
   const [proteinFilter, setProteinFilter] = useState("todas");
+  const deferredSearch = useDeferredValue(search);
+  const foodLookup = useMemo(() => buildFoodLookup(foods), [foods]);
 
   const recipes = useMemo(
     () =>
       mealLibrary
-        .map((meal) => normalizeMealDraft(meal, foods))
+        .map((meal) => {
+          const normalized = normalizeMealDraft(meal, foodLookup);
+          return {
+            ...normalized,
+            _searchText: cleanText(
+              `${normalized.nombre} ${normalized.tipoComida} ${(normalized.tags || []).join(" ")} ${mealFoodNames(normalized).join(" ")}`
+            ),
+          };
+        })
         .filter((meal) => meal.id || meal.nombre || meal.items?.length),
-    [foods, mealLibrary]
+    [foodLookup, mealLibrary]
   );
 
   const filteredRecipes = useMemo(() => {
-    const needle = cleanText(search);
+    const needle = cleanText(deferredSearch);
     return recipes.filter((meal) => {
       const matchesGroup = group === "todas" || mealGroupKey(meal) === group;
       const matchesKcal = matchesRecipeKcal(meal.totales?.kcal, kcalFilter);
       const matchesProtein = matchesRecipeProtein(meal.totales?.proteina, proteinFilter);
       const matchesSearch =
         !needle ||
-        cleanText(`${meal.nombre} ${meal.tipoComida} ${(meal.tags || []).join(" ")} ${mealFoodNames(meal).join(" ")}`).includes(needle);
+        meal._searchText.includes(needle);
       return matchesGroup && matchesKcal && matchesProtein && matchesSearch;
     });
-  }, [group, kcalFilter, proteinFilter, recipes, search]);
+  }, [deferredSearch, group, kcalFilter, proteinFilter, recipes]);
 
   return (
     <div className="ne-nestedBackdrop">
@@ -1707,25 +1815,20 @@ function GuidedChipGroup({ label, value, options = [], onChange }) {
 export function NutritionFoodPicker({ foods = [], loading = false, onPick, onClose }) {
   const [search, setSearch] = useState("");
   const [quantity, setQuantity] = useState(100);
-  const [cardQuantities, setCardQuantities] = useState({});
+  const deferredSearch = useDeferredValue(search);
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return foods
-      .filter((food) => {
-        if (!needle) return true;
-        return `${food.nombre || food.name} ${food.fuente || food.source} ${food.macroGroup || ""}`.toLowerCase().includes(needle);
-      })
-      .slice(0, 32);
-  }, [foods, search]);
-
-  function getCardQuantity(key) {
-    return cardQuantities[key] ?? quantity;
-  }
-
-  function setCardQuantity(key, value) {
-    setCardQuantities((current) => ({ ...current, [key]: value }));
-  }
+    const needle = cleanText(deferredSearch);
+    const matches = [];
+    for (const food of foods) {
+      const searchText = food._searchText || cleanText(
+        `${food.nombre || food.name || ""} ${food.fuente || food.source || ""} ${food.macroGroup || ""}`
+      );
+      if (!needle || searchText.includes(needle)) matches.push(food);
+      if (matches.length >= 32) break;
+    }
+    return matches;
+  }, [deferredSearch, foods]);
 
   return (
     <div className="ne-nestedBackdrop">
@@ -1757,45 +1860,8 @@ export function NutritionFoodPicker({ foods = [], loading = false, onPick, onClo
         <div className="ne-foodGrid">
           {filtered.map((food, index) => {
             const key = String(food.id || food._id || `${food.nombre || food.name || "food"}-${index}`);
-            const unit = food.unidad || food.unit || "g";
-            const cardQuantity = getCardQuantity(key);
-            const item = buildMenuItemSnapshot(food, cardQuantity, unit);
-            const hasQuantity = String(cardQuantity ?? "").trim() !== "" && toNumber(cardQuantity, 0) > 0;
             return (
-              <article className="ne-foodPick ne-foodPickCard" key={key}>
-                <div className="ne-foodPickMain">
-                  <strong>{food.nombre || food.name}</strong>
-                  <span>
-                    {hasQuantity
-                      ? `${formatNumber(item.kcal)} kcal - P ${formatNumber(item.proteina, 1)} / C ${formatNumber(item.carbs, 1)} / G ${formatNumber(item.grasas, 1)}`
-                      : "Cantidad pendiente - se calcula despues"}
-                  </span>
-                  <small>{hasQuantity ? `${cardQuantity} ${unit}` : "Sin cantidad"} - {food.fuente || food.source || food.macroGroup}</small>
-                </div>
-                <div className="ne-foodPickAdd">
-                  <label>
-                    <span>Cant.</span>
-                    <input
-                      value={cardQuantity ?? ""}
-                      onChange={(event) => setCardQuantity(key, event.target.value)}
-                      inputMode="decimal"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="nf-btn gold mini"
-                    onClick={() => onPick(hasQuantity
-                      ? withMacroBase({ ...item, fixedQuantity: true, quantityPending: false, quantitySource: "manual" })
-                      : buildPendingMenuItem(food, unit))}
-                  >
-                    <Plus size={14} strokeWidth={2.3} aria-hidden="true" />
-                    Agregar
-                  </button>
-                  <button type="button" className="nf-btn ghost mini" onClick={() => onPick(buildPendingMenuItem(food, unit))}>
-                    Sin cantidad
-                  </button>
-                </div>
-              </article>
+              <NutritionFoodCard food={food} defaultQuantity={quantity} onPick={onPick} key={key} />
             );
           })}
         </div>
@@ -1803,6 +1869,58 @@ export function NutritionFoodPicker({ foods = [], loading = false, onPick, onClo
     </div>
   );
 }
+
+const NutritionFoodCard = React.memo(function NutritionFoodCard({ food = {}, defaultQuantity = 100, onPick }) {
+  const [quantity, setQuantity] = useState(defaultQuantity);
+  const unit = food.unidad || food.unit || "g";
+  const hasQuantity = String(quantity ?? "").trim() !== "" && toNumber(quantity, 0) > 0;
+  const item = useMemo(
+    () => (hasQuantity ? buildMenuItemSnapshot(food, quantity, unit) : null),
+    [food, hasQuantity, quantity, unit]
+  );
+
+  useEffect(() => {
+    setQuantity(defaultQuantity);
+  }, [defaultQuantity]);
+
+  return (
+    <article className="ne-foodPick ne-foodPickCard">
+      <div className="ne-foodPickMain">
+        <strong>{food.nombre || food.name}</strong>
+        <span>
+          {hasQuantity
+            ? `${formatNumber(item.kcal)} kcal - P ${formatNumber(item.proteina, 1)} / C ${formatNumber(item.carbs, 1)} / G ${formatNumber(item.grasas, 1)}`
+            : "Cantidad pendiente - se calcula despues"}
+        </span>
+        <small>{hasQuantity ? `${quantity} ${unit}` : "Sin cantidad"} - {food.fuente || food.source || food.macroGroup}</small>
+      </div>
+      <div className="ne-foodPickAdd">
+        <label>
+          <span>Cant.</span>
+          <input
+            value={quantity ?? ""}
+            onChange={(event) => setQuantity(event.target.value)}
+            inputMode="decimal"
+            enterKeyHint="done"
+          />
+        </label>
+        <button
+          type="button"
+          className="nf-btn gold mini"
+          onClick={() => onPick(hasQuantity
+            ? withMacroBase({ ...item, fixedQuantity: true, quantityPending: false, quantitySource: "manual" })
+            : buildPendingMenuItem(food, unit))}
+        >
+          <Plus size={14} strokeWidth={2.3} aria-hidden="true" />
+          Agregar
+        </button>
+        <button type="button" className="nf-btn ghost mini" onClick={() => onPick(buildPendingMenuItem(food, unit))}>
+          Sin cantidad
+        </button>
+      </div>
+    </article>
+  );
+});
 
 function FoodEquivalentPicker({ item, onPick, onClose }) {
   const [loading, setLoading] = useState(true);
@@ -1884,19 +2002,24 @@ function FoodEquivalentPicker({ item, onPick, onClose }) {
 }
 
 function MealEquivalentPicker({ meal, mealLibrary = [], foods = [], onPick, onClose }) {
-  const current = normalizeMealDraft(meal || {}, foods);
-  const target = mealTargetFromMeal(current);
-  const suggestions = mealLibrary
-    .map((raw) => normalizeMealDraft(raw, foods))
-    .filter((candidate) => candidate.items?.length)
-    .filter((candidate) => String(candidate.id || "") !== String(current.id || ""))
-    .filter((candidate) => mealGroupKey(candidate) === mealGroupKey(current))
-    .map((candidate) => {
-      const compatibility = recipeCompatibility(candidate, target);
-      return { ...candidate, compatibility };
-    })
-    .sort((a, b) => a.compatibility.score - b.compatibility.score)
-    .slice(0, 8);
+  const foodLookup = useMemo(() => buildFoodLookup(foods), [foods]);
+  const current = useMemo(() => normalizeMealDraft(meal || {}, foodLookup), [foodLookup, meal]);
+  const target = useMemo(() => mealTargetFromMeal(current), [current]);
+  const suggestions = useMemo(
+    () =>
+      mealLibrary
+        .map((raw) => normalizeMealDraft(raw, foodLookup))
+        .filter((candidate) => candidate.items?.length)
+        .filter((candidate) => String(candidate.id || "") !== String(current.id || ""))
+        .filter((candidate) => mealGroupKey(candidate) === mealGroupKey(current))
+        .map((candidate) => {
+          const compatibility = recipeCompatibility(candidate, target);
+          return { ...candidate, compatibility };
+        })
+        .sort((a, b) => a.compatibility.score - b.compatibility.score)
+        .slice(0, 8),
+    [current, foodLookup, mealLibrary, target]
+  );
 
   return (
     <div className="ne-nestedBackdrop">
@@ -1968,7 +2091,15 @@ function EditorShell({ title, icon: Icon, onClose, children }) {
   );
 }
 
-function FoodItemsEditor({
+const MemoizedMealShell = React.memo(function MemoizedMealShell({ children }) {
+  return <section className="ne-mealBlock">{children}</section>;
+}, (previous, next) => (
+  previous.meal === next.meal &&
+  previous.quickState === next.quickState &&
+  previous.mealLibraryLength === next.mealLibraryLength
+));
+
+const FoodItemsEditor = React.memo(function FoodItemsEditor({
   items = [],
   onUpdate,
   onRemove,
@@ -2112,11 +2243,16 @@ function FoodItemsEditor({
       })}
     </div>
   );
-}
+}, (previous, next) => (
+  previous.items === next.items &&
+  previous.allowQuantityAutomation === next.allowQuantityAutomation &&
+  previous.highlightedNames === next.highlightedNames &&
+  previous.emptyText === next.emptyText
+));
 
 const INLINE_QUANTITY_COMMIT_DELAY = 1200;
 
-function InlineQuantityInput({ item = {}, pending = false, automatic = false, onCommit }) {
+const InlineQuantityInput = React.memo(function InlineQuantityInput({ item = {}, pending = false, automatic = false, onCommit }) {
   const externalValue = pending ? "" : String(item.cantidad ?? "");
   const inputRef = useRef(null);
   const draftValueRef = useRef(externalValue);
@@ -2225,9 +2361,13 @@ function InlineQuantityInput({ item = {}, pending = false, automatic = false, on
       <small>{pending ? "pendiente" : automatic ? "automatica" : "manual"}</small>
     </label>
   );
-}
+}, (previous, next) => (
+  previous.item === next.item &&
+  previous.pending === next.pending &&
+  previous.automatic === next.automatic
+));
 
-function MacroSummary({ totals = {} }) {
+const MacroSummary = React.memo(function MacroSummary({ totals = {} }) {
   return (
     <div className="ne-macroSummary">
       <MacroBox label="Kcal" value={totals.kcal} icon={Flame} />
@@ -2236,7 +2376,7 @@ function MacroSummary({ totals = {} }) {
       <MacroBox label="Grasas" value={totals.grasas} suffix="g" />
     </div>
   );
-}
+});
 
 function MacroBox({ label, value, suffix = "", icon: Icon }) {
   return (
@@ -2269,9 +2409,14 @@ function SelectField({ label, value, options = [], onChange }) {
   );
 }
 
-function normalizeItems(items = [], foods = []) {
-  const foodLookup = foods?.length ? buildFoodLookup(foods) : null;
+function normalizeItems(items = [], foodsOrLookup = []) {
+  const foodLookup = foodsOrLookup?.byName && foodsOrLookup?.byId
+    ? foodsOrLookup
+    : foodsOrLookup?.length
+      ? buildFoodLookup(foodsOrLookup)
+      : null;
   return (Array.isArray(items) ? items : []).map((item, index) => {
+    if (isNormalizedMenuItem(item)) return item;
     const rawQuantity = item.cantidad ?? item.amount ?? item.qty;
     const quantitySource = quantitySourceOf({ ...item, cantidad: rawQuantity });
     const pending = quantitySource === "pending";
@@ -2307,6 +2452,20 @@ function normalizeItems(items = [], foods = []) {
 
     return snapshotFromFood(normalized, food);
   });
+}
+
+function isNormalizedMenuItem(item = {}) {
+  return Boolean(
+    item &&
+    item.nombreSnapshot &&
+    item._macroBase &&
+    item.quantitySource &&
+    Object.prototype.hasOwnProperty.call(item, "cantidad") &&
+    Object.prototype.hasOwnProperty.call(item, "kcal") &&
+    Object.prototype.hasOwnProperty.call(item, "proteina") &&
+    Object.prototype.hasOwnProperty.call(item, "carbs") &&
+    Object.prototype.hasOwnProperty.call(item, "grasas")
+  );
 }
 
 function buildFoodLookup(foods = []) {
@@ -2426,11 +2585,11 @@ function isQuantityCalculable(item = {}) {
 }
 
 function countPendingItems(items = []) {
-  return normalizeItems(items).filter(isQuantityPending).length;
+  return (items || []).filter(isQuantityPending).length;
 }
 
 function countCalculableItems(items = []) {
-  return normalizeItems(items).filter(isQuantityCalculable).length;
+  return (items || []).filter(isQuantityCalculable).length;
 }
 
 function quantityMacroRole(item = {}) {
@@ -2447,7 +2606,7 @@ function quantityMacroRole(item = {}) {
 
 function canGenerateQuantityVariant(items = []) {
   const roleCounts = new Map();
-  normalizeItems(items)
+  (items || [])
     .filter(isQuantityAutomatic)
     .forEach((item) => {
       const role = quantityMacroRole(item);
@@ -2455,10 +2614,6 @@ function canGenerateQuantityVariant(items = []) {
       roleCounts.set(role, (roleCounts.get(role) || 0) + 1);
     });
   return [...roleCounts.values()].some((count) => count >= 2);
-}
-
-function countMenuPendingItems(menu = {}) {
-  return (menu.comidas || []).reduce((acc, meal) => acc + countPendingItems(meal.items || []), 0);
 }
 
 function markItemPending(item = {}, nextUnidad = item.unidad || "g") {
@@ -2629,7 +2784,7 @@ function recalcMealDraft(draft = {}) {
     grupoComida: draft.grupoComida || groupFromMealType(tipoComida),
     tags: tagsFromInput(draft.tags),
     items,
-    totales: totalsFromItems(items),
+    totales: totalsFromNormalizedItems(items),
   };
 }
 
@@ -2643,7 +2798,11 @@ function recalcMenuDraft(draft = {}) {
 }
 
 function totalsFromItems(items = []) {
-  return normalizeItems(items).reduce(
+  return totalsFromNormalizedItems(normalizeItems(items));
+}
+
+function totalsFromNormalizedItems(items = []) {
+  return (items || []).reduce(
     (acc, item) => ({
       kcal: round(acc.kcal + toNumber(item.kcal, 0)),
       proteina: round(acc.proteina + toNumber(item.proteina, 0)),
@@ -2701,6 +2860,18 @@ function parseAmount(value = "") {
 
 function round(value) {
   return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function runAfterNextPaint(callback) {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    globalThis.setTimeout(callback, 0);
+    return;
+  }
+  window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
+}
+
+function waitForNextPaint() {
+  return new Promise((resolve) => runAfterNextPaint(resolve));
 }
 
 function generatedClientId(prefix = "item") {
@@ -2991,8 +3162,9 @@ function createGuidedEmptyMeal(target = {}) {
 }
 
 function suggestMealsForTargets(targetMeals = [], mealLibrary = [], foods = []) {
+  const foodLookup = buildFoodLookup(foods);
   const candidates = mealLibrary
-    .map((meal) => normalizeMealDraft(meal, foods))
+    .map((meal) => normalizeMealDraft(meal, foodLookup))
     .filter((meal) => meal.items?.length);
   const used = new Set();
   let matched = 0;

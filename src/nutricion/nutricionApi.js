@@ -1,5 +1,5 @@
 import { apiFetch } from "../Api.js";
-import { filterFoods, filterMeals, normalizeFood, normalizeMeal } from "./nutricionUtils.js";
+import { buildFoodIndex, filterFoods, filterMeals, normalizeFood, normalizeMeal } from "./nutricionUtils.js";
 
 export async function listAlimentos(filters = {}) {
   const data = await apiFetch("/api/alimentos", {
@@ -22,7 +22,8 @@ export async function listComidas(filters = {}, foods = []) {
   });
 
   const rawMeals = Array.isArray(data?.comidas) ? data.comidas : [];
-  const meals = rawMeals.map((meal) => normalizeMeal(meal, foods));
+  const foodIndex = buildFoodIndex(foods);
+  const meals = rawMeals.map((meal) => normalizeMeal(meal, foodIndex));
   return {
     comidas: filterMeals(meals, filters),
     all: meals,
@@ -35,7 +36,7 @@ export async function getComida(comidaId, foods = []) {
     method: "GET",
     timeoutMs: 12000,
   });
-  return normalizeMeal(data?.comida || null, foods);
+  return normalizeMeal(data?.comida || null, buildFoodIndex(foods));
 }
 
 export async function createComida(payload) {

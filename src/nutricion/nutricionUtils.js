@@ -62,6 +62,7 @@ export function normalizeFood(raw = {}) {
   const macroGroup = inferFoodCategory({ source, protein, carbs, fat, kcal, name });
   const normalizedSource = String(source || macroGroup).trim() || macroGroup;
   const macroBasis = inferMacroBasis(unit, raw);
+  const searchText = cleanText(`${name} ${normalizedSource} ${macroGroup}`);
 
   return {
     id: String(id),
@@ -80,6 +81,9 @@ export function normalizeFood(raw = {}) {
     source: normalizedSource,
     macroGroup,
     macroBasis,
+    _searchText: searchText,
+    _categoryKey: cleanText(macroGroup),
+    _normalizedFood: true,
     raw,
   };
 }
@@ -129,24 +133,33 @@ export function buildMenuItemSnapshot(food = {}, cantidad = 100, unidad = food?.
   };
 }
 
-export function normalizeMeal(raw = {}, foods = []) {
+export function normalizeMeal(raw = {}, foodsOrIndex = []) {
   if (!raw) return null;
   const items = Array.isArray(raw?.items) ? raw.items : [];
   const rawTotals = raw?.totales || raw?.totals || null;
-  const calculatedTotals = calculateMealMacros(items, foods);
+  const shouldCalculateTotals = !hasUsableMealTotals(rawTotals, items);
+  const calculatedTotals = shouldCalculateTotals
+    ? calculateMealMacros(items, foodsOrIndex)
+    : null;
   const totals = rawTotals
     ? {
-        kcal: toNumber(rawTotals.kcal, calculatedTotals.kcal),
-        protein: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals.protein),
-        proteina: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals.protein),
-        carbs: toNumber(rawTotals.carbs, calculatedTotals.carbs),
-        fat: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals.fat),
-        grasas: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals.fat),
+        kcal: toNumber(rawTotals.kcal, calculatedTotals?.kcal ?? 0),
+        protein: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals?.protein ?? 0),
+        proteina: toNumber(rawTotals.proteina ?? rawTotals.protein, calculatedTotals?.protein ?? 0),
+        carbs: toNumber(rawTotals.carbs, calculatedTotals?.carbs ?? 0),
+        fat: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals?.fat ?? 0),
+        grasas: toNumber(rawTotals.grasas ?? rawTotals.fat, calculatedTotals?.fat ?? 0),
         matched: items.length,
       }
-    : calculatedTotals;
+    : calculatedTotals || { kcal: 0, protein: 0, carbs: 0, fat: 0, matched: 0 };
   const name = raw?.nombre || raw?.name || "Comida sin nombre";
   const type = normalizeDisplayMealType(raw?.tipoComida || raw?.type || inferMealType(name));
+  const tagsText = Array.isArray(raw?.tags) ? raw.tags.join(" ") : String(raw?.tags || "");
+  const searchText = cleanText(
+    `${name} ${type} ${raw?.grupoComida || ""} ${tagsText} ${items
+      .map((item) => item?.nombreSnapshot || item?.alimento || item?.nombre || item?.name || "")
+      .join(" ")}`
+  );
 
   return {
     id: String(raw?.id || raw?._id || slugify(`${name}-${raw?.userId || ""}`)),
@@ -166,12 +179,13 @@ export function normalizeMeal(raw = {}, foods = []) {
     ownerType: raw?.ownerType || "",
     ownerId: raw?.ownerId || "",
     estado: raw?.estado || raw?.status || "",
+    _searchText: searchText,
     raw,
   };
 }
 
-export function calculateMealMacros(items = [], foods = []) {
-  const index = buildFoodIndex(foods);
+export function calculateMealMacros(items = [], foodsOrIndex = []) {
+  const index = foodsOrIndex instanceof Map ? foodsOrIndex : buildFoodIndex(foodsOrIndex);
   return items.reduce(
     (acc, item) => {
       const food = index.get(cleanText(item?.nombreSnapshot || item?.alimento || item?.nombre || item?.name));
@@ -259,17 +273,15 @@ export function groupFromMealType(value = "") {
 export function filterFoods(foods = [], filters = {}) {
   const search = cleanText(filters.search);
   const category = cleanText(filters.category || "todos");
+  if (!search && category === "todos") return foods;
 
   return foods.filter((food) => {
     const matchesSearch =
       !search ||
-      cleanText(food.name).includes(search) ||
-      cleanText(food.nombre).includes(search) ||
-      cleanText(food.source).includes(search) ||
-      cleanText(food.fuente).includes(search) ||
-      cleanText(food.categoria).includes(search) ||
-      cleanText(food.macroGroup).includes(search);
-    const matchesCategory = category === "todos" || cleanText(food.macroGroup) === category;
+      (food._searchText || cleanText(
+        `${food.name || ""} ${food.nombre || ""} ${food.source || ""} ${food.fuente || ""} ${food.categoria || ""} ${food.macroGroup || ""}`
+      )).includes(search);
+    const matchesCategory = category === "todos" || (food._categoryKey || cleanText(food.macroGroup)) === category;
     return matchesSearch && matchesCategory;
   });
 }
@@ -277,15 +289,16 @@ export function filterFoods(foods = [], filters = {}) {
 export function filterMeals(meals = [], filters = {}) {
   const search = cleanText(filters.search);
   const type = cleanText(filters.type || "todos");
+  if (!search && type === "todos") return meals;
 
   return meals.filter((meal) => {
-    const itemsText = meal.items.map((item) => item?.alimento || item?.nombre || "").join(" ");
-    const mealName = meal.name || meal.nombre || "";
     const matchesSearch =
       !search ||
-      cleanText(mealName).includes(search) ||
-      cleanText(itemsText).includes(search) ||
-      cleanText(meal.type).includes(search);
+      (meal._searchText || cleanText(
+        `${meal.name || meal.nombre || ""} ${meal.type || ""} ${(meal.items || [])
+          .map((item) => item?.nombreSnapshot || item?.alimento || item?.nombre || item?.name || "")
+          .join(" ")}`
+      )).includes(search);
     const matchesType =
       type === "todos" ||
       cleanText(meal.type) === type ||
@@ -307,6 +320,20 @@ export function macroLine(macros = {}) {
 
 function normalizeUnit(unit = "") {
   return cleanText(unit).replace(".", "");
+}
+
+function hasUsableMealTotals(totals = null, items = []) {
+  if (!totals || typeof totals !== "object") return false;
+  const fields = [
+    totals.kcal,
+    totals.proteina ?? totals.protein,
+    totals.carbs,
+    totals.grasas ?? totals.fat,
+  ];
+  const complete = fields.every((value) => Number.isFinite(toNumber(value, Number.NaN)));
+  if (!complete) return false;
+  if (!(items || []).length) return true;
+  return fields.some((value) => toNumber(value, 0) > 0);
 }
 
 function looksLikeMacroPerGram(raw = {}) {

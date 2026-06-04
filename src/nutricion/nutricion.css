@@ -2720,6 +2720,55 @@ button.ne-quantityStateBadge.manual:focus-visible{
 }
 
 @media (max-width: 720px){
+  .ne-shell,
+  .ne-picker{
+    background:#0c121b;
+    box-shadow:none;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .ne-main,
+  .ne-side{
+    background:#101824;
+    box-shadow:none;
+  }
+
+  .ne-mealBlock{
+    content-visibility:auto;
+    contain-intrinsic-size:auto 520px;
+    background:#151f2d;
+    box-shadow:none;
+  }
+
+  .ne-item{
+    background:#182231;
+    box-shadow:none;
+  }
+
+  .ne-item.is-pending,
+  .ne-item.is-automatic,
+  .ne-item.is-editing{
+    background:#182231;
+  }
+
+  .ne-item.is-calculated{
+    animation:none;
+    border-color:rgba(77,224,153,.58);
+    background:#152c27;
+  }
+
+  .ne-foodPick,
+  .ne-foodPickCard{
+    background:#121b27;
+    box-shadow:none;
+    transition:none;
+  }
+
+  .ne-foodPickCard:hover{
+    box-shadow:none;
+  }
+
   .nf-shell{
     padding:14px;
     border-radius:18px;
