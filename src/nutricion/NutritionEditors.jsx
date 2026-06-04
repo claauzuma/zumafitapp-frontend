@@ -706,6 +706,9 @@ export function MenuBaseEditor({
   const [quantityNotice, setQuantityNotice] = useState("");
   const [quantityQuickState, setQuantityQuickState] = useState({});
   const [quantityVariantSeeds, setQuantityVariantSeeds] = useState({});
+  const [mobileEditingMealIndex, setMobileEditingMealIndex] = useState(null);
+  const [mobileMenuSettingsOpen, setMobileMenuSettingsOpen] = useState(false);
+  const isMobileEditor = useMediaQuery("(max-width: 720px)");
   const draftRef = useRef(draft);
   const quantitySettingsRef = useRef(quantitySettings);
   const quantityQuickStateRef = useRef(quantityQuickState);
@@ -722,7 +725,16 @@ export function MenuBaseEditor({
     setQuantityNotice("");
     setQuantityQuickState({});
     setQuantityVariantSeeds({});
+    setMobileEditingMealIndex(null);
+    setMobileMenuSettingsOpen(false);
   }, [initialMenu]);
+
+  useEffect(() => {
+    if (!isMobileEditor) {
+      setMobileEditingMealIndex(null);
+      setMobileMenuSettingsOpen(false);
+    }
+  }, [isMobileEditor]);
 
   const update = useCallback((patch) => {
     setDraft((current) => ({
@@ -794,6 +806,15 @@ export function MenuBaseEditor({
       comidas: (current.comidas || []).filter((_, mealIndex) => mealIndex !== index),
     }));
   }, []);
+
+  const removeMealMobileAware = useCallback((index) => {
+    setMobileEditingMealIndex((current) => {
+      if (current === null) return current;
+      if (current === index) return null;
+      return current > index ? current - 1 : current;
+    });
+    removeMeal(index);
+  }, [removeMeal]);
 
   const updateItem = useCallback((mealIndex, itemIndex, patch) => {
     setDraft((current) => {
@@ -1093,7 +1114,46 @@ export function MenuBaseEditor({
 
   return (
     <EditorShell title={title} icon={BookOpen} onClose={onClose}>
-      <div className="ne-editorGrid">
+      {isMobileEditor ? (
+        <MobileMenuEditor
+          draft={draft}
+          menuTotals={menuTotals}
+          pendingMenuItems={pendingMenuItems}
+          quickStateByMeal={quantityQuickState}
+          notice={notice}
+          quantityNotice={quantityNotice}
+          saving={saving}
+          submitLabel={submitLabel}
+          allowSystemVisibility={allowSystemVisibility}
+          mobileMenuSettingsOpen={mobileMenuSettingsOpen}
+          editingMealIndex={mobileEditingMealIndex}
+          mealLibraryLength={mealLibrary.length}
+          onOpenMenuSettings={() => setMobileMenuSettingsOpen(true)}
+          onCloseMenuSettings={() => setMobileMenuSettingsOpen(false)}
+          onEditMeal={setMobileEditingMealIndex}
+          onCloseMeal={() => setMobileEditingMealIndex(null)}
+          onAddMeal={() => setAddMealOpen(true)}
+          onCancel={onClose}
+          onSave={() => onSave?.(menuDraftToPayload(draftRef.current))}
+          onUpdateMenuField={updateMenuField}
+          onUpdateMenuMacro={updateMenuMacro}
+          onUpdateMenu={update}
+          onUseCurrentTotals={useCurrentTotals}
+          onUpdateMeal={updateMeal}
+          onDuplicateMeal={duplicateMeal}
+          onRemoveMeal={removeMealMobileAware}
+          onOpenMealEquivalent={openMealEquivalent}
+          onUpdateItem={updateItem}
+          onRemoveItem={removeItem}
+          onOpenItemEquivalent={openItemEquivalent}
+          onOpenFoodPicker={openFoodPicker}
+          onCalculateQuantities={calculateQuantitiesInline}
+          onGenerateVariant={generateQuantityVariantInline}
+          onApplyInlineResult={applyInlineQuantityResult}
+          onOpenQuantitySettings={openQuantityGenerationSettings}
+        />
+      ) : (
+        <div className="ne-editorGrid">
         <aside className="ne-side">
           <BufferedField label="Nombre" value={draft.nombre} fieldKey="nombre" onCommit={updateMenuField} />
           <BufferedTextarea label="Descripcion" value={draft.descripcion || ""} fieldKey="descripcion" onCommit={updateMenuField} />
@@ -1187,6 +1247,7 @@ export function MenuBaseEditor({
           </div>
         </main>
       </div>
+      )}
 
       {pickerMealIndex !== null ? (
         <NutritionFoodPicker foods={foods} loading={foodsLoading} onPick={addItem} onClose={() => setPickerMealIndex(null)} />
@@ -2007,6 +2068,362 @@ function EditorShell({ title, icon: Icon, onClose, children }) {
         </header>
         {children}
       </div>
+    </div>
+  );
+}
+
+const MobileMenuEditor = React.memo(function MobileMenuEditor({
+  draft = {},
+  menuTotals = {},
+  pendingMenuItems = 0,
+  quickStateByMeal = {},
+  notice = "",
+  quantityNotice = "",
+  saving = false,
+  submitLabel = "Guardar menu",
+  allowSystemVisibility = true,
+  mobileMenuSettingsOpen = false,
+  editingMealIndex = null,
+  mealLibraryLength = 0,
+  onOpenMenuSettings,
+  onCloseMenuSettings,
+  onEditMeal,
+  onCloseMeal,
+  onAddMeal,
+  onCancel,
+  onSave,
+  onUpdateMenuField,
+  onUpdateMenuMacro,
+  onUpdateMenu,
+  onUseCurrentTotals,
+  onUpdateMeal,
+  onDuplicateMeal,
+  onRemoveMeal,
+  onOpenMealEquivalent,
+  onUpdateItem,
+  onRemoveItem,
+  onOpenItemEquivalent,
+  onOpenFoodPicker,
+  onCalculateQuantities,
+  onGenerateVariant,
+  onApplyInlineResult,
+  onOpenQuantitySettings,
+}) {
+  const meals = draft.comidas || [];
+  const editingMeal = editingMealIndex !== null ? meals[editingMealIndex] : null;
+  const targetProtein = draft.macrosObjetivo?.proteina;
+
+  return (
+    <main className="ne-mobileMenuEditor">
+      <section className="ne-mobileMenuOverview">
+        <div className="ne-mobileMenuOverviewTop">
+          <div>
+            <span className="nf-pill demo">Resumen del menu</span>
+            <h3>{draft.nombre || "Menu sin nombre"}</h3>
+            {draft.descripcion ? <p>{draft.descripcion}</p> : null}
+          </div>
+          <button type="button" className="nf-btn ghost mini" onClick={onOpenMenuSettings}>
+            <Settings size={15} strokeWidth={2.3} aria-hidden="true" />
+            Datos
+          </button>
+        </div>
+
+        <div className="ne-mobileMenuTargetLine">
+          <span>Objetivo</span>
+          <strong>
+            {draft.kcalObjetivo ? `${formatNumber(draft.kcalObjetivo)} kcal` : "Kcal libre"}
+            {targetProtein ? ` · P ${formatNumber(targetProtein, 1)} g` : ""}
+          </strong>
+        </div>
+
+        <div className="ne-mobileMenuMacroLine">
+          <strong>{formatNumber(menuTotals.kcal)} kcal</strong>
+          <span>P {formatNumber(menuTotals.proteina, 1)}</span>
+          <span>C {formatNumber(menuTotals.carbs, 1)}</span>
+          <span>G {formatNumber(menuTotals.grasas, 1)}</span>
+        </div>
+      </section>
+
+      {notice ? <div className="ne-editorNotice">{notice}</div> : null}
+      {quantityNotice ? <div className="ne-editorNotice">{quantityNotice}</div> : null}
+      {pendingMenuItems ? (
+        <div className="ne-editorNotice warning">
+          Este menu tiene {pendingMenuItems} alimento(s) sin cantidad.
+        </div>
+      ) : null}
+
+      <div className="ne-mobileMealsTop">
+        <div>
+          <h3>Comidas</h3>
+          <p>{meals.length} comida(s)</p>
+        </div>
+        <button type="button" className="nf-btn gold mini" onClick={onAddMeal}>
+          <Plus size={16} strokeWidth={2.3} aria-hidden="true" />
+          Agregar comida
+        </button>
+      </div>
+
+      <div className="ne-mobileMealSummaries">
+        {meals.map((meal, mealIndex) => (
+          <MobileMealSummaryCard
+            meal={meal}
+            mealIndex={mealIndex}
+            quickState={quickStateByMeal[mealIndex]}
+            onEdit={onEditMeal}
+            onDuplicate={onDuplicateMeal}
+            onRemove={onRemoveMeal}
+            key={`${meal.id || "meal"}-${mealIndex}`}
+          />
+        ))}
+        {!meals.length ? (
+          <div className="nf-empty">Todavia no agregaste comidas a este menu.</div>
+        ) : null}
+      </div>
+
+      <div className="ne-mobileMenuActions">
+        <button type="button" className="nf-btn ghost" onClick={onCancel}>Cancelar</button>
+        <button type="button" className="nf-btn gold" onClick={onSave} disabled={saving}>
+          <Save size={16} strokeWidth={2.3} aria-hidden="true" />
+          {saving ? "Guardando..." : submitLabel}
+        </button>
+      </div>
+
+      {mobileMenuSettingsOpen ? (
+        <MobileMenuSettingsDrawer
+          draft={draft}
+          menuTotals={menuTotals}
+          allowSystemVisibility={allowSystemVisibility}
+          onUpdateMenuField={onUpdateMenuField}
+          onUpdateMenuMacro={onUpdateMenuMacro}
+          onUpdateMenu={onUpdateMenu}
+          onUseCurrentTotals={onUseCurrentTotals}
+          onClose={onCloseMenuSettings}
+        />
+      ) : null}
+
+      {editingMeal ? (
+        <MobileMealEditorDrawer
+          meal={editingMeal}
+          mealIndex={editingMealIndex}
+          quickState={quickStateByMeal[editingMealIndex]}
+          mealLibraryLength={mealLibraryLength}
+          onClose={onCloseMeal}
+          onUpdateMeal={onUpdateMeal}
+          onDuplicateMeal={onDuplicateMeal}
+          onRemoveMeal={onRemoveMeal}
+          onOpenMealEquivalent={onOpenMealEquivalent}
+          onUpdateItem={onUpdateItem}
+          onRemoveItem={onRemoveItem}
+          onOpenItemEquivalent={onOpenItemEquivalent}
+          onOpenFoodPicker={onOpenFoodPicker}
+          onCalculateQuantities={onCalculateQuantities}
+          onGenerateVariant={onGenerateVariant}
+          onApplyInlineResult={onApplyInlineResult}
+          onOpenQuantitySettings={onOpenQuantitySettings}
+        />
+      ) : null}
+    </main>
+  );
+});
+
+const MobileMealSummaryCard = React.memo(function MobileMealSummaryCard({
+  meal = {},
+  mealIndex,
+  quickState,
+  onEdit,
+  onDuplicate,
+  onRemove,
+}) {
+  const [pendingAction, setPendingAction] = useState("");
+  const summary = useMemo(() => {
+    const items = meal.items || [];
+    const actual = meal.totales || totalsFromItems(items);
+    const target = mealTargetFromMeal(meal);
+    const pendingCount = countPendingItems(items);
+    const hasTarget = Boolean(meal.objetivoKcal || meal.objetivoProteina);
+    const status = hasTarget
+      ? mealGoalStatus(meal, { actual, target, pendingCount })
+      : !items.length
+        ? { level: "empty", label: "Vacia" }
+        : pendingCount
+          ? { level: "pending", label: "Pendiente" }
+          : { level: "complete", label: "Lista" };
+    return {
+      actual,
+      target,
+      hasTarget,
+      pendingCount,
+      itemCount: items.length,
+      status,
+    };
+  }, [meal]);
+
+  const runSummaryAction = useCallback((actionName, action) => {
+    flushSync(() => setPendingAction(actionName));
+    runAfterNextPaint(() => {
+      action(mealIndex);
+      setPendingAction("");
+    });
+  }, [mealIndex]);
+
+  const editMeal = useCallback(() => onEdit(mealIndex), [mealIndex, onEdit]);
+  const duplicateMeal = useCallback((event) => {
+    event.stopPropagation();
+    runSummaryAction("duplicate", onDuplicate);
+  }, [onDuplicate, runSummaryAction]);
+  const removeMeal = useCallback((event) => {
+    event.stopPropagation();
+    runSummaryAction("remove", onRemove);
+  }, [onRemove, runSummaryAction]);
+
+  return (
+    <article
+      className={`ne-mobileMealSummary ${pendingAction ? "is-actionPending" : ""}`}
+      onClick={editMeal}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") editMeal();
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="ne-mobileMealSummaryTop">
+        <div>
+          <span>{mealTypeLabel(meal.tipoComida)}</span>
+          <h4>{meal.nombre || "Comida sin nombre"}</h4>
+        </div>
+        <span className={`ne-goalBadge ${summary.status.level}`}>{summary.status.label}</span>
+      </div>
+
+      <div className="ne-mobileMealCompare">
+        <span>
+          Objetivo
+          <strong>
+            {summary.hasTarget
+              ? `${formatNumber(summary.target.kcal)} kcal · P ${formatNumber(summary.target.proteina, 1)} g`
+              : "Sin objetivo parcial"}
+          </strong>
+        </span>
+        <span>
+          Actual
+          <strong>{formatNumber(summary.actual.kcal)} kcal · P {formatNumber(summary.actual.proteina, 1)} g</strong>
+        </span>
+      </div>
+
+      <div className="ne-mobileMealSummaryBottom">
+        <p>
+          {summary.itemCount} alimento(s)
+          {summary.pendingCount ? ` · ${summary.pendingCount} pendiente(s)` : ""}
+          {quickState?.loading ? " · Calculando..." : ""}
+        </p>
+        <div className="ne-mobileMealSummaryActions">
+          <button type="button" className="nf-btn ghost mini" onClick={(event) => {
+            event.stopPropagation();
+            editMeal();
+          }}>
+            Editar
+          </button>
+          <button type="button" className="nf-iconBtn" onClick={duplicateMeal} aria-label="Duplicar comida" disabled={!!pendingAction}>
+            <Copy size={15} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+          <button type="button" className="nf-iconBtn" onClick={removeMeal} aria-label="Eliminar comida" disabled={!!pendingAction}>
+            <Trash2 size={15} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+function MobileMealEditorDrawer({
+  meal,
+  mealIndex,
+  quickState,
+  mealLibraryLength,
+  onClose,
+  ...mealEditorProps
+}) {
+  const closeDrawer = useCallback(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    window.setTimeout(onClose, 0);
+  }, [onClose]);
+
+  return (
+    <div className="ne-mobileMealDrawerBackdrop">
+      <section className="ne-mobileMealDrawer" role="dialog" aria-modal="true" aria-label="Editar comida">
+        <header className="ne-mobileMealDrawerHead">
+          <div>
+            <span>Editar comida</span>
+            <h3>{meal.nombre || "Comida sin nombre"}</h3>
+          </div>
+          <button type="button" className="nf-btn gold mini" onClick={closeDrawer}>
+            Listo
+          </button>
+        </header>
+        <div className="ne-mobileMealDrawerBody">
+          <MealEditorBlock
+            meal={meal}
+            mealIndex={mealIndex}
+            quickState={quickState}
+            mealLibraryLength={mealLibraryLength}
+            {...mealEditorProps}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MobileMenuSettingsDrawer({
+  draft = {},
+  menuTotals = {},
+  allowSystemVisibility = true,
+  onUpdateMenuField,
+  onUpdateMenuMacro,
+  onUpdateMenu,
+  onUseCurrentTotals,
+  onClose,
+}) {
+  const closeDrawer = useCallback(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    window.setTimeout(onClose, 0);
+  }, [onClose]);
+
+  return (
+    <div className="ne-mobileMealDrawerBackdrop">
+      <section className="ne-mobileMealDrawer ne-mobileMenuSettingsDrawer" role="dialog" aria-modal="true" aria-label="Datos del menu">
+        <header className="ne-mobileMealDrawerHead">
+          <div>
+            <span>Menu base</span>
+            <h3>Datos del menu</h3>
+          </div>
+          <button type="button" className="nf-btn gold mini" onClick={closeDrawer}>Listo</button>
+        </header>
+        <div className="ne-mobileMenuSettingsBody">
+          <BufferedField label="Nombre" value={draft.nombre} fieldKey="nombre" onCommit={onUpdateMenuField} />
+          <BufferedTextarea label="Descripcion" value={draft.descripcion || ""} fieldKey="descripcion" onCommit={onUpdateMenuField} />
+          <div className="ne-two">
+            <BufferedField label="Kcal objetivo" value={draft.kcalObjetivo} fieldKey="kcalObjetivo" onCommit={onUpdateMenuField} />
+            <BufferedField label="Rango kcal" value={draft.rangoKcal} fieldKey="rangoKcal" onCommit={onUpdateMenuField} />
+          </div>
+          <div className="ne-three">
+            <BufferedField label="Proteina" value={draft.macrosObjetivo?.proteina} fieldKey="proteina" onCommit={onUpdateMenuMacro} />
+            <BufferedField label="Carbs" value={draft.macrosObjetivo?.carbs} fieldKey="carbs" onCommit={onUpdateMenuMacro} />
+            <BufferedField label="Grasas" value={draft.macrosObjetivo?.grasas} fieldKey="grasas" onCommit={onUpdateMenuMacro} />
+          </div>
+          <div className="ne-two">
+            <SelectField
+              label="Visibilidad"
+              value={draft.visibilidad}
+              options={allowSystemVisibility ? VISIBILITY : VISIBILITY.filter(([value]) => value !== "sistema")}
+              onChange={(value) => onUpdateMenu({ visibilidad: value })}
+            />
+            <SelectField label="Estado" value={draft.estado} options={STATUS} onChange={(value) => onUpdateMenu({ estado: value })} />
+          </div>
+          <BufferedField label="Tags" value={tagsFromInput(draft.tags).join(", ")} fieldKey="tags" onCommit={onUpdateMenuField} />
+          <button type="button" className="nf-btn ghost" onClick={onUseCurrentTotals}>Usar totales actuales</button>
+          <MacroSummary totals={menuTotals} />
+        </div>
+      </section>
     </div>
   );
 }

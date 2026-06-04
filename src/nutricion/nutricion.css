@@ -2322,6 +2322,251 @@ button.ne-quantityStateBadge.manual:focus-visible{
   justify-content:center;
 }
 
+.ne-mobileMenuEditor{
+  display:grid;
+  gap:10px;
+  margin-top:12px;
+}
+
+.ne-mobileMenuOverview,
+.ne-mobileMealSummary{
+  border:1px solid rgba(120,170,230,.16);
+  border-radius:15px;
+  background:#131d2a;
+  padding:12px;
+}
+
+.ne-mobileMenuOverview{
+  display:grid;
+  gap:10px;
+  border-color:rgba(245,215,110,.18);
+}
+
+.ne-mobileMenuOverviewTop,
+.ne-mobileMealsTop,
+.ne-mobileMealSummaryTop,
+.ne-mobileMealSummaryBottom,
+.ne-mobileMealDrawerHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.ne-mobileMenuOverview h3,
+.ne-mobileMealsTop h3,
+.ne-mobileMealSummary h4,
+.ne-mobileMealDrawerHead h3{
+  margin:0;
+  color:#f8fafc;
+  line-height:1.15;
+  font-weight:1000;
+}
+
+.ne-mobileMenuOverview h3{
+  margin-top:8px;
+  font-size:21px;
+}
+
+.ne-mobileMenuOverview p,
+.ne-mobileMealsTop p,
+.ne-mobileMealSummary p{
+  margin:4px 0 0;
+  color:#9fb0c3;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:800;
+}
+
+.ne-mobileMenuTargetLine{
+  display:grid;
+  gap:3px;
+  border-top:1px solid rgba(255,255,255,.06);
+  padding-top:9px;
+}
+
+.ne-mobileMenuTargetLine span,
+.ne-mobileMealSummaryTop > div > span,
+.ne-mobileMealCompare span,
+.ne-mobileMealDrawerHead span{
+  color:#91a4b9;
+  font-size:10px;
+  line-height:1.2;
+  font-weight:1000;
+  text-transform:uppercase;
+}
+
+.ne-mobileMenuTargetLine strong{
+  color:#fff0b0;
+  font-size:14px;
+}
+
+.ne-mobileMenuMacroLine{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:5px;
+}
+
+.ne-mobileMenuMacroLine strong,
+.ne-mobileMenuMacroLine span{
+  min-width:0;
+  min-height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:9px;
+  background:#09121c;
+  color:#d7e4f2;
+  font-size:11px;
+  font-weight:1000;
+}
+
+.ne-mobileMenuMacroLine strong{
+  color:#121823;
+  background:#f5d76e;
+}
+
+.ne-mobileMealsTop{
+  align-items:center;
+  padding:2px 1px;
+}
+
+.ne-mobileMealSummaries{
+  display:grid;
+  gap:8px;
+}
+
+.ne-mobileMealSummary{
+  display:grid;
+  gap:9px;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+.ne-mobileMealSummary.is-actionPending{
+  border-color:rgba(245,215,110,.42);
+  opacity:.7;
+  pointer-events:none;
+}
+
+.ne-mobileMealSummaryTop{
+  align-items:center;
+}
+
+.ne-mobileMealSummary h4{
+  margin-top:3px;
+  font-size:16px;
+}
+
+.ne-mobileMealCompare{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+
+.ne-mobileMealCompare span{
+  display:grid;
+  gap:4px;
+  border-radius:10px;
+  background:#09121c;
+  padding:8px;
+}
+
+.ne-mobileMealCompare strong{
+  color:#e8eef6;
+  font-size:11px;
+  line-height:1.25;
+  text-transform:none;
+}
+
+.ne-mobileMealSummaryBottom{
+  align-items:center;
+}
+
+.ne-mobileMealSummaryActions{
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+
+.ne-mobileMealSummaryActions .nf-btn{
+  min-height:34px;
+}
+
+.ne-mobileMealSummaryActions .nf-iconBtn{
+  width:34px;
+  height:34px;
+}
+
+.ne-mobileMenuActions{
+  position:sticky;
+  bottom:0;
+  z-index:4;
+  display:grid;
+  grid-template-columns:.8fr 1.2fr;
+  gap:8px;
+  border-top:1px solid rgba(255,255,255,.07);
+  background:#0c121b;
+  padding:10px 0 2px;
+}
+
+.ne-mobileMenuActions .nf-btn{
+  width:100%;
+}
+
+.ne-mobileMealDrawerBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:110;
+  display:flex;
+  background:#0a111a;
+}
+
+.ne-mobileMealDrawer{
+  width:100%;
+  min-height:100dvh;
+  max-height:100dvh;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  overflow:hidden;
+  background:#0c121b;
+  color:#f8fafc;
+}
+
+.ne-mobileMealDrawerHead{
+  align-items:center;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  background:#101824;
+  padding:10px 12px;
+}
+
+.ne-mobileMealDrawerHead h3{
+  margin-top:3px;
+  font-size:17px;
+}
+
+.ne-mobileMealDrawerBody,
+.ne-mobileMenuSettingsBody{
+  min-height:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:10px;
+}
+
+.ne-mobileMealDrawerBody .ne-mealBlock{
+  border:0;
+  border-radius:0;
+  background:#0c121b;
+  box-shadow:none;
+  padding:0;
+}
+
+.ne-mobileMenuSettingsBody{
+  display:grid;
+  gap:10px;
+}
+
 .ne-itemGrid{
   display:grid;
   grid-template-columns:72px 78px repeat(4, minmax(64px,1fr)) auto auto auto;
@@ -2911,9 +3156,19 @@ button.ne-quantityStateBadge.manual:focus-visible{
   .ne-item .nf-iconBtn,
   .ne-item .ne-quantityStateBadge,
   .ne-mobileQuantityTrigger,
-  .ne-quantityQuickActions .nf-btn{
+  .ne-quantityQuickActions .nf-btn,
+  .ne-mobileMealSummary,
+  .ne-mobileMealSummary .nf-btn,
+  .ne-mobileMealSummary .nf-iconBtn,
+  .ne-mobileMealDrawer .nf-btn,
+  .ne-mobileMealDrawer .nf-iconBtn{
     transition:none;
     touch-action:manipulation;
+  }
+
+  .ne-mobileMealDrawerBody .ne-mealBlock{
+    content-visibility:visible;
+    contain-intrinsic-size:none;
   }
 
   .ne-mobileQuantityTrigger{
@@ -3728,7 +3983,10 @@ button.ne-quantityStateBadge.manual:focus-visible{
   .ne-mobileQuantityTrigger,
   .ne-quantityQuickActions,
   .ne-picker,
-  .ne-quantityPicker {
+  .ne-quantityPicker,
+  .ne-mobileMenuOverview,
+  .ne-mobileMealSummary,
+  .ne-mobileMealDrawer {
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -3744,10 +4002,17 @@ button.ne-quantityStateBadge.manual:focus-visible{
     contain: layout paint;
   }
 
+  .ne-mobileMealDrawerBody .ne-mealBlock {
+    contain: none;
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+  }
+
   .nf-btn,
   .nf-iconBtn,
   .ne-quantityStateBadge,
-  .ne-mobileQuantityTrigger {
+  .ne-mobileQuantityTrigger,
+  .ne-mobileMealSummary {
     touch-action: manipulation;
   }
 
