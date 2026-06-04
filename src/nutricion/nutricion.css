@@ -3715,3 +3715,44 @@ button.ne-quantityStateBadge.manual:focus-visible{
     font-size:23px;
   }
 }
+
+
+/* Performance mobile: reduce paint cost in the nutrition editor */
+@media (max-width: 720px) {
+  .ne-shell,
+  .ne-mealBlock,
+  .ne-item,
+  .ne-mealGoalPanel,
+  .ne-itemNumbers,
+  .ne-inlineQuantity,
+  .ne-mobileQuantityTrigger,
+  .ne-quantityQuickActions,
+  .ne-picker,
+  .ne-quantityPicker {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .ne-mealBlock {
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 520px;
+  }
+
+  .ne-item {
+    contain: layout paint;
+  }
+
+  .nf-btn,
+  .nf-iconBtn,
+  .ne-quantityStateBadge,
+  .ne-mobileQuantityTrigger {
+    touch-action: manipulation;
+  }
+
+  .nf-btn.is-immediateBusy {
+    opacity: .78;
+    pointer-events: none;
+  }
+}

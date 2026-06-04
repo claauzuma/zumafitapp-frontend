@@ -2192,30 +2192,66 @@ const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCa
   loading = false,
   onCalculate,
 }) {
-  const [starting, setStarting] = useState(false);
-  const busy = loading || starting;
+  const buttonRef = useRef(null);
+  const labelRef = useRef(null);
+  const runningRef = useRef(false);
+
+  const setVisualBusy = useCallback((nextBusy) => {
+    runningRef.current = nextBusy;
+
+    if (buttonRef.current) {
+      buttonRef.current.disabled = nextBusy;
+      buttonRef.current.setAttribute("aria-busy", nextBusy ? "true" : "false");
+      buttonRef.current.classList.toggle("is-immediateBusy", nextBusy);
+    }
+
+    if (labelRef.current) {
+      labelRef.current.textContent = nextBusy ? "Calculando..." : "Calcular cantidades";
+    }
+  }, []);
+
+  useEffect(() => {
+    setVisualBusy(Boolean(loading));
+  }, [loading, setVisualBusy]);
+
+  const startVisualFeedback = useCallback(() => {
+    if (runningRef.current || loading) return;
+    // Feedback visual fuera del render pesado del editor.
+    // En Android esto se percibe antes que esperar a que React reconcilie todo el bloque.
+    setVisualBusy(true);
+  }, [loading, setVisualBusy]);
 
   const handleClick = useCallback(async () => {
-    if (busy) return;
-    flushSync(() => setStarting(true));
+    if (runningRef.current && !loading) {
+      // Ya se marcó busy en pointerdown, seguimos con el request.
+    } else if (runningRef.current || loading) {
+      return;
+    } else {
+      setVisualBusy(true);
+    }
+
     try {
-      await waitForNextPaint();
+      // Un solo yield corto para dejar pintar el texto. No doble requestAnimationFrame.
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
       await onCalculate?.(mealIndex);
     } finally {
-      setStarting(false);
+      setVisualBusy(false);
     }
-  }, [busy, mealIndex, onCalculate]);
+  }, [loading, mealIndex, onCalculate, setVisualBusy]);
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       className="nf-btn ghost mini"
+      onPointerDown={startVisualFeedback}
+      onTouchStart={startVisualFeedback}
       onClick={handleClick}
-      disabled={busy}
-      aria-busy={busy}
+      disabled={loading}
+      aria-busy={loading}
     >
       <Sparkles size={16} strokeWidth={2.3} aria-hidden="true" />
-      {busy ? "Calculando..." : "Calcular cantidades"}
+      <span ref={labelRef}>{loading ? "Calculando..." : "Calcular cantidades"}</span>
     </button>
   );
 });
@@ -2690,9 +2726,8 @@ const BufferedField = React.memo(function BufferedField({
   placeholder = "",
 }) {
   const externalValue = String(value ?? "");
-  const [localValue, setLocalValue] = useState(externalValue);
+  const inputRef = useRef(null);
   const focusedRef = useRef(false);
-  const timerRef = useRef(null);
   const onCommitRef = useRef(onCommit);
   const externalValueRef = useRef(externalValue);
   const lastCommittedRef = useRef(null);
@@ -2702,69 +2737,56 @@ const BufferedField = React.memo(function BufferedField({
   externalValueRef.current = externalValue;
 
   useEffect(() => {
-    if (!focusedRef.current) {
-      setLocalValue(externalValue);
+    if (!focusedRef.current && inputRef.current && inputRef.current.value !== externalValue) {
+      inputRef.current.value = externalValue;
       lastCommittedRef.current = null;
     }
   }, [externalValue]);
 
-  useEffect(() => () => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-  }, []);
-
-  const clearCommit = useCallback(() => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }, []);
-
   const commit = useCallback((nextValue) => {
-    clearCommit();
     const normalized = String(nextValue ?? "");
     if (normalized === externalValueRef.current || normalized === lastCommittedRef.current) return;
     lastCommittedRef.current = normalized;
     if (fieldKey !== undefined) onCommitRef.current?.(fieldKey, normalized);
     else onCommitRef.current?.(normalized);
-  }, [clearCommit, fieldKey]);
-
-  const scheduleCommit = useCallback((nextValue) => {
-    clearCommit();
-    timerRef.current = window.setTimeout(() => commit(nextValue), BUFFERED_FIELD_COMMIT_DELAY);
-  }, [clearCommit, commit]);
+  }, [fieldKey]);
 
   return (
     <label className="ne-field">
       <span>{label}</span>
       <input
-        value={localValue}
+        ref={inputRef}
+        defaultValue={externalValue}
         onFocus={() => {
           focusedRef.current = true;
         }}
         onChange={(event) => {
-          const nextValue = event.target.value;
-          setLocalValue(nextValue);
-          scheduleCommit(nextValue);
+          // Importante: no setState acá.
+          // Escribir queda en el input nativo y no re-renderiza React por tecla.
+          inputRef.current = event.currentTarget;
         }}
-        onBlur={() => {
+        onBlur={(event) => {
           focusedRef.current = false;
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;
             return;
           }
-          commit(localValue);
+          commit(event.currentTarget.value);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
-            commit(localValue);
+            commit(event.currentTarget.value);
             event.currentTarget.blur();
           }
           if (event.key === "Escape") {
-            clearCommit();
             skipBlurCommitRef.current = true;
-            setLocalValue(externalValueRef.current);
+            event.currentTarget.value = externalValueRef.current;
             event.currentTarget.blur();
           }
         }}
         placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
       />
     </label>
   );
@@ -2778,9 +2800,8 @@ const BufferedTextarea = React.memo(function BufferedTextarea({
   placeholder = "",
 }) {
   const externalValue = String(value ?? "");
-  const [localValue, setLocalValue] = useState(externalValue);
+  const textareaRef = useRef(null);
   const focusedRef = useRef(false);
-  const timerRef = useRef(null);
   const onCommitRef = useRef(onCommit);
   const externalValueRef = useRef(externalValue);
   const lastCommittedRef = useRef(null);
@@ -2790,61 +2811,51 @@ const BufferedTextarea = React.memo(function BufferedTextarea({
   externalValueRef.current = externalValue;
 
   useEffect(() => {
-    if (!focusedRef.current) {
-      setLocalValue(externalValue);
+    if (!focusedRef.current && textareaRef.current && textareaRef.current.value !== externalValue) {
+      textareaRef.current.value = externalValue;
       lastCommittedRef.current = null;
     }
   }, [externalValue]);
 
-  useEffect(() => () => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-  }, []);
-
-  const clearCommit = useCallback(() => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }, []);
-
   const commit = useCallback((nextValue) => {
-    clearCommit();
     const normalized = String(nextValue ?? "");
     if (normalized === externalValueRef.current || normalized === lastCommittedRef.current) return;
     lastCommittedRef.current = normalized;
     if (fieldKey !== undefined) onCommitRef.current?.(fieldKey, normalized);
     else onCommitRef.current?.(normalized);
-  }, [clearCommit, fieldKey]);
+  }, [fieldKey]);
 
   return (
     <label className="ne-field">
       <span>{label}</span>
       <textarea
-        value={localValue}
+        ref={textareaRef}
+        defaultValue={externalValue}
         onFocus={() => {
           focusedRef.current = true;
         }}
         onChange={(event) => {
-          const nextValue = event.target.value;
-          setLocalValue(nextValue);
-          clearCommit();
-          timerRef.current = window.setTimeout(() => commit(nextValue), BUFFERED_FIELD_COMMIT_DELAY);
+          // No setState por tecla.
+          textareaRef.current = event.currentTarget;
         }}
-        onBlur={() => {
+        onBlur={(event) => {
           focusedRef.current = false;
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;
             return;
           }
-          commit(localValue);
+          commit(event.currentTarget.value);
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
-            clearCommit();
             skipBlurCommitRef.current = true;
-            setLocalValue(externalValueRef.current);
+            event.currentTarget.value = externalValueRef.current;
             event.currentTarget.blur();
           }
         }}
         placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
       />
     </label>
   );
