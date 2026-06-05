@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   Apple,
   Dumbbell,
+  Database,
   Home,
   LoaderCircle,
   LogOut,
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: "/admin/alimentos", label: "Alimentos", icon: Apple },
   { to: "/admin/rutinas", label: "Rutinas", icon: Dumbbell },
   { to: "/admin/coach-planes", label: "Planes", icon: SlidersHorizontal },
+  { to: "/admin/sistema", label: "Sistema", icon: Database },
 ];
 
 export default function AdminNavBar() {

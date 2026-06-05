@@ -1,0 +1,534 @@
+.wmp {
+  display: grid;
+  gap: 18px;
+}
+
+.wmp-hero,
+.wmp-focus,
+.wmp-dayCard,
+.wmp-pickerCard,
+.wmp-detailSummary,
+.wmp-mealCard {
+  border: 1px solid rgba(135, 175, 225, 0.16);
+  background: linear-gradient(180deg, rgba(18, 28, 42, 0.98), rgba(9, 15, 24, 0.98));
+  border-radius: 18px;
+}
+
+.wmp-hero,
+.wmp-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+}
+
+.wmp-kicker,
+.wmp-source,
+.wmp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+}
+
+.wmp-kicker {
+  color: #f5d76e;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wmp-hero h2,
+.wmp-hero p,
+.wmp-focus strong,
+.wmp-focus span,
+.wmp-focus small,
+.wmp-drawerHead h3,
+.wmp-drawerHead p {
+  margin: 0;
+}
+
+.wmp-hero h2 {
+  margin-top: 6px;
+  color: #f6f8fb;
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1;
+}
+
+.wmp-hero p,
+.wmp-focus small,
+.wmp-drawerHead p,
+.wmp-pickerCard p,
+.wmp-pickerCard small,
+.wmp-detailSummary p,
+.wmp-detailTotals small {
+  color: #adbac9;
+  font-weight: 750;
+}
+
+.wmp-weekSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wmp-dayCard {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.wmp-dayCard:hover,
+.wmp-dayCard.selected {
+  border-color: rgba(245, 215, 110, 0.38);
+}
+
+.wmp-dayCard:hover {
+  transform: translateY(-1px);
+}
+
+.wmp-dayCard header,
+.wmp-targetLine,
+.wmp-macroLine,
+.wmp-pickerCard,
+.wmp-detailSummary header,
+.wmp-mealCard header,
+.wmp-foodRows div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wmp-dayCard header > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.wmp-dayCard strong,
+.wmp-menuName {
+  color: #f5f7fa;
+  font-weight: 950;
+}
+
+.wmp-source {
+  min-height: 24px;
+  border: 1px solid rgba(135, 175, 225, 0.24);
+  border-radius: 999px;
+  color: #c5d1df;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.wmp-source.custom {
+  border-color: rgba(245, 215, 110, 0.34);
+  color: #ffeaa1;
+  background: rgba(245, 215, 110, 0.08);
+}
+
+.wmp-status {
+  min-height: 27px;
+  border-radius: 999px;
+  border: 1px solid rgba(135, 175, 225, 0.2);
+  padding: 0 10px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.wmp-status.good {
+  color: #a9efca;
+  border-color: rgba(85, 210, 142, 0.36);
+  background: rgba(85, 210, 142, 0.09);
+}
+
+.wmp-status.warning {
+  color: #ffd59a;
+  border-color: rgba(255, 175, 86, 0.36);
+  background: rgba(255, 175, 86, 0.1);
+}
+
+.wmp-status.review {
+  color: #d8e6ff;
+  border-color: rgba(112, 166, 255, 0.34);
+  background: rgba(112, 166, 255, 0.09);
+}
+
+.wmp-status.empty {
+  color: #b3bfcc;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.wmp-menuName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+}
+
+.wmp-targetLine,
+.wmp-macroLine {
+  color: #b7c3d2;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.wmp-bar {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wmp-bar span {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #74a7ff, #f5d76e);
+}
+
+.wmp-bar.good span {
+  background: linear-gradient(90deg, #5dd49a, #f5d76e);
+}
+
+.wmp-bar.low span {
+  background: linear-gradient(90deg, #5f8df5, #f5d76e);
+}
+
+.wmp-bar.review span {
+  background: linear-gradient(90deg, #8fb4ff, #d8bf62);
+}
+
+.wmp-bar.empty span {
+  width: 0 !important;
+}
+
+.wmp-bar.overflow span {
+  background: linear-gradient(90deg, #f5d76e, #ff8c6b);
+}
+
+.wmp-cardActions,
+.wmp-focusActions,
+.wmp-detailActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wmp-iconBtn,
+.wmp-btn,
+.wmp-close {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #080d14;
+  color: #eef4fb;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+}
+
+.wmp-iconBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wmp-iconBtn.danger,
+.wmp-btn.danger {
+  color: #ffd0d0;
+  border-color: rgba(255, 100, 100, 0.28);
+}
+
+.wmp-iconBtn:disabled,
+.wmp-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wmp-btn {
+  min-height: 42px;
+  border-radius: 13px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wmp-btn.gold {
+  color: #121212;
+  border-color: rgba(245, 215, 110, 0.6);
+  background: linear-gradient(135deg, #f5d76e, #d8b839);
+}
+
+.wmp-btn.ghost {
+  color: #ffe89a;
+  background: rgba(245, 215, 110, 0.08);
+  border-color: rgba(245, 215, 110, 0.26);
+}
+
+.wmp-focus > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.wmp-focus span {
+  color: #9fb0c4;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.wmp-focus strong {
+  color: #fff;
+  font-size: 22px;
+}
+
+.wmp-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.wmp-drawerPanel {
+  width: min(620px, 100vw);
+  height: 100dvh;
+  overflow: auto;
+  border-left: 1px solid rgba(245, 215, 110, 0.18);
+  background: #0b111b;
+  color: #f3f6fb;
+  padding: 18px;
+  display: grid;
+  align-content: start;
+  gap: 15px;
+}
+
+.wmp-drawerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wmp-drawerHead span {
+  color: #f5d76e;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.wmp-drawerHead h3 {
+  margin-top: 5px;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.wmp-close {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wmp-pickerSearch {
+  min-height: 52px;
+  border: 1px solid rgba(135, 175, 225, 0.18);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #aeb9c7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.wmp-pickerSearch input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-weight: 850;
+}
+
+.wmp-pickerList,
+.wmp-mealList {
+  display: grid;
+  gap: 10px;
+}
+
+.wmp-pickerCard {
+  padding: 13px;
+}
+
+.wmp-pickerCard > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.wmp-pickerCard strong {
+  overflow-wrap: anywhere;
+  font-size: 19px;
+}
+
+.wmp-pickerCard p,
+.wmp-pickerCard small {
+  margin: 0;
+}
+
+.wmp-detailSummary {
+  align-items: stretch;
+  padding: 15px;
+}
+
+.wmp-detailSummary h4 {
+  margin: 7px 0 4px;
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.wmp-detailTotals {
+  min-width: 170px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 14px;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+}
+
+.wmp-detailTotals strong {
+  color: #f5d76e;
+  font-size: 25px;
+}
+
+.wmp-mealCard {
+  padding: 13px;
+}
+
+.wmp-mealCard header {
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.wmp-mealCard header strong {
+  font-size: 18px;
+}
+
+.wmp-mealCard header span,
+.wmp-foodRows small,
+.wmp-foodEmpty {
+  color: #aeb9c7;
+  font-weight: 800;
+}
+
+.wmp-foodRows {
+  display: grid;
+}
+
+.wmp-foodRows div {
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.wmp-foodRows div:last-child {
+  border-bottom: 0;
+}
+
+.wmp-foodRows span {
+  font-weight: 950;
+}
+
+.wmp-detailEmpty,
+.wmp-empty {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #c5d1df;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+@media (max-width: 980px) {
+  .wmp-weekSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .wmp-hero,
+  .wmp-focus,
+  .wmp-pickerCard,
+  .wmp-detailSummary,
+  .wmp-mealCard header,
+  .wmp-foodRows div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wmp-weekSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .wmp-hero {
+    padding: 13px;
+  }
+
+  .wmp-dayCard {
+    border-radius: 16px;
+    padding: 13px;
+  }
+
+  .wmp-cardActions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .wmp-iconBtn {
+    width: 100%;
+  }
+
+  .wmp-focusActions,
+  .wmp-detailActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .wmp-drawerPanel {
+    width: 100vw;
+    border-left: 0;
+    padding: 14px;
+  }
+
+  .wmp-drawerHead h3 {
+    font-size: 25px;
+  }
+
+  .wmp-detailTotals {
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-left: 0;
+    padding-top: 12px;
+  }
+}

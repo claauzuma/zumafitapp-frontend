@@ -209,7 +209,7 @@
 
 .ma-dayCard{
   min-width:0;
-  min-height:106px;
+  min-height:146px;
   border:1px solid rgba(120,170,230,.14);
   background:linear-gradient(180deg, rgba(9,17,25,.98), rgba(7,11,17,.98));
   color:#edf2f7;
@@ -218,6 +218,26 @@
   text-align:left;
   cursor:pointer;
   transition:.16s ease;
+}
+
+.ma-dayNameLine{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+}
+
+.ma-dayNameLine em{
+  flex:0 0 auto;
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  border-radius:999px;
+  padding:3px 6px;
+  font-size:9px;
+  font-style:normal;
+  font-weight:1000;
 }
 
 .ma-dayCard span,
@@ -249,6 +269,13 @@
   line-height:1.25;
 }
 
+.ma-dayCard .ma-dayActual{
+  margin-top:9px;
+  padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.07);
+  color:#7f91a6;
+}
+
 .ma-dayCard.active{
   border-color:rgba(245,215,110,.42);
   box-shadow:0 0 0 3px rgba(245,215,110,.08);
@@ -265,6 +292,35 @@
   background:linear-gradient(180deg, rgba(8,15,22,.98), rgba(6,10,15,.98));
   border-radius:16px;
   padding:14px;
+}
+
+.ma-dayTargetLine{
+  margin-top:8px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  color:#c6d2df;
+}
+
+.ma-dayTargetLine span{
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.07);
+  color:#f5d76e;
+  border-radius:999px;
+  padding:4px 8px;
+  font-size:10px;
+  font-weight:1000;
+}
+
+.ma-dayTargetLine strong{
+  color:#fff1ae;
+  font-weight:1000;
+}
+
+.ma-dayTargetLine small{
+  color:#b7c4d3;
+  font-weight:850;
 }
 
 .ma-sectionHead{
@@ -642,7 +698,7 @@
   }
 
   .ma-dayCard{
-    min-height:84px;
+    min-height:0;
   }
 
   .ma-miniMacros{

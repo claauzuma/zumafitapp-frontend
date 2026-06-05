@@ -20,6 +20,7 @@ import {
 
 import { useAlimentos } from "../nutricion/nutricionQueries.js";
 import { formatNumber } from "../nutricion/nutricionUtils.js";
+import { resolveNutritionTarget } from "../nutricion/dailyNutritionTargets.js";
 import { invalidateClientMenus, invalidateMenusLibrary, queryClient, queryKeys } from "../queryClient.js";
 import {
   deleteClientMenu,
@@ -42,7 +43,7 @@ import "./menusAssigned.css";
 
 const WEEK_DAYS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
 
-export default function AssignedMenuEditor({ clientId, client, access, onToast }) {
+export default function AssignedMenuEditor({ clientId, client, access, nutritionTargets, onToast }) {
   const activeMenuQuery = useClientActiveMenu(clientId);
   const historyQuery = useClientMenus(clientId, { limit: 20 });
   const foodsQuery = useAlimentos({ search: "" });
@@ -64,7 +65,7 @@ export default function AssignedMenuEditor({ clientId, client, access, onToast }
     setEditing(null);
   }, [activeMenu]);
 
-  const days = useMemo(() => buildWeekDays(draft), [draft]);
+  const days = useMemo(() => buildWeekDays(draft, nutritionTargets), [draft, nutritionTargets]);
   const activeDay = days[selectedDay] || days[0] || null;
   const diff = useMemo(() => (draft ? macroDiff(draft.totalesActuales || {}, draft) : null), [draft]);
 
@@ -445,9 +446,17 @@ function MenuSummary({
             key={day.key}
             onClick={() => onSelectDay(index)}
           >
-            <span>{day.name}</span>
-            <strong>{day.available ? `${formatNumber(day.totals.kcal, 0)} kcal` : day.status}</strong>
-            <small>{day.available ? `P ${formatNumber(day.totals.proteina, 0)} · C ${formatNumber(day.totals.carbs, 0)} · G ${formatNumber(day.totals.grasas, 0)}` : "Listo para estructura semanal"}</small>
+            <div className="ma-dayNameLine">
+              <span>{day.name}</span>
+              <em>{day.target.customized ? "Personalizado" : "General"}</em>
+            </div>
+            <strong>Meta {formatTargetKcal(day.target.kcal)}</strong>
+            <small>{formatTargetMacros(day.target)}</small>
+            <small className="ma-dayActual">
+              {day.available
+                ? `Menú: ${formatNumber(day.totals.kcal, 0)} kcal · P ${formatNumber(day.totals.proteina, 0)}`
+                : "Sin menú propio cargado"}
+            </small>
           </button>
         ))}
       </div>
@@ -466,7 +475,12 @@ function DayPreview({ day, onOpenEditor, onOpenPreview }) {
         <div>
           <span className="ma-pill">{day.status}</span>
           <h4>{day.name}</h4>
-          <p>{formatNumber(day.totals.kcal, 0)} kcal · P {formatNumber(day.totals.proteina, 0)} · C {formatNumber(day.totals.carbs, 0)} · G {formatNumber(day.totals.grasas, 0)}</p>
+          <div className="ma-dayTargetLine">
+            <span>{day.target.customized ? "Meta personalizada" : "Meta general heredada"}</span>
+            <strong>{formatTargetKcal(day.target.kcal)}</strong>
+            <small>{formatTargetMacros(day.target)}</small>
+          </div>
+          <p>Menú cargado: {formatNumber(day.totals.kcal, 0)} kcal · P {formatNumber(day.totals.proteina, 0)} · C {formatNumber(day.totals.carbs, 0)} · G {formatNumber(day.totals.grasas, 0)}</p>
         </div>
         <div className="ma-actions">
           <button className="ma-btn" type="button" onClick={onOpenPreview}>
@@ -895,7 +909,7 @@ function EquivalentsModal({ data, item, onPick, onClose }) {
   );
 }
 
-function buildWeekDays(menu) {
+function buildWeekDays(menu, nutritionTargets = {}) {
   if (!menu) return [];
   const current = {
     key: "actual",
@@ -905,6 +919,7 @@ function buildWeekDays(menu) {
     real: !Array.isArray(menu.dias),
     comidas: menu.comidas || [],
     totals: menu.totalesActuales || totalsForMeals(menu.comidas || []),
+    target: resolveNutritionTarget(nutritionTargets, dayNameFromDate(menu.fechaInicio) || WEEK_DAYS[0]),
   };
 
   const hasDays = Array.isArray(menu.dias) && menu.dias.length;
@@ -919,6 +934,7 @@ function buildWeekDays(menu) {
         real: true,
         comidas,
         totals: day.totales || totalsForMeals(comidas),
+        target: resolveNutritionTarget(nutritionTargets, day.nombre || WEEK_DAYS[index]),
       };
     });
   }
@@ -933,6 +949,7 @@ function buildWeekDays(menu) {
       real: false,
       comidas: [],
       totals: { kcal: 0, proteina: 0, carbs: 0, grasas: 0 },
+      target: resolveNutritionTarget(nutritionTargets, name),
     };
   });
 }
@@ -977,6 +994,20 @@ function formatAmount(item = {}) {
 
 function macroSentence(macros = {}) {
   return `${formatNumber(macros.kcal, 0)} kcal · P ${formatNumber(macros.proteina, 1)} · C ${formatNumber(macros.carbs, 1)} · G ${formatNumber(macros.grasas, 1)}`;
+}
+
+function formatTargetKcal(value) {
+  return value === "" || value === null || value === undefined
+    ? "sin kcal definida"
+    : `${formatNumber(value, 0)} kcal`;
+}
+
+function formatTargetMacros(target = {}) {
+  return `P ${formatOptionalTarget(target.p)} · C ${formatOptionalTarget(target.c)} · G ${formatOptionalTarget(target.g)}`;
+}
+
+function formatOptionalTarget(value) {
+  return value === "" || value === null || value === undefined ? "-" : `${formatNumber(value, 0)} g`;
 }
 
 function clientName(client) {

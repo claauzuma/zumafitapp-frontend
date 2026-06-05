@@ -50,6 +50,7 @@ import AdminComidas from "./admin/AdminComidas.jsx";
 import AdminAlimentos from "./admin/AdminAlimentos.jsx";
 import AdminRutinas from "./admin/AdminRutinas.jsx";
 import AdminCoachPlanes from "./admin/AdminCoachPlanes.jsx";
+import AdminSystem from "./admin/AdminSystem.jsx";
 
 export default function App() {
   return (
@@ -112,6 +113,7 @@ export default function App() {
         <Route path="alimentos" element={<AdminAlimentos />} />
         <Route path="rutinas" element={<AdminRutinas />} />
         <Route path="coach-planes" element={<AdminCoachPlanes />} />
+        <Route path="sistema" element={<AdminSystem />} />
       </Route>
 
       {/* ✅ PROFESIONAL */}

@@ -9,10 +9,11 @@ import {
   getDemoMenusByRange,
 } from "./nutricionDemo.js";
 
-export function useAlimentos(filters = {}) {
+export function useAlimentos(filters = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.alimentos(filters),
     queryFn: () => listAlimentos(filters),
+    enabled: options.enabled !== false,
     staleTime: STALE_TIMES.alimentos,
     placeholderData: (previous) => previous,
   });

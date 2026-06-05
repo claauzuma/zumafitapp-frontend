@@ -459,16 +459,17 @@ export function MenuCreationFlow({
   saving = false,
   allowSystemVisibility = true,
   canUseSuggestions = true,
+  guidedDefaults = null,
 }) {
   const [step, setStep] = useState("choice");
   const [initialMenu, setInitialMenu] = useState(null);
   const [notice, setNotice] = useState("");
   const [guided, setGuided] = useState(() => ({
-    nombre: "",
-    kcal: 1800,
-    proteina: 140,
-    carbs: "",
-    grasas: "",
+    nombre: guidedDefaults?.nombre || "",
+    kcal: guidedDefaults?.kcal ?? 1800,
+    proteina: guidedDefaults?.proteina ?? guidedDefaults?.protein ?? 140,
+    carbs: guidedDefaults?.carbs ?? "",
+    grasas: guidedDefaults?.grasas ?? guidedDefaults?.fat ?? "",
     mealCount: 4,
     customMealCount: 4,
     distributionMode: "auto",
@@ -504,7 +505,16 @@ export function MenuCreationFlow({
   }, [autoSlots, guided.distributionMode, guided.kcal, guided.percents, guided.proteina]);
 
   function openManualEditor() {
-    setInitialMenu(createEmptyMenuDraft());
+    setInitialMenu({
+      ...createEmptyMenuDraft(),
+      nombre: guidedDefaults?.nombre || "",
+      kcalObjetivo: guidedDefaults?.kcal ?? 0,
+      macrosObjetivo: {
+        proteina: guidedDefaults?.proteina ?? guidedDefaults?.protein ?? 0,
+        carbs: guidedDefaults?.carbs ?? 0,
+        grasas: guidedDefaults?.grasas ?? guidedDefaults?.fat ?? 0,
+      },
+    });
     setNotice("");
     setStep("editor");
   }
@@ -1059,6 +1069,18 @@ export function MenuBaseEditor({
           pendingResult: null,
         },
       }));
+    } finally {
+      setQuantityQuickState((current) => {
+        const mealState = current[mealIndex];
+        if (!mealState?.loading) return current;
+        return {
+          ...current,
+          [mealIndex]: {
+            ...mealState,
+            loading: false,
+          },
+        };
+      });
     }
   }, [applyQuantityGeneration]);
 
@@ -2631,21 +2653,11 @@ const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCa
     setVisualBusy(Boolean(loading));
   }, [loading, setVisualBusy]);
 
-  const startVisualFeedback = useCallback(() => {
-    if (runningRef.current || loading) return;
-    // Feedback visual fuera del render pesado del editor.
-    // En Android esto se percibe antes que esperar a que React reconcilie todo el bloque.
-    setVisualBusy(true);
-  }, [loading, setVisualBusy]);
-
   const handleClick = useCallback(async () => {
-    if (runningRef.current && !loading) {
-      // Ya se marcó busy en pointerdown, seguimos con el request.
-    } else if (runningRef.current || loading) {
-      return;
-    } else {
-      setVisualBusy(true);
-    }
+    if (runningRef.current || loading) return;
+    // El feedback se activa dentro del click. Deshabilitar durante pointerdown
+    // cancela el click posterior en algunos navegadores Android.
+    setVisualBusy(true);
 
     try {
       // Un solo yield corto para dejar pintar el texto. No doble requestAnimationFrame.
@@ -2661,8 +2673,6 @@ const ImmediateQuantityCalculateButton = React.memo(function ImmediateQuantityCa
       ref={buttonRef}
       type="button"
       className="nf-btn ghost mini"
-      onPointerDown={startVisualFeedback}
-      onTouchStart={startVisualFeedback}
       onClick={handleClick}
       disabled={loading}
       aria-busy={loading}

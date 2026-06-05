@@ -9,10 +9,12 @@ export function Avatar({ user, size = "" }) {
   );
 }
 
-export function Metric({ emoji, label, value }) {
+export function Metric({ emoji, icon: Icon, label, value }) {
   return (
     <div className="prof-metric">
-      <div className="prof-metricIcon" aria-hidden="true">{emoji}</div>
+      <div className="prof-metricIcon" aria-hidden="true">
+        {Icon ? <Icon size={18} strokeWidth={2.3} /> : emoji}
+      </div>
       <div className="prof-metricLabel">{label}</div>
       <div className="prof-metricValue">{value || "-"}</div>
     </div>
