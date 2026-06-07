@@ -38,10 +38,10 @@ export default function ProfesionalLayout({ me: meProp }) {
     try {
       await apiFetch("/api/usuarios/auth/logout", { method: "POST" });
     } catch (error) {
-      console.warn("No se pudo cerrar sesion en el servidor:", error);
+      console.warn("No se pudo cerrar sesión en el servidor:", error);
       setToast({
         type: "error",
-        message: error?.message || "No se pudo cerrar sesion. Proba de nuevo.",
+        message: error?.message || "No se pudo cerrar sesión. Probá de nuevo.",
       });
       setLoggingOut(false);
       return;
@@ -56,12 +56,36 @@ export default function ProfesionalLayout({ me: meProp }) {
     <>
       <ImpersonationBanner />
       <div className="pl-wrap">
+        <header className="pl-topBar">
+          <div className="pl-topInner">
+            <div className="pl-topBrand">
+              <BrandBlock compact />
+              <div className="pl-plan">{plan}</div>
+            </div>
+            <ProfesionalNav items={navItems} className="pl-topNav" />
+            <button
+              type="button"
+              className="pl-logout top"
+              onClick={logout}
+              disabled={loggingOut || isImpersonating()}
+              title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesión"}
+            >
+              {loggingOut ? (
+                <LoaderCircle className="pl-spin" size={18} strokeWidth={2.2} aria-hidden="true" />
+              ) : (
+                <LogOut size={18} strokeWidth={2.2} aria-hidden="true" />
+              )}
+              <span>{loggingOut ? "Cerrando sesión..." : "Salir"}</span>
+            </button>
+          </div>
+        </header>
+
         <header className="pl-mobileBar">
           <BrandBlock compact />
           <button
             type="button"
             className="pl-menuBtn"
-            aria-label="Abrir menu profesional"
+            aria-label="Abrir menú profesional"
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen(true)}
           >
@@ -81,7 +105,7 @@ export default function ProfesionalLayout({ me: meProp }) {
             className="pl-logout"
             onClick={logout}
             disabled={loggingOut || isImpersonating()}
-            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
+            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesión"}
           >
             {loggingOut ? (
               <LoaderCircle className="pl-spin" size={18} strokeWidth={2.2} aria-hidden="true" />
@@ -96,7 +120,7 @@ export default function ProfesionalLayout({ me: meProp }) {
           <button
             type="button"
             className="pl-backdrop"
-            aria-label="Cerrar menu"
+            aria-label="Cerrar menú"
             onClick={() => setMobileOpen(false)}
           />
         )}
@@ -107,7 +131,7 @@ export default function ProfesionalLayout({ me: meProp }) {
             <button
               type="button"
               className="pl-drawerClose"
-              aria-label="Cerrar menu"
+              aria-label="Cerrar menú"
               onClick={() => setMobileOpen(false)}
             >
               <X size={19} strokeWidth={2.3} aria-hidden="true" />
@@ -123,7 +147,7 @@ export default function ProfesionalLayout({ me: meProp }) {
             className="pl-logout drawer"
             onClick={logout}
             disabled={loggingOut || isImpersonating()}
-            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesion"}
+            title={isImpersonating() ? "Modo solo lectura" : "Cerrar sesión"}
           >
             {loggingOut ? (
               <LoaderCircle className="pl-spin" size={18} strokeWidth={2.2} aria-hidden="true" />
@@ -159,7 +183,7 @@ function BrandBlock({ compact = false }) {
 
 function ProfesionalNav({ items, className, onNavigate }) {
   return (
-    <nav className={className} aria-label="Navegacion profesional">
+    <nav className={className} aria-label="Navegación profesional">
       {items.map((item) => {
         const Icon = item.icon;
         return (
@@ -196,7 +220,7 @@ function buildNavItems(me) {
   ];
 
   if (canRoutines) items.push({ to: "/profesional/rutinas", label: "Rutinas", icon: Dumbbell });
-  if (canMenus) items.push({ to: "/profesional/menus", label: "Menus", icon: Utensils });
+  if (canMenus) items.push({ to: "/profesional/menus", label: "Menús", icon: Utensils });
 
   items.push({ to: "/profesional/progreso", label: "Progreso", icon: Activity });
   items.push({ to: "/profesional/ajustes", label: "Ajustes", icon: Settings });
@@ -223,21 +247,50 @@ const styles = `
   --pl-gold:#f5d76e;
   min-height:100dvh;
   display:grid;
-  grid-template-columns:268px minmax(0, 1fr);
+  grid-template-columns:minmax(0, 1fr);
+  grid-template-rows:auto minmax(0, 1fr);
   background:var(--pl-bg);
   color:var(--pl-text);
 }
-.pl-side{
+.pl-topBar{
   position:sticky;
   top:0;
-  height:100dvh;
-  border-right:1px solid var(--pl-line);
-  padding:18px 16px;
-  background:linear-gradient(180deg, rgba(18,18,18,.98), rgba(9,9,9,.98));
+  z-index:82;
+  border-bottom:1px solid var(--pl-line);
+  background:rgba(9,9,9,.94);
+  backdrop-filter:blur(12px) saturate(140%);
+}
+.pl-topInner{
+  box-sizing:border-box;
+  width:min(100%, 1480px);
+  min-height:66px;
+  margin:0 auto;
+  padding:10px 22px;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto;
+  align-items:center;
+  gap:14px;
+}
+.pl-topBrand{
+  min-width:0;
   display:flex;
-  flex-direction:column;
-  justify-content:space-between;
-  gap:18px;
+  align-items:center;
+  gap:12px;
+}
+.pl-topBrand .pl-plan{
+  margin:0;
+  flex:0 0 auto;
+}
+.pl-topBrand .pl-mark{
+  width:38px;
+  height:38px;
+  border-radius:14px;
+}
+.pl-topBrand .pl-brand{
+  font-size:18px;
+}
+.pl-side{
+  display:none;
 }
 .pl-mobileBar{
   display:none;
@@ -298,6 +351,19 @@ const styles = `
   flex-direction:column;
   gap:6px;
 }
+.pl-topNav{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.pl-topNav::-webkit-scrollbar{
+  display:none;
+}
 .pl-link{
   display:flex;
   align-items:center;
@@ -319,6 +385,15 @@ const styles = `
   color:var(--pl-gold);
   border-color:rgba(245,215,110,.26);
 }
+.pl-topNav .pl-link{
+  flex:0 0 auto;
+  min-height:40px;
+  padding:0 11px;
+  border-radius:12px;
+  gap:8px;
+  font-size:14px;
+  white-space:nowrap;
+}
 .pl-logout{
   width:100%;
   min-height:44px;
@@ -333,6 +408,13 @@ const styles = `
   font-weight:900;
   cursor:pointer;
   transition:transform .12s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.pl-logout.top{
+  width:auto;
+  min-height:40px;
+  padding:0 13px;
+  border-radius:12px;
+  white-space:nowrap;
 }
 .pl-logout:hover{
   transform:translateY(-1px);
@@ -355,10 +437,11 @@ const styles = `
   margin-top:auto;
 }
 .pl-main{
+  box-sizing:border-box;
   min-width:0;
-  width:min(100%, 1220px);
+  width:min(100%, 1440px);
   justify-self:center;
-  padding:18px;
+  padding:20px 24px 32px;
 }
 .pl-backdrop{
   position:fixed;
@@ -432,6 +515,9 @@ const styles = `
 @media (max-width: 860px){
   .pl-wrap{
     grid-template-columns:1fr;
+  }
+  .pl-topBar{
+    display:none;
   }
   .pl-mobileBar{
     position:sticky;

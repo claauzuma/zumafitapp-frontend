@@ -108,6 +108,16 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     return Math.round(((idx + 1) / basicsCount) * 100);
   }, [isBasics, i, section]);
 
+  useEffect(() => {
+    const u = getCachedUser?.();
+    if (!u) return;
+    const done = Boolean(u?.onboarding?.done);
+    const enabled = u?.onboarding?.enabled === true;
+    if (!enabled || done) {
+      nav("/app/inicio", { replace: true });
+    }
+  }, [nav]);
+
   // ✅ hidratar form desde user cacheado cuando se monta / cambia ruta
   useEffect(() => {
     const u = getCachedUser?.();

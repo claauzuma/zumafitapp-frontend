@@ -142,6 +142,12 @@ export const queryKeys = {
   clientMenusRoot: (clientId = "") => ["clientMenus", cleanId(clientId)],
   clientActiveMenu: (clientId) => ["clientActiveMenu", cleanId(clientId)],
   clientMenu: (clientId, menuAsignadoId) => ["clientMenu", cleanId(clientId), cleanId(menuAsignadoId)],
+  pendingCoachInvitations: (identity = "") => [
+    "client",
+    "coachInvitations",
+    "pending",
+    cleanText(identity),
+  ],
   foodEquivalents: (payload = {}) => [
     "foodEquivalents",
     cleanText(payload?.alimentoOriginal?.nombreSnapshot || payload?.original?.nombre || ""),

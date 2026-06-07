@@ -274,7 +274,7 @@
 .prof-clientList{
   margin-top:16px;
   display:grid;
-  grid-template-columns:repeat(2, minmax(0,1fr));
+  grid-template-columns:repeat(3, minmax(0,1fr));
   gap:12px;
 }
 
@@ -284,6 +284,16 @@
   border-radius:18px;
   padding:14px;
   min-width:0;
+}
+
+@media (max-width: 1180px){
+  .prof-clientList{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+
+  .prof-progressKpiGrid{
+    grid-template-columns:repeat(3, minmax(0,1fr));
+  }
 }
 
 .prof-cardActions{
@@ -563,6 +573,75 @@
   color:#f5d76e;
   font-size:15px;
   font-weight:1000;
+}
+
+.prof-permissionBoxHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.prof-permissionBoxHead h3{
+  margin-bottom:4px;
+}
+
+.prof-permissionBoxHead p{
+  margin:0;
+  color:#9eacbc;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:750;
+}
+
+.prof-onboardingInvite{
+  border-color:rgba(245,215,110,.20);
+  background:
+    radial-gradient(circle at top right, rgba(245,215,110,.12), transparent 32%),
+    linear-gradient(180deg, rgba(12,20,30,.98), rgba(7,12,18,.98));
+}
+
+.prof-onboardingOptions{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:8px;
+}
+
+.prof-onboardingOptions button{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.10);
+  background:#081018;
+  color:#eaf0f8;
+  border-radius:13px;
+  padding:10px;
+  text-align:left;
+  cursor:pointer;
+}
+
+.prof-onboardingOptions button.active{
+  border-color:rgba(245,215,110,.46);
+  background:rgba(245,215,110,.10);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.prof-onboardingOptions strong,
+.prof-onboardingOptions span{
+  display:block;
+}
+
+.prof-onboardingOptions strong{
+  color:#fff7d3;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.prof-onboardingOptions span{
+  margin-top:4px;
+  color:#9eacbc;
+  font-size:11px;
+  line-height:1.35;
+  font-weight:750;
 }
 
 .prof-permissionToggle{
@@ -1128,6 +1207,406 @@
   overflow-wrap:anywhere;
 }
 
+.prof-progressTab{
+  display:grid;
+  gap:14px;
+  margin-top:16px;
+}
+
+.prof-progressHero,
+.prof-progressCard,
+.prof-progressEmptyState{
+  min-width:0;
+  border:1px solid rgba(120,170,230,.13);
+  background:
+    radial-gradient(circle at top left, rgba(92,160,255,.10), transparent 34%),
+    linear-gradient(180deg, rgba(12,20,30,.98), rgba(8,14,22,.98));
+  border-radius:18px;
+  padding:15px;
+}
+
+.prof-progressHero{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.prof-progressHero h3,
+.prof-progressCardHead h3,
+.prof-progressEmptyState h3{
+  margin:4px 0 0;
+  color:#f7f9fc;
+  font-size:22px;
+  line-height:1.15;
+  font-weight:1000;
+}
+
+.prof-progressHero p,
+.prof-progressCardHead p,
+.prof-progressEmptyState p{
+  margin:6px 0 0;
+  color:#9eacbc;
+  line-height:1.4;
+  font-size:13px;
+  font-weight:800;
+}
+
+.prof-progressKpiGrid{
+  display:grid;
+  grid-template-columns:repeat(6, minmax(0,1fr));
+  gap:10px;
+}
+
+.prof-progressKpi{
+  min-width:0;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  border:1px solid rgba(255,255,255,.08);
+  background:#0b121b;
+  border-radius:16px;
+  padding:12px;
+}
+
+.prof-progressKpi.good{ border-color:rgba(80,220,140,.24); background:linear-gradient(180deg, rgba(80,220,140,.09), rgba(10,18,27,.96)); }
+.prof-progressKpi.bad{ border-color:rgba(255,110,110,.24); background:linear-gradient(180deg, rgba(255,110,110,.09), rgba(10,18,27,.96)); }
+.prof-progressKpi.warn{ border-color:rgba(255,190,80,.25); background:linear-gradient(180deg, rgba(255,190,80,.09), rgba(10,18,27,.96)); }
+.prof-progressKpi.blue{ border-color:rgba(95,160,255,.24); background:linear-gradient(180deg, rgba(95,160,255,.09), rgba(10,18,27,.96)); }
+.prof-progressKpi.gold{ border-color:rgba(245,215,110,.25); background:linear-gradient(180deg, rgba(245,215,110,.09), rgba(10,18,27,.96)); }
+
+.prof-progressKpiIcon,
+.prof-progressEmptyIcon{
+  width:36px;
+  height:36px;
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:#f5d76e;
+  border:1px solid rgba(245,215,110,.24);
+  background:rgba(245,215,110,.09);
+  border-radius:13px;
+}
+
+.prof-progressKpi span,
+.prof-progressKpi strong,
+.prof-progressKpi small{
+  display:block;
+}
+
+.prof-progressKpi div{
+  min-width:0;
+}
+
+.prof-progressKpi div > span{
+  color:#8798ad;
+  font-size:10px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.prof-progressKpi strong{
+  margin-top:4px;
+  color:#f8fafc;
+  font-size:17px;
+  line-height:1.12;
+  font-weight:1000;
+  overflow-wrap:anywhere;
+}
+
+.prof-progressKpi small{
+  margin-top:4px;
+  color:#9facbd;
+  font-size:11px;
+  line-height:1.25;
+  font-weight:800;
+}
+
+.prof-progressEmptyState{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  border-style:dashed;
+}
+
+.prof-progressCardHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.prof-progressCardHead.compact{
+  margin-bottom:10px;
+}
+
+.prof-progressCardBadge,
+.prof-adherenceBadge,
+.prof-statusPill{
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  border-radius:999px;
+  padding:0 10px;
+  font-size:11px;
+  font-style:normal;
+  font-weight:1000;
+  white-space:nowrap;
+}
+
+.prof-adherenceBadge.good,
+.prof-statusPill.good{ border-color:rgba(80,220,140,.30); background:rgba(80,220,140,.10); color:#baf6ce; }
+.prof-adherenceBadge.blue,
+.prof-statusPill.blue{ border-color:rgba(95,160,255,.30); background:rgba(95,160,255,.10); color:#cfe0ff; }
+.prof-adherenceBadge.warn,
+.prof-statusPill.warn{ border-color:rgba(255,190,80,.30); background:rgba(255,190,80,.10); color:#ffe0a6; }
+.prof-adherenceBadge.bad,
+.prof-statusPill.bad{ border-color:rgba(255,110,110,.30); background:rgba(255,110,110,.10); color:#ffc4c4; }
+.prof-adherenceBadge.neutral,
+.prof-statusPill.neutral{ border-color:rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#c3cfdd; }
+
+.prof-weightSummaryGrid,
+.prof-adherenceStats{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:8px;
+  margin-bottom:12px;
+}
+
+.prof-progressMiniStat{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.07);
+  background:#0a1018;
+  border-radius:12px;
+  padding:9px 10px;
+}
+
+.prof-progressMiniStat span,
+.prof-progressMiniStat strong{
+  display:block;
+}
+
+.prof-progressMiniStat span{
+  color:#7f91a8;
+  font-size:10px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.prof-progressMiniStat strong{
+  margin-top:4px;
+  color:#fff3bb;
+  font-size:14px;
+  line-height:1.25;
+  font-weight:1000;
+  overflow-wrap:anywhere;
+}
+
+.prof-weightChart{
+  min-width:0;
+  border:1px solid rgba(95,160,255,.14);
+  background:#071019;
+  border-radius:15px;
+  padding:10px;
+}
+
+.prof-weightChart svg{
+  width:100%;
+  height:auto;
+  display:block;
+  overflow:visible;
+}
+
+.prof-weightChart line{
+  stroke:rgba(255,255,255,.10);
+  stroke-width:1;
+}
+
+.prof-weightChart polyline{
+  fill:none;
+  stroke:#76a7ff;
+  stroke-width:3.4;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.prof-weightChart circle{
+  fill:#f5d76e;
+  stroke:#0b1119;
+  stroke-width:3;
+}
+
+.prof-weightChart text{
+  fill:#dbe7f5;
+  font-size:10px;
+  font-weight:900;
+  text-anchor:middle;
+}
+
+.prof-weightChartLabels{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:#8fa0b4;
+  font-size:11px;
+  font-weight:850;
+}
+
+.prof-weightChartEmpty,
+.prof-progressInlineEmpty{
+  min-height:132px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  gap:5px;
+  border:1px dashed rgba(255,255,255,.12);
+  background:#080e15;
+  border-radius:15px;
+  padding:16px;
+  color:#9eacbc;
+}
+
+.prof-weightChartEmpty strong,
+.prof-progressInlineEmpty strong{
+  color:#edf2f7;
+  font-weight:1000;
+}
+
+.prof-weightChartEmpty svg,
+.prof-progressInlineEmpty svg{
+  color:#f5d76e;
+}
+
+.prof-progressAdherenceGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
+}
+
+.prof-adherenceBars{
+  display:grid;
+  gap:9px;
+}
+
+.prof-weekBar{
+  display:grid;
+  gap:5px;
+}
+
+.prof-weekBar > div:first-child{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  color:#c7d2df;
+  font-size:12px;
+  font-weight:900;
+}
+
+.prof-weekBar > div:first-child span{
+  color:#8fa0b4;
+  text-align:right;
+}
+
+.prof-weekBarTrack{
+  height:8px;
+  border-radius:999px;
+  overflow:hidden;
+  background:#182232;
+}
+
+.prof-weekBarTrack span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg, #76a7ff, #f5d76e);
+}
+
+.prof-weekBarTrack.good span{ background:linear-gradient(90deg, #4fd896, #cde879); }
+.prof-weekBarTrack.blue span{ background:linear-gradient(90deg, #5d9fff, #90d7ff); }
+.prof-weekBarTrack.warn span{ background:linear-gradient(90deg, #f5d76e, #ffaa65); }
+.prof-weekBarTrack.bad span{ background:linear-gradient(90deg, #ff776d, #ffb16a); }
+
+.prof-checkinList{
+  display:grid;
+  gap:9px;
+}
+
+.prof-checkinCard{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.08);
+  background:#0a1018;
+  border-radius:14px;
+  padding:11px;
+}
+
+.prof-checkinDate,
+.prof-checkinMetrics{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.prof-checkinDate > span{
+  color:#f7f9fc;
+  font-size:15px;
+  font-weight:1000;
+}
+
+.prof-checkinMetrics{
+  justify-content:flex-start;
+  margin-top:8px;
+}
+
+.prof-checkinMetrics span{
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border:1px solid rgba(120,170,230,.13);
+  background:#0e1722;
+  color:#cbd7e6;
+  border-radius:999px;
+  padding:0 9px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.prof-checkinMetrics svg{
+  color:#f5d76e;
+}
+
+.prof-checkinCard p{
+  margin:9px 0 0;
+  color:#b9c5d4;
+  line-height:1.45;
+  font-size:12px;
+  font-weight:800;
+}
+
+.prof-checkinCard p.muted{
+  color:#77879c;
+}
+
+.prof-checkinForm{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:12px;
+}
+
+.prof-checkinNote{
+  grid-column:1 / -1;
+}
+
 .prof-nutritionBlock + .prof-nutritionBlock{
   margin-top:14px;
 }
@@ -1194,9 +1673,24 @@
 .prof-kcalFormula{
   min-width:0;
   border:1px solid rgba(245,215,110,.22);
-  background:rgba(245,215,110,.07);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(245,215,110,.20), transparent 34%),
+    rgba(245,215,110,.075);
   border-radius:12px;
   padding:9px 11px;
+}
+
+.prof-calculatedKcal.featured{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+  border-color:rgba(245,215,110,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.prof-calculatedKcal.featured .prof-macroIcon{
+  grid-row:1 / span 3;
 }
 
 .prof-calculatedKcal span,
@@ -1234,9 +1728,12 @@
 }
 
 .prof-macroBaseSummary .prof-nutritionMacro{
-  border-left-width:2px;
-  border-radius:0 9px 9px 0;
-  padding:8px 9px;
+  border-left-width:0;
+  border-radius:12px;
+  padding:9px 10px;
+  display:flex;
+  align-items:center;
+  gap:9px;
 }
 
 .prof-macroBaseSummary .prof-nutritionMacro strong{
@@ -1278,9 +1775,37 @@
   padding:9px 11px;
 }
 
+.prof-macroIcon{
+  width:33px;
+  height:33px;
+  border-radius:12px;
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  color:#ffe68a;
+  border:1px solid rgba(245,215,110,.24);
+  background:rgba(245,215,110,.10);
+  flex:0 0 auto;
+}
+
 .prof-nutritionMacro.kcal{
   border-left-color:#f5d76e;
   background:rgba(245,215,110,.07);
+}
+
+.prof-nutritionMacro.protein{
+  border-color:rgba(104,180,255,.28);
+  background:linear-gradient(180deg, rgba(47,120,205,.16), rgba(18,29,44,.86));
+}
+
+.prof-nutritionMacro.carbs{
+  border-color:rgba(94,220,170,.26);
+  background:linear-gradient(180deg, rgba(64,190,136,.14), rgba(18,29,44,.86));
+}
+
+.prof-nutritionMacro.fat{
+  border-color:rgba(245,215,110,.28);
+  background:linear-gradient(180deg, rgba(245,215,110,.13), rgba(18,29,44,.86));
 }
 
 .prof-nutritionMacro span,
@@ -1302,6 +1827,16 @@
   font-weight:1000;
 }
 
+.prof-nutritionMacro .prof-macroIcon,
+.prof-calculatedKcal .prof-macroIcon{
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  color:#ffe68a;
+  text-transform:none;
+  margin-top:0;
+}
+
 .prof-nutritionNote{
   margin-top:12px;
 }
@@ -1310,6 +1845,88 @@
   display:grid;
   grid-template-columns:repeat(4, minmax(0,1fr));
   gap:10px;
+}
+
+.prof-weekSignalGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:8px;
+  margin-bottom:12px;
+}
+
+.prof-weekSignalItem{
+  min-width:0;
+  border:1px solid rgba(120,170,230,.13);
+  background:linear-gradient(180deg, rgba(14,25,37,.92), rgba(8,14,22,.92));
+  border-radius:13px;
+  padding:10px;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  column-gap:8px;
+  row-gap:2px;
+  align-items:center;
+}
+
+.prof-weekSignalItem svg{
+  grid-row:1 / span 2;
+  color:#f5d76e;
+}
+
+.prof-weekSignalItem span{
+  color:#8fa0b4;
+  font-size:10px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.prof-weekSignalItem strong{
+  color:#f7f9fc;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.prof-weekSignalItem.kcal{
+  border-color:rgba(245,215,110,.24);
+  background:linear-gradient(180deg, rgba(245,215,110,.10), rgba(8,14,22,.92));
+}
+
+.prof-weekSignalItem.gym{
+  border-color:rgba(90,220,160,.22);
+}
+
+.prof-weekSignalItem.good{
+  border-color:rgba(90,220,160,.24);
+  background:linear-gradient(180deg, rgba(90,220,160,.09), rgba(8,14,22,.92));
+}
+
+.prof-weekSignalItem.adjusted{
+  border-color:rgba(112,166,255,.24);
+  background:linear-gradient(180deg, rgba(112,166,255,.09), rgba(8,14,22,.92));
+}
+
+.prof-weekSignalItem.warning{
+  border-color:rgba(255,170,100,.28);
+  background:linear-gradient(180deg, rgba(255,170,100,.10), rgba(8,14,22,.92));
+}
+
+.prof-weekWarning{
+  margin:-2px 0 12px;
+  border:1px solid rgba(255,170,100,.24);
+  background:rgba(255,170,100,.07);
+  color:#ffd8a8;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:850;
+}
+
+.prof-nutritionActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
 }
 
 .prof-dailyTargetCard{
@@ -1332,6 +1949,11 @@
 .prof-dailyTargetCard.custom{
   border-color:rgba(245,215,110,.32);
   background:#10161d;
+}
+
+.prof-dailyTargetCard.adjusted{
+  border-color:rgba(112,166,255,.28);
+  background:linear-gradient(180deg, rgba(20,38,60,.88), rgba(9,15,24,.96));
 }
 
 .prof-dailyTargetTop{
@@ -1377,6 +1999,12 @@
   border-color:rgba(245,215,110,.28);
   background:rgba(245,215,110,.09);
   color:#f5d76e;
+}
+
+.prof-dailyTargetBadge.adjusted{
+  border-color:rgba(112,166,255,.30);
+  background:rgba(112,166,255,.10);
+  color:#cfe0ff;
 }
 
 .prof-dailyTargetCard > strong{
@@ -1425,6 +2053,10 @@
   background:linear-gradient(90deg, #5dd49a, #d8bf62);
 }
 
+.prof-kcalBar.adjusted span{
+  background:linear-gradient(90deg, #74a7ff, #5dd49a, #f5d76e);
+}
+
 .prof-kcalBarMeta{
   margin:0 !important;
   color:#8fa0b4 !important;
@@ -1462,6 +2094,10 @@
 
 .prof-dailyTargetCard small.muted{
   color:#718197;
+}
+
+.prof-dailyTargetCard small.warning{
+  color:#ffd59a;
 }
 
 .prof-menuDayTarget{
@@ -1871,12 +2507,17 @@
   .prof-formGrid.two,
   .prof-modeGrid,
   .prof-weekGrid,
-  .prof-weekGrid.routine{
+  .prof-weekGrid.routine,
+  .prof-progressKpiGrid,
+  .prof-progressAdherenceGrid,
+  .prof-weightSummaryGrid,
+  .prof-adherenceStats{
     grid-template-columns:1fr;
   }
 
   .prof-nutritionGeneralMetrics,
   .prof-dailyTargetGrid,
+  .prof-weekSignalGrid,
   .prof-profileFactGrid,
   .prof-profileDetailGrid,
   .prof-coachAdjustmentGrid{
@@ -1966,6 +2607,37 @@
     padding:12px;
   }
 
+  .prof-progressHero,
+  .prof-progressEmptyState{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .prof-progressHero .prof-btn,
+  .prof-progressEmptyState .prof-btn{
+    width:100%;
+  }
+
+  .prof-progressCard,
+  .prof-progressHero,
+  .prof-progressEmptyState{
+    padding:12px;
+    border-radius:16px;
+  }
+
+  .prof-checkinForm{
+    grid-template-columns:1fr;
+  }
+
+  .prof-checkinNote{
+    grid-column:auto;
+  }
+
+  .prof-checkinMetrics span{
+    flex:1 1 auto;
+    justify-content:center;
+  }
+
   .prof-profileSection{
     padding:12px;
   }
@@ -1977,7 +2649,8 @@
   .prof-profileFactGrid,
   .prof-profileDetailGrid,
   .prof-coachAdjustmentGrid,
-  .prof-profileGoalLine{
+  .prof-profileGoalLine,
+  .prof-onboardingOptions{
     grid-template-columns:1fr;
   }
 
@@ -2005,7 +2678,8 @@
     font-size:18px;
   }
 
-  .prof-dailyTargetGrid{
+  .prof-dailyTargetGrid,
+  .prof-weekSignalGrid{
     grid-template-columns:1fr;
     gap:7px;
   }

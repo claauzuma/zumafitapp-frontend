@@ -83,6 +83,22 @@
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
+.wmp-dayCard.assigned {
+  border-color: rgba(94, 220, 160, 0.34);
+  background:
+    radial-gradient(circle at 88% 6%, rgba(94, 220, 160, 0.20), transparent 34%),
+    linear-gradient(180deg, rgba(20, 42, 54, 0.98), rgba(10, 20, 31, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wmp-dayCard.assigned .wmp-menuName {
+  color: #fff1ae;
+}
+
+.wmp-dayCard.empty {
+  background: linear-gradient(180deg, rgba(15, 25, 38, 0.92), rgba(8, 14, 22, 0.96));
+}
+
 .wmp-dayCard:hover,
 .wmp-dayCard.selected {
   border-color: rgba(245, 215, 110, 0.38);
@@ -95,8 +111,11 @@
 .wmp-dayCard header,
 .wmp-targetLine,
 .wmp-macroLine,
+.wmp-dayKpis,
 .wmp-pickerCard,
 .wmp-detailSummary header,
+.wmp-alternativesBlock header,
+.wmp-altCard,
 .wmp-mealCard header,
 .wmp-foodRows div {
   display: flex;
@@ -107,8 +126,36 @@
 
 .wmp-dayCard header > div {
   min-width: 0;
+}
+
+.wmp-dayIdentity {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.wmp-dayIdentity > div {
+  min-width: 0;
   display: grid;
   gap: 5px;
+}
+
+.wmp-dayIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #91a4ba;
+  border: 1px solid rgba(135, 175, 225, 0.18);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.wmp-dayIcon.assigned {
+  color: #a9efca;
+  border-color: rgba(94, 220, 160, 0.28);
+  background: rgba(94, 220, 160, 0.09);
 }
 
 .wmp-dayCard strong,
@@ -131,6 +178,12 @@
   border-color: rgba(245, 215, 110, 0.34);
   color: #ffeaa1;
   background: rgba(245, 215, 110, 0.08);
+}
+
+.wmp-source.adjusted {
+  border-color: rgba(112, 166, 255, 0.34);
+  color: #d7e5ff;
+  background: rgba(112, 166, 255, 0.09);
 }
 
 .wmp-status {
@@ -174,10 +227,56 @@
 }
 
 .wmp-targetLine,
+.wmp-dayKpis,
 .wmp-macroLine {
   color: #b7c3d2;
   font-size: 12px;
   font-weight: 850;
+}
+
+.wmp-dayKpis span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wmp-dayKpis span:first-child {
+  color: #fff1ae;
+}
+
+.wmp-altInline {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wmp-altInline > span {
+  white-space: nowrap;
+}
+
+.wmp-plusMini {
+  min-height: 28px;
+  border: 1px solid rgba(94, 220, 160, 0.28);
+  border-radius: 999px;
+  background: rgba(94, 220, 160, 0.1);
+  color: #a9efca;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.wmp-plusMini:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .wmp-bar {
@@ -370,7 +469,8 @@
 }
 
 .wmp-pickerList,
-.wmp-mealList {
+.wmp-mealList,
+.wmp-altList {
   display: grid;
   gap: 10px;
 }
@@ -393,6 +493,15 @@
 .wmp-pickerCard p,
 .wmp-pickerCard small {
   margin: 0;
+}
+
+.wmp-pickerActions,
+.wmp-altActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .wmp-detailSummary {
@@ -418,6 +527,59 @@
 .wmp-detailTotals strong {
   color: #f5d76e;
   font-size: 25px;
+}
+
+.wmp-alternativesBlock {
+  border: 1px solid rgba(135, 175, 225, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 13px;
+  display: grid;
+  gap: 12px;
+}
+
+.wmp-alternativesBlock header {
+  align-items: center;
+}
+
+.wmp-alternativesBlock header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.wmp-alternativesBlock header span {
+  color: #9fb0c4;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.wmp-alternativesBlock header strong {
+  color: #fff1ae;
+  font-size: 18px;
+}
+
+.wmp-altCard {
+  border: 1px solid rgba(135, 175, 225, 0.13);
+  border-radius: 15px;
+  background: rgba(8, 13, 20, 0.72);
+  padding: 11px;
+}
+
+.wmp-altCard > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.wmp-altCard strong {
+  color: #f5f7fa;
+  font-weight: 950;
+}
+
+.wmp-altCard small {
+  color: #adbac9;
+  font-weight: 800;
 }
 
 .wmp-mealCard {
@@ -481,6 +643,8 @@
   .wmp-focus,
   .wmp-pickerCard,
   .wmp-detailSummary,
+  .wmp-alternativesBlock header,
+  .wmp-altCard,
   .wmp-mealCard header,
   .wmp-foodRows div {
     align-items: stretch;
@@ -510,7 +674,9 @@
   }
 
   .wmp-focusActions,
-  .wmp-detailActions {
+  .wmp-detailActions,
+  .wmp-pickerActions,
+  .wmp-altActions {
     display: grid;
     grid-template-columns: 1fr;
   }

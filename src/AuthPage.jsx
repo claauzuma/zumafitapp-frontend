@@ -72,12 +72,19 @@ function normalizeRole(role) {
 
 function getHomeByUser(user) {
   const role = normalizeRole(user?.role || user?.rol);
+  const tipo = normalizeRole(user?.tipo);
   const done = Boolean(user?.onboarding?.done);
+  const enabled = user?.onboarding?.enabled === true;
+  const shouldDoOnboarding =
+    (role === "cliente" || role === "client") &&
+    tipo === "entrenado" &&
+    enabled &&
+    !done;
 
   if (role === "admin") return "/admin/inicio";
   if (role === "coach") return "/profesional";
 
-  return done ? "/app/inicio" : "/app/onboarding";
+  return shouldDoOnboarding ? "/app/onboarding" : "/app/inicio";
 }
 
 

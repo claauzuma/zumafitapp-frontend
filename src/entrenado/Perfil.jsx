@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../Api";
+import { setAuthLogged } from "../authCache.js";
+import { leaveCurrentCoach, requestCoachChange } from "../clientCoachApi.js";
+import { setAuthUserQueryData } from "../queryClient.js";
 import "./Perfil.css";
 
 const PERFIL_CACHE_KEY = "zumafit_perfil_cache_v1";
@@ -134,6 +137,10 @@ export default function Perfil() {
 
   const [goal, setGoal] = useState(null);
   const [program, setProgram] = useState(null);
+  const [coach, setCoach] = useState(null);
+  const [clientCoachNotice, setClientCoachNotice] = useState(null);
+  const [coachChangeRequest, setCoachChangeRequest] = useState(null);
+  const [coachActionBusy, setCoachActionBusy] = useState("");
 
   const [snapPersonal, setSnapPersonal] = useState(null);
   const [snapBasics, setSnapBasics] = useState(null);
@@ -193,6 +200,9 @@ export default function Perfil() {
 
     setGoal(data?.goal || null);
     setProgram(data?.program || null);
+    setCoach(data?.coach || null);
+    setClientCoachNotice(data?.clientCoachNotice || null);
+    setCoachChangeRequest(data?.coachChangeRequest || null);
   }
 
   function commitProfileData(data, options = {}) {
@@ -228,7 +238,7 @@ export default function Perfil() {
       console.log("PERFIL /users/me =>", data);
       commitProfileData(data, { fallbackUpdatedAt });
       return data;
-    } catch (e) {
+    } catch {
       if (mountedRef.current && showOfflineMessage) {
         setMsg({ type: "warn", text: "Mostrando datos guardados localmente" });
       }
@@ -266,7 +276,7 @@ export default function Perfil() {
       }
 
       return null;
-    } catch (e) {
+    } catch {
       if (mountedRef.current && showOfflineMessage) {
         setMsg({ type: "warn", text: "Mostrando datos guardados localmente" });
       }
@@ -491,8 +501,52 @@ export default function Perfil() {
     }
   }
 
+  function syncFreshUser(user) {
+    if (!user) return;
+    commitProfileData(user);
+    setAuthLogged(user);
+    setAuthUserQueryData(user);
+  }
+
+  async function handleLeaveCoach() {
+    const ok = window.confirm(
+      "Si dejas este coach, el coach ya no va a ver tu planificacion, menus, rutina ni progreso. Vas a volver al modo autogestionado."
+    );
+    if (!ok) return;
+
+    setCoachActionBusy("leave");
+    setMsg(null);
+    try {
+      const data = await leaveCurrentCoach();
+      syncFreshUser(data?.user);
+      setMsg({ type: "ok", text: "Te desvinculaste del coach. Volviste al modo autogestionado." });
+    } catch (e) {
+      setMsg({ type: "warn", text: e?.message || "No pude desvincularte del coach." });
+    } finally {
+      setCoachActionBusy("");
+    }
+  }
+
+  async function handleRequestCoachChange() {
+    setCoachActionBusy("request");
+    setMsg(null);
+    try {
+      const data = await requestCoachChange("Cliente solicito cambio o desvinculacion desde su perfil.");
+      syncFreshUser(data?.user);
+      setMsg({ type: "ok", text: "Solicitud enviada. Un admin va a revisar el cambio de coach." });
+    } catch (e) {
+      setMsg({ type: "warn", text: e?.message || "No pude enviar la solicitud." });
+    } finally {
+      setCoachActionBusy("");
+    }
+  }
+
   const avatarText = initialsOf(nombre, apellido, email);
   const fullName = `${nombre || ""} ${apellido || ""}`.trim() || "Tu perfil";
+  const hasCoach = !!coach?.entrenadorId;
+  const coachSource = String(coach?.source || "").toLowerCase();
+  const coachName = clientCoachNotice?.coachName || coach?.coachName || "Coach asignado";
+  const requestPending = coachChangeRequest?.status === "pending";
 
   return (
     <div className="p-wrap">
@@ -542,6 +596,63 @@ export default function Perfil() {
         </div>
 
         <div className="p-grid">
+          <div className="card coachRelationCard">
+            <div className="cardTop">
+              <h2>Coach</h2>
+              <span className={`badge ${hasCoach ? "gold" : "soft"}`}>
+                {hasCoach ? "Asignado" : "Autogestionado"}
+              </span>
+            </div>
+
+            <div className="coachRelationBody">
+              {hasCoach ? (
+                <>
+                  <div>
+                    <div className="coachRelationName">{coachName}</div>
+                    <p className="tip">
+                      {coachSource === "admin"
+                        ? "Asignado por administracion. Podes pedir cambio o desvinculacion."
+                        : "Aceptaste trabajar con este coach. Podes desvincularte cuando quieras."}
+                    </p>
+                  </div>
+
+                  {requestPending ? (
+                    <div className="coachRequestBox">
+                      Solicitud pendiente. El admin tiene que revisar el cambio.
+                    </div>
+                  ) : coachSource === "admin" ? (
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      disabled={!!coachActionBusy}
+                      onClick={handleRequestCoachChange}
+                    >
+                      {coachActionBusy === "request" ? "Enviando..." : "Solicitar cambio"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={!!coachActionBusy}
+                      onClick={handleLeaveCoach}
+                    >
+                      {coachActionBusy === "leave" ? "Procesando..." : "Dejar coach"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <div className="coachRelationName">Modo autogestionado</div>
+                    <p className="tip">
+                      Todavia no tenes un coach activo. Si recibis una invitacion, vas a poder aceptarla o rechazarla.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="card">
             <div className="cardTop">
               <h2>Tu cuerpo</h2>

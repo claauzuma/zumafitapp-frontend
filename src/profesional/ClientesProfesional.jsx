@@ -26,6 +26,10 @@ const EMPTY_INVITE_FORM = {
   nombre: "",
   apellido: "",
   email: "",
+  onboarding: {
+    enabled: true,
+    mode: "full",
+  },
   clientPermissions: {
     menu: {
       canViewMenu: true,
@@ -195,6 +199,7 @@ export default function ClientesProfesional() {
     createInviteMutation.mutate({
       email,
       profile: { nombre, apellido },
+      onboarding: inviteForm.onboarding,
       clientPermissions: inviteForm.clientPermissions,
     });
   }
@@ -451,6 +456,11 @@ function InviteClientDialog({
             </label>
           </div>
 
+          <OnboardingInviteSection
+            value={form.onboarding}
+            onChange={(value) => onField("onboarding", value)}
+          />
+
           <div className="prof-invitePermissionGrid">
             {access.menu.available ? (
               <PermissionSection title="Menu / nutricion">
@@ -568,6 +578,46 @@ function PermissionSection({ title, children }) {
     <section className="prof-permissionBox">
       <h3>{title}</h3>
       <div>{children}</div>
+    </section>
+  );
+}
+
+function OnboardingInviteSection({ value, onChange }) {
+  const mode = value?.enabled === false ? "none" : "full";
+
+  function choose(nextMode) {
+    onChange({
+      enabled: nextMode !== "none",
+      mode: nextMode === "none" ? "none" : "full",
+    });
+  }
+
+  return (
+    <section className="prof-permissionBox prof-onboardingInvite">
+      <div className="prof-permissionBoxHead">
+        <div>
+          <h3>Onboarding inicial</h3>
+          <p>Definí si el cliente completa el recorrido inicial cuando acepta la invitación.</p>
+        </div>
+      </div>
+      <div className="prof-onboardingOptions">
+        <button
+          type="button"
+          className={mode === "full" ? "active" : ""}
+          onClick={() => choose("full")}
+        >
+          <strong>Completo</strong>
+          <span>Ve todo el onboarding y carga sus datos iniciales.</span>
+        </button>
+        <button
+          type="button"
+          className={mode === "none" ? "active" : ""}
+          onClick={() => choose("none")}
+        >
+          <strong>No mostrar</strong>
+          <span>Entra directo al panel del cliente.</span>
+        </button>
+      </div>
     </section>
   );
 }

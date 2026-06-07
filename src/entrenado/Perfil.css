@@ -420,6 +420,47 @@
   margin-top:6px;
 }
 
+.coachRelationCard{
+  border-color: rgba(245,215,110,.26);
+}
+
+.coachRelationBody{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.coachRelationName{
+  font-size:18px;
+  font-weight:1000;
+  color:#fff;
+  margin-bottom:5px;
+}
+
+.coachRequestBox{
+  border:1px solid rgba(245,215,110,.28);
+  background:rgba(245,215,110,.09);
+  color:#ffe9a6;
+  border-radius:14px;
+  padding:10px 12px;
+  font-size:12px;
+  font-weight:900;
+  max-width:260px;
+}
+
+@media (max-width: 720px){
+  .coachRelationBody{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .coachRelationBody .btn,
+  .coachRequestBox{
+    width:100%;
+  }
+}
+
 .accountList{
   display:grid;
   gap:8px;

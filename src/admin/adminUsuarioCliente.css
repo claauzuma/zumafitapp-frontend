@@ -323,6 +323,27 @@
   padding:14px;
 }
 
+.auc-coachRequestNotice{
+  display:grid;
+  gap:5px;
+  border:1px solid rgba(245,215,110,.30);
+  background:rgba(245,215,110,.08);
+  border-radius:14px;
+  padding:12px 14px;
+  color:#ffe9a6;
+}
+
+.auc-coachRequestNotice strong{
+  color:#f5d76e;
+  font-weight:1000;
+}
+
+.auc-coachRequestNotice span{
+  color:#d7dce4;
+  font-size:13px;
+  line-height:1.45;
+}
+
 .auc-currentCoachTop{
   display:flex;
   gap:12px;

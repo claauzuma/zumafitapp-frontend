@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Download,
   Eye,
   FilePlus2,
+  Flame,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   Shuffle,
@@ -21,7 +22,7 @@ import {
 import "../nutricion/nutricion.css";
 import {
   NUTRITION_WEEK_DAYS,
-  resolveNutritionTarget,
+  resolveNutritionWeek,
 } from "../nutricion/dailyNutritionTargets.js";
 import { formatNumber } from "../nutricion/nutricionUtils.js";
 import { updateProfessionalClientMenu } from "../profesional/profesionalApi.js";
@@ -36,6 +37,7 @@ import { useMenusBase } from "./menusQueries.js";
 import "./weeklyClientMenus.css";
 
 const DAY_KEYS = NUTRITION_WEEK_DAYS.map((day) => day.key);
+const MAX_MENU_ALTERNATIVES = 10;
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
@@ -87,15 +89,56 @@ function normalizeAssignments(source = {}) {
   return DAY_KEYS.reduce((acc, key) => {
     const entry = raw[key];
     if (!entry) return acc;
-    const snapshot = normalizeSnapshot(entry.menuSnapshot || entry.snapshot || entry);
+    const primarySource = entry.primaryMenu && typeof entry.primaryMenu === "object" ? entry.primaryMenu : entry;
+    const primaryMenu = normalizeAssignmentEntry(primarySource, "base");
+    if (!primaryMenu?.menuSnapshot?.name && !primaryMenu?.menuId) return acc;
+    const alternatives = Array.isArray(entry.alternatives)
+      ? entry.alternatives
+          .map((alternative) => normalizeAlternativeEntry(alternative))
+          .filter((alternative) => alternative?.menuSnapshot?.name || alternative?.menuId)
+          .filter((alternative) => !isSameAssignment(alternative, primaryMenu))
+          .slice(0, MAX_MENU_ALTERNATIVES)
+      : [];
     acc[key] = {
-      menuId: entry.menuId || entry.menuBaseId || snapshot.baseId || snapshot.id || "",
-      menuSnapshot: snapshot,
-      source: entry.source || "base",
-      assignedAt: entry.assignedAt || new Date().toISOString(),
+      ...primaryMenu,
+      primaryMenu,
+      alternatives,
     };
     return acc;
   }, {});
+}
+
+function normalizeAssignmentEntry(entry = {}, source = "base") {
+  const snapshotSource = entry.menuSnapshot || entry.snapshot || entry;
+  const hasSnapshotData = Boolean(
+    entry.menuId ||
+    entry.menuBaseId ||
+    snapshotSource?.id ||
+    snapshotSource?._id ||
+    snapshotSource?.baseId ||
+    snapshotSource?.menuBaseId ||
+    snapshotSource?.name ||
+    snapshotSource?.nombre ||
+    Array.isArray(snapshotSource?.meals) ||
+    Array.isArray(snapshotSource?.comidas)
+  );
+  if (!hasSnapshotData) return null;
+  const snapshot = normalizeSnapshot(snapshotSource);
+  return {
+    menuId: entry.menuId || entry.menuBaseId || snapshot.baseId || snapshot.id || "",
+    menuSnapshot: snapshot,
+    source: entry.source || source,
+    assignedAt: entry.assignedAt || new Date().toISOString(),
+  };
+}
+
+function normalizeAlternativeEntry(entry = {}) {
+  const assignment = normalizeAssignmentEntry(entry, "alternative");
+  return {
+    ...assignment,
+    reason: entry.reason || "",
+    compatibility: entry.compatibility || null,
+  };
 }
 
 function normalizeSnapshot(menu = {}) {
@@ -188,6 +231,35 @@ function menuToAssignment(menu = {}, source = "base") {
   };
 }
 
+function assignmentWithPrimary(primaryMenu, alternatives = []) {
+  if (!primaryMenu) return null;
+  const cleanAlternatives = alternatives
+    .filter((alternative) => alternative?.menuSnapshot?.name || alternative?.menuId)
+    .filter((alternative) => !isSameAssignment(alternative, primaryMenu))
+    .slice(0, MAX_MENU_ALTERNATIVES);
+  return {
+    ...primaryMenu,
+    primaryMenu,
+    alternatives: cleanAlternatives,
+  };
+}
+
+function getPrimaryAssignment(assignment) {
+  if (!assignment) return null;
+  return assignment.primaryMenu || normalizeAssignmentEntry(assignment, "base");
+}
+
+function assignmentIdentity(assignment = {}) {
+  const snapshot = assignment.menuSnapshot || assignment.snapshot || assignment;
+  return String(assignment.menuId || snapshot.baseId || snapshot.id || snapshot.name || "").trim().toLowerCase();
+}
+
+function isSameAssignment(a, b) {
+  const left = assignmentIdentity(a);
+  const right = assignmentIdentity(b);
+  return Boolean(left && right && left === right);
+}
+
 function getCompatibility(menu = {}, target = {}) {
   if (!menu) {
     return {
@@ -259,18 +331,21 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }, [client?.menu?.weeklyPlan?.assignedMenusByDay]);
 
   const libraryMenus = useMemo(() => menusQuery.data?.menus || [], [menusQuery.data?.menus]);
+  const nutritionWeek = useMemo(() => resolveNutritionWeek(nutritionTargets), [nutritionTargets]);
 
   const weekRows = useMemo(
     () =>
       NUTRITION_WEEK_DAYS.map((day) => {
-        const target = resolveNutritionTarget(nutritionTargets, day.key);
+        const target = nutritionWeek.targets[day.key];
         const assignment = assignments[day.key] || null;
-        const snapshot = assignment?.menuSnapshot ? normalizeSnapshot(assignment.menuSnapshot) : null;
+        const primary = getPrimaryAssignment(assignment);
+        const snapshot = primary?.menuSnapshot ? normalizeSnapshot(primary.menuSnapshot) : null;
         const totals = snapshot ? menuTotals(snapshot) : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
         const compatibility = getCompatibility(snapshot, target);
-        return { day, target, assignment, snapshot, totals, compatibility };
+        const alternatives = Array.isArray(assignment?.alternatives) ? assignment.alternatives : [];
+        return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility };
       }),
-    [assignments, nutritionTargets]
+    [assignments, nutritionWeek]
   );
 
   const selectedDay = weekRows.find((row) => row.day.key === selectedDayKey) || weekRows[0];
@@ -299,12 +374,76 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }
 
   async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
+    const primaryMenu = menuToAssignment(menu);
+    const current = assignments[dayKey] || {};
+    const alternatives = Array.isArray(current.alternatives)
+      ? current.alternatives.filter((alternative) => !isSameAssignment(alternative, primaryMenu))
+      : [];
     const next = {
       ...assignments,
-      [dayKey]: menuToAssignment(menu),
+      [dayKey]: assignmentWithPrimary(primaryMenu, alternatives),
     };
     setPicker(null);
     await persistAssignments(next, message);
+  }
+
+  async function addAlternative(dayKey, menu) {
+    const current = assignments[dayKey] || {};
+    const currentPrimary = getPrimaryAssignment(current);
+    if (!currentPrimary) {
+      await assignMenu(dayKey, menu, "Menú asignado como principal del día.");
+      return;
+    }
+
+    const alternative = {
+      ...menuToAssignment(menu, "alternative"),
+      reason: "Compatible con la meta del día",
+      compatibility: getCompatibility(menu, weekRows.find((row) => row.day.key === dayKey)?.target),
+    };
+    const alternatives = Array.isArray(current.alternatives) ? current.alternatives : [];
+    if (isSameAssignment(alternative, currentPrimary) || alternatives.some((item) => isSameAssignment(item, alternative))) {
+      onToast?.({ type: "info", message: "Ese menú ya está guardado para este día." });
+      setPicker(null);
+      return;
+    }
+    if (alternatives.length >= MAX_MENU_ALTERNATIVES) {
+      onToast?.({ type: "error", message: "Máximo 10 alternativas para este día." });
+      setPicker(null);
+      return;
+    }
+
+    const next = {
+      ...assignments,
+      [dayKey]: assignmentWithPrimary(currentPrimary, [...alternatives, alternative]),
+    };
+    setPicker(null);
+    await persistAssignments(next, "Alternativa guardada para el día.");
+  }
+
+  async function promoteAlternative(dayKey, alternativeIndex) {
+    const current = assignments[dayKey];
+    const currentPrimary = getPrimaryAssignment(current);
+    const alternatives = Array.isArray(current?.alternatives) ? current.alternatives : [];
+    const nextPrimary = alternatives[alternativeIndex];
+    if (!nextPrimary) return;
+    const remaining = alternatives.filter((_, index) => index !== alternativeIndex);
+    const nextAlternatives = currentPrimary ? [currentPrimary, ...remaining] : remaining;
+    await persistAssignments(
+      { ...assignments, [dayKey]: assignmentWithPrimary(nextPrimary, nextAlternatives) },
+      "Alternativa marcada como menú principal."
+    );
+  }
+
+  async function removeAlternative(dayKey, alternativeIndex) {
+    const current = assignments[dayKey];
+    const currentPrimary = getPrimaryAssignment(current);
+    if (!currentPrimary) return;
+    const alternatives = Array.isArray(current?.alternatives) ? current.alternatives : [];
+    const nextAlternatives = alternatives.filter((_, index) => index !== alternativeIndex);
+    await persistAssignments(
+      { ...assignments, [dayKey]: assignmentWithPrimary(currentPrimary, nextAlternatives) },
+      "Alternativa quitada del día."
+    );
   }
 
   async function clearDay(dayKey) {
@@ -368,30 +507,18 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
     const filtered = term
       ? libraryMenus.filter((menu) => `${menu.name} ${menu.description} ${(menu.tags || []).join(" ")}`.toLowerCase().includes(term))
       : libraryMenus;
-    return sortByCompatibility(filtered, pickerRow.target);
-  }, [libraryMenus, pickerRow, search]);
+    const withoutDuplicates = picker?.mode === "alternative"
+      ? filtered.filter((menu) => {
+          const candidate = menuToAssignment(menu);
+          return !isSameAssignment(candidate, pickerRow.primary) &&
+            !pickerRow.alternatives.some((alternative) => isSameAssignment(alternative, candidate));
+        })
+      : filtered;
+    return sortByCompatibility(withoutDuplicates, pickerRow.target);
+  }, [libraryMenus, picker, pickerRow, search]);
 
   return (
     <div className="wmp">
-      <section className="wmp-hero">
-        <div>
-          <span className="wmp-kicker">
-            <Utensils size={16} strokeWidth={2.3} aria-hidden="true" />
-            Plan semanal por día
-          </span>
-          <h2>Menús del cliente</h2>
-          <p>Asigná una plantilla por día, revisá diferencias contra la meta y ajustá sin cargar toda la semana completa.</p>
-        </div>
-        <button
-          type="button"
-          className="wmp-btn ghost"
-          onClick={() => onToast?.({ type: "info", message: "Exportar PDF queda como segunda etapa para hacerlo bien y liviano." })}
-        >
-          <Download size={16} strokeWidth={2.3} aria-hidden="true" />
-          PDF etapa 2
-        </button>
-      </section>
-
       <section className="wmp-weekSummary" aria-label="Resumen semanal de menús">
         {weekRows.map((row) => (
           <DayMenuCard
@@ -429,6 +556,18 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
               <FilePlus2 size={16} strokeWidth={2.3} aria-hidden="true" />
               Crear menú
             </button>
+            {selectedDay.snapshot ? (
+              <button
+                type="button"
+                className="wmp-btn ghost"
+                onClick={() => openPicker(selectedDay.day.key, "alternative")}
+                disabled={(selectedDay.alternatives?.length || 0) >= MAX_MENU_ALTERNATIVES}
+                title={(selectedDay.alternatives?.length || 0) >= MAX_MENU_ALTERNATIVES ? "Máximo 10 alternativas para este día" : "Agregar otro menú como alternativa"}
+              >
+                <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
+                Alternativa
+              </button>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -442,7 +581,8 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
           mode={picker.mode}
           onSearch={setSearch}
           onClose={() => setPicker(null)}
-          onPick={(menu) => assignMenu(picker.dayKey, menu, picker.mode === "alternative" ? "Alternativa asignada al día." : "Menú asignado al día.")}
+          onPick={(menu) => assignMenu(picker.dayKey, menu)}
+          onSaveAlternative={(menu) => addAlternative(picker.dayKey, menu)}
         />
       ) : null}
 
@@ -452,6 +592,8 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
           onClose={() => setDetailDayKey("")}
           onChoose={() => openPicker(detailRow.day.key, "choose")}
           onAlternative={() => openPicker(detailRow.day.key, "alternative")}
+          onPromoteAlternative={(alternativeIndex) => promoteAlternative(detailRow.day.key, alternativeIndex)}
+          onRemoveAlternative={(alternativeIndex) => removeAlternative(detailRow.day.key, alternativeIndex)}
           onEdit={() => detailRow.snapshot && access?.canCreateMenu && setEditor({ dayKey: detailRow.day.key, snapshot: detailRow.snapshot })}
           onClear={() => clearDay(detailRow.day.key)}
           canCreate={!!access?.canCreateMenu}
@@ -494,26 +636,59 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
   const targetKcal = toNumber(row.target.kcal, 0);
   const percent = targetKcal > 0 ? Math.min(130, (row.totals.kcal / targetKcal) * 100) : 0;
   const overflow = percent > 100;
+  const hasMenu = !!row.snapshot;
   const barTone = !row.snapshot ? "empty" : overflow ? "overflow" : row.compatibility.key === "good" ? "good" : row.compatibility.key === "low" ? "low" : "review";
+  const targetSourceClass = row.target.customized ? "custom" : row.target.adjusted ? "adjusted" : "";
+  const targetSourceLabel = row.target.statusLabel || (row.target.customized ? "Personalizado" : row.target.adjusted ? "General ajustado" : "General");
+  const alternativesCount = row.alternatives?.length || 0;
   return (
-    <article className={`wmp-dayCard ${selected ? "selected" : ""}`} onClick={onSelect}>
+    <article className={`wmp-dayCard ${hasMenu ? "assigned" : "empty"} ${selected ? "selected" : ""}`} onClick={onSelect}>
       <header>
-        <div>
-          <strong>{row.day.label}</strong>
-          <span className={`wmp-source ${row.target.customized ? "custom" : ""}`}>
-            {row.target.customized ? "Personalizado" : "General"}
+        <div className="wmp-dayIdentity">
+          <span className={`wmp-dayIcon ${hasMenu ? "assigned" : ""}`} aria-hidden="true">
+            {hasMenu ? <Utensils size={18} strokeWidth={2.4} /> : <Search size={18} strokeWidth={2.4} />}
           </span>
+          <div>
+            <strong>{row.day.label}</strong>
+            <span className={`wmp-source ${targetSourceClass}`}>
+              {targetSourceLabel}
+            </span>
+          </div>
         </div>
         <span className={`wmp-status ${row.compatibility.tone}`}>{row.compatibility.label}</span>
       </header>
 
       <div className="wmp-menuName">
-        {row.snapshot ? row.snapshot.name : "Sin menú asignado"}
+        {row.snapshot ? row.snapshot.name : "Sin menú principal"}
+      </div>
+
+      <div className="wmp-dayKpis">
+        <span><Flame size={14} aria-hidden="true" /> Meta {displayKcal(row.target.kcal)}</span>
+        <span>Menú {displayKcal(row.totals.kcal)}</span>
       </div>
 
       <div className="wmp-targetLine">
-        <span>Meta {displayKcal(row.target.kcal)}</span>
-        <span>Menú {displayKcal(row.totals.kcal)}</span>
+        <span>{row.snapshot ? `${row.snapshot.mealsCount || row.snapshot.meals?.length || 0} comidas` : "Elegí o creá un menú"}</span>
+        {hasMenu ? (
+          <span className="wmp-altInline">
+            <span>{alternativesCount ? `${alternativesCount} alternativas` : "Sin alternativas"}</span>
+            <button
+              type="button"
+              className="wmp-plusMini"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAlternative();
+              }}
+              disabled={alternativesCount >= MAX_MENU_ALTERNATIVES}
+              title={alternativesCount >= MAX_MENU_ALTERNATIVES ? "Máximo 10 alternativas para este día" : "Agregar otro menú como alternativa"}
+            >
+              <Plus size={13} strokeWidth={3} aria-hidden="true" />
+              Alternativa
+            </button>
+          </span>
+        ) : (
+          <span>Sin alternativas</span>
+        )}
       </div>
       <div className={`wmp-bar ${barTone}`} aria-label={`Progreso calórico ${Math.round(percent)}%`}>
         <span style={{ width: `${percent}%` }} />
@@ -538,8 +713,8 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
         </button>
         {row.snapshot ? (
           <>
-            <button type="button" className="wmp-iconBtn" onClick={onAlternative} title="Buscar alternativa">
-              <Shuffle size={16} />
+            <button type="button" className="wmp-iconBtn" onClick={onAlternative} title="Agregar alternativa">
+              <Plus size={16} />
             </button>
             <button type="button" className="wmp-iconBtn danger" onClick={onClear} disabled={busy} title="Quitar menú">
               <Trash2 size={16} />
@@ -551,7 +726,7 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
   );
 }
 
-function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose, onPick }) {
+function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose, onPick, onSaveAlternative }) {
   return (
     <section className="wmp-drawer" role="dialog" aria-modal="true" aria-label="Elegir menú">
       <div className="wmp-drawerPanel picker">
@@ -585,9 +760,16 @@ function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose
                   <p>{displayKcal(totals.kcal)} / P {displayMacro(totals.protein)} / C {displayMacro(totals.carbs)} / G {displayMacro(totals.fat)}</p>
                   <small>{menu.mealsCount || menu.meals?.length || 0} comidas / Dif. {formatSigned(compatibility.kcalDiff, " kcal")} / P {formatSigned(compatibility.proteinDiff, " g")}</small>
                 </div>
-                <button type="button" className="wmp-btn gold" onClick={() => onPick(menu)}>
-                  Usar este menú
-                </button>
+                <div className="wmp-pickerActions">
+                  <button type="button" className="wmp-btn gold" onClick={() => onPick(menu)}>
+                    Usar como principal
+                  </button>
+                  {mode === "alternative" ? (
+                    <button type="button" className="wmp-btn" onClick={() => onSaveAlternative(menu)}>
+                      Guardar alternativa
+                    </button>
+                  ) : null}
+                </div>
               </article>
             );
           })}
@@ -597,8 +779,19 @@ function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose
   );
 }
 
-function MenuDayDetailDrawer({ row, canCreate, onClose, onChoose, onAlternative, onEdit, onClear }) {
+function MenuDayDetailDrawer({
+  row,
+  canCreate,
+  onClose,
+  onChoose,
+  onAlternative,
+  onPromoteAlternative,
+  onRemoveAlternative,
+  onEdit,
+  onClear,
+}) {
   const menu = row.snapshot;
+  const alternatives = row.alternatives || [];
   return (
     <section className="wmp-drawer" role="dialog" aria-modal="true" aria-label="Detalle del menú del día">
       <div className="wmp-drawerPanel detail">
@@ -642,12 +835,52 @@ function MenuDayDetailDrawer({ row, canCreate, onClose, onChoose, onAlternative,
                 <RefreshCw size={16} /> Cambiar
               </button>
               <button type="button" className="wmp-btn" onClick={onAlternative}>
-                <Shuffle size={16} /> Alternativa
+                <Shuffle size={16} /> Agregar alternativa
               </button>
               <button type="button" className="wmp-btn danger" onClick={onClear}>
                 <Trash2 size={16} /> Quitar
               </button>
             </div>
+
+            <section className="wmp-alternativesBlock">
+              <header>
+                <div>
+                  <span>Alternativas compatibles</span>
+                  <strong>{alternatives.length}/{MAX_MENU_ALTERNATIVES}</strong>
+                </div>
+                <button type="button" className="wmp-btn ghost" onClick={onAlternative}>
+                  <Shuffle size={16} /> Buscar alternativa
+                </button>
+              </header>
+              {alternatives.length ? (
+                <div className="wmp-altList">
+                  {alternatives.map((alternative, index) => {
+                    const snapshot = normalizeSnapshot(alternative.menuSnapshot);
+                    const compatibility = getCompatibility(snapshot, row.target);
+                    const totals = menuTotals(snapshot);
+                    return (
+                      <article className="wmp-altCard" key={`${alternative.menuId || snapshot.baseId || snapshot.name}-${index}`}>
+                        <div>
+                          <span className={`wmp-status ${compatibility.tone}`}>{compatibility.label}</span>
+                          <strong>{snapshot.name}</strong>
+                          <small>{displayKcal(totals.kcal)} / P {displayMacro(totals.protein)} / Dif. {formatSigned(compatibility.kcalDiff, " kcal")}</small>
+                        </div>
+                        <div className="wmp-altActions">
+                          <button type="button" className="wmp-btn gold" onClick={() => onPromoteAlternative(index)}>
+                            Usar principal
+                          </button>
+                          <button type="button" className="wmp-iconBtn danger" onClick={() => onRemoveAlternative(index)} title="Quitar alternativa">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="wmp-empty compact">Todavía no guardaste alternativas para este día.</div>
+              )}
+            </section>
 
             <div className="wmp-mealList">
               {(menu.meals || []).map((meal) => (

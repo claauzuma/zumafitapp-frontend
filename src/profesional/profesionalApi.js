@@ -74,6 +74,19 @@ export async function updateProfessionalClientRoutine(clientId, payload) {
   };
 }
 
+export async function updateProfessionalClientProgress(clientId, payload) {
+  const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/progress`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+
+  return {
+    coach: data?.coach || null,
+    client: data?.client || null,
+  };
+}
+
 export async function getProfessionalClientInvitations(filters = {}) {
   const data = await apiFetch(`/api/usuarios/users/me/client-invitations${qsFrom({
     search: filters.search || "",

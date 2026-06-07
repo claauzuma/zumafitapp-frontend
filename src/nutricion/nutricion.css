@@ -1121,6 +1121,12 @@
   box-shadow:0 26px 70px rgba(0,0,0,.55);
 }
 
+.nf-assignModal{
+  width:min(820px, 100%);
+  max-height:min(92dvh, 860px);
+  overflow:auto;
+}
+
 .nf-modal h3{
   margin:12px 0 0;
   color:#f8fafc;
@@ -1158,6 +1164,247 @@
   padding:0 12px;
   font-weight:850;
   outline:none;
+}
+
+.nf-assignMenuBand{
+  margin-top:12px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.nf-assignMenuBand span{
+  min-height:32px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  border:1px solid rgba(245,215,110,.18);
+  background:rgba(245,215,110,.06);
+  color:#fff1ae;
+  border-radius:999px;
+  padding:0 10px;
+  font-size:12px;
+  font-weight:950;
+}
+
+.nf-assignSection{
+  margin-top:14px;
+  display:grid;
+  gap:10px;
+}
+
+.nf-assignSectionHead{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.nf-assignSectionHead span{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#f5d76e;
+  text-transform:uppercase;
+  font-size:12px;
+  font-weight:1000;
+}
+
+.nf-assignSectionHead small{
+  color:#95a4b6;
+  font-weight:800;
+}
+
+.nf-assignDayGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:9px;
+}
+
+.nf-assignDayCard{
+  min-width:0;
+  border:1px solid rgba(130,170,220,.14);
+  background:linear-gradient(180deg, rgba(15,25,38,.96), rgba(7,12,18,.96));
+  color:#eef4fb;
+  border-radius:15px;
+  padding:11px;
+  display:grid;
+  gap:7px;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+}
+
+.nf-assignDayCard.selected{
+  border-color:rgba(245,215,110,.44);
+  background:
+    radial-gradient(circle at top right, rgba(245,215,110,.14), transparent 38%),
+    linear-gradient(180deg, rgba(24,34,45,.98), rgba(9,15,22,.98));
+}
+
+.nf-assignDayCard.hasMenu{
+  border-color:rgba(90,220,160,.25);
+}
+
+.nf-assignDayTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.nf-assignDayTop strong{
+  color:#fff;
+  font-size:15px;
+  font-weight:1000;
+}
+
+.nf-assignBadge{
+  min-height:22px;
+  border:1px solid rgba(130,170,220,.18);
+  border-radius:999px;
+  color:#c8d5e4;
+  padding:0 8px;
+  display:inline-flex;
+  align-items:center;
+  font-size:10px;
+  font-weight:950;
+}
+
+.nf-assignBadge.custom{
+  border-color:rgba(245,215,110,.28);
+  color:#f5d76e;
+  background:rgba(245,215,110,.08);
+}
+
+.nf-assignBadge.adjusted{
+  border-color:rgba(112,166,255,.30);
+  color:#cfe0ff;
+  background:rgba(112,166,255,.09);
+}
+
+.nf-assignKcal{
+  color:#fff1ae;
+  font-size:18px;
+  font-weight:1000;
+}
+
+.nf-assignDayCard small,
+.nf-assignExisting{
+  color:#aeb9c7;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:850;
+}
+
+.nf-assignDayCard small.warning{
+  color:#ffd59a;
+}
+
+.nf-assignExisting{
+  color:#7f8fa3;
+}
+
+.nf-compatCard,
+.nf-assignHint{
+  margin-top:14px;
+  border:1px solid rgba(130,170,220,.14);
+  background:rgba(255,255,255,.035);
+  border-radius:16px;
+  padding:12px;
+}
+
+.nf-compatCard.good{
+  border-color:rgba(90,220,160,.28);
+  background:rgba(90,220,160,.07);
+}
+
+.nf-compatCard.review{
+  border-color:rgba(112,166,255,.28);
+  background:rgba(112,166,255,.07);
+}
+
+.nf-compatCard.warning,
+.nf-compatCard.empty{
+  border-color:rgba(255,170,100,.28);
+  background:rgba(255,170,100,.07);
+}
+
+.nf-compatTitle{
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+
+.nf-compatTitle svg{
+  color:#f5d76e;
+}
+
+.nf-compatTitle strong{
+  color:#f7f9fc;
+  font-weight:1000;
+}
+
+.nf-compatTitle span{
+  margin-left:auto;
+  min-height:24px;
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:999px;
+  padding:0 9px;
+  color:#fff1ae;
+  font-size:11px;
+  font-weight:950;
+}
+
+.nf-compatGrid{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:8px;
+}
+
+.nf-compatGrid > div{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(5,10,16,.46);
+  border-radius:13px;
+  padding:9px;
+  display:grid;
+  gap:3px;
+}
+
+.nf-compatGrid span{
+  color:#8fa0b4;
+  text-transform:uppercase;
+  font-size:10px;
+  font-weight:950;
+}
+
+.nf-compatGrid strong{
+  color:#f7f9fc;
+  font-size:16px;
+  font-weight:1000;
+}
+
+.nf-compatGrid small{
+  color:#b8c5d4;
+  font-size:12px;
+  font-weight:850;
+}
+
+.nf-assignWarning{
+  margin-top:10px;
+  color:#ffd8a8;
+  font-size:12px;
+  line-height:1.4;
+  font-weight:850;
+}
+
+.nf-assignHint{
+  color:#aeb9c7;
+  font-weight:850;
 }
 
 .ne-backdrop,
@@ -4019,5 +4266,30 @@ button.ne-quantityStateBadge.manual:focus-visible{
   .nf-btn.is-immediateBusy {
     opacity: .78;
     pointer-events: none;
+  }
+
+  .nf-assignModal {
+    width: 100%;
+    max-height: calc(100dvh - 18px);
+    border-radius: 18px;
+  }
+
+  .nf-assignSectionHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nf-assignDayGrid,
+  .nf-compatGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .nf-compatTitle {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nf-compatTitle span {
+    margin-left: 0;
   }
 }

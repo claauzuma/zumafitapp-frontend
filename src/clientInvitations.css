@@ -1,0 +1,279 @@
+.pci-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:11000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(2,6,12,.78);
+}
+
+.pci-modal{
+  width:min(560px, 100%);
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(245,215,110,.26);
+  background:
+    radial-gradient(circle at top left, rgba(245,215,110,.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(90,150,255,.12), transparent 34%),
+    linear-gradient(180deg, #101824, #080d14);
+  color:#edf2f7;
+  border-radius:22px;
+  padding:24px;
+  box-shadow:0 24px 80px rgba(0,0,0,.65);
+}
+
+.pci-close{
+  position:absolute;
+  top:14px;
+  right:14px;
+  width:42px;
+  height:42px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(4,8,14,.74);
+  color:#edf2f7;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.pci-heroIcon{
+  width:54px;
+  height:54px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(245,215,110,.32);
+  background:rgba(245,215,110,.10);
+  color:#f5d76e;
+  border-radius:18px;
+}
+
+.pci-eyebrow{
+  display:block;
+  margin-top:16px;
+  color:#f5d76e;
+  font-size:11px;
+  text-transform:uppercase;
+  font-weight:1000;
+}
+
+.pci-modal h2{
+  margin:5px 48px 0 0;
+  color:#fff8d8;
+  font-size:30px;
+  line-height:1.08;
+  font-weight:1000;
+}
+
+.pci-lead,
+.pci-copy{
+  margin:10px 0 0;
+  color:#c7d2df;
+  line-height:1.45;
+  font-size:15px;
+  font-weight:800;
+}
+
+.pci-lead strong{
+  color:#fff;
+}
+
+.pci-coachList{
+  display:grid;
+  gap:8px;
+  margin-top:16px;
+}
+
+.pci-coachList button{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.09);
+  background:#0a111a;
+  color:#edf2f7;
+  border-radius:14px;
+  padding:11px 12px;
+  text-align:left;
+  cursor:pointer;
+}
+
+.pci-coachList button.active{
+  border-color:rgba(245,215,110,.36);
+  background:rgba(245,215,110,.09);
+}
+
+.pci-coachList span,
+.pci-coachList small{
+  display:block;
+}
+
+.pci-coachList span{
+  font-weight:1000;
+}
+
+.pci-coachList small{
+  margin-top:3px;
+  color:#9fadbd;
+  font-weight:800;
+}
+
+.pci-benefits{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:8px;
+  margin-top:18px;
+}
+
+.pci-benefits div{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  border:1px solid rgba(120,170,230,.14);
+  background:rgba(120,170,230,.06);
+  border-radius:13px;
+  padding:10px;
+  color:#d9e5f2;
+  font-size:12px;
+  font-weight:900;
+}
+
+.pci-benefits svg{
+  flex:0 0 auto;
+  color:#f5d76e;
+}
+
+.pci-error{
+  margin-top:14px;
+  border:1px solid rgba(255,110,110,.28);
+  background:rgba(255,110,110,.09);
+  color:#ffc4c4;
+  border-radius:13px;
+  padding:10px 12px;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:850;
+}
+
+.pci-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  margin-top:20px;
+}
+
+.pci-btn{
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  border:1px solid rgba(255,255,255,.10);
+  background:#0a111a;
+  color:#edf2f7;
+  border-radius:14px;
+  padding:0 14px;
+  font-weight:1000;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+.pci-btn.gold{
+  border-color:transparent;
+  background:linear-gradient(135deg, #facc15, #f5d76e);
+  color:#0a0a0a;
+}
+
+.pci-btn.subtle{
+  color:#b8c5d4;
+}
+
+.pci-btn.compact{
+  min-height:38px;
+  border-radius:12px;
+  padding:0 12px;
+  font-size:13px;
+}
+
+.pci-btn:disabled{
+  opacity:.65;
+  cursor:not-allowed;
+}
+
+.pci-banner{
+  margin:0 0 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border:1px solid rgba(245,215,110,.24);
+  background:
+    radial-gradient(circle at top left, rgba(245,215,110,.12), transparent 32%),
+    linear-gradient(180deg, rgba(15,22,32,.96), rgba(8,13,20,.96));
+  color:#edf2f7;
+  border-radius:17px;
+  padding:13px;
+}
+
+.pci-bannerLabel{
+  display:block;
+  color:#f5d76e;
+  font-size:10px;
+  text-transform:uppercase;
+  font-weight:1000;
+}
+
+.pci-banner strong{
+  display:block;
+  margin-top:3px;
+  line-height:1.25;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.pci-bannerActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+@media (max-width:640px){
+  .pci-backdrop{
+    align-items:flex-end;
+    padding:0;
+  }
+
+  .pci-modal{
+    width:100%;
+    max-height:94vh;
+    overflow:auto;
+    border-left:none;
+    border-right:none;
+    border-bottom:none;
+    border-radius:22px 22px 0 0;
+    padding:20px 16px 16px;
+  }
+
+  .pci-modal h2{
+    margin-right:48px;
+    font-size:26px;
+  }
+
+  .pci-benefits{
+    grid-template-columns:1fr;
+  }
+
+  .pci-actions,
+  .pci-banner,
+  .pci-bannerActions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .pci-btn,
+  .pci-bannerActions .pci-btn{
+    width:100%;
+  }
+}

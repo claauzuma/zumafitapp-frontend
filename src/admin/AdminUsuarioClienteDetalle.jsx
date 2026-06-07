@@ -53,6 +53,8 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const assignedCoachLoading = Boolean(assignedCoachId) && assignedCoachQuery.isLoading;
   const coachOptions = Array.isArray(coachesQuery.data) ? coachesQuery.data : [];
   const coachesLoading = shouldLoadCoaches && (coachesQuery.isLoading || coachesQuery.isFetching);
+  const coachChangeRequest = user?.coachChangeRequest || null;
+  const hasPendingCoachRequest = coachChangeRequest?.status === "pending";
 
   const coachActualNombre = useMemo(() => {
     if (!assignedCoach) return "-";
@@ -360,6 +362,16 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                 <div className="auc-helperText">
                   Asignado el {dateLabel(user?.coach?.assignedAt)}.
                 </div>
+              </div>
+            ) : null}
+
+            {hasPendingCoachRequest ? (
+              <div className="auc-coachRequestNotice">
+                <strong>Solicitud del cliente pendiente</strong>
+                <span>
+                  Pidio cambio o desvinculacion del coach el {dateLabel(coachChangeRequest.requestedAt)}.
+                  Podes quitar el coach actual o asignar otro desde esta misma seccion.
+                </span>
               </div>
             ) : null}
 

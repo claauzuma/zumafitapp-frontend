@@ -1,16 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
+  Activity,
   Apple,
+  BarChart3,
+  Beef,
   CalendarDays,
   Check,
+  ClipboardCheck,
   ClipboardList,
   Copy,
+  Droplets,
   Dumbbell,
   Flame,
+  LineChart,
   Mail,
   Pencil,
   Phone,
+  PlusCircle,
+  RefreshCw,
   RotateCcw,
   Ruler,
   Save,
@@ -21,6 +29,7 @@ import {
   Utensils,
   UserRound,
   Weight,
+  Wheat,
   X,
 } from "lucide-react";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
@@ -28,6 +37,7 @@ import { fmtDate, fmtKcal, fullName, goalLabel, planLabel, specialtyLabel } from
 import {
   updateProfessionalClientMenu,
   updateProfessionalClientNutrition,
+  updateProfessionalClientProgress,
   updateProfessionalClientRoutine,
 } from "./profesionalApi.js";
 import { useProfessionalClientDetail } from "./profesionalQueries.js";
@@ -38,6 +48,7 @@ import {
   createDailyTargetsDraft,
   NUTRITION_WEEK_DAYS,
   resolveNutritionTarget,
+  resolveNutritionWeek,
   serializeDailyTargets,
 } from "../nutricion/dailyNutritionTargets.js";
 import AppToast from "../ui/AppToast.jsx";
@@ -62,6 +73,7 @@ export default function ClienteDetalleProfesional() {
   const [editingNutritionDay, setEditingNutritionDay] = useState("");
   const [editingMacros, setEditingMacros] = useState(false);
   const [editingProfileSection, setEditingProfileSection] = useState("");
+  const [editingProgressCheckin, setEditingProgressCheckin] = useState(false);
   const detailQuery = useProfessionalClientDetail(clientId);
   const loading = detailQuery.isLoading;
   const loadErr = detailQuery.error?.message || "";
@@ -79,6 +91,7 @@ export default function ClienteDetalleProfesional() {
     setEditingNutritionDay("");
     setEditingMacros(false);
     setEditingProfileSection("");
+    setEditingProgressCheckin(false);
   }, [client]);
 
   const access = useMemo(() => getCoachAccess(coach), [coach]);
@@ -88,37 +101,30 @@ export default function ClienteDetalleProfesional() {
       setSaving("nutrition");
       setErr("");
       setOk("");
-      const baseKcal = calculateMacroKcal(nutritionDraft.p, nutritionDraft.c, nutritionDraft.g);
-      let data = await updateProfessionalClientNutrition(clientId, {
-        kcal: baseKcal ?? toNullableNumber(nutritionDraft.kcal),
-        macros: {
-          p: toNullableNumber(nutritionDraft.p),
-          c: toNullableNumber(nutritionDraft.c),
-          g: toNullableNumber(nutritionDraft.g),
-        },
-        goalType: nutritionDraft.goalType,
-        targetWeightKg: toNullableNumber(nutritionDraft.targetWeightKg),
-        approach: nutritionDraft.approach,
-      });
-      const weeklyTargets = serializeDailyTargets(nutritionDraft.dailyTargets);
-      const currentWeeklyTargets = serializeDailyTargets(createDailyTargetsDraft(client));
-      if (JSON.stringify(weeklyTargets) !== JSON.stringify(currentWeeklyTargets)) {
-        data = await updateProfessionalClientMenu(clientId, {
-          menu: {
-            mode: {
-              type: preferredAllowedMode(access.menuModes, menuDraft.modeType),
-              lockedByCoach: menuDraft.lockedByCoach,
-            },
-            weeklyPlan: weeklyTargets,
-            coachNotes: menuDraft.coachNotes,
-          },
-        });
-      }
+      const data = await updateProfessionalClientNutrition(clientId, nutritionPayloadFromDraft(nutritionDraft));
       queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
       await invalidateProfessionalClient(clientId, data?.client);
       setOk("Nutrición actualizada para el cliente.");
     } catch (error) {
       setErr(error?.message || "No se pudo guardar nutrición");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function persistNutritionDraft(nextDraft, okMessage = "Nutrición actualizada para el cliente.") {
+    try {
+      setSaving("nutrition");
+      setErr("");
+      setOk("");
+      const data = await updateProfessionalClientNutrition(clientId, nutritionPayloadFromDraft(nextDraft));
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
+      setOk(okMessage);
+      return data;
+    } catch (error) {
+      setErr(error?.message || "No se pudo guardar nutrición");
+      throw error;
     } finally {
       setSaving("");
     }
@@ -171,6 +177,36 @@ export default function ClienteDetalleProfesional() {
       setOk("Perfil del cliente actualizado.");
     } catch (error) {
       setErr(error?.message || "No se pudo actualizar el perfil del cliente");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveProgressCheckin(values) {
+    try {
+      setSaving("progress");
+      setErr("");
+      setOk("");
+      const data = await updateProfessionalClientProgress(clientId, {
+        progress: {
+          checkin: {
+            date: values.date,
+            weightKg: toNullableNumber(values.weightKg),
+            dietAdherencePct: toNullableNumber(values.dietAdherencePct),
+            workoutAdherencePct: toNullableNumber(values.workoutAdherencePct),
+            plannedSessions: toNullableNumber(values.plannedSessions),
+            completedSessions: toNullableNumber(values.completedSessions),
+            note: values.note,
+            status: values.status,
+          },
+        },
+      });
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
+      setEditingProgressCheckin(false);
+      setOk("Check-in de progreso guardado.");
+    } catch (error) {
+      setErr(error?.message || "No se pudo guardar el check-in");
     } finally {
       setSaving("");
     }
@@ -253,16 +289,27 @@ export default function ClienteDetalleProfesional() {
     setNutritionDraft((draft) => ({ ...draft, dailyTargets: {} }));
   }
 
-  function saveMacroBase(values) {
-    setNutritionDraft((draft) => ({
-      ...draft,
+  function recalculateNutritionWeek() {
+    setNutritionDraft((draft) => ({ ...draft }));
+    setOk("Semana recalculada con los días generales ajustados.");
+  }
+
+  async function saveMacroBase(values) {
+    const nextDraft = {
+      ...nutritionDraft,
       p: valueOrEmpty(values.p),
       c: valueOrEmpty(values.c),
       g: valueOrEmpty(values.g),
       kcal: valueOrEmpty(calculateMacroKcal(values.p, values.c, values.g)),
       goalType: values.goalType,
-    }));
-    setEditingMacros(false);
+    };
+    setNutritionDraft(nextDraft);
+    try {
+      await persistNutritionDraft(nextDraft, "Macros base guardados para el cliente.");
+      setEditingMacros(false);
+    } catch {
+      // El error ya queda visible en la pantalla principal.
+    }
   }
 
   if (loading) {
@@ -387,9 +434,11 @@ export default function ClienteDetalleProfesional() {
             <NutritionGeneralSection draft={nutritionDraft} onEdit={() => setEditingMacros(true)} />
 
             <DailyTargetsSection
+              client={client}
               nutritionDraft={nutritionDraft}
               onEditDay={setEditingNutritionDay}
               onApplyGeneral={applyGeneralToWeek}
+              onRecalculateWeek={recalculateNutritionWeek}
             />
 
             <SaveRow onSave={saveNutrition} saving={saving === "nutrition"} label="Guardar planificación" />
@@ -476,15 +525,11 @@ export default function ClienteDetalleProfesional() {
         )}
 
         {activeTab === "progreso" && (
-          <div className="prof-section">
-            <div className="prof-grid">
-              <Metric icon={Scale} label="Peso" value={formatUnit(client?.antropometriaActual?.pesoKg, "kg")} />
-              <Metric icon={Ruler} label="Altura" value={formatUnit(client?.antropometriaActual?.alturaCm, "cm")} />
-              <Metric icon={Flame} label="TDEE" value={fmtKcal(client?.body?.tdeeEstimated || client?.profile?.basics?.tdeeEstimado)} />
-              <Metric icon={Check} label="Último check-in" value={fmtDate(client?.stats?.lastCheckinAt)} />
-            </div>
-            <div className="prof-empty">El seguimiento avanzado queda listo para conectar cuando existan registros históricos reales.</div>
-          </div>
+          <ClientProgressTab
+            client={client}
+            onNewCheckin={() => setEditingProgressCheckin(true)}
+            canEdit={access.training || access.nutrition}
+          />
         )}
       </section>
       {editingNutritionDay ? (
@@ -514,6 +559,14 @@ export default function ClienteDetalleProfesional() {
           saving={saving === `profile-${editingProfileSection}`}
           onSave={saveProfileSection}
           onClose={() => setEditingProfileSection("")}
+        />
+      ) : null}
+      {editingProgressCheckin ? (
+        <ProgressCheckinDrawer
+          client={client}
+          saving={saving === "progress"}
+          onSave={saveProgressCheckin}
+          onClose={() => setEditingProgressCheckin(false)}
         />
       ) : null}
       <AppToast toast={toast} onClose={() => setToast(null)} />
@@ -667,6 +720,259 @@ const CoachAdjustmentCard = React.memo(function CoachAdjustmentCard({ icon, titl
   );
 });
 
+function ClientProgressTab({ client, onNewCheckin, canEdit }) {
+  const progress = useMemo(() => buildClientProgressData(client), [client]);
+
+  return (
+    <div className="prof-progressTab">
+      <section className="prof-progressHero">
+        <div>
+          <span className="prof-nutritionEyebrow">
+            <LineChart size={14} strokeWidth={2.4} />
+            Seguimiento real
+          </span>
+          <h3>Progreso del alumno</h3>
+          <p>Peso, adherencia nutricional, rutina y check-ins semanales en una vista clara para tomar decisiones.</p>
+        </div>
+        {canEdit ? (
+          <button type="button" className="prof-btn gold" onClick={onNewCheckin}>
+            <PlusCircle size={16} />
+            Registrar check-in
+          </button>
+        ) : null}
+      </section>
+
+      <ClientProgressOverview progress={progress} />
+
+      {!progress.hasCheckins ? (
+        <ClientProgressEmptyState canEdit={canEdit} onNewCheckin={onNewCheckin} />
+      ) : null}
+
+      <ClientWeightTrendCard progress={progress} />
+
+      <div className="prof-progressAdherenceGrid">
+        <ClientAdherenceCard
+          icon={Utensils}
+          title="Cumplimiento nutricional"
+          description="Promedio semanal de adherencia a la dieta."
+          metric={progress.diet}
+        />
+        <ClientAdherenceCard
+          icon={Dumbbell}
+          title="Cumplimiento de rutina"
+          description="Sesiones y cumplimiento semanal del entrenamiento."
+          metric={progress.workout}
+          showSessions
+        />
+      </div>
+
+      <ClientProgressTimeline progress={progress} />
+    </div>
+  );
+}
+
+function ClientProgressOverview({ progress }) {
+  const kpis = [
+    { icon: Scale, label: "Peso actual", value: formatProgressKg(progress.currentWeightKg), hint: progress.currentWeightDate ? `Actualizado ${formatProgressDate(progress.currentWeightDate)}` : "Sin registro reciente", tone: "blue" },
+    { icon: TrendingUp, label: "Cambio desde inicio", value: formatProgressDelta(progress.weightDeltaKg, "kg"), hint: progress.initialWeightKg !== null ? `Inicio: ${formatProgressKg(progress.initialWeightKg)}` : "Falta peso inicial", tone: progress.weightDeltaKg < 0 ? "good" : "gold" },
+    { icon: CalendarDays, label: "Ultimo check-in", value: progress.lastCheckinDate ? formatProgressDate(progress.lastCheckinDate) : "Pendiente", hint: progress.hasCheckins ? `${progress.checkins.length} registro(s)` : "Sin historial", tone: "neutral" },
+    { icon: Apple, label: "Dieta ultima semana", value: formatProgressPct(progress.diet.latestPct), hint: progress.diet.latestLabel, tone: progress.diet.latestTone },
+    { icon: ClipboardCheck, label: "Rutina ultima semana", value: formatProgressPct(progress.workout.latestPct), hint: progress.workout.latestLabel, tone: progress.workout.latestTone },
+    { icon: Flame, label: "Tendencia general", value: progress.trend.label, hint: progress.trend.hint, tone: progress.trend.tone },
+  ];
+
+  return (
+    <div className="prof-progressKpiGrid">
+      {kpis.map((item) => (
+        <article className={`prof-progressKpi ${item.tone || ""}`} key={item.label}>
+          <span className="prof-progressKpiIcon">
+            {React.createElement(item.icon, { size: 18, strokeWidth: 2.35 })}
+          </span>
+          <div>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.hint}</small>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ClientProgressEmptyState({ canEdit, onNewCheckin }) {
+  return (
+    <section className="prof-progressEmptyState">
+      <div className="prof-progressEmptyIcon">
+        <Activity size={22} strokeWidth={2.4} />
+      </div>
+      <div>
+        <h3>Todavia no hay registros de progreso</h3>
+        <p>Cuando existan check-ins, pesos o seguimientos, vas a ver la evolucion semanal del alumno aca.</p>
+      </div>
+      {canEdit ? (
+        <button type="button" className="prof-btn compact" onClick={onNewCheckin}>
+          <PlusCircle size={15} />
+          Cargar primer registro
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function ClientWeightTrendCard({ progress }) {
+  const chart = useMemo(() => buildWeightChart(progress.weightSeries), [progress.weightSeries]);
+  return (
+    <section className="prof-progressCard prof-weightTrendCard">
+      <div className="prof-progressCardHead">
+        <div>
+          <span className="prof-nutritionEyebrow">
+            <Scale size={14} strokeWidth={2.4} />
+            Evolucion semanal
+          </span>
+          <h3>Peso corporal</h3>
+          <p>Vista semanal usando el ultimo peso disponible de cada semana.</p>
+        </div>
+        <div className="prof-progressCardBadge">{progress.weightSeries.length} semana(s)</div>
+      </div>
+
+      <div className="prof-weightSummaryGrid">
+        <ProgressMiniStat label="Inicial" value={formatProgressKg(progress.initialWeightKg)} />
+        <ProgressMiniStat label="Actual" value={formatProgressKg(progress.currentWeightKg)} />
+        <ProgressMiniStat label="Diferencia" value={formatProgressDelta(progress.weightDeltaKg, "kg")} />
+        <ProgressMiniStat label="Promedio semanal" value={formatProgressDelta(progress.averageWeeklyWeightChangeKg, "kg/sem")} />
+      </div>
+
+      {chart ? (
+        <div className="prof-weightChart" aria-label="Grafico de evolucion de peso">
+          <svg viewBox="0 0 360 170" role="img">
+            <title>Evolucion semanal de peso</title>
+            <line x1="24" y1="132" x2="340" y2="132" />
+            <polyline points={chart.pointsLine} />
+            {chart.points.map((point) => (
+              <g key={point.key}>
+                <circle cx={point.x} cy={point.y} r="4.5" />
+                <text x={point.x} y={point.y - 10}>{formatNumber(point.weight, 1)}</text>
+              </g>
+            ))}
+          </svg>
+          <div className="prof-weightChartLabels">
+            <span>{chart.firstLabel}</span>
+            <span>{chart.lastLabel}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="prof-weightChartEmpty">
+          <LineChart size={20} />
+          <strong>Faltan mas registros de peso</strong>
+          <span>Con al menos dos semanas se dibuja la tendencia.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ProgressMiniStat({ label, value }) {
+  return (
+    <div className="prof-progressMiniStat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ClientAdherenceCard({ icon: Icon, title, description, metric, showSessions = false }) {
+  return (
+    <section className="prof-progressCard prof-adherenceCard">
+      <div className="prof-progressCardHead compact">
+        <div>
+          <span className="prof-nutritionEyebrow">
+            {React.createElement(Icon, { size: 14, strokeWidth: 2.4 })}
+            Adherencia
+          </span>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <span className={`prof-adherenceBadge ${metric.latestTone}`}>{metric.latestLabel}</span>
+      </div>
+
+      <div className="prof-adherenceStats">
+        <ProgressMiniStat label="Ultima semana" value={formatProgressPct(metric.latestPct)} />
+        <ProgressMiniStat label="Promedio mes" value={formatProgressPct(metric.monthAvgPct)} />
+        <ProgressMiniStat label="Mejor semana" value={metric.bestWeek ? `${formatProgressPct(metric.bestWeek.pct)} (${metric.bestWeek.label})` : "Sin datos"} />
+        <ProgressMiniStat label="Mas baja" value={metric.worstWeek ? `${formatProgressPct(metric.worstWeek.pct)} (${metric.worstWeek.label})` : "Sin datos"} />
+      </div>
+
+      {metric.weeks.length ? (
+        <div className="prof-adherenceBars">
+          {metric.weeks.slice(-8).map((week) => {
+            const status = adherenceStatus(week.pct);
+            return (
+              <div className="prof-weekBar" key={week.key}>
+                <div>
+                  <strong>{week.label}</strong>
+                  <span>
+                    {formatProgressPct(week.pct)}
+                    {showSessions && week.plannedSessions ? ` / ${week.completedSessions || 0}/${week.plannedSessions} sesiones` : ""}
+                  </span>
+                </div>
+                <div className={`prof-weekBarTrack ${status.tone}`}>
+                  <span style={{ width: `${Math.max(0, Math.min(100, Number(week.pct) || 0))}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="prof-progressInlineEmpty">
+          <BarChart3 size={18} />
+          <span>Sin datos suficientes para calcular adherencia semanal.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ClientProgressTimeline({ progress }) {
+  return (
+    <section className="prof-progressCard prof-progressTimeline">
+      <div className="prof-progressCardHead">
+        <div>
+          <span className="prof-nutritionEyebrow">
+            <CalendarDays size={14} strokeWidth={2.4} />
+            Historial
+          </span>
+          <h3>Check-ins recientes</h3>
+          <p>Registro cronologico de peso, cumplimiento y notas del coach.</p>
+        </div>
+      </div>
+
+      {progress.timeline.length ? (
+        <div className="prof-checkinList">
+          {progress.timeline.map((checkin) => (
+            <article className="prof-checkinCard" key={checkin.id}>
+              <div className="prof-checkinDate">
+                <span>{formatProgressDate(checkin.date)}</span>
+                <em className={`prof-statusPill ${checkin.statusTone}`}>{checkin.statusLabel}</em>
+              </div>
+              <div className="prof-checkinMetrics">
+                <span><Scale size={14} /> {formatProgressKg(checkin.weightKg)}</span>
+                <span><Utensils size={14} /> {formatProgressPct(checkin.dietAdherencePct)}</span>
+                <span><Dumbbell size={14} /> {formatProgressPct(checkin.workoutAdherencePct)}</span>
+              </div>
+              {checkin.note ? <p>{checkin.note}</p> : <p className="muted">Sin nota cargada.</p>}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="prof-progressInlineEmpty">
+          <CalendarDays size={18} />
+          <span>No hay check-ins guardados todavia.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NutritionGeneralSection({ draft, onEdit }) {
   const calculatedKcal = calculateMacroKcal(draft.p, draft.c, draft.g);
   const hasMacros = calculatedKcal !== null;
@@ -685,22 +991,27 @@ function NutritionGeneralSection({ draft, onEdit }) {
       </div>
 
       <div className="prof-macroBaseSummary">
-        <div className="prof-calculatedKcal">
+        <div className="prof-calculatedKcal featured">
+          <span className="prof-macroIcon"><Flame size={17} strokeWidth={2.5} /></span>
           <span>{hasMacros ? "Kcal calculadas" : "Completá los macros base"}</span>
           <strong>{hasMacros ? displayTargetValue(calculatedKcal, "kcal") : "Pendiente"}</strong>
           <small>{hasMacros ? "Según proteína, carbohidratos y grasas" : "Completá P/C/G para calcular kcal"}</small>
         </div>
-        <NutritionMacro label="Proteína" value={draft.p} suffix=" g" />
-        <NutritionMacro label="Carbs" value={draft.c} suffix=" g" />
-        <NutritionMacro label="Grasas" value={draft.g} suffix=" g" />
+        <NutritionMacro icon={Beef} tone="protein" label="Proteína" value={draft.p} suffix=" g" />
+        <NutritionMacro icon={Wheat} tone="carbs" label="Carbs" value={draft.c} suffix=" g" />
+        <NutritionMacro icon={Droplets} tone="fat" label="Grasas" value={draft.g} suffix=" g" />
       </div>
       <div className="prof-macroBaseGoal"><span>Objetivo nutricional</span><strong>{goalLabel(draft.goalType)}</strong></div>
     </section>
   );
 }
 
-function DailyTargetsSection({ nutritionDraft, onEditDay, onApplyGeneral }) {
-  const baseKcal = calculateMacroKcal(nutritionDraft.p, nutritionDraft.c, nutritionDraft.g);
+function DailyTargetsSection({ client, nutritionDraft, onEditDay, onApplyGeneral, onRecalculateWeek }) {
+  const weekPlan = useMemo(() => resolveNutritionWeek(nutritionDraft), [nutritionDraft]);
+  const baseKcal = weekPlan.summary.baseDailyKcal;
+  const weeklyDiff = weekPlan.summary.difference;
+  const hasWeeklyWarning = weeklyDiff !== null && Math.abs(weeklyDiff) > 5;
+  const trainingDays = getTrainingDaysPerWeek(client);
   return (
     <section className="prof-nutritionBlock prof-dailyTargetsSection">
       <div className="prof-nutritionBlockHead">
@@ -709,18 +1020,67 @@ function DailyTargetsSection({ nutritionDraft, onEditDay, onApplyGeneral }) {
           <h3>Distribución diaria</h3>
           <p>Personalizá días de entrenamiento, descanso o refeeds sin perder la referencia general.</p>
         </div>
-        <button type="button" className="prof-btn compact" onClick={onApplyGeneral}>
-          <RotateCcw size={15} />
-          Aplicar general a toda la semana
-        </button>
+        <div className="prof-nutritionActions">
+          <button type="button" className="prof-btn compact" onClick={onRecalculateWeek}>
+            <RefreshCw size={15} />
+            Recalcular semana
+          </button>
+          <button type="button" className="prof-btn compact" onClick={onApplyGeneral}>
+            <RotateCcw size={15} />
+            Aplicar general a toda la semana
+          </button>
+        </div>
       </div>
+
+      <div className="prof-weekSignalGrid" aria-label="Resumen semanal">
+        <div className="prof-weekSignalItem kcal">
+          <Flame size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Base diaria</span>
+          <strong>{baseKcal ? displayTargetValue(baseKcal, "kcal") : "Pendiente"}</strong>
+        </div>
+        <div className="prof-weekSignalItem">
+          <CalendarDays size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Objetivo semanal</span>
+          <strong>{weekPlan.summary.weeklyKcalTarget ? displayTargetValue(weekPlan.summary.weeklyKcalTarget, "kcal") : "Pendiente"}</strong>
+        </div>
+        <div className={`prof-weekSignalItem ${hasWeeklyWarning ? "warning" : "good"}`}>
+          <Target size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Actual semanal</span>
+          <strong>{weekPlan.summary.currentWeeklyKcal ? displayTargetValue(weekPlan.summary.currentWeeklyKcal, "kcal") : "Pendiente"}</strong>
+        </div>
+        <div className={`prof-weekSignalItem ${hasWeeklyWarning ? "warning" : "good"}`}>
+          <TrendingUp size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Diferencia semanal</span>
+          <strong>{weeklyDiff === null ? "Sin base" : `${weeklyDiff > 0 ? "+" : ""}${formatNumber(weeklyDiff, 0)} kcal`}</strong>
+        </div>
+        <div className="prof-weekSignalItem">
+          <CalendarDays size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Personalizados</span>
+          <strong>{weekPlan.summary.customizedDays}/7</strong>
+        </div>
+        <div className="prof-weekSignalItem adjusted">
+          <RefreshCw size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Generales ajustados</span>
+          <strong>{weekPlan.summary.adjustedGeneralDays}</strong>
+        </div>
+        <div className="prof-weekSignalItem gym">
+          <Dumbbell size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>Gym estimado</span>
+          <strong>{trainingDays ? `${trainingDays} días` : "Sin definir"}</strong>
+        </div>
+      </div>
+      {hasWeeklyWarning ? (
+        <div className="prof-weekWarning">
+          La semana queda {weeklyDiff > 0 ? "+" : ""}{formatNumber(weeklyDiff, 0)} kcal respecto del objetivo. Revisá los días personalizados o restaurá la semana.
+        </div>
+      ) : null}
 
       <div className="prof-dailyTargetGrid">
         {NUTRITION_WEEK_DAYS.map((day) => (
           <DailyTargetCard
             key={day.key}
             day={day}
-            target={resolveNutritionTarget(nutritionDraft, day.key)}
+            target={weekPlan.targets[day.key]}
             baseKcal={baseKcal}
             onEdit={onEditDay}
           />
@@ -733,13 +1093,15 @@ function DailyTargetsSection({ nutritionDraft, onEditDay, onApplyGeneral }) {
 const DailyTargetCard = React.memo(function DailyTargetCard({ day, target, baseKcal, onEdit }) {
   const targetKcal = Number(target.kcal);
   const hasTarget = Number.isFinite(targetKcal) && targetKcal > 0;
+  const statusClass = target.customized ? "custom" : target.adjusted ? "adjusted" : "";
+  const statusLabel = target.statusLabel || (target.customized ? "Personalizado" : target.adjusted ? "General ajustado" : "General");
   return (
-    <button type="button" className={`prof-dailyTargetCard ${target.customized ? "custom" : ""}`} onClick={() => onEdit(day.key)}>
+    <button type="button" className={`prof-dailyTargetCard ${statusClass}`} onClick={() => onEdit(day.key)}>
       <div className="prof-dailyTargetTop">
         <div>
           <span className="prof-dailyTargetDay">{day.label}</span>
-          <span className={`prof-dailyTargetBadge ${target.customized ? "custom" : ""}`}>
-            {target.customized ? "Personalizado" : "General"}
+          <span className={`prof-dailyTargetBadge ${statusClass}`}>
+            {statusLabel}
           </span>
         </div>
         <Pencil size={16} aria-hidden="true" />
@@ -748,7 +1110,7 @@ const DailyTargetCard = React.memo(function DailyTargetCard({ day, target, baseK
         <>
           <strong>{displayTargetValue(target.kcal, "kcal")}</strong>
           <span className="prof-dailyTargetMacros">{targetMacroLine(target)}</span>
-          <DailyKcalBar targetKcal={targetKcal} baseKcal={baseKcal} customized={target.customized} />
+          <DailyKcalBar targetKcal={targetKcal} baseKcal={baseKcal} customized={target.customized} adjusted={target.adjusted} />
         </>
       ) : (
         <div className="prof-dailyTargetEmpty">
@@ -756,25 +1118,26 @@ const DailyTargetCard = React.memo(function DailyTargetCard({ day, target, baseK
           <span>Completá P/C/G para calcular kcal</span>
         </div>
       )}
+      {target.warning ? <small className="warning">{target.warning}</small> : null}
       {target.note ? <small>{target.note}</small> : <small className="muted">Sin nota específica</small>}
     </button>
   );
 });
 
-function DailyKcalBar({ targetKcal, baseKcal, customized }) {
+function DailyKcalBar({ targetKcal, baseKcal, customized, adjusted }) {
   const base = Number(baseKcal);
   const current = Number(targetKcal);
   const hasBase = Number.isFinite(base) && base > 0;
   const percent = hasBase ? Math.min(130, Math.max(0, (current / base) * 100)) : 0;
   const delta = hasBase ? Math.round(current - base) : 0;
-  const tone = !customized ? "general" : delta > 0 ? "high" : delta < 0 ? "low" : "general";
+  const tone = customized && delta > 0 ? "high" : customized && delta < 0 ? "low" : adjusted ? "adjusted" : "general";
   return (
     <div className="prof-kcalBarWrap">
       <div className={`prof-kcalBar ${tone}`} aria-hidden="true">
         <span style={{ width: `${hasBase ? percent : 0}%` }} />
       </div>
       <small className="prof-kcalBarMeta">
-        {hasBase ? `${Math.round(percent)}% de la base${customized && delta ? ` / ${delta > 0 ? "+" : ""}${delta} kcal` : ""}` : "Sin referencia base"}
+        {hasBase ? `${Math.round(percent)}% de la base${delta ? ` / ${delta > 0 ? "+" : ""}${delta} kcal` : ""}` : "Sin referencia base"}
       </small>
     </div>
   );
@@ -925,6 +1288,74 @@ function DailyTargetEditor({ dayKey, nutritionDraft, onSave, onReset, onClose })
   );
 }
 
+function ProgressCheckinDrawer({ client, saving, onSave, onClose }) {
+  const latest = getLatestProgressCheckin(client);
+  const [localDraft, setLocalDraft] = useState(() => ({
+    date: new Date().toISOString().slice(0, 10),
+    weightKg: valueOrEmpty(firstPresent(latest?.weightKg, client?.antropometriaActual?.pesoKg, client?.body?.weightKg)),
+    dietAdherencePct: valueOrEmpty(latest?.dietAdherencePct),
+    workoutAdherencePct: valueOrEmpty(latest?.workoutAdherencePct),
+    plannedSessions: valueOrEmpty(latest?.plannedSessions),
+    completedSessions: valueOrEmpty(latest?.completedSessions),
+    status: "ok",
+    note: "",
+  }));
+  const hasData = Boolean(
+    localDraft.weightKg ||
+    localDraft.dietAdherencePct ||
+    localDraft.workoutAdherencePct ||
+    localDraft.plannedSessions ||
+    localDraft.completedSessions ||
+    localDraft.note.trim()
+  );
+
+  const update = (patch) => setLocalDraft((current) => ({ ...current, ...patch }));
+
+  return (
+    <DrawerShell
+      eyebrow="Progreso"
+      title="Registrar check-in"
+      description="Guardalo como registro real del alumno. La vista semanal se recalcula al guardar."
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="prof-btn" onClick={onClose}>Cancelar</button>
+          <button type="button" className="prof-btn gold" disabled={saving || !hasData} onClick={() => onSave(localDraft)}>
+            <Save size={16} />
+            {saving ? "Guardando..." : "Guardar check-in"}
+          </button>
+        </>
+      )}
+    >
+      <div className="prof-checkinForm">
+        <Field type="date" label="Fecha" value={localDraft.date} onChange={(value) => update({ date: value })} />
+        <Field label="Peso (kg)" inputMode="decimal" value={localDraft.weightKg} onChange={(value) => update({ weightKg: value })} />
+        <Field label="Adherencia dieta (%)" inputMode="decimal" value={localDraft.dietAdherencePct} onChange={(value) => update({ dietAdherencePct: value })} />
+        <Field label="Adherencia rutina (%)" inputMode="decimal" value={localDraft.workoutAdherencePct} onChange={(value) => update({ workoutAdherencePct: value })} />
+        <Field label="Sesiones planificadas" inputMode="numeric" value={localDraft.plannedSessions} onChange={(value) => update({ plannedSessions: value })} />
+        <Field label="Sesiones realizadas" inputMode="numeric" value={localDraft.completedSessions} onChange={(value) => update({ completedSessions: value })} />
+        <label className="prof-field">
+          <span>Estado general</span>
+          <select value={localDraft.status} onChange={(event) => update({ status: event.target.value })}>
+            <option value="ok">En progreso</option>
+            <option value="stable">Estable</option>
+            <option value="attention">Necesita atencion</option>
+          </select>
+        </label>
+        <label className="prof-field prof-checkinNote">
+          <span>Nota breve</span>
+          <textarea
+            maxLength={1000}
+            placeholder="Ej: buena adherencia, ajustar fin de semana o revisar energia."
+            value={localDraft.note}
+            onChange={(event) => update({ note: event.target.value })}
+          />
+        </label>
+      </div>
+    </DrawerShell>
+  );
+}
+
 function ProfileEditDrawer({ section, nutritionDraft, menuDraft, routineDraft, saving, onSave, onClose }) {
   const isGoal = section === "goal";
   const sectionConfig = {
@@ -1026,20 +1457,23 @@ function CalculatedKcalPreview({ kcal }) {
   );
 }
 
-function NutritionMacro({ label, value, suffix = "", tone = "" }) {
+function NutritionMacro({ icon: Icon, label, value, suffix = "", tone = "" }) {
   return (
     <div className={`prof-nutritionMacro ${tone}`}>
-      <span>{label}</span>
-      <strong>{displayTargetValue(value, suffix)}</strong>
+      {Icon ? <span className="prof-macroIcon"><Icon size={16} strokeWidth={2.4} /></span> : null}
+      <div>
+        <span>{label}</span>
+        <strong>{displayTargetValue(value, suffix)}</strong>
+      </div>
     </div>
   );
 }
 
-function Field({ label, value, onChange, inputMode }) {
+function Field({ label, value, onChange, inputMode, type = "text" }) {
   return (
     <label className="prof-field">
       <span>{label}</span>
-      <input inputMode={inputMode} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      <input type={type} inputMode={inputMode} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }
@@ -1113,6 +1547,17 @@ function getCoachAccess(coach) {
     canUseMenuSuggestions: !!specialties.nutrition && !trialExpired && !!(features?.menus?.semiAutomaticBuilder || features?.menus?.automaticGenerator),
     routineModes,
   };
+}
+
+function getTrainingDaysPerWeek(client) {
+  const raw = firstPresent(
+    client?.routine?.structure?.trainingDaysPerWeek,
+    client?.profile?.basics?.frecuenciaEjercicio,
+    client?.body?.exerciseFrequency
+  );
+  const match = String(raw || "").match(/\d+/);
+  const numeric = match ? Number(match[0]) : null;
+  return Number.isFinite(numeric) && numeric > 0 ? Math.min(7, numeric) : null;
 }
 
 function createNutritionDraft(client) {
@@ -1251,6 +1696,7 @@ function normalizeDailyTargetDraft(target = {}) {
 }
 
 function nutritionPayloadFromDraft(draft = {}) {
+  const weeklyPlan = serializeDailyTargets(draft.dailyTargets);
   return {
     kcal: calculateMacroKcal(draft.p, draft.c, draft.g) ?? toNullableNumber(draft.kcal),
     macros: {
@@ -1261,7 +1707,279 @@ function nutritionPayloadFromDraft(draft = {}) {
     goalType: draft.goalType,
     targetWeightKg: toNullableNumber(draft.targetWeightKg),
     approach: draft.approach,
+    weeklyPlan,
   };
+}
+
+function buildClientProgressData(client) {
+  const checkins = normalizeClientProgressCheckins(client);
+  const weeks = groupProgressCheckinsByWeek(checkins);
+  const weightSeries = weeks.filter((week) => Number.isFinite(week.weightKg));
+  const weightCheckins = checkins.filter((checkin) => Number.isFinite(checkin.weightKg));
+  const firstWeightCheckin = weightCheckins[0] || null;
+  const latestWeightCheckin = weightCheckins[weightCheckins.length - 1] || null;
+  const stats = client?.stats || {};
+  const initialWeightKg = firstNumber(firstWeightCheckin?.weightKg, stats.pesoInicialKg, client?.body?.initialWeightKg);
+  const currentWeightKg = firstNumber(
+    latestWeightCheckin?.weightKg,
+    stats.pesoActualKg,
+    client?.antropometriaActual?.pesoKg,
+    client?.body?.weightKg
+  );
+  const currentWeightDate = latestWeightCheckin?.date || stats.lastCheckinAt || null;
+  const weightDeltaKg = Number.isFinite(initialWeightKg) && Number.isFinite(currentWeightKg)
+    ? roundTo(currentWeightKg - initialWeightKg, 1)
+    : null;
+  const averageWeeklyWeightChangeKg = Number.isFinite(weightDeltaKg) && weightSeries.length > 1
+    ? roundTo(weightDeltaKg / (weightSeries.length - 1), 2)
+    : null;
+  const diet = buildProgressAdherenceMetric(weeks, "dietAdherencePct");
+  const workout = buildProgressAdherenceMetric(weeks, "workoutAdherencePct");
+  const trend = buildProgressTrend({ checkins, diet, workout, weightDeltaKg });
+  const lastCheckin = checkins[checkins.length - 1] || null;
+
+  return {
+    hasCheckins: checkins.length > 0,
+    checkins,
+    weeks,
+    weightSeries,
+    initialWeightKg,
+    currentWeightKg,
+    currentWeightDate,
+    weightDeltaKg,
+    averageWeeklyWeightChangeKg,
+    lastCheckinDate: lastCheckin?.date || stats.lastCheckinAt || null,
+    diet,
+    workout,
+    trend,
+    timeline: [...checkins].reverse().slice(0, 10),
+  };
+}
+
+function normalizeClientProgressCheckins(client) {
+  const raw = Array.isArray(client?.progress?.checkins) ? client.progress.checkins : [];
+  return raw
+    .map((item, index) => normalizeClientProgressCheckin(item, index))
+    .filter((item) => item.date)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+function normalizeClientProgressCheckin(raw = {}, index = 0) {
+  const workoutAdherencePct = firstNumber(
+    raw.workoutAdherencePct,
+    raw.adherenciaRutinaPct,
+    deriveWorkoutAdherence(raw)
+  );
+  const status = progressStatusMeta(raw.status || raw.estado || "ok");
+  return {
+    id: String(raw.id || raw._id || `${raw.date || "checkin"}-${index}`),
+    date: String(raw.date || raw.fecha || "").slice(0, 10),
+    weightKg: firstNumber(raw.weightKg, raw.pesoKg),
+    dietAdherencePct: firstNumber(raw.dietAdherencePct, raw.adherenciaDietaPct),
+    workoutAdherencePct,
+    plannedSessions: firstNumber(raw.plannedSessions, raw.sesionesPlanificadas),
+    completedSessions: firstNumber(raw.completedSessions, raw.sesionesRealizadas),
+    note: String(raw.note || raw.nota || "").trim(),
+    status: status.key,
+    statusLabel: status.label,
+    statusTone: status.tone,
+  };
+}
+
+function getLatestProgressCheckin(client) {
+  const checkins = normalizeClientProgressCheckins(client);
+  return checkins[checkins.length - 1] || null;
+}
+
+function groupProgressCheckinsByWeek(checkins = []) {
+  const map = new Map();
+  checkins.forEach((checkin) => {
+    const key = getWeekStartKey(checkin.date);
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: weekLabel(key),
+        checkins: [],
+        plannedSessions: 0,
+        completedSessions: 0,
+      });
+    }
+    const week = map.get(key);
+    week.checkins.push(checkin);
+    if (Number.isFinite(checkin.plannedSessions)) week.plannedSessions += Number(checkin.plannedSessions);
+    if (Number.isFinite(checkin.completedSessions)) week.completedSessions += Number(checkin.completedSessions);
+  });
+
+  return [...map.values()]
+    .map((week) => {
+      const sorted = week.checkins.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const weightEntry = [...sorted].reverse().find((item) => Number.isFinite(item.weightKg));
+      return {
+        ...week,
+        weightKg: weightEntry?.weightKg ?? null,
+        weightDate: weightEntry?.date || null,
+        dietAdherencePct: averageNumbers(sorted.map((item) => item.dietAdherencePct)),
+        workoutAdherencePct: averageNumbers(sorted.map((item) => item.workoutAdherencePct)),
+      };
+    })
+    .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+}
+
+function buildProgressAdherenceMetric(weeks, key) {
+  const available = weeks
+    .map((week) => ({
+      key: week.key,
+      label: week.label,
+      pct: Number(week[key]),
+      plannedSessions: week.plannedSessions,
+      completedSessions: week.completedSessions,
+    }))
+    .filter((week) => Number.isFinite(week.pct));
+  const latest = available[available.length - 1] || null;
+  const recent = available.slice(-4);
+  const best = available.length ? available.reduce((max, week) => (week.pct > max.pct ? week : max), available[0]) : null;
+  const worst = available.length ? available.reduce((min, week) => (week.pct < min.pct ? week : min), available[0]) : null;
+  const status = adherenceStatus(latest?.pct);
+  return {
+    weeks: available,
+    latestPct: latest?.pct ?? null,
+    latestLabel: status.label,
+    latestTone: status.tone,
+    monthAvgPct: averageNumbers(recent.map((week) => week.pct)),
+    bestWeek: best,
+    worstWeek: worst,
+  };
+}
+
+function buildProgressTrend({ checkins, diet, workout, weightDeltaKg }) {
+  if (!checkins.length) return { label: "Sin datos", hint: "Esperando registros", tone: "neutral" };
+  const dietLow = Number.isFinite(diet.latestPct) && diet.latestPct < 60;
+  const workoutLow = Number.isFinite(workout.latestPct) && workout.latestPct < 60;
+  if (dietLow || workoutLow) return { label: "Necesita atencion", hint: "Revisar adherencia reciente", tone: "bad" };
+  if (Number.isFinite(weightDeltaKg) && Math.abs(weightDeltaKg) < 0.3) return { label: "Estable", hint: "Sin cambios grandes", tone: "blue" };
+  return { label: "En progreso", hint: "Con registros activos", tone: "good" };
+}
+
+function buildWeightChart(weightSeries = []) {
+  if (weightSeries.length < 2) return null;
+  const weights = weightSeries.map((item) => Number(item.weightKg)).filter(Number.isFinite);
+  if (weights.length < 2) return null;
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = max - min || 1;
+  const left = 28;
+  const width = 306;
+  const top = 28;
+  const height = 96;
+  const points = weightSeries.map((item, index) => {
+    const x = left + (index / Math.max(1, weightSeries.length - 1)) * width;
+    const y = top + (1 - ((Number(item.weightKg) - min) / range)) * height;
+    return {
+      key: item.key,
+      x: roundTo(x, 1),
+      y: roundTo(y, 1),
+      weight: Number(item.weightKg),
+    };
+  });
+  return {
+    points,
+    pointsLine: points.map((point) => `${point.x},${point.y}`).join(" "),
+    firstLabel: weightSeries[0]?.label || "",
+    lastLabel: weightSeries[weightSeries.length - 1]?.label || "",
+  };
+}
+
+function adherenceStatus(value) {
+  const pct = Number(value);
+  if (!Number.isFinite(pct)) return { label: "Sin datos", tone: "neutral" };
+  if (pct >= 90) return { label: "Excelente", tone: "good" };
+  if (pct >= 75) return { label: "Buena", tone: "blue" };
+  if (pct >= 60) return { label: "Regular", tone: "warn" };
+  return { label: "Baja", tone: "bad" };
+}
+
+function progressStatusMeta(value) {
+  const key = String(value || "ok").toLowerCase();
+  if (key.includes("attention") || key.includes("atencion") || key.includes("riesgo")) {
+    return { key: "attention", label: "Necesita atencion", tone: "bad" };
+  }
+  if (key.includes("stable") || key.includes("estable")) {
+    return { key: "stable", label: "Estable", tone: "blue" };
+  }
+  return { key: "ok", label: "En progreso", tone: "good" };
+}
+
+function deriveWorkoutAdherence(raw = {}) {
+  const planned = firstNumber(raw.plannedSessions, raw.sesionesPlanificadas);
+  const completed = firstNumber(raw.completedSessions, raw.sesionesRealizadas);
+  if (!Number.isFinite(planned) || planned <= 0 || !Number.isFinite(completed)) return null;
+  return Math.max(0, Math.min(100, Math.round((completed / planned) * 100)));
+}
+
+function getWeekStartKey(value) {
+  const date = parseProgressDate(value);
+  if (!date) return "";
+  const day = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - day);
+  return date.toISOString().slice(0, 10);
+}
+
+function weekLabel(key) {
+  return formatProgressDate(key);
+}
+
+function parseProgressDate(value) {
+  if (!value) return null;
+  const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    if (value === "" || value === null || value === undefined) continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function averageNumbers(values = []) {
+  const numbers = values.map(Number).filter(Number.isFinite);
+  if (!numbers.length) return null;
+  return roundTo(numbers.reduce((sum, value) => sum + value, 0) / numbers.length, 1);
+}
+
+function roundTo(value, decimals = 1) {
+  const factor = 10 ** decimals;
+  return Math.round(Number(value) * factor) / factor;
+}
+
+function formatProgressDate(value) {
+  const date = parseProgressDate(value);
+  if (!date) return "-";
+  return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", timeZone: "UTC" }).format(date);
+}
+
+function formatProgressKg(value) {
+  if (value === null || value === undefined || value === "") return "Sin datos";
+  const number = Number(value);
+  return Number.isFinite(number) ? `${formatNumber(number, 1)} kg` : "Sin datos";
+}
+
+function formatProgressPct(value) {
+  if (value === null || value === undefined || value === "") return "Sin datos";
+  const number = Number(value);
+  return Number.isFinite(number) ? `${formatNumber(number, 0)}%` : "Sin datos";
+}
+
+function formatProgressDelta(value, suffix) {
+  if (value === null || value === undefined || value === "") return "Sin datos";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "Sin datos";
+  return `${number > 0 ? "+" : ""}${formatNumber(number, suffix === "kg/sem" ? 2 : 1)} ${suffix}`;
 }
 
 function profileFacts(client) {
@@ -1369,6 +2087,15 @@ function formatGram(value) {
   if (value === null || value === undefined || value === "") return "-";
   const n = Number(value);
   return Number.isFinite(n) ? `${Math.round(n)} g` : String(value);
+}
+
+function formatNumber(value, decimals = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "0";
+  return new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  }).format(number);
 }
 
 function displayTargetValue(value, suffix = "") {

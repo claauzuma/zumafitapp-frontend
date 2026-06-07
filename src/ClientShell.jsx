@@ -1,11 +1,20 @@
 // src/ClientShell.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
-import { setAuthGuest, getCachedUser, isImpersonating } from "./authCache.js";
+import { setAuthGuest, setAuthLogged, getCachedUser, isImpersonating } from "./authCache.js";
+import { useAuthMe } from "./authQueries.js";
 import ImpersonationBanner from "./ImpersonationBanner.jsx";
-import { clearPrivateQueryCache } from "./queryClient.js";
+import { clearPrivateQueryCache, queryClient, queryKeys, setAuthUserQueryData } from "./queryClient.js";
 import AppToast from "./ui/AppToast.jsx";
+import { dismissCoachAssignmentNotice } from "./clientCoachApi.js";
+import {
+  acceptCoachInvitation,
+  declineCoachInvitation,
+  getPendingCoachInvitations,
+} from "./clientInvitationsApi.js";
+import PendingCoachInvitationModal, { ClientInvitationBanner } from "./PendingCoachInvitationModal.jsx";
 
 const CSS = `
 :root{
@@ -137,6 +146,71 @@ const CSS = `
   max-width: 1200px;
   margin: 0 auto;
   padding: 16px 14px 26px;
+}
+
+.cs-coachNotice{
+  border:1px solid rgba(245,215,110,.32);
+  background:
+    radial-gradient(800px 220px at 0% 0%, rgba(245,215,110,.14), transparent 55%),
+    linear-gradient(180deg,#141414,#0f0f0f);
+  border-radius:18px;
+  padding:14px;
+  margin-bottom:14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  box-shadow:0 16px 48px rgba(0,0,0,.28);
+}
+.cs-coachNoticeText{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+.cs-coachNoticeLabel{
+  width:max-content;
+  border:1px solid rgba(245,215,110,.28);
+  background:rgba(245,215,110,.10);
+  color:var(--gold);
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:11px;
+  font-weight:900;
+}
+.cs-coachNotice strong{
+  font-size:16px;
+  color:#fff;
+}
+.cs-coachNotice p{
+  margin:0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.4;
+}
+.cs-coachNoticeActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.cs-actionBtn{
+  border:none;
+  border-radius:12px;
+  padding:10px 12px;
+  font-weight:900;
+  cursor:pointer;
+  background:#0f0f0f;
+  color:var(--txt);
+  border:1px solid var(--border2);
+}
+.cs-actionBtn.gold{
+  background:linear-gradient(135deg,var(--gold2),var(--gold));
+  color:#0a0a0a;
+  border-color:transparent;
+}
+.cs-actionBtn:disabled{
+  opacity:.65;
+  cursor:not-allowed;
 }
 
 /* overlay + drawer */
@@ -399,6 +473,16 @@ const CSS = `
   .cs-btn{ width:42px; height:42px; border-radius:13px; }
   .cs-logo{ width:40px; height:40px; border-radius:13px; }
   .cs-avatar{ width:46px; height:46px; }
+  .cs-coachNotice{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .cs-coachNoticeActions{
+    width:100%;
+  }
+  .cs-actionBtn{
+    flex:1 1 140px;
+  }
 }
 `;
 
@@ -411,6 +495,58 @@ function initialFromName(fullName) {
   const s = String(fullName || "").trim();
   if (!s) return "Z";
   return s[0].toUpperCase();
+}
+function normalizeShellRole(role) {
+  return String(role || "").trim().toLowerCase();
+}
+function shouldClientDoOnboarding(user) {
+  const role = normalizeShellRole(user?.role || user?.rol);
+  const tipo = normalizeShellRole(user?.tipo);
+  return (
+    (role === "cliente" || role === "client") &&
+    tipo === "entrenado" &&
+    user?.onboarding?.enabled === true &&
+    user?.onboarding?.done !== true
+  );
+}
+function invitationSkipsOnboarding(invitation) {
+  const onboarding = invitation?.onboarding || {};
+  return onboarding.enabled === false || normalizeShellRole(onboarding.mode) === "none";
+}
+function userWithSkippedOnboarding(user) {
+  if (!user) return user;
+  return {
+    ...user,
+    onboarding: {
+      ...(user.onboarding || {}),
+      enabled: false,
+      mode: "none",
+      done: true,
+    },
+  };
+}
+
+function ClientCoachAssignmentNotice({ notice, busy = false, onDismiss, onProfile }) {
+  const coachName = notice?.coachName || "tu coach";
+  return (
+    <section className="cs-coachNotice" aria-live="polite">
+      <div className="cs-coachNoticeText">
+        <span className="cs-coachNoticeLabel">Asignacion de coach</span>
+        <strong>Fuiste asignado a {coachName}.</strong>
+        <p>
+          A partir de ahora este coach puede acompanarte con planificacion, menus, rutina y progreso.
+        </p>
+      </div>
+      <div className="cs-coachNoticeActions">
+        <button type="button" className="cs-actionBtn" onClick={onProfile}>
+          Ver perfil
+        </button>
+        <button type="button" className="cs-actionBtn gold" disabled={busy} onClick={onDismiss}>
+          {busy ? "Guardando..." : "Entendido"}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -450,10 +586,49 @@ const NAV_SECTIONS = [
 export default function ClientShell() {
   const nav = useNavigate();
   const loc = useLocation();
-  const user = useMemo(() => getCachedUser(), []);
+  const cachedUser = useMemo(() => getCachedUser(), []);
+  const meQuery = useAuthMe({
+    enabled: true,
+    initialFromCache: true,
+    staleTime: 30 * 1000,
+    refetchOnMount: false,
+  });
+  const user = meQuery.data || cachedUser;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [invitationBusy, setInvitationBusy] = useState("");
+  const [invitationError, setInvitationError] = useState("");
+  const [coachNoticeBusy, setCoachNoticeBusy] = useState(false);
+  const invitationSessionKey = `coach_invite_snooze_${user?.id || user?._id || user?.email || "anon"}`;
+  const [invitationSnoozed, setInvitationSnoozed] = useState(() => {
+    try {
+      return sessionStorage.getItem(invitationSessionKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const role = normalizeShellRole(user?.role || user?.rol);
+  const isClientUser = role === "cliente" || role === "client";
+  const invitationQueryKey = queryKeys.pendingCoachInvitations(user?.id || user?._id || user?.email || "");
+  const pendingInvitationsQuery = useQuery({
+    queryKey: invitationQueryKey,
+    queryFn: getPendingCoachInvitations,
+    enabled: isClientUser && !isImpersonating(),
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: false,
+  });
+  const pendingInvitations = Array.isArray(pendingInvitationsQuery.data?.invitations)
+    ? pendingInvitationsQuery.data.invitations
+    : [];
+  const primaryInvitation = pendingInvitations[0] || null;
+  const coachNotice = user?.clientCoachNotice || null;
+  const showCoachNotice =
+    isClientUser &&
+    !isImpersonating() &&
+    coachNotice?.type === "admin_coach_assigned" &&
+    coachNotice?.status === "unread";
 
   // ✅ cierra drawer cuando cambia la ruta
   useEffect(() => {
@@ -490,6 +665,100 @@ export default function ClientShell() {
     clearPrivateQueryCache();
     nav("/", { replace: true });
     setTimeout(() => setLoading(false), 200);
+  }
+
+  async function refreshInvitations() {
+    await queryClient.invalidateQueries({ queryKey: invitationQueryKey, exact: true });
+  }
+
+  function cacheAcceptedUser(nextUser) {
+    if (!nextUser) return;
+    setAuthLogged(nextUser);
+    setAuthUserQueryData(nextUser);
+  }
+
+  async function handleDismissCoachNotice() {
+    if (coachNoticeBusy) return;
+    setCoachNoticeBusy(true);
+    try {
+      const data = await dismissCoachAssignmentNotice();
+      if (data?.user) cacheAcceptedUser(data.user);
+      setToast({
+        type: "success",
+        message: "Listo. Dejamos registrado que viste la asignacion del coach.",
+      });
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo marcar la notificacion como vista.",
+      });
+    } finally {
+      setCoachNoticeBusy(false);
+    }
+  }
+
+  async function handleAcceptInvitation(invitation) {
+    if (!invitation?.id || invitationBusy) return;
+    setInvitationBusy("accept");
+    setInvitationError("");
+    try {
+      const data = await acceptCoachInvitation(invitation.id);
+      const skipOnboarding = invitationSkipsOnboarding(invitation);
+      const nextUser = skipOnboarding ? userWithSkippedOnboarding(data?.user || null) : data?.user || null;
+      cacheAcceptedUser(nextUser);
+      await refreshInvitations();
+      setInvitationSnoozed(false);
+      try {
+        sessionStorage.removeItem(invitationSessionKey);
+      } catch {
+        // sessionStorage puede no estar disponible en algunos entornos.
+      }
+      setToast({
+        type: "success",
+        message: `Invitacion aceptada. ${invitation.coachName || "Tu coach"} ya puede acompañarte.`,
+      });
+      const nextPath = skipOnboarding
+        ? "/app/inicio"
+        : data?.nextPath || (shouldClientDoOnboarding(nextUser) ? "/app/onboarding" : "/app/inicio");
+      nav(nextPath, { replace: true });
+    } catch (error) {
+      const message = error?.message || "No se pudo procesar la invitacion. Intenta nuevamente.";
+      setInvitationError(message);
+      setToast({ type: "error", message });
+    } finally {
+      setInvitationBusy("");
+    }
+  }
+
+  async function handleDeclineInvitation(invitation) {
+    if (!invitation?.id || invitationBusy) return;
+    setInvitationBusy("decline");
+    setInvitationError("");
+    try {
+      const data = await declineCoachInvitation(invitation.id);
+      if (data?.user) cacheAcceptedUser(data.user);
+      await refreshInvitations();
+      setToast({
+        type: "success",
+        message: "Rechazaste la invitacion. Podes seguir usando ZumaFit de forma autogestionada.",
+      });
+    } catch (error) {
+      const message = error?.message || "No se pudo rechazar la invitacion. Intenta nuevamente.";
+      setInvitationError(message);
+      setToast({ type: "error", message });
+    } finally {
+      setInvitationBusy("");
+    }
+  }
+
+  function handleSnoozeInvitation() {
+    setInvitationSnoozed(true);
+    setInvitationError("");
+    try {
+      sessionStorage.setItem(invitationSessionKey, "1");
+    } catch {
+      // sessionStorage puede no estar disponible en algunos entornos.
+    }
   }
 
   const fullName = user?.profile?.nombre || user?.nombre || "";
@@ -534,6 +803,16 @@ export default function ClientShell() {
       <style>{CSS}</style>
       <ImpersonationBanner />
       <AppToast toast={toast} onClose={() => setToast(null)} />
+      {primaryInvitation && !invitationSnoozed ? (
+        <PendingCoachInvitationModal
+          invitations={pendingInvitations}
+          busy={invitationBusy}
+          error={invitationError}
+          onAccept={handleAcceptInvitation}
+          onDecline={handleDeclineInvitation}
+          onSnooze={handleSnoozeInvitation}
+        />
+      ) : null}
 
       {loading && (
         <div className="cn-ov" role="status" aria-live="polite" aria-busy="true">
@@ -632,6 +911,22 @@ export default function ClientShell() {
 
       {/* contenido */}
       <main className="cs-content">
+        {showCoachNotice ? (
+          <ClientCoachAssignmentNotice
+            notice={coachNotice}
+            busy={coachNoticeBusy}
+            onDismiss={handleDismissCoachNotice}
+            onProfile={() => nav("/app/perfil")}
+          />
+        ) : null}
+        {primaryInvitation && invitationSnoozed ? (
+          <ClientInvitationBanner
+            invitation={primaryInvitation}
+            busy={invitationBusy}
+            onAccept={handleAcceptInvitation}
+            onDecline={handleDeclineInvitation}
+          />
+        ) : null}
         <Outlet />
       </main>
     </div>
