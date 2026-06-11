@@ -12,7 +12,6 @@ import {
   Eye,
   MoreHorizontal,
   Moon,
-  PencilLine,
   Plus,
   RefreshCw,
   Search,
@@ -33,6 +32,12 @@ const EMPTY_DAYS = [];
 const MENU_EMOJI = "\u{1F37D}\uFE0F";
 const MENU_BOX_EMOJI = "\u{1F371}";
 const EYE_EMOJI = "\u{1F441}\uFE0F";
+const TOTAL_KEYS = {
+  kcal: ["kcal", "calories", "calorias", "cal"],
+  proteina: ["proteina", "proteinas", "protein", "p"],
+  carbs: ["carbs", "carbohidratos", "carbohydrates", "hidratos", "c"],
+  grasas: ["grasas", "grasa", "fat", "fats", "g"],
+};
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -71,6 +76,16 @@ function macro(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function readMacroValue(source = {}, keys = []) {
+  if (!source || typeof source !== "object") return undefined;
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
+      return source[key];
+    }
+  }
+  return undefined;
+}
+
 function displayKcal(value) {
   return `${formatNumber(macro(value))} kcal`;
 }
@@ -105,7 +120,7 @@ function menuState(row) {
   const hasMenu = Boolean(row?.assignment?.primaryMenu);
   if (!hasMenu) return { label: "Sin menú", tone: "slate" };
   const targetKcal = macro(row?.target?.kcal);
-  const menuKcal = macro(row?.menuTotals?.kcal);
+  const menuKcal = choiceTotals(menuChoices(row)[0]).kcal;
   const proteinDiff = macro(row?.compatibility?.proteinDiff);
   const diff = menuKcal - targetKcal;
   if (targetKcal && Math.abs(diff) <= targetKcal * 0.08 && proteinDiff >= -8) return { label: "Cerca de la meta", tone: "green" };
@@ -174,18 +189,29 @@ function selectedAlternativeIndex(row = {}) {
   return Number.isInteger(number) && number >= 0 ? number : null;
 }
 
+function isChoiceActive(row = {}, choice = {}) {
+  const selectedIndex = selectedAlternativeIndex(row);
+  if (choice?.type === "alternative") return selectedIndex === choice.index;
+  return selectedIndex === null;
+}
+
+function choiceShortLabel(choice = {}) {
+  if (choice?.type === "alternative") return `Alt ${Number(choice.index) + 1}`;
+  return "Principal";
+}
+
+function choiceDisplayName(choice = {}) {
+  return choice?.snapshot?.name || choice?.snapshot?.nombre || choice?.label || "Menú asignado";
+}
+
 function choiceMeals(choice = {}) {
   return choice?.snapshot ? snapshotMeals(choice.snapshot) : [];
 }
 
 function choiceTotals(choice = {}) {
-  const totals = choice?.totals || choice?.snapshot?.totals || choice?.snapshot || {};
-  return totalFromLike({
-    kcal: totals.kcal,
-    proteina: totals.proteina ?? totals.protein,
-    carbs: totals.carbs,
-    grasas: totals.grasas ?? totals.fat,
-  });
+  const direct = totalFromLike(choice?.totals || choice?.snapshot || {});
+  const calculated = sumTotals(choiceMeals(choice).map(mealTotals));
+  return totalsWithFallback(direct, calculated);
 }
 
 function choiceStatus(row = {}, choice = {}) {
@@ -225,13 +251,9 @@ function mealName(meal = {}, index = 0) {
 
 function mealTotals(meal = {}) {
   const safeMeal = meal && typeof meal === "object" ? meal : {};
-  const totals = safeMeal.totales || safeMeal.totals || safeMeal;
-  return {
-    kcal: macro(totals.kcal),
-    proteina: macro(totals.proteina ?? totals.protein),
-    carbs: macro(totals.carbs),
-    grasas: macro(totals.grasas ?? totals.fat),
-  };
+  const direct = totalFromLike(safeMeal.totales || safeMeal.totals || safeMeal);
+  const calculated = sumTotals(mealFoods(safeMeal));
+  return totalsWithFallback(direct, calculated);
 }
 
 function mealId(meal = {}, index = 0) {
@@ -243,11 +265,37 @@ function emptyTotals() {
 }
 
 function totalFromLike(value = {}) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const nested =
+    safeValue.totals ||
+    safeValue.totales ||
+    safeValue.macros ||
+    safeValue.nutrition ||
+    safeValue.nutricion ||
+    {};
   return {
-    kcal: macro(value.kcal),
-    proteina: macro(value.proteina ?? value.protein),
-    carbs: macro(value.carbs),
-    grasas: macro(value.grasas ?? value.fat),
+    kcal: macro(readMacroValue(nested, TOTAL_KEYS.kcal) ?? readMacroValue(safeValue, TOTAL_KEYS.kcal)),
+    proteina: macro(readMacroValue(nested, TOTAL_KEYS.proteina) ?? readMacroValue(safeValue, TOTAL_KEYS.proteina)),
+    carbs: macro(readMacroValue(nested, TOTAL_KEYS.carbs) ?? readMacroValue(safeValue, TOTAL_KEYS.carbs)),
+    grasas: macro(readMacroValue(nested, TOTAL_KEYS.grasas) ?? readMacroValue(safeValue, TOTAL_KEYS.grasas)),
+  };
+}
+
+function hasTotalValue(totals = {}) {
+  const safeTotals = totalFromLike(totals);
+  return ["kcal", "proteina", "carbs", "grasas"].some((key) => Math.abs(safeTotals[key]) > 0.001);
+}
+
+function totalsWithFallback(primary = {}, fallback = {}) {
+  const safePrimary = totalFromLike(primary);
+  const safeFallback = totalFromLike(fallback);
+  if (!hasTotalValue(safePrimary)) return safeFallback;
+  if (!hasTotalValue(safeFallback)) return safePrimary;
+  return {
+    kcal: safePrimary.kcal || safeFallback.kcal,
+    proteina: safePrimary.proteina || safeFallback.proteina,
+    carbs: safePrimary.carbs || safeFallback.carbs,
+    grasas: safePrimary.grasas || safeFallback.grasas,
   };
 }
 
@@ -263,6 +311,32 @@ function sumTotals(items = []) {
   }, emptyTotals());
 }
 
+function trackingChoice(row = {}) {
+  const choices = menuChoices(row);
+  const selectedIndex = selectedAlternativeIndex(row);
+  return choices.find((choice) => choice.type === "alternative" && choice.index === selectedIndex) || choices[0] || null;
+}
+
+function completedMenuMealsTotals(row = {}) {
+  const choice = trackingChoice(row);
+  const meals = choice ? choiceMeals(choice) : [];
+  const completed = completedMealIdSet(row);
+  return sumTotals(meals.filter((meal, index) => completed.has(mealId(meal, index))).map(mealTotals));
+}
+
+function trackingListTotals(list = []) {
+  return sumTotals(Array.isArray(list) ? list : []);
+}
+
+function localConsumedTotals(row = {}) {
+  const tracking = row?.tracking || {};
+  return sumTotals([
+    completedMenuMealsTotals(row),
+    trackingListTotals(tracking.manualEntries),
+    trackingListTotals(tracking.generatedRemainingMeals),
+  ]);
+}
+
 function targetTotals(row = {}) {
   return {
     kcal: macro(row?.target?.kcal),
@@ -274,12 +348,15 @@ function targetTotals(row = {}) {
 
 function consumedTotals(row = {}) {
   const trackingTotals = row?.tracking?.consumedTotals;
-  if (trackingTotals) return totalFromLike(trackingTotals);
-  return emptyTotals();
+  const backendTotals = trackingTotals ? totalFromLike(trackingTotals) : emptyTotals();
+  const localTotals = localConsumedTotals(row);
+  if (!trackingTotals) return localTotals;
+  if (!hasTotalValue(localTotals)) return backendTotals;
+  if (!hasTotalValue(backendTotals)) return localTotals;
+  return localTotals.kcal > backendTotals.kcal + 1 ? localTotals : backendTotals;
 }
 
 function remainingTotals(row = {}) {
-  if (row?.tracking?.remainingTotals) return totalFromLike(row.tracking.remainingTotals);
   const target = targetTotals(row);
   const consumed = consumedTotals(row);
   return {
@@ -372,12 +449,7 @@ function normalizeMealFood(item = {}, index = 0) {
     amount,
     unidad,
     cantidad,
-    totals: totalFromLike({
-      kcal: safeItem.kcal,
-      proteina: safeItem.proteina ?? safeItem.protein,
-      carbs: safeItem.carbs,
-      grasas: safeItem.grasas ?? safeItem.fat,
-    }),
+    totals: totalFromLike(safeItem),
     category: safeItem.categoriaSnapshot || safeItem.categoria || safeItem.category || "",
     raw: safeItem,
   };
@@ -556,6 +628,15 @@ export default function MenuPlan() {
     );
   }
 
+  function selectMenuChoice(row, choice) {
+    submitTracking(
+      trackingPayloadBase(row, {
+        selectedAlternative: choice?.type === "alternative" ? { index: choice.index } : null,
+      }),
+      choice?.type === "alternative" ? "Alternativa marcada para hoy." : "Menú principal marcado para hoy."
+    );
+  }
+
   function saveGeneratedRemaining(row, generatedMeals) {
     const current = Array.isArray(row?.tracking?.generatedRemainingMeals) ? row.tracking.generatedRemainingMeals : [];
     submitTracking(
@@ -581,7 +662,7 @@ export default function MenuPlan() {
 
   return (
     <div
-      className="min-h-screen bg-[#070707] px-0 pb-24 pt-4 text-zinc-100 sm:px-6 sm:pt-5"
+      className="min-h-screen bg-[#070707] px-0 pb-10 pt-3 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
       style={{ background: "#070707", color: "#f4f4f5", minHeight: "60vh" }}
     >
       <div className="mx-auto grid w-full max-w-6xl gap-3 sm:gap-5">
@@ -606,7 +687,6 @@ export default function MenuPlan() {
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
-                onOpenFood={(payload) => setFoodDrawer(payload)}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
                 saving={saving}
@@ -627,12 +707,16 @@ export default function MenuPlan() {
                 row={selectedRow}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
-                onOpenDetail={() => {
-                  setMobileDetailChoiceKey("");
+                onOpenDetail={(choice) => {
+                  setMobileDetailChoiceKey(choice?.key || "");
                   setMobileView("detail");
                 }}
                 onOpenAlternatives={() => setMobileView("alternatives")}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
+                onSelectChoice={selectMenuChoice}
+                onToggleMeal={toggleMenuMeal}
+                onOpenMeal={(payload) => setMealDrawer(payload)}
+                canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
                 saving={saving}
               />
@@ -768,20 +852,14 @@ function MobileTopBar({ title, onBack }) {
         {onBack ? <ChevronLeft size={20} /> : <MoreHorizontal size={20} />}
       </button>
       <h1 className="truncate text-center text-lg font-black text-white">{title}</h1>
-      <button
-        type="button"
-        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-100"
-        aria-label="Acciones"
-      >
-        <MoreHorizontal size={20} />
-      </button>
+      <span className="h-11 w-11" aria-hidden="true" />
     </div>
   );
 }
 
 function MobileDayPicker({ row, onPrevious, onNext }) {
   return (
-    <div className="mt-4 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 rounded-[1.35rem] border border-white/10 bg-[#101824] p-2">
+    <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 rounded-[1.2rem] border border-white/10 bg-[#101824] p-2">
       <button
         type="button"
         onClick={onPrevious}
@@ -812,7 +890,7 @@ function MobileCalculateButton({ onClick, disabled = false }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-14 w-full items-center justify-between gap-3 rounded-[1.15rem] border border-[#D4AF37]/45 bg-[linear-gradient(135deg,rgba(245,215,110,.14),rgba(255,255,255,.045))] px-4 text-left text-[#FFE8A3] shadow-[0_14px_34px_rgba(0,0,0,.36)] disabled:opacity-45"
+      className="flex min-h-12 w-full items-center justify-between gap-3 rounded-[1.05rem] border border-[#D4AF37]/45 bg-[linear-gradient(135deg,rgba(245,215,110,.14),rgba(255,255,255,.045))] px-4 text-left text-[#FFE8A3] shadow-[0_12px_28px_rgba(0,0,0,.32)] transition active:scale-[0.99] disabled:opacity-45"
     >
       <span className="flex min-w-0 items-center gap-3">
         <Calculator size={20} className="shrink-0" />
@@ -823,49 +901,6 @@ function MobileCalculateButton({ onClick, disabled = false }) {
   );
 }
 
-function MobileMenuSummaryCard({ row, choice, badge = "", selected = false, onViewDetail }) {
-  const totals = choiceTotals(choice);
-  const meals = choiceMeals(choice);
-  const status = choiceStatus(row, choice);
-  return (
-    <article className={`rounded-[1.25rem] border bg-[#101824] p-4 ${selected ? "border-[#D4AF37]/25" : "border-white/10"}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#FFE8A3]">
-            <Utensils size={20} />
-          </span>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <strong className="truncate text-base font-black text-white">{choice?.snapshot?.name || choice?.snapshot?.nombre || choice?.label || "Menú"}</strong>
-              {badge ? <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-zinc-200">{badge}</span> : null}
-            </div>
-            <p className="mt-1 text-sm font-bold text-zinc-400">
-              {displayKcal(totals.kcal)} · {meals.length} comida{meals.length === 1 ? "" : "s"}
-            </p>
-            <span className={`mt-2 inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(status.tone)}`}>
-              {status.label}
-            </span>
-          </div>
-        </div>
-        {selected ? (
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]">
-            <CheckSquare2 size={18} />
-          </span>
-        ) : null}
-      </div>
-      {onViewDetail ? (
-        <button
-          type="button"
-          onClick={onViewDetail}
-          className="mt-3 inline-flex min-h-8 items-center rounded-full border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]"
-        >
-          Ver detalle
-        </button>
-      ) : null}
-    </article>
-  );
-}
-
 function MobileDayMenu({
   row,
   onPrevious,
@@ -873,58 +908,57 @@ function MobileDayMenu({
   onOpenDetail,
   onOpenAlternatives,
   onOpenRemaining,
+  onSelectChoice,
+  onToggleMeal,
+  onOpenMeal,
+  canMarkMeals,
   canAutoCompleteRemaining,
   saving,
 }) {
   if (!row) return null;
   const choices = menuChoices(row);
   const primary = choices[0] || null;
-  const alternativesCount = Math.max(0, choices.length - 1);
-  const primaryMeals = primary ? choiceMeals(primary) : [];
+  const activeChoice = trackingChoice(row) || primary;
+  const activeMeals = activeChoice ? choiceMeals(activeChoice) : [];
   const completed = completedMealIdSet(row);
-  const completedCount = primaryMeals.filter((meal, index) => completed.has(mealId(meal, index))).length;
+  const completedCount = activeMeals.filter((meal, index) => completed.has(mealId(meal, index))).length;
   const target = targetTotals(row);
   const consumed = consumedTotals(row);
   const remaining = remainingTotals(row);
   const percent = completionPercent(row);
+  const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
 
   return (
-    <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
-      <MobileTopBar title="Menú" />
+    <section className="mx-auto w-full max-w-[760px] px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <MobileDayPicker row={row} onPrevious={onPrevious} onNext={onNext} />
 
-      <section className="mt-3 rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_90%_8%,rgba(245,215,110,.12),transparent_34%),linear-gradient(180deg,#101824,#07101a)] p-4 shadow-[0_14px_40px_rgba(0,0,0,.3)]">
+      <section className="mt-3 overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.18),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.12),transparent_36%),linear-gradient(145deg,#101923,#080d13)] p-3.5 shadow-[0_16px_42px_rgba(0,0,0,.34)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
-              <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-black ${toneClass(menuState(row).tone)}`}>
+              <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-black ${toneClass(activeMenuStatus.tone)}`}>
                 <Target size={14} />
-                {menuState(row).label}
+                {activeMenuStatus.label}
               </span>
               <span className={`inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-black ${toneClass(statusMeta(row).tone)}`}>
                 {trackingLabel(row)}
               </span>
             </div>
-            <h2 className="mt-4 text-lg font-black text-white">
+            <h2 className="mt-4 text-xl font-black text-white">
               Meta <span className="text-[#FFD76B]">{displayKcal(target.kcal)}</span>
             </h2>
-            <p className="mt-2 text-sm font-bold text-zinc-400">
+            <p className="mt-1 text-sm font-bold text-zinc-400">
               P {formatNumber(target.proteina, 0)} g · C {formatNumber(target.carbs, 0)} g · G {formatNumber(target.grasas, 0)} g
             </p>
           </div>
-          <div className="grid h-[86px] w-[86px] shrink-0 place-items-center rounded-full border-[6px] border-white/10 bg-black/20 text-center">
-            <div>
-              <strong className="block text-2xl font-black text-white">{percent}%</strong>
-              <span className="block text-[10px] font-bold text-zinc-500">cumplimiento</span>
-            </div>
-          </div>
+          <MobileProgressRing percent={percent} />
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
           <MobileMetric label="Consumido" value={displayKcal(consumed.kcal)} detail={`P ${formatNumber(consumed.proteina, 0)} / C ${formatNumber(consumed.carbs, 0)} / G ${formatNumber(consumed.grasas, 0)}`} tone="green" />
           <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
-          <MobileMetric label="Comidas" value={`${completedCount} / ${primaryMeals.length || 0}`} detail="completadas" tone="gold" />
+          <MobileMetric label="Comidas" value={`${completedCount} / ${activeMeals.length || 0}`} detail="completadas" tone="gold" />
         </div>
       </section>
 
@@ -937,37 +971,159 @@ function MobileDayMenu({
         </div>
       ) : null}
 
+      {choices.length ? (
+        <MobileChoiceSelector
+          row={row}
+          choices={choices}
+          saving={saving}
+          onSelectChoice={onSelectChoice}
+          onOpenAlternatives={onOpenAlternatives}
+        />
+      ) : null}
+
+      {activeChoice?.snapshot ? (
+        <MobileActiveMenuCard
+          row={row}
+          choice={activeChoice}
+          onViewDetail={() => onOpenDetail(activeChoice)}
+        />
+      ) : null}
+
+      {activeChoice?.snapshot ? (
+        <section className="mt-4 grid gap-2.5">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h3 className="text-base font-black text-white">Comidas</h3>
+            <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
+              {completedCount} / {activeMeals.length || 0} completas
+            </span>
+          </div>
+          {activeMeals.length ? (
+            activeMeals.map((meal, index) => (
+              <MobileMealCard
+                key={mealId(meal, index)}
+                row={row}
+                meal={meal}
+                mealIndex={index}
+                done={completed.has(mealId(meal, index))}
+                saving={saving}
+                canMarkMeals={canMarkMeals}
+                onToggleMeal={onToggleMeal}
+                onOpenMeal={onOpenMeal}
+              />
+            ))
+          ) : (
+            <MobileEmptyCard
+              title="Este menú no tiene comidas cargadas."
+              text="Podés revisar otros días o avisarle a tu coach."
+            />
+          )}
+        </section>
+      ) : null}
+
       <div className="mt-4">
         <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} />
       </div>
+    </section>
+  );
+}
 
-      <section className="mt-6 grid gap-3">
-        <h3 className="px-1 text-base font-black text-zinc-100">Menús disponibles para este día</h3>
-        {primary?.snapshot ? (
-          <MobileMenuSummaryCard
-            row={row}
-            choice={primary}
-            badge="Asignado"
-            selected
-            onViewDetail={onOpenDetail}
-          />
+function MobileProgressRing({ percent = 0 }) {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  return (
+    <div
+      className="grid h-[78px] w-[78px] shrink-0 place-items-center rounded-full p-[5px]"
+      style={{ background: `conic-gradient(#D4AF37 ${safePercent * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}
+      aria-label={`${safePercent}% de cumplimiento`}
+    >
+      <div className="grid h-full w-full place-items-center rounded-full bg-[#0b1119] text-center shadow-inner">
+        <div>
+          <strong className="block text-xl font-black text-white">{safePercent}%</strong>
+          <span className="block text-[10px] font-bold text-zinc-500">cumplimiento</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileChoiceSelector({ row, choices = [], saving, onSelectChoice, onOpenAlternatives }) {
+  if (!choices.length) return null;
+  const visibleChoices = choices.slice(0, 4);
+  const hiddenCount = Math.max(0, choices.length - visibleChoices.length);
+  return (
+    <section className="mt-4">
+      <div className="mb-2 flex items-center justify-between gap-3 px-1">
+        <span className="text-sm font-black text-zinc-400">
+          {choices.length} menú{choices.length === 1 ? "" : "s"} disponible{choices.length === 1 ? "" : "s"}
+        </span>
+        {hiddenCount ? (
+          <button type="button" onClick={onOpenAlternatives} className="text-xs font-black text-[#FFE8A3]">
+            Ver todos
+          </button>
         ) : null}
-
-        {alternativesCount ? (
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {visibleChoices.map((choice) => {
+          const active = isChoiceActive(row, choice);
+          return (
+            <button
+              key={choice.key}
+              type="button"
+              disabled={saving || active}
+              onClick={() => onSelectChoice(row, choice)}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-black transition active:scale-[0.98] disabled:opacity-100 ${
+                active
+                  ? "border-[#D4AF37]/70 bg-[#D4AF37]/15 text-[#FFE8A3]"
+                  : "border-white/10 bg-white/[0.035] text-zinc-300"
+              }`}
+            >
+              {active ? <CheckSquare2 size={16} /> : null}
+              {choiceShortLabel(choice)}
+            </button>
+          );
+        })}
+        {hiddenCount ? (
           <button
             type="button"
             onClick={onOpenAlternatives}
-            className="flex min-h-14 items-center justify-between rounded-[1.2rem] border border-white/10 bg-[#101824] px-4 text-left text-[#FFE8A3]"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-4 text-sm font-black text-zinc-300"
           >
-            <span className="inline-flex items-center gap-2 text-sm font-black">
-              <RefreshCw size={16} />
-              Ver alternativas ({alternativesCount})
-            </span>
-            <ChevronRight size={19} />
+            +{hiddenCount}
           </button>
         ) : null}
-      </section>
+      </div>
     </section>
+  );
+}
+
+function MobileActiveMenuCard({ row, choice, onViewDetail }) {
+  const totals = choiceTotals(choice);
+  const meals = choiceMeals(choice);
+  const activeStatus = choiceStatus(row, choice);
+  return (
+    <article className="mt-3 rounded-[1.25rem] border border-white/10 bg-[linear-gradient(135deg,rgba(212,175,55,.10),rgba(16,24,36,.82))] p-3.5 shadow-[0_12px_28px_rgba(0,0,0,.25)]">
+      <div className="flex items-center gap-3">
+        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]">
+          <Utensils size={24} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-base font-black text-white">{choiceDisplayName(choice)}</div>
+          <div className="mt-1 truncate text-sm font-bold text-zinc-400">
+            {displayKcal(totals.kcal)} · {meals.length} comida{meals.length === 1 ? "" : "s"}
+          </div>
+          <span className={`mt-2 inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(activeStatus.tone)}`}>
+            {choice.type === "alternative" ? "Elegido" : "Asignado"}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onViewDetail}
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-[#D4AF37]/45 bg-black/20 px-3 text-xs font-black text-[#FFE8A3]"
+        >
+          Detalle
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -980,7 +1136,6 @@ function MobileDayDetailView({
   onToggleMeal,
   onOpenRemaining,
   onOpenMeal,
-  onOpenFood,
   canMarkMeals,
   canAutoCompleteRemaining,
   saving,
@@ -1053,13 +1208,12 @@ function MobileDayDetailView({
               canMarkMeals={canMarkMeals}
               onToggleMeal={onToggleMeal}
               onOpenMeal={onOpenMeal}
-              onOpenFood={onOpenFood}
             />
           ))
         )}
       </div>
 
-      <div className="sticky bottom-2 z-20 mt-5 pb-1">
+      <div className="mt-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} />
       </div>
     </section>
@@ -1170,10 +1324,10 @@ function MobileMetric({ label, value, detail, tone = "blue" }) {
     red: "text-rose-200",
   };
   return (
-    <div className="min-w-0 rounded-2xl border border-white/10 bg-black/20 p-3">
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-black/20 p-2.5">
       <div className={`truncate text-[10px] font-black uppercase tracking-wide ${toneMap[tone] || toneMap.blue}`}>{label}</div>
-      <div className="mt-2 truncate text-lg font-black text-white">{value}</div>
-      <div className={`mt-2 truncate text-[11px] font-bold ${toneMap[tone] || toneMap.blue}`}>{detail}</div>
+      <div className="mt-1.5 truncate text-base font-black text-white">{value}</div>
+      <div className={`mt-1.5 truncate text-[11px] font-bold ${toneMap[tone] || toneMap.blue}`}>{detail}</div>
     </div>
   );
 }
@@ -1199,50 +1353,59 @@ function MobileMealCard({
   canMarkMeals,
   onToggleMeal,
   onOpenMeal,
-  onOpenFood,
 }) {
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
+  const previewFoods = foods.slice(0, 2);
+  const extraCount = Math.max(0, foods.length - previewFoods.length);
 
   return (
-    <article className={`overflow-hidden rounded-[1.35rem] border bg-[#101824] shadow-[0_14px_36px_rgba(0,0,0,.25)] ${done ? "border-emerald-400/30" : "border-white/10"}`}>
-      <div className="flex items-center gap-3 border-b border-white/10 p-3.5">
+    <article className={`rounded-[1.25rem] border bg-[linear-gradient(135deg,#101824,#090f17)] shadow-[0_12px_28px_rgba(0,0,0,.22)] ${done ? "border-emerald-400/30" : "border-white/10"}`}>
+      <div className="flex items-center gap-3 p-3">
         <button type="button" onClick={() => onOpenMeal({ row, meal, mealIndex })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <MealTypeIcon meal={meal} index={mealIndex} done={done} />
-          <span className="min-w-0">
-            <span className="block truncate text-xl font-black text-white">{mealName(meal, mealIndex)}</span>
-            <span className="mt-0.5 block truncate text-xs font-bold text-zinc-500">{displayKcal(totals.kcal)}</span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate text-lg font-black text-white">{mealName(meal, mealIndex)}</span>
+              <span className="shrink-0 text-sm font-black text-[#FFD76B]">{displayKcal(totals.kcal)}</span>
+            </span>
+            <MobileFoodPreviewLine foods={previewFoods} extraCount={extraCount} />
           </span>
+          <ChevronRight size={20} className="shrink-0 text-zinc-500" />
         </button>
         <button
           type="button"
           disabled={!canMarkMeals || saving}
           onClick={() => onToggleMeal(row, meal, mealIndex)}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black disabled:opacity-50 ${done ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-100" : "border-[#D4AF37]/35 bg-black/20 text-[#FFD76B]"}`}
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xs font-black disabled:opacity-50 ${done ? "border-[#D4AF37]/50 bg-[#D4AF37] text-black" : "border-white/20 bg-black/20 text-zinc-400"}`}
           aria-pressed={done}
+          aria-label={done ? "Comida completa" : "Marcar comida completa"}
         >
-          <span className="hidden min-[390px]:inline">{done ? "Completa" : "Marcar completo"}</span>
-          {done ? <CheckSquare2 size={19} /> : <Square size={19} />}
+          {done ? <CheckCircle2 size={21} /> : <Square size={20} />}
         </button>
       </div>
 
-      <div className="divide-y divide-white/[0.07]">
-        {foods.length ? (
-          foods.map((food, foodIndex) => (
-            <MobileFoodRow
-              key={`${food.id}-${foodIndex}`}
-              meal={meal}
-              mealIndex={mealIndex}
-              food={food}
-              foodIndex={foodIndex}
-              onOpenFood={onOpenFood}
-            />
-          ))
-        ) : (
-          <div className="px-4 py-4 text-sm font-bold text-zinc-500">Sin alimentos cargados.</div>
-        )}
-      </div>
     </article>
+  );
+}
+
+function MobileFoodPreviewLine({ foods = [], extraCount = 0 }) {
+  if (!foods.length) {
+    return <span className="mt-1 block truncate text-sm font-bold text-zinc-500">Sin alimentos cargados</span>;
+  }
+  return (
+    <span className="mt-1 grid gap-0.5">
+      {foods.map((food, index) => (
+        <span key={`${food.id}-${index}`} className="truncate text-xs font-bold text-zinc-400">
+          {food.name}{food.amount ? ` · ${food.amount}` : ""}
+        </span>
+      ))}
+      {extraCount ? (
+        <span className="truncate text-xs font-black text-[#FFE8A3]">
+          +{extraCount} alimento{extraCount === 1 ? "" : "s"} más
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -1258,8 +1421,8 @@ function MealTypeIcon({ meal, index, done }) {
   };
   const Icon = icons[iconType] || Utensils;
   return (
-    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border ${done ? "border-emerald-400/25 bg-emerald-400/10" : "border-[#D4AF37]/20 bg-[#D4AF37]/10"}`}>
-      <Icon size={25} className={className} />
+    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${done ? "border-emerald-400/25 bg-emerald-400/10" : "border-[#D4AF37]/20 bg-[#D4AF37]/10"}`}>
+      <Icon size={22} className={className} />
     </span>
   );
 }
@@ -1277,9 +1440,9 @@ function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood }) {
         type="button"
         onClick={() => onOpenFood({ meal, mealIndex, food, foodIndex })}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/30 bg-black/20 text-[#FFD76B]"
-        aria-label={`Editar ${food.name}`}
+        aria-label={`Buscar equivalencias para ${food.name}`}
       >
-        <PencilLine size={18} />
+        <Search size={18} />
       </button>
     </div>
   );
@@ -1300,12 +1463,13 @@ function TodayHero({
   const state = menuState(row);
   const tracking = statusMeta(row);
   const choices = menuChoices(row);
+  const primaryTotals = choiceTotals(choices[0]);
   const snapshot = choices[0]?.snapshot || null;
   const meals = snapshot ? snapshotMeals(snapshot) : [];
   const targetKcal = macro(row?.target?.kcal);
   const consumed = consumedTotals(row);
   const remaining = remainingTotals(row);
-  const menuKcal = macro(row?.menuTotals?.kcal);
+  const menuKcal = primaryTotals.kcal;
   const pct = targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40;
 
@@ -1353,7 +1517,7 @@ function TodayHero({
             </span>
             <span className="mt-1 block text-xl font-black text-[#FFE8A3]">{displayKcal(menuKcal)}</span>
             <span className="block truncate text-sm font-bold text-zinc-300">
-              {snapshot ? displayMenuMacros(row?.menuTotals) : "Toca para ver el detalle cuando haya menú"}
+              {snapshot ? displayMenuMacros(primaryTotals) : "Toca para ver el detalle cuando haya menú"}
             </span>
           </span>
         </span>
@@ -1459,7 +1623,7 @@ function WeeklySelector({ days, selectedDate, onSelect, onView }) {
         const state = statusMeta(row);
         const menu = menuState(row);
         const targetKcal = macro(row?.target?.kcal);
-        const menuKcal = macro(row?.menuTotals?.kcal);
+        const menuKcal = choiceTotals(menuChoices(row)[0]).kcal;
         const pct = targetKcal ? Math.min(135, Math.round((menuKcal / targetKcal) * 100)) : 0;
         const alternatives = row?.assignment?.alternatives?.length || 0;
         const title = menuCountTitle(row);
@@ -1642,37 +1806,40 @@ function MenuChoicesBlock({ row, choices, onUseAlternative }) {
         </span>
       </div>
       <div className="grid gap-2">
-        {choices.map((choice) => (
-          <article
-            key={choice.key}
-            className={`rounded-2xl border p-3 ${choice.type === "primary" ? "border-[#D4AF37]/30 bg-[#D4AF37]/10" : "border-sky-400/20 bg-sky-400/10"}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <span className="text-[11px] font-black uppercase tracking-wide text-zinc-400">
-                  {choice.type === "primary" ? "Menu principal" : choice.label}
-                </span>
-                <h5 className="mt-1 truncate text-base font-black text-white">{choice.snapshot?.name || "Menu"}</h5>
-                <p className="mt-1 text-xs font-bold text-zinc-300">
-                  {displayKcal(choice.totals?.kcal)} / {displayMenuMacros(choice.totals)}
-                </p>
+        {choices.map((choice) => {
+          const totals = choiceTotals(choice);
+          return (
+            <article
+              key={choice.key}
+              className={`rounded-2xl border p-3 ${choice.type === "primary" ? "border-[#D4AF37]/30 bg-[#D4AF37]/10" : "border-sky-400/20 bg-sky-400/10"}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="text-[11px] font-black uppercase tracking-wide text-zinc-400">
+                    {choice.type === "primary" ? "Menu principal" : choice.label}
+                  </span>
+                  <h5 className="mt-1 truncate text-base font-black text-white">{choice.snapshot?.name || "Menu"}</h5>
+                  <p className="mt-1 text-xs font-bold text-zinc-300">
+                    {displayKcal(totals.kcal)} / {displayMenuMacros(totals)}
+                  </p>
+                </div>
+                {choice.type === "alternative" ? (
+                  <button
+                    type="button"
+                    onClick={() => onUseAlternative(row, choice.index)}
+                    className="shrink-0 rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-2 text-xs font-black text-sky-100"
+                  >
+                    Usar hoy
+                  </button>
+                ) : (
+                  <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-black/20 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
+                    Actual
+                  </span>
+                )}
               </div>
-              {choice.type === "alternative" ? (
-                <button
-                  type="button"
-                  onClick={() => onUseAlternative(row, choice.index)}
-                  className="shrink-0 rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-2 text-xs font-black text-sky-100"
-                >
-                  Usar hoy
-                </button>
-              ) : (
-                <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-black/20 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
-                  Actual
-                </span>
-              )}
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </div>
   );

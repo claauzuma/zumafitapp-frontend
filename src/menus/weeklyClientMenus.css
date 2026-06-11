@@ -564,6 +564,13 @@
   border-radius: 15px;
   background: rgba(8, 13, 20, 0.72);
   padding: 11px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.wmp-altCard.selected {
+  border-color: rgba(245, 215, 110, 0.48);
+  background: rgba(245, 215, 110, 0.075);
 }
 
 .wmp-altCard > div:first-child {
@@ -579,6 +586,35 @@
 
 .wmp-altCard small {
   color: #adbac9;
+  font-weight: 800;
+}
+
+.wmp-snapshotNotice {
+  border: 1px solid rgba(255, 196, 87, 0.28);
+  border-radius: 15px;
+  background: rgba(255, 196, 87, 0.08);
+  color: #ffe2a3;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.wmp-snapshotNotice > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.wmp-snapshotNotice strong {
+  color: #fff0bf;
+  font-size: 14px;
+}
+
+.wmp-snapshotNotice span {
+  color: #d8c99c;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -679,6 +715,14 @@
   .wmp-altActions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .wmp-snapshotNotice {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .wmp-snapshotNotice .wmp-btn {
+    grid-column: 1 / -1;
   }
 
   .wmp-drawerPanel {

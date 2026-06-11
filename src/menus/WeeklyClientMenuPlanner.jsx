@@ -56,32 +56,125 @@ function formatSigned(value, suffix = "") {
   return `${number > 0 ? "+" : ""}${formatNumber(number, 1)}${suffix}`;
 }
 
-function menuTotals(menu = {}) {
-  const meals = Array.isArray(menu.meals)
-    ? menu.meals
-    : Array.isArray(menu.comidas)
-      ? menu.comidas
-      : [];
-  if (toNumber(menu.kcal, 0) || toNumber(menu.protein, 0) || toNumber(menu.carbs, 0) || toNumber(menu.fat, 0)) {
-    return {
-      kcal: toNumber(menu.kcal, 0),
-      protein: toNumber(menu.protein, 0),
-      carbs: toNumber(menu.carbs, 0),
-      fat: toNumber(menu.fat, 0),
-    };
-  }
-  return meals.reduce(
-    (acc, meal) => {
-      const totals = meal.totales || meal.totals || meal;
-      return {
-        kcal: acc.kcal + toNumber(totals.kcal, 0),
-        protein: acc.protein + toNumber(totals.proteina ?? totals.protein, 0),
-        carbs: acc.carbs + toNumber(totals.carbs, 0),
-        fat: acc.fat + toNumber(totals.grasas ?? totals.fat, 0),
-      };
-    },
-    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+function hasAnyMacro(totals = {}) {
+  return Boolean(
+    toNumber(totals.kcal, 0) ||
+    toNumber(totals.protein ?? totals.proteina, 0) ||
+    toNumber(totals.carbs, 0) ||
+    toNumber(totals.fat ?? totals.grasas, 0)
   );
+}
+
+function normalizeMacroTotals(source = {}) {
+  const totals = source?.totales || source?.totals || source || {};
+  return {
+    kcal: toNumber(totals.kcal, 0),
+    protein: toNumber(totals.proteina ?? totals.protein, 0),
+    carbs: toNumber(totals.carbs, 0),
+    fat: toNumber(totals.grasas ?? totals.fat, 0),
+  };
+}
+
+function addMacroTotals(left = {}, right = {}) {
+  return {
+    kcal: toNumber(left.kcal, 0) + toNumber(right.kcal, 0),
+    protein: toNumber(left.protein, 0) + toNumber(right.protein ?? right.proteina, 0),
+    carbs: toNumber(left.carbs, 0) + toNumber(right.carbs, 0),
+    fat: toNumber(left.fat, 0) + toNumber(right.fat ?? right.grasas, 0),
+  };
+}
+
+function normalizeSnapshotFood(item = {}, index = 0) {
+  return {
+    id: String(item.id || item._id || item.alimentoId || `food-${index + 1}`),
+    alimentoId: item.alimentoId || null,
+    name: item.nombreSnapshot || item.name || item.nombre || item.alimento || `Alimento ${index + 1}`,
+    cantidad: toNumber(item.cantidad ?? item.quantity, 0),
+    unidad: item.unidad || item.unit || "g",
+    kcal: toNumber(item.kcal, 0),
+    protein: toNumber(item.proteina ?? item.protein, 0),
+    carbs: toNumber(item.carbs, 0),
+    fat: toNumber(item.grasas ?? item.fat, 0),
+  };
+}
+
+function totalsFromFoods(foods = []) {
+  return foods.reduce((acc, food) => addMacroTotals(acc, food), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+}
+
+function rawMealsFromMenu(menu = {}) {
+  const comidas = Array.isArray(menu.comidas) ? menu.comidas : null;
+  const meals = Array.isArray(menu.meals) ? menu.meals : null;
+  if (comidas?.length) return comidas;
+  if (meals?.length) return meals;
+  return comidas || meals || [];
+}
+
+function normalizeSnapshotMeal(meal = {}, index = 0) {
+  const rawItems = Array.isArray(meal.items)
+    ? meal.items
+    : Array.isArray(meal.foods)
+      ? meal.foods
+      : Array.isArray(meal.alimentos)
+        ? meal.alimentos
+        : [];
+  const foods = rawItems.map((item, itemIndex) => normalizeSnapshotFood(item, itemIndex));
+  const explicitTotals = normalizeMacroTotals(meal.totales || meal.totals || meal);
+  const foodTotals = totalsFromFoods(foods);
+  const totals = hasAnyMacro(explicitTotals) ? explicitTotals : foodTotals;
+
+  return {
+    id: String(meal.id || meal._id || meal.comidaId || `meal-${index + 1}`),
+    name: meal.name || meal.nombre || `Comida ${index + 1}`,
+    type: meal.type || meal.tipoComida || "otro",
+    order: toNumber(meal.order ?? meal.orden, index + 1),
+    kcal: totals.kcal,
+    protein: totals.protein,
+    carbs: totals.carbs,
+    fat: totals.fat,
+    foods,
+  };
+}
+
+function mealToSnapshotPayload(meal = {}, index = 0) {
+  return {
+    id: meal.id || `meal-${index + 1}`,
+    nombre: meal.name || `Comida ${index + 1}`,
+    tipoComida: meal.type || "otro",
+    orden: meal.order || index + 1,
+    totales: {
+      kcal: toNumber(meal.kcal, 0),
+      proteina: toNumber(meal.protein, 0),
+      carbs: toNumber(meal.carbs, 0),
+      grasas: toNumber(meal.fat, 0),
+    },
+    items: (meal.foods || []).map((food, foodIndex) => ({
+      id: food.id || `item-${index + 1}-${foodIndex + 1}`,
+      alimentoId: food.alimentoId || null,
+      nombreSnapshot: food.name || `Alimento ${foodIndex + 1}`,
+      cantidad: toNumber(food.cantidad, 0),
+      unidad: food.unidad || "g",
+      kcal: toNumber(food.kcal, 0),
+      proteina: toNumber(food.protein, 0),
+      carbs: toNumber(food.carbs, 0),
+      grasas: toNumber(food.fat, 0),
+    })),
+  };
+}
+
+function menuTotals(menu = {}) {
+  const explicitTotals = normalizeMacroTotals(
+    menu.totals || menu.totales || {
+      kcal: menu.kcal ?? menu.kcalObjetivo ?? menu.calories,
+      protein: menu.protein ?? menu.proteina ?? menu.macrosObjetivo?.proteina ?? menu.macros?.protein,
+      carbs: menu.carbs ?? menu.macrosObjetivo?.carbs ?? menu.macros?.carbs,
+      fat: menu.fat ?? menu.grasas ?? menu.macrosObjetivo?.grasas ?? menu.macros?.fat,
+    }
+  );
+  if (hasAnyMacro(explicitTotals)) return explicitTotals;
+  return rawMealsFromMenu(menu)
+    .map((meal, index) => normalizeSnapshotMeal(meal, index))
+    .reduce((acc, meal) => addMacroTotals(acc, meal), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
 function normalizeAssignments(source = {}) {
@@ -142,33 +235,9 @@ function normalizeAlternativeEntry(entry = {}) {
 }
 
 function normalizeSnapshot(menu = {}) {
-  const meals = Array.isArray(menu.meals)
-    ? menu.meals
-    : Array.isArray(menu.comidas)
-      ? menu.comidas.map((meal) => ({
-          id: meal.id,
-          name: meal.nombre || meal.name,
-          type: meal.tipoComida || meal.type,
-          order: meal.orden || meal.order,
-          kcal: meal.totales?.kcal || meal.kcal,
-          protein: meal.totales?.proteina ?? meal.protein,
-          carbs: meal.totales?.carbs ?? meal.carbs,
-          fat: meal.totales?.grasas ?? meal.fat,
-          foods: Array.isArray(meal.items)
-            ? meal.items.map((item) => ({
-                id: item.id,
-                name: item.nombreSnapshot || item.name || item.nombre,
-                cantidad: item.cantidad,
-                unidad: item.unidad,
-                kcal: item.kcal,
-                protein: item.proteina ?? item.protein,
-                carbs: item.carbs,
-                fat: item.grasas ?? item.fat,
-              }))
-            : meal.foods || [],
-        }))
-      : [];
+  const meals = rawMealsFromMenu(menu).map((meal, index) => normalizeSnapshotMeal(meal, index));
   const totals = menuTotals({ ...menu, meals });
+  const mealsCount = toNumber(menu.mealsCount ?? menu.cantidadComidas, meals.length) || meals.length;
   return {
     id: String(menu.id || menu._id || menu.baseId || menu.menuBaseId || ""),
     baseId: String(menu.baseId || menu.menuBaseId || menu.id || menu._id || ""),
@@ -178,8 +247,16 @@ function normalizeSnapshot(menu = {}) {
     protein: totals.protein,
     carbs: totals.carbs,
     fat: totals.fat,
-    mealsCount: toNumber(menu.mealsCount ?? menu.cantidadComidas, meals.length),
+    totals: {
+      kcal: totals.kcal,
+      proteina: totals.protein,
+      carbs: totals.carbs,
+      grasas: totals.fat,
+    },
+    mealsCount,
+    cantidadComidas: mealsCount,
     meals,
+    comidas: meals.map(mealToSnapshotPayload),
   };
 }
 
@@ -188,20 +265,21 @@ function snapshotFromMenu(menu = {}) {
 }
 
 function snapshotToEditorMenu(snapshot = {}) {
+  const normalized = normalizeSnapshot(snapshot);
   return {
-    id: snapshot.baseId || snapshot.id || "",
-    nombre: snapshot.name || "Menú del día",
-    descripcion: snapshot.description || "",
-    kcalObjetivo: snapshot.kcal || 0,
+    id: normalized.baseId || normalized.id || "",
+    nombre: normalized.name || "Menú del día",
+    descripcion: normalized.description || "",
+    kcalObjetivo: normalized.kcal || 0,
     macrosObjetivo: {
-      proteina: snapshot.protein || 0,
-      carbs: snapshot.carbs || 0,
-      grasas: snapshot.fat || 0,
+      proteina: normalized.protein || 0,
+      carbs: normalized.carbs || 0,
+      grasas: normalized.fat || 0,
     },
-    cantidadComidas: snapshot.mealsCount || snapshot.meals?.length || 0,
+    cantidadComidas: normalized.mealsCount || normalized.meals?.length || 0,
     visibilidad: "privada",
     estado: "activo",
-    comidas: (snapshot.meals || []).map((meal, mealIndex) => ({
+    comidas: (normalized.meals || []).map((meal, mealIndex) => ({
       id: meal.id || `meal-${mealIndex + 1}`,
       nombre: meal.name || `Comida ${mealIndex + 1}`,
       orden: meal.order || mealIndex + 1,
@@ -258,6 +336,95 @@ function isSameAssignment(a, b) {
   const left = assignmentIdentity(a);
   const right = assignmentIdentity(b);
   return Boolean(left && right && left === right);
+}
+
+function snapshotHasDetailedMeals(snapshot = {}) {
+  const normalized = normalizeSnapshot(snapshot);
+  return normalized.meals.length > 0 && normalized.meals.some((meal) => (meal.foods || []).length > 0);
+}
+
+function isSnapshotIncomplete(snapshot = {}) {
+  const normalized = normalizeSnapshot(snapshot);
+  const expectedMeals = toNumber(normalized.mealsCount, 0);
+  if (!normalized.meals.length) return expectedMeals > 0;
+  return !normalized.meals.some((meal) => (meal.foods || []).length > 0);
+}
+
+function menuLookupKeys(source = {}) {
+  const snapshot = source.menuSnapshot || source.snapshot || source;
+  return [
+    source.menuId,
+    source.menuBaseId,
+    source.id,
+    source._id,
+    source.baseId,
+    source.menuBaseId,
+    snapshot?.id,
+    snapshot?._id,
+    snapshot?.baseId,
+    snapshot?.menuBaseId,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function buildMenuLookup(menus = []) {
+  return menus.reduce((lookup, menu) => {
+    menuLookupKeys(menu).forEach((key) => lookup.set(key, menu));
+    return lookup;
+  }, new Map());
+}
+
+function findMenuForAssignment(assignment = {}, lookup = new Map()) {
+  return menuLookupKeys(assignment).map((key) => lookup.get(key)).find(Boolean) || null;
+}
+
+function hydrateAssignmentEntry(assignment = {}, lookup = new Map()) {
+  const normalized = normalizeAssignmentEntry(assignment, assignment.source || "base");
+  if (!normalized) return { assignment, changed: false };
+  const snapshot = normalizeSnapshot(normalized.menuSnapshot);
+  if (!isSnapshotIncomplete(snapshot)) {
+    return { assignment: { ...assignment, ...normalized, menuSnapshot: snapshot }, changed: false };
+  }
+
+  const sourceMenu = findMenuForAssignment(normalized, lookup);
+  const hydratedSnapshot = sourceMenu ? normalizeSnapshot(sourceMenu) : null;
+  if (hydratedSnapshot && snapshotHasDetailedMeals(hydratedSnapshot)) {
+    return {
+      assignment: {
+        ...assignment,
+        ...normalized,
+        menuId: normalized.menuId || hydratedSnapshot.baseId || hydratedSnapshot.id || "",
+        menuSnapshot: hydratedSnapshot,
+      },
+      changed: true,
+    };
+  }
+
+  return { assignment: { ...assignment, ...normalized, menuSnapshot: snapshot }, changed: false };
+}
+
+function hydrateAssignmentsWithMenus(assignments = {}, menus = []) {
+  const lookup = buildMenuLookup(menus);
+  if (!lookup.size) return assignments;
+  let changed = false;
+  const next = Object.entries(assignments || {}).reduce((acc, [dayKey, entry]) => {
+    const primary = hydrateAssignmentEntry(getPrimaryAssignment(entry) || entry, lookup);
+    const alternatives = (Array.isArray(entry?.alternatives) ? entry.alternatives : []).map((alternative) => {
+      const hydrated = hydrateAssignmentEntry(alternative, lookup);
+      changed = changed || hydrated.changed;
+      return {
+        ...alternative,
+        ...hydrated.assignment,
+        reason: alternative.reason || "",
+        compatibility: alternative.compatibility || null,
+      };
+    });
+    changed = changed || primary.changed;
+    acc[dayKey] = assignmentWithPrimary(primary.assignment, alternatives);
+    return acc;
+  }, {});
+  return changed ? next : assignments;
 }
 
 function getCompatibility(menu = {}, target = {}) {
@@ -331,13 +498,21 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }, [client?.menu?.weeklyPlan?.assignedMenusByDay]);
 
   const libraryMenus = useMemo(() => menusQuery.data?.menus || [], [menusQuery.data?.menus]);
+  useEffect(() => {
+    if (!libraryMenus.length) return;
+    setAssignments((current) => hydrateAssignmentsWithMenus(current, libraryMenus));
+  }, [libraryMenus]);
+  const hydratedAssignments = useMemo(
+    () => hydrateAssignmentsWithMenus(assignments, libraryMenus),
+    [assignments, libraryMenus]
+  );
   const nutritionWeek = useMemo(() => resolveNutritionWeek(nutritionTargets), [nutritionTargets]);
 
   const weekRows = useMemo(
     () =>
       NUTRITION_WEEK_DAYS.map((day) => {
         const target = nutritionWeek.targets[day.key];
-        const assignment = assignments[day.key] || null;
+        const assignment = hydratedAssignments[day.key] || null;
         const primary = getPrimaryAssignment(assignment);
         const snapshot = primary?.menuSnapshot ? normalizeSnapshot(primary.menuSnapshot) : null;
         const totals = snapshot ? menuTotals(snapshot) : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
@@ -345,7 +520,7 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
         const alternatives = Array.isArray(assignment?.alternatives) ? assignment.alternatives : [];
         return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility };
       }),
-    [assignments, nutritionWeek]
+    [hydratedAssignments, nutritionWeek]
   );
 
   const selectedDay = weekRows.find((row) => row.day.key === selectedDayKey) || weekRows[0];
@@ -375,12 +550,12 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
 
   async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
     const primaryMenu = menuToAssignment(menu);
-    const current = assignments[dayKey] || {};
+    const current = hydratedAssignments[dayKey] || assignments[dayKey] || {};
     const alternatives = Array.isArray(current.alternatives)
       ? current.alternatives.filter((alternative) => !isSameAssignment(alternative, primaryMenu))
       : [];
     const next = {
-      ...assignments,
+      ...hydratedAssignments,
       [dayKey]: assignmentWithPrimary(primaryMenu, alternatives),
     };
     setPicker(null);
@@ -388,7 +563,7 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }
 
   async function addAlternative(dayKey, menu) {
-    const current = assignments[dayKey] || {};
+    const current = hydratedAssignments[dayKey] || assignments[dayKey] || {};
     const currentPrimary = getPrimaryAssignment(current);
     if (!currentPrimary) {
       await assignMenu(dayKey, menu, "Menú asignado como principal del día.");
@@ -413,7 +588,7 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
     }
 
     const next = {
-      ...assignments,
+      ...hydratedAssignments,
       [dayKey]: assignmentWithPrimary(currentPrimary, [...alternatives, alternative]),
     };
     setPicker(null);
@@ -421,7 +596,7 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }
 
   async function promoteAlternative(dayKey, alternativeIndex) {
-    const current = assignments[dayKey];
+    const current = hydratedAssignments[dayKey] || assignments[dayKey];
     const currentPrimary = getPrimaryAssignment(current);
     const alternatives = Array.isArray(current?.alternatives) ? current.alternatives : [];
     const nextPrimary = alternatives[alternativeIndex];
@@ -429,25 +604,25 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
     const remaining = alternatives.filter((_, index) => index !== alternativeIndex);
     const nextAlternatives = currentPrimary ? [currentPrimary, ...remaining] : remaining;
     await persistAssignments(
-      { ...assignments, [dayKey]: assignmentWithPrimary(nextPrimary, nextAlternatives) },
+      { ...hydratedAssignments, [dayKey]: assignmentWithPrimary(nextPrimary, nextAlternatives) },
       "Alternativa marcada como menú principal."
     );
   }
 
   async function removeAlternative(dayKey, alternativeIndex) {
-    const current = assignments[dayKey];
+    const current = hydratedAssignments[dayKey] || assignments[dayKey];
     const currentPrimary = getPrimaryAssignment(current);
     if (!currentPrimary) return;
     const alternatives = Array.isArray(current?.alternatives) ? current.alternatives : [];
     const nextAlternatives = alternatives.filter((_, index) => index !== alternativeIndex);
     await persistAssignments(
-      { ...assignments, [dayKey]: assignmentWithPrimary(currentPrimary, nextAlternatives) },
+      { ...hydratedAssignments, [dayKey]: assignmentWithPrimary(currentPrimary, nextAlternatives) },
       "Alternativa quitada del día."
     );
   }
 
   async function clearDay(dayKey) {
-    const next = { ...assignments };
+    const next = { ...hydratedAssignments };
     delete next[dayKey];
     setDetailDayKey("");
     await persistAssignments(next, "Menú quitado del día.");
@@ -790,8 +965,23 @@ function MenuDayDetailDrawer({
   onEdit,
   onClear,
 }) {
-  const menu = row.snapshot;
-  const alternatives = row.alternatives || [];
+  const menu = row.snapshot ? normalizeSnapshot(row.snapshot) : null;
+  const alternatives = (row.alternatives || []).map((alternative) => ({
+    ...alternative,
+    menuSnapshot: normalizeSnapshot(alternative.menuSnapshot),
+  }));
+  const [selectedMenuKey, setSelectedMenuKey] = useState("primary");
+  useEffect(() => {
+    setSelectedMenuKey("primary");
+  }, [row.day.key, row.primary?.menuId]);
+  const selectedAlternativeIndex = selectedMenuKey.startsWith("alternative-")
+    ? Number(selectedMenuKey.replace("alternative-", ""))
+    : -1;
+  const selectedAlternative = selectedAlternativeIndex >= 0 ? alternatives[selectedAlternativeIndex] : null;
+  const selectedMenu = selectedAlternative?.menuSnapshot || menu;
+  const selectedTotals = selectedMenu ? menuTotals(selectedMenu) : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  const selectedCompatibility = selectedMenu ? getCompatibility(selectedMenu, row.target) : row.compatibility;
+  const selectedSnapshotIncomplete = selectedMenu ? isSnapshotIncomplete(selectedMenu) : false;
   return (
     <section className="wmp-drawer" role="dialog" aria-modal="true" aria-label="Detalle del menú del día">
       <div className="wmp-drawerPanel detail">
@@ -816,14 +1006,14 @@ function MenuDayDetailDrawer({
           <>
             <section className="wmp-detailSummary">
               <div>
-                <span className={`wmp-status ${row.compatibility.tone}`}>{row.compatibility.label}</span>
-                <h4>{menu.name}</h4>
-                <p>{menu.description || "Plantilla asignada a este día."}</p>
+                <span className={`wmp-status ${selectedCompatibility.tone}`}>{selectedCompatibility.label}</span>
+                <h4>{selectedMenu.name}</h4>
+                <p>{selectedMenu.description || "Plantilla asignada a este día."}</p>
               </div>
               <div className="wmp-detailTotals">
-                <strong>{displayKcal(row.totals.kcal)}</strong>
-                <span>P {displayMacro(row.totals.protein)} / C {displayMacro(row.totals.carbs)} / G {displayMacro(row.totals.fat)}</span>
-                <small>Dif. {formatSigned(row.compatibility.kcalDiff, " kcal")} / P {formatSigned(row.compatibility.proteinDiff, " g")}</small>
+                <strong>{displayKcal(selectedTotals.kcal)}</strong>
+                <span>P {displayMacro(selectedTotals.protein)} / C {displayMacro(selectedTotals.carbs)} / G {displayMacro(selectedTotals.fat)}</span>
+                <small>Dif. {formatSigned(selectedCompatibility.kcalDiff, " kcal")} / P {formatSigned(selectedCompatibility.proteinDiff, " g")}</small>
               </div>
             </section>
 
@@ -831,6 +1021,11 @@ function MenuDayDetailDrawer({
               <button type="button" className="wmp-btn" onClick={onEdit} disabled={!canCreate}>
                 <Pencil size={16} /> Editar
               </button>
+              {selectedAlternative ? (
+                <button type="button" className="wmp-btn ghost" onClick={() => setSelectedMenuKey("primary")}>
+                  <Eye size={16} /> Ver principal
+                </button>
+              ) : null}
               <button type="button" className="wmp-btn" onClick={onChoose}>
                 <RefreshCw size={16} /> Cambiar
               </button>
@@ -841,6 +1036,19 @@ function MenuDayDetailDrawer({
                 <Trash2 size={16} /> Quitar
               </button>
             </div>
+
+            {selectedSnapshotIncomplete ? (
+              <div className="wmp-snapshotNotice">
+                <AlertTriangle size={20} strokeWidth={2.3} aria-hidden="true" />
+                <div>
+                  <strong>Este menú fue asignado con snapshot incompleto.</strong>
+                  <span>Intentamos hidratarlo desde la plantilla original. Si no aparece el detalle, reasignalo para regenerar comidas e items.</span>
+                </div>
+                <button type="button" className="wmp-btn ghost" onClick={onChoose}>
+                  Reasignar
+                </button>
+              </div>
+            ) : null}
 
             <section className="wmp-alternativesBlock">
               <header>
@@ -855,21 +1063,52 @@ function MenuDayDetailDrawer({
               {alternatives.length ? (
                 <div className="wmp-altList">
                   {alternatives.map((alternative, index) => {
-                    const snapshot = normalizeSnapshot(alternative.menuSnapshot);
+                    const snapshot = alternative.menuSnapshot;
                     const compatibility = getCompatibility(snapshot, row.target);
                     const totals = menuTotals(snapshot);
+                    const alternativeKey = `alternative-${index}`;
+                    const selected = selectedMenuKey === alternativeKey;
                     return (
-                      <article className="wmp-altCard" key={`${alternative.menuId || snapshot.baseId || snapshot.name}-${index}`}>
+                      <article
+                        className={`wmp-altCard ${selected ? "selected" : ""}`}
+                        key={`${alternative.menuId || snapshot.baseId || snapshot.name}-${index}`}
+                        onClick={() => setSelectedMenuKey(alternativeKey)}
+                      >
                         <div>
                           <span className={`wmp-status ${compatibility.tone}`}>{compatibility.label}</span>
                           <strong>{snapshot.name}</strong>
                           <small>{displayKcal(totals.kcal)} / P {displayMacro(totals.protein)} / Dif. {formatSigned(compatibility.kcalDiff, " kcal")}</small>
                         </div>
                         <div className="wmp-altActions">
-                          <button type="button" className="wmp-btn gold" onClick={() => onPromoteAlternative(index)}>
+                          <button
+                            type="button"
+                            className="wmp-btn ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedMenuKey(alternativeKey);
+                            }}
+                          >
+                            Ver detalle
+                          </button>
+                          <button
+                            type="button"
+                            className="wmp-btn gold"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onPromoteAlternative(index);
+                            }}
+                          >
                             Usar principal
                           </button>
-                          <button type="button" className="wmp-iconBtn danger" onClick={() => onRemoveAlternative(index)} title="Quitar alternativa">
+                          <button
+                            type="button"
+                            className="wmp-iconBtn danger"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onRemoveAlternative(index);
+                            }}
+                            title="Quitar alternativa"
+                          >
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -883,26 +1122,30 @@ function MenuDayDetailDrawer({
             </section>
 
             <div className="wmp-mealList">
-              {(menu.meals || []).map((meal) => (
-                <article className="wmp-mealCard" key={meal.id || meal.name}>
-                  <header>
-                    <strong>{meal.name}</strong>
-                    <span>{displayKcal(meal.kcal)} / P {displayMacro(meal.protein)} / C {displayMacro(meal.carbs)} / G {displayMacro(meal.fat)}</span>
-                  </header>
-                  {(meal.foods || []).length ? (
-                    <div className="wmp-foodRows">
-                      {meal.foods.map((food) => (
-                        <div key={food.id || `${meal.id}-${food.name}`}>
-                          <span>{food.name}</span>
-                          <small>{formatNumber(food.cantidad, 1)} {food.unidad || "g"} / {displayKcal(food.kcal)} / P {displayMacro(food.protein)}</small>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="wmp-foodEmpty">Sin alimentos cargados.</p>
-                  )}
-                </article>
-              ))}
+              {(selectedMenu.meals || []).length ? (
+                selectedMenu.meals.map((meal) => (
+                  <article className="wmp-mealCard" key={meal.id || meal.name}>
+                    <header>
+                      <strong>{meal.name}</strong>
+                      <span>{displayKcal(meal.kcal)} / P {displayMacro(meal.protein)} / C {displayMacro(meal.carbs)} / G {displayMacro(meal.fat)}</span>
+                    </header>
+                    {(meal.foods || []).length ? (
+                      <div className="wmp-foodRows">
+                        {meal.foods.map((food) => (
+                          <div key={food.id || `${meal.id}-${food.name}`}>
+                            <span>{food.name}</span>
+                            <small>{formatNumber(food.cantidad, 1)} {food.unidad || "g"} / {displayKcal(food.kcal)} / P {displayMacro(food.protein)}</small>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="wmp-foodEmpty">Sin alimentos cargados.</p>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <div className="wmp-empty compact">Este menú no tiene comidas detalladas guardadas.</div>
+              )}
             </div>
           </>
         )}

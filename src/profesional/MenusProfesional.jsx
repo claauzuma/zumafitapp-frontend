@@ -1356,41 +1356,152 @@ function buildNextWeeklyAssignments(client = {}, dayKey = "", menu = {}) {
 }
 
 function snapshotFromAssignableMenu(menu = {}) {
-  const meals = Array.isArray(menu.meals)
-    ? menu.meals
-    : Array.isArray(menu.comidas)
-      ? menu.comidas.map((meal, index) => ({
-          id: meal.id || meal._id || `meal-${index + 1}`,
-          name: meal.nombre || meal.name || `Comida ${index + 1}`,
-          type: meal.tipoComida || meal.type || "otro",
-          order: meal.orden || meal.order || index + 1,
-          kcal: meal.totales?.kcal ?? meal.kcal,
-          protein: meal.totales?.proteina ?? meal.totales?.protein ?? meal.protein,
-          carbs: meal.totales?.carbs ?? meal.carbs,
-          fat: meal.totales?.grasas ?? meal.totales?.fat ?? meal.fat,
-          foods: Array.isArray(meal.items) ? meal.items.map((item) => ({
-            id: item.id,
-            name: item.nombreSnapshot || item.nombre || item.name,
-            cantidad: item.cantidad,
-            unidad: item.unidad || "g",
-            kcal: item.kcal,
-            protein: item.proteina ?? item.protein,
-            carbs: item.carbs,
-            fat: item.grasas ?? item.fat,
-          })) : meal.foods || [],
-        }))
-      : [];
+  const meals = assignRawMeals(menu).map((meal, index) => normalizeAssignableMealSnapshot(meal, index));
+  const totals = assignMenuTotals(menu, meals);
+  const mealsCount = assignNumber(menu.mealsCount ?? menu.cantidadComidas, meals.length) || meals.length;
   return {
     id: String(menu.id || menu._id || ""),
     baseId: String(menu.baseId || menu.menuBaseId || menu.id || menu._id || ""),
     name: menu.name || menu.nombre || "Menú sin nombre",
     description: menu.description || menu.descripcion || "",
-    kcal: Number(menu.kcal || menu.kcalObjetivo || 0),
-    protein: Number(menu.protein ?? menu.proteina ?? menu.macrosObjetivo?.proteina ?? 0),
-    carbs: Number(menu.carbs ?? menu.macrosObjetivo?.carbs ?? 0),
-    fat: Number(menu.fat ?? menu.grasas ?? menu.macrosObjetivo?.grasas ?? 0),
-    mealsCount: Number(menu.mealsCount ?? menu.cantidadComidas ?? meals.length) || meals.length,
+    kcal: totals.kcal,
+    protein: totals.protein,
+    carbs: totals.carbs,
+    fat: totals.fat,
+    totals: {
+      kcal: totals.kcal,
+      proteina: totals.protein,
+      carbs: totals.carbs,
+      grasas: totals.fat,
+    },
+    mealsCount,
+    cantidadComidas: mealsCount,
     meals,
+    comidas: meals.map(assignMealToSnapshotPayload),
+  };
+}
+
+function assignNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function assignHasAnyMacro(totals = {}) {
+  return Boolean(
+    assignNumber(totals.kcal, 0) ||
+    assignNumber(totals.protein ?? totals.proteina, 0) ||
+    assignNumber(totals.carbs, 0) ||
+    assignNumber(totals.fat ?? totals.grasas, 0)
+  );
+}
+
+function assignMacroTotals(source = {}) {
+  const totals = source?.totales || source?.totals || source || {};
+  return {
+    kcal: assignNumber(totals.kcal, 0),
+    protein: assignNumber(totals.proteina ?? totals.protein, 0),
+    carbs: assignNumber(totals.carbs, 0),
+    fat: assignNumber(totals.grasas ?? totals.fat, 0),
+  };
+}
+
+function assignAddTotals(left = {}, right = {}) {
+  return {
+    kcal: assignNumber(left.kcal, 0) + assignNumber(right.kcal, 0),
+    protein: assignNumber(left.protein, 0) + assignNumber(right.protein ?? right.proteina, 0),
+    carbs: assignNumber(left.carbs, 0) + assignNumber(right.carbs, 0),
+    fat: assignNumber(left.fat, 0) + assignNumber(right.fat ?? right.grasas, 0),
+  };
+}
+
+function assignRawMeals(menu = {}) {
+  const comidas = Array.isArray(menu.comidas) ? menu.comidas : null;
+  const meals = Array.isArray(menu.meals) ? menu.meals : null;
+  if (comidas?.length) return comidas;
+  if (meals?.length) return meals;
+  return comidas || meals || [];
+}
+
+function normalizeAssignableFoodSnapshot(item = {}, index = 0) {
+  return {
+    id: String(item.id || item._id || item.alimentoId || `food-${index + 1}`),
+    alimentoId: item.alimentoId || null,
+    name: item.nombreSnapshot || item.name || item.nombre || item.alimento || `Alimento ${index + 1}`,
+    cantidad: assignNumber(item.cantidad ?? item.quantity, 0),
+    unidad: item.unidad || item.unit || "g",
+    kcal: assignNumber(item.kcal, 0),
+    protein: assignNumber(item.proteina ?? item.protein, 0),
+    carbs: assignNumber(item.carbs, 0),
+    fat: assignNumber(item.grasas ?? item.fat, 0),
+  };
+}
+
+function assignTotalsFromFoods(foods = []) {
+  return foods.reduce((acc, food) => assignAddTotals(acc, food), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+}
+
+function normalizeAssignableMealSnapshot(meal = {}, index = 0) {
+  const rawItems = Array.isArray(meal.items)
+    ? meal.items
+    : Array.isArray(meal.foods)
+      ? meal.foods
+      : Array.isArray(meal.alimentos)
+        ? meal.alimentos
+        : [];
+  const foods = rawItems.map((item, itemIndex) => normalizeAssignableFoodSnapshot(item, itemIndex));
+  const explicitTotals = assignMacroTotals(meal.totales || meal.totals || meal);
+  const foodTotals = assignTotalsFromFoods(foods);
+  const totals = assignHasAnyMacro(explicitTotals) ? explicitTotals : foodTotals;
+
+  return {
+    id: String(meal.id || meal._id || meal.comidaId || `meal-${index + 1}`),
+    name: meal.name || meal.nombre || `Comida ${index + 1}`,
+    type: meal.type || meal.tipoComida || "otro",
+    order: assignNumber(meal.order ?? meal.orden, index + 1),
+    kcal: totals.kcal,
+    protein: totals.protein,
+    carbs: totals.carbs,
+    fat: totals.fat,
+    foods,
+  };
+}
+
+function assignMenuTotals(menu = {}, meals = []) {
+  const explicitTotals = assignMacroTotals(
+    menu.totals || menu.totales || {
+      kcal: menu.kcal ?? menu.kcalObjetivo ?? menu.calories,
+      protein: menu.protein ?? menu.proteina ?? menu.macrosObjetivo?.proteina ?? menu.macros?.protein,
+      carbs: menu.carbs ?? menu.macrosObjetivo?.carbs ?? menu.macros?.carbs,
+      fat: menu.fat ?? menu.grasas ?? menu.macrosObjetivo?.grasas ?? menu.macros?.fat,
+    }
+  );
+  if (assignHasAnyMacro(explicitTotals)) return explicitTotals;
+  return meals.reduce((acc, meal) => assignAddTotals(acc, meal), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+}
+
+function assignMealToSnapshotPayload(meal = {}, index = 0) {
+  return {
+    id: meal.id || `meal-${index + 1}`,
+    nombre: meal.name || `Comida ${index + 1}`,
+    tipoComida: meal.type || "otro",
+    orden: meal.order || index + 1,
+    totales: {
+      kcal: assignNumber(meal.kcal, 0),
+      proteina: assignNumber(meal.protein, 0),
+      carbs: assignNumber(meal.carbs, 0),
+      grasas: assignNumber(meal.fat, 0),
+    },
+    items: (meal.foods || []).map((food, foodIndex) => ({
+      id: food.id || `item-${index + 1}-${foodIndex + 1}`,
+      alimentoId: food.alimentoId || null,
+      nombreSnapshot: food.name || `Alimento ${foodIndex + 1}`,
+      cantidad: assignNumber(food.cantidad, 0),
+      unidad: food.unidad || "g",
+      kcal: assignNumber(food.kcal, 0),
+      proteina: assignNumber(food.protein, 0),
+      carbs: assignNumber(food.carbs, 0),
+      grasas: assignNumber(food.fat, 0),
+    })),
   };
 }
 
