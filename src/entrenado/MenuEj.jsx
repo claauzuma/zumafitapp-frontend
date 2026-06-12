@@ -98,9 +98,10 @@ const CSS = `
 }
 @media (max-width: 640px){
   .menu-wrap{
-    width:calc(100% + 20px);
+    width:100%;
     max-width:none;
-    margin-inline:-10px;
+    margin-inline:0;
+    overflow-x:hidden;
     padding:8px 0 14px;
   }
   .menu-top,
