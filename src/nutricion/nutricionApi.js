@@ -1,8 +1,22 @@
 import { apiFetch } from "../Api.js";
 import { buildFoodIndex, filterFoods, filterMeals, normalizeFood, normalizeMeal } from "./nutricionUtils.js";
 
+function alimentosQuery(filters = {}) {
+  const params = new URLSearchParams();
+  const search = String(filters.search || filters.q || "").trim();
+  const category = String(filters.category || filters.categoria || "").trim();
+  const limit = Number(filters.limit);
+
+  if (search) params.set("search", search);
+  if (category && category !== "todos") params.set("category", category);
+  if (Number.isFinite(limit) && limit > 0) params.set("limit", String(Math.min(Math.trunc(limit), 50)));
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export async function listAlimentos(filters = {}) {
-  const data = await apiFetch("/api/alimentos", {
+  const data = await apiFetch(`/api/alimentos${alimentosQuery(filters)}`, {
     method: "GET",
     timeoutMs: 12000,
   });

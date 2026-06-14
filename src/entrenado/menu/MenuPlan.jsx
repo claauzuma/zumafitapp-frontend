@@ -10,6 +10,7 @@ import {
   CircleAlert,
   ClipboardCheck,
   Eye,
+  Lock,
   MoreHorizontal,
   Moon,
   Plus,
@@ -27,20 +28,54 @@ import {
 import { apiFetch } from "../../Api.js";
 import { getFoodEquivalents } from "../../menus/menusApi.js";
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
+import { getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
 
 const EMPTY_DAYS = [];
+const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
+const MENU_WEEK_BACKGROUND_REFRESH_MS = 45 * 1000;
+const menuWeekMemoryCache = new Map();
 const MENU_EMOJI = "\u{1F37D}\uFE0F";
 const MENU_BOX_EMOJI = "\u{1F371}";
 const EYE_EMOJI = "\u{1F441}\uFE0F";
 const TOTAL_KEYS = {
-  kcal: ["kcal", "calories", "calorias", "cal"],
-  proteina: ["proteina", "proteinas", "protein", "p"],
-  carbs: ["carbs", "carbohidratos", "carbohydrates", "hidratos", "c"],
-  grasas: ["grasas", "grasa", "fat", "fats", "g"],
+  kcal: ["kcal", "calories", "calorias", "caloriasTotales", "caloriesTotal", "kcalTotal", "cal"],
+  proteina: ["proteina", "proteinas", "protein", "proteinaTotal", "proteinasTotal", "proteinTotal", "p"],
+  carbs: ["carbs", "carbohidratos", "carbohydrates", "hidratos", "carbsTotal", "carbohidratosTotal", "c"],
+  grasas: ["grasas", "grasa", "fat", "fats", "grasasTotal", "fatTotal", "g"],
 };
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getMenuWeekCacheEntry(start) {
+  const key = start || mondayOfWeek();
+  const cached = menuWeekMemoryCache.get(key);
+  if (!cached?.data) return null;
+  if (Date.now() - cached.savedAt > MENU_WEEK_CACHE_TTL_MS) {
+    menuWeekMemoryCache.delete(key);
+    return null;
+  }
+  return cached;
+}
+
+function getCachedMenuWeek(start) {
+  const cached = getMenuWeekCacheEntry(start);
+  return cached?.data || null;
+}
+
+function shouldRefreshCachedMenuWeek(start) {
+  const cached = getMenuWeekCacheEntry(start);
+  if (!cached) return true;
+  return Date.now() - cached.savedAt > MENU_WEEK_BACKGROUND_REFRESH_MS;
+}
+
+function setCachedMenuWeek(start, data) {
+  if (!start || !data) return;
+  menuWeekMemoryCache.set(start, {
+    data,
+    savedAt: Date.now(),
+  });
 }
 
 function mondayOfWeek(value = todayIso()) {
@@ -78,9 +113,17 @@ function macro(value) {
 
 function readMacroValue(source = {}, keys = []) {
   if (!source || typeof source !== "object") return undefined;
+  const lookup = Object.entries(source).reduce((acc, [key, value]) => {
+    acc[String(key).toLowerCase()] = value;
+    return acc;
+  }, {});
   for (const key of keys) {
     if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
       return source[key];
+    }
+    const lowerKey = String(key).toLowerCase();
+    if (lookup[lowerKey] !== undefined && lookup[lowerKey] !== null && lookup[lowerKey] !== "") {
+      return lookup[lowerKey];
     }
   }
   return undefined;
@@ -144,10 +187,6 @@ function progressTone(row) {
   if (state.tone === "red") return "from-rose-400 to-orange-300";
   if (state.tone === "amber") return "from-[#D4AF37] to-orange-300";
   return "from-zinc-600 to-zinc-500";
-}
-
-function menuSnapshot(row) {
-  return row?.assignment?.primaryMenu?.menuSnapshot || null;
 }
 
 function menuChoices(row) {
@@ -448,13 +487,15 @@ function compactDayLabel(row = {}) {
 }
 
 function completionPercent(row = {}) {
-  const status = statusMeta(row);
-  if (Number.isFinite(Number(status.percent))) {
-    return Math.max(0, Math.min(100, Math.round(Number(status.percent))));
-  }
   const target = targetTotals(row);
   const consumed = consumedTotals(row);
-  if (!target.kcal) return 0;
+  if (!target.kcal) {
+    const status = statusMeta(row);
+    if (Number.isFinite(Number(status.percent))) {
+      return Math.max(0, Math.min(100, Math.round(Number(status.percent))));
+    }
+    return 0;
+  }
   return Math.max(0, Math.min(100, Math.round((consumed.kcal / target.kcal) * 100)));
 }
 
@@ -496,8 +537,8 @@ function normalizeMealFood(item = {}, index = 0) {
     (typeof safeItem.alimento === "string" ? safeItem.alimento : "") ||
     safeItem.label ||
     `Alimento ${index + 1}`;
-  const cantidad = safeItem.cantidad ?? safeItem.quantity ?? safeItem.qty;
-  const unidad = safeItem.unidad || safeItem.unit || "";
+  const cantidad = safeItem.cantidad ?? safeItem.quantity ?? safeItem.qty ?? safeItem.gramos ?? safeItem.grams;
+  const unidad = safeItem.unidad || safeItem.unit || (safeItem.gramos || safeItem.grams ? "g" : "");
   const amount = safeItem.amount || foodAmount(cantidad, unidad);
   const itemTotals = totalFromLike(safeItem);
   const sourceTotals = totalFromLike(source);
@@ -506,6 +547,13 @@ function normalizeMealFood(item = {}, index = 0) {
     foodTotalsFromQuantity(safeItem, sourceTotals),
     foodTotalsFromQuantity({ ...safeItem, macroBasis: "perUnit" }, perUnitTotals)
   );
+  const imageSource = {
+    ...source,
+    ...safeItem,
+    name,
+    nombre: name,
+    category: safeItem.categoriaSnapshot || safeItem.categoria || safeItem.category || source.categoria || source.category || "",
+  };
   return {
     id: String(safeItem.id || safeItem._id || safeItem.alimentoId || `${name}-${index}`),
     alimentoId: safeItem.alimentoId || safeItem.foodId || safeItem.id || null,
@@ -515,16 +563,19 @@ function normalizeMealFood(item = {}, index = 0) {
     cantidad,
     totals: totalsWithFallback(itemTotals, calculatedTotals),
     category: safeItem.categoriaSnapshot || safeItem.categoria || safeItem.category || "",
+    imagen: safeItem.imagen || source.imagen || null,
+    imageUrl: safeItem.imagenUrl || source.imagenUrl || getFoodImageUrl(imageSource),
+    imageAlt: safeItem.imagen?.alt || source.imagen?.alt || safeItem.imagenAlt || source.imagenAlt || name,
     raw: safeItem,
   };
 }
 
 function perUnitTotalsFromLike(item = {}, source = {}) {
   return {
-    kcal: macro(item.unidadCalorica ?? item.caloriaUnidad ?? item.kcalUnidad ?? source.unidadCalorica ?? source.caloriaUnidad ?? source.kcalUnidad),
-    proteina: macro(item.unidadProteica ?? item.proteinaUnidad ?? item.proteinUnidad ?? source.unidadProteica ?? source.proteinaUnidad ?? source.proteinUnidad),
-    carbs: macro(item.unidadCarbo ?? item.carboUnidad ?? item.carbsUnidad ?? source.unidadCarbo ?? source.carboUnidad ?? source.carbsUnidad),
-    grasas: macro(item.unidadGrasas ?? item.grasasUnidad ?? item.fatUnidad ?? source.unidadGrasas ?? source.grasasUnidad ?? source.fatUnidad),
+    kcal: macro(item.unidadCalorica ?? item.caloriaUnidad ?? item.caloriasUnidad ?? item.kcalUnidad ?? source.unidadCalorica ?? source.caloriaUnidad ?? source.caloriasUnidad ?? source.kcalUnidad),
+    proteina: macro(item.unidadProteica ?? item.proteinaUnidad ?? item.proteinasUnidad ?? item.proteinUnidad ?? source.unidadProteica ?? source.proteinaUnidad ?? source.proteinasUnidad ?? source.proteinUnidad),
+    carbs: macro(item.unidadCarbo ?? item.carboUnidad ?? item.carbsUnidad ?? item.carbohidratosUnidad ?? source.unidadCarbo ?? source.carboUnidad ?? source.carbsUnidad ?? source.carbohidratosUnidad),
+    grasas: macro(item.unidadGrasas ?? item.grasasUnidad ?? item.grasaUnidad ?? item.fatUnidad ?? source.unidadGrasas ?? source.grasasUnidad ?? source.grasaUnidad ?? source.fatUnidad),
   };
 }
 
@@ -536,8 +587,14 @@ function foodTotalsFromQuantity(item = {}, sourceTotals = {}) {
   const basis = String(item.macroBasis || item.basis || item.base || "").toLowerCase();
   const unit = String(item.unidad || item.unit || "g").toLowerCase();
   const isPerUnit = basis === "perunit" || basis === "per_unit" || basis === "unidad" || basis === "porunidad";
-  const isPer100 = basis === "per100" || basis === "por100" || basis === "por_100" || unit === "g" || unit === "gr" || unit === "gramos";
-  const multiplier = isPerUnit ? quantity : isPer100 ? quantity / 100 : quantity;
+  const explicitPer100 = basis === "per100" || basis === "por100" || basis === "por_100";
+  const gramUnit = unit === "g" || unit === "gr" || unit === "gramos";
+  const looksPerGram = !basis && gramUnit && (
+    (totals.kcal > 0 && totals.kcal <= 12) ||
+    (!totals.kcal && Math.max(totals.proteina, totals.carbs, totals.grasas) <= 2)
+  );
+  const isPer100 = explicitPer100 || (gramUnit && !looksPerGram);
+  const multiplier = isPerUnit || looksPerGram ? quantity : isPer100 ? quantity / 100 : quantity;
   return {
     kcal: totals.kcal * multiplier,
     proteina: totals.proteina * multiplier,
@@ -563,13 +620,397 @@ function foodMacroLine(food = {}) {
   return pieces.join(" · ");
 }
 
+function foodLibraryMacroLine(food = {}) {
+  const totals = {
+    kcal: macro(food.kcal ?? food.calorias ?? food.calories ?? food.energy ?? food.energia),
+    proteina: macro(food.proteina ?? food.proteinas ?? food.protein),
+    carbs: macro(food.carbs ?? food.carbohidratos ?? food.carbohydrates ?? food.hidratos),
+    grasas: macro(food.grasas ?? food.grasa ?? food.fat ?? food.fats),
+  };
+  const basis = String(food.macroBasis || food.raw?.macroBasis || "").toLowerCase();
+  const unit = food.unit || food.unidad || "g";
+  const suffix = basis === "per100" ? "por 100 g" : `por ${unit}`;
+  return `${displayKcal(totals.kcal)} - P ${formatNumber(totals.proteina, 0)} / C ${formatNumber(totals.carbs, 0)} / G ${formatNumber(totals.grasas, 0)} - ${suffix}`;
+}
+
 function mealIconType(meal = {}, index = 0) {
   const text = `${mealName(meal, index)} ${meal.tipoComida || meal.type || ""}`.toLowerCase();
+  if (meal?.source === "manual_food" || meal?.mealType === "manual") return "manual";
+  if (meal?.source === "generated_remaining_meal" || meal?.mealType === "generated") return "generated";
   if (text.includes("desayuno")) return "breakfast";
   if (text.includes("almuerzo")) return "lunch";
   if (text.includes("merienda") || text.includes("snack")) return "snack";
   if (text.includes("cena")) return "dinner";
   return "meal";
+}
+
+function isGeneratedRemainingMeal(entry = {}) {
+  const source = String(entry?.source || "");
+  return source === "generated_remaining_meal" || source === "auto_generated_remaining";
+}
+
+function generatedRemainingMeals(row = {}) {
+  return (Array.isArray(row?.tracking?.generatedRemainingMeals) ? row.tracking.generatedRemainingMeals : [])
+    .filter(isGeneratedRemainingMeal);
+}
+
+function generatedDateFromId(entry = {}) {
+  const text = `${entry.generationRunId || ""} ${entry.runId || ""} ${entry.id || ""}`;
+  const match = text.match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : "";
+}
+
+function generatedActiveFrom(entry = {}) {
+  return entry.activeFromDate || entry.date || generatedDateFromId(entry) || entry.weekStart || "";
+}
+
+function generatedActiveUntil(entry = {}) {
+  const from = generatedActiveFrom(entry);
+  if (entry.activeUntilDate || entry.weekEnd || entry.date) {
+    return entry.activeUntilDate || entry.weekEnd || entry.date || "";
+  }
+  return from ? addDays(mondayOfWeek(from), 6) : "";
+}
+
+function isGeneratedActiveForDate(entry = {}, date = "") {
+  if (!isGeneratedRemainingMeal(entry)) return false;
+  if (entry.isActiveReplacement === false) return false;
+  const from = generatedActiveFrom(entry);
+  const until = generatedActiveUntil(entry);
+  if (!from && !until) return !entry.date || entry.date === date;
+  return (!from || date >= from) && (!until || date <= until);
+}
+
+function isWeeklyGeneratedRemainingOverride(entry = {}) {
+  const source = String(entry?.source || "");
+  if (!isGeneratedRemainingMeal(entry)) return false;
+  if (entry.mode && entry.mode !== "complete_pending_meals") return false;
+  if (entry.scope && entry.scope !== "week") return false;
+  if (source === "auto_generated_remaining" && !entry.mode && !entry.scope && !entry.generationRunId && !generatedDateFromId(entry)) {
+    return false;
+  }
+  return true;
+}
+
+function generatedRunKey(entry = {}) {
+  if (entry.generationRunId) return String(entry.generationRunId);
+  if (entry.runId) return String(entry.runId);
+  if (entry.createdAt) return `${entry.weekStart || entry.date || "week"}-${entry.createdAt}`;
+  const id = String(entry.id || "");
+  const withoutIndex = id.replace(/-\d+$/, "");
+  return withoutIndex || `${entry.weekStart || entry.date || "week"}-legacy`;
+}
+
+function generatedRunTimestamp(entry = {}) {
+  const text = `${entry.generationRunId || ""} ${entry.runId || ""} ${entry.id || ""}`;
+  const matches = [...text.matchAll(/(\d{10,})/g)].map((match) => match[1]);
+  return matches[matches.length - 1] || "";
+}
+
+function generatedRunSortValue(entries = []) {
+  const sample = entries[0] || {};
+  const value = sample.updatedAt || sample.createdAt || generatedRunTimestamp(sample) || sample.activeFromDate || sample.date || sample.weekStart || "";
+  return `${value}-${sample.generationRunId || sample.runId || sample.id || ""}`;
+}
+
+function latestGeneratedRunEntries(entries = []) {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const key = generatedRunKey(entry);
+    groups.set(key, [...(groups.get(key) || []), entry]);
+  });
+  return [...groups.values()]
+    .sort((a, b) => generatedRunSortValue(b).localeCompare(generatedRunSortValue(a)))[0] || [];
+}
+
+function isSameWeeklyGeneratedOverride(entry = {}, weekStart = "", weekEnd = "") {
+  const entryWeekStart = entry.weekStart || mondayOfWeek(entry.activeFromDate || entry.date || generatedDateFromId(entry) || weekStart || todayIso());
+  const entryWeekEnd = entry.weekEnd || addDays(entryWeekStart, 6);
+  return isWeeklyGeneratedRemainingOverride(entry) &&
+    entry.isActiveReplacement !== false &&
+    (!weekStart || entryWeekStart === weekStart) &&
+    (!weekEnd || entryWeekEnd === weekEnd);
+}
+
+function activeGeneratedRemainingMeals(row = {}, weekRows = []) {
+  const date = row?.date || "";
+  const entries = [
+    ...generatedRemainingMeals(row),
+    ...(Array.isArray(weekRows) ? weekRows.flatMap((day) => generatedRemainingMeals(day)) : []),
+  ];
+  const seen = new Set();
+  const activeEntries = entries
+    .filter((entry) => isGeneratedActiveForDate(entry, date))
+    .filter(isWeeklyGeneratedRemainingOverride)
+    .filter((entry, index) => {
+      const key = String(entry.id || `${entry.date || "day"}-${index}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return latestGeneratedRunEntries(activeEntries);
+}
+
+function rowWithActiveGeneratedMeals(row = {}, weekRows = []) {
+  const activeEntries = activeGeneratedRemainingMeals(row, weekRows);
+  const existing = Array.isArray(row?.tracking?.generatedRemainingMeals) ? row.tracking.generatedRemainingMeals : [];
+  const retainedEntries = existing.filter((entry) => !isGeneratedRemainingMeal(entry));
+  const existingIds = new Set(retainedEntries.map((entry) => String(entry?.id || "")));
+  const merged = [
+    ...retainedEntries,
+    ...activeEntries.filter((entry) => !existingIds.has(String(entry?.id || ""))),
+  ];
+  const currentIds = existing.map((entry) => String(entry?.id || "")).join("|");
+  const nextIds = merged.map((entry) => String(entry?.id || "")).join("|");
+  if (currentIds === nextIds) return row;
+  return rowWithTracking(row, { generatedRemainingMeals: merged });
+}
+
+function normalizeReplacementToken(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function mealTypeToken(meal = {}, index = 0) {
+  return normalizeReplacementToken(meal.tipoComida || meal.mealType || meal.type || mealIconType(meal, index));
+}
+
+function replacementMetaFromGenerated(entries = []) {
+  const ids = new Set();
+  const types = new Set();
+  const names = new Set();
+  entries.forEach((entry) => {
+    if (Array.isArray(entry?.replacesMealIds)) {
+      entry.replacesMealIds.forEach((value) => ids.add(String(value)));
+    }
+    if (Array.isArray(entry?.replacesMealTypes)) {
+      entry.replacesMealTypes.forEach((value) => types.add(normalizeReplacementToken(value)));
+    }
+    if (Array.isArray(entry?.replacesMealNames)) {
+      entry.replacesMealNames.forEach((value) => names.add(normalizeReplacementToken(value)));
+    }
+  });
+  return { ids, types, names };
+}
+
+function mergeReplacementMeta(...metas) {
+  const merged = { ids: new Set(), types: new Set(), names: new Set() };
+  metas.forEach((meta = {}) => {
+    meta.ids?.forEach((value) => merged.ids.add(value));
+    meta.types?.forEach((value) => merged.types.add(value));
+    meta.names?.forEach((value) => merged.names.add(value));
+  });
+  return merged;
+}
+
+function hasReplacementMeta(meta = {}) {
+  return Boolean(meta.ids?.size || meta.types?.size || meta.names?.size);
+}
+
+function inferPendingReplacementMeta(row = {}, baseMeals = []) {
+  const completed = completedMealIdSet(row);
+  const meta = { ids: new Set(), types: new Set(), names: new Set() };
+  baseMeals.forEach((meal, index) => {
+    const id = mealId(meal, index);
+    if (completed.has(id)) return;
+    meta.ids.add(String(id));
+    meta.types.add(mealTypeToken(meal, index));
+    meta.names.add(normalizeReplacementToken(mealName(meal, index)));
+  });
+  return meta;
+}
+
+function generatedReplacementMetaForMeals(row = {}, baseMeals = [], weekRows = []) {
+  const activeEntries = activeGeneratedRemainingMeals(row, weekRows);
+  const meta = replacementMetaFromGenerated(activeEntries);
+  if (!activeEntries.length || hasReplacementMeta(meta)) return meta;
+  return inferPendingReplacementMeta(row, baseMeals);
+}
+
+function mealMatchesReplacement(meal = {}, index = 0, meta = {}) {
+  return Boolean(
+    meta.ids?.has(String(mealId(meal, index))) ||
+    meta.types?.has(mealTypeToken(meal, index)) ||
+    meta.names?.has(normalizeReplacementToken(mealName(meal, index)))
+  );
+}
+
+function originalMealsForGenerated(entry = {}, baseMeals = [], row = {}) {
+  const meta = replacementMetaFromGenerated([entry]);
+  const effectiveMeta = hasReplacementMeta(meta) ? meta : inferPendingReplacementMeta(row, baseMeals);
+  return baseMeals
+    .map((meal, mealIndex) => ({ meal, mealIndex }))
+    .filter((item) => mealMatchesReplacement(item.meal, item.mealIndex, effectiveMeta));
+}
+
+function generatedMealToMeal(entry = {}, index = 0) {
+  const foods = Array.isArray(entry.items) ? entry.items : Array.isArray(entry.foods) ? entry.foods : [];
+  return {
+    id: entry.id || `generated-${index + 1}`,
+    name: entry.name || "Comida generada",
+    nombre: entry.name || "Comida generada",
+    tipoComida: entry.mealType || "generated",
+    mealType: entry.mealType || "generated",
+    source: "generated_remaining_meal",
+    foods,
+    items: foods,
+    totals: totalFromLike(entry.totals || entry),
+    replacementMeta: {
+      type: "generated_remaining",
+      replacesMealNames: Array.isArray(entry.replacesMealNames) ? entry.replacesMealNames : [],
+      replacesMealTypes: Array.isArray(entry.replacesMealTypes) ? entry.replacesMealTypes : [],
+      scope: entry.scope || "week",
+      activeUntilDate: generatedActiveUntil(entry),
+    },
+  };
+}
+
+function manualEntryToMeal(entry = {}, index = 0) {
+  const foods = Array.isArray(entry.items) ? entry.items : Array.isArray(entry.foods) ? entry.foods : [];
+  return {
+    id: entry.id || `manual-${index + 1}`,
+    name: entry.name || "Algo distinto",
+    nombre: entry.name || "Algo distinto",
+    tipoComida: "manual",
+    mealType: "manual",
+    source: "manual_food",
+    foods,
+    items: foods,
+    totals: totalFromLike(entry.totals || entry),
+    replacementMeta: {
+      type: "manual_food",
+    },
+  };
+}
+
+function manualTrackingMeals(row = {}) {
+  return (Array.isArray(row?.tracking?.manualEntries) ? row.tracking.manualEntries : [])
+    .filter((entry) => entry?.source === "manual_food" || !entry?.source);
+}
+
+function manualReplacementMetaForMeals(row = {}, baseMeals = []) {
+  const entries = manualTrackingMeals(row);
+  const meta = replacementMetaFromGenerated(entries);
+  if (!entries.length || hasReplacementMeta(meta)) return meta;
+  return inferPendingReplacementMeta(row, baseMeals);
+}
+
+function countableMealEntries(entries = []) {
+  return entries.filter((entry) => entry?.countsAsMenuMeal !== false);
+}
+
+function completedCountableMeals(entries = []) {
+  return countableMealEntries(entries).filter((entry) => entry.done).length;
+}
+
+function effectiveMealEntriesForDay(row = {}, baseMeals = [], weekRows = []) {
+  const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
+  const generatedMeta = generatedReplacementMetaForMeals(displayRow, baseMeals, weekRows);
+  const manualMeta = manualReplacementMetaForMeals(row, baseMeals);
+  const replacementMeta = mergeReplacementMeta(generatedMeta, manualMeta);
+  const completed = completedMealIdSet(row);
+  const visibleBaseMeals = baseMeals
+    .map((meal, index) => ({
+      key: mealId(meal, index),
+      meal: mealWithTrackingReplacements(row, meal, index),
+      baseMeal: meal,
+      mealIndex: index,
+      done: completed.has(mealId(meal, index)),
+      generated: false,
+    }))
+    .filter((entry) => !mealMatchesReplacement(entry.baseMeal, entry.mealIndex, replacementMeta));
+
+  const generatedMeals = activeGeneratedRemainingMeals(displayRow, weekRows).map((entry, index) => {
+    return {
+      key: entry.id || `generated-${row?.date || "day"}-${index + 1}`,
+      meal: generatedMealToMeal(entry, index),
+      baseMeal: generatedMealToMeal(entry, index),
+      mealIndex: baseMeals.length + index,
+      done: true,
+      generated: true,
+      generatedEntry: entry,
+      replacedOriginalMeals: originalMealsForGenerated(entry, baseMeals, row),
+    };
+  });
+
+  const manualMeals = manualTrackingMeals(row).map((entry, index) => {
+    const meal = manualEntryToMeal(entry, index);
+    return {
+      key: entry.id || `manual-${row?.date || "day"}-${index + 1}`,
+      meal,
+      baseMeal: meal,
+      mealIndex: baseMeals.length + generatedMeals.length + index,
+      done: true,
+      generated: false,
+      manual: true,
+      countsAsMenuMeal: false,
+      manualEntry: entry,
+      replacedOriginalMeals: originalMealsForGenerated(entry, baseMeals, row),
+    };
+  });
+
+  return [...visibleBaseMeals, ...generatedMeals, ...manualMeals];
+}
+
+function pendingBaseMealsForRemaining(row = {}, weekRows = []) {
+  const choice = trackingChoice(row);
+  const baseMeals = choice ? choiceMeals(choice) : [];
+  const completed = completedMealIdSet(row);
+  const replacementMeta = generatedReplacementMetaForMeals(row, baseMeals, weekRows);
+  return baseMeals
+    .map((meal, index) => {
+      const id = mealId(meal, index);
+      return {
+        id,
+        meal,
+        index,
+        name: mealName(meal, index),
+        type: meal.tipoComida || meal.type || mealIconType(meal, index),
+        totals: mealTotals(mealWithTrackingReplacements(row, meal, index)),
+      };
+    })
+    .filter((entry) => !completed.has(entry.id) && !mealMatchesReplacement(entry.meal, entry.index, replacementMeta));
+}
+
+function splitPendingMeals(pending = [], count = 1) {
+  const groups = Array.from({ length: count }, () => []);
+  pending.forEach((meal, index) => {
+    groups[Math.min(index, count - 1)].push(meal);
+  });
+  return groups;
+}
+
+function generatedTargetName(group = [], index = 0, count = 1) {
+  if (group.length === 1) return group[0].name;
+  if (count === 1) return "Comida generada";
+  return `Comida generada ${index + 1}`;
+}
+
+function remainingGenerationTargets(row = {}, count = 1, weekRows = []) {
+  const remaining = positiveTotals(remainingTotals(row));
+  const targetCount = Math.min(3, Math.max(1, Number(count) || 1));
+  const portions = Array.from({ length: targetCount }, () => 1 / targetCount);
+  const pending = pendingBaseMealsForRemaining(row, weekRows);
+  const groups = splitPendingMeals(pending, targetCount);
+  return portions.map((portion, index) => {
+    const group = groups[index] || [];
+    const replacesMealIds = group.map((meal) => meal.id);
+    const replacesMealNames = group.map((meal) => meal.name);
+    const replacesMealTypes = group.map((meal) => meal.type);
+    return {
+      id: `remaining-${index + 1}`,
+      name: generatedTargetName(group, index, targetCount),
+      mealType: group.length === 1 ? group[0].type : "generated",
+      replacesMealIds,
+      replacesMealNames,
+      replacesMealTypes,
+      totals: {
+        kcal: Math.round(remaining.kcal * portion),
+        proteina: Math.round(remaining.proteina * portion * 10) / 10,
+        carbs: Math.round(remaining.carbs * portion * 10) / 10,
+        grasas: Math.round(remaining.grasas * portion * 10) / 10,
+      },
+    };
+  });
 }
 
 function trackingPayloadBase(row = {}, overrides = {}) {
@@ -598,23 +1039,36 @@ function rowWithTracking(row = {}, trackingOverrides = {}) {
 }
 
 function foodPerUnit(food = {}, key = "kcal") {
-  const value = macro(food[key] ?? (key === "proteina" ? food.protein : key === "grasas" ? food.fat : 0));
-  const basis = food.macroBasis || food.raw?.macroBasis || "";
+  const value = macro(
+    food[key] ??
+    (key === "kcal" ? food.calorias ?? food.calories ?? food.energy ?? food.energia : undefined) ??
+    (key === "proteina" ? food.protein ?? food.proteinas : undefined) ??
+    (key === "carbs" ? food.carbohidratos ?? food.carbohydrates ?? food.hidratos : undefined) ??
+    (key === "grasas" ? food.grasa ?? food.fat ?? food.fats : 0)
+  );
+  const basis = String(food.macroBasis || food.raw?.macroBasis || "").toLowerCase();
   const unit = String(food.unidad || food.unit || "g").toLowerCase();
-  const isPer100 = basis === "per100" || (unit === "g" && basis !== "perUnit");
+  const looksPerGram = !basis && unit === "g" && value > 0 && value <= (key === "kcal" ? 12 : 2);
+  const isPer100 = basis === "per100" || (unit === "g" && !looksPerGram && basis !== "perunit");
   return isPer100 ? value / 100 : value;
 }
 
 function normalizeGeneratedFood(food = {}) {
+  const normalizedImage = food.imagen || food.image || null;
   return {
     id: String(food.foodId || food.id || food.name || food.nombre || Math.random()),
     name: food.name || food.nombre || "Alimento",
-    quantity: macro(food.quantity ?? food.cantidad),
+    quantity: macro(food.quantity ?? food.cantidad ?? food.amount ?? food.gramos ?? food.grams),
     unit: food.unit || food.unidad || "g",
-    kcal: macro(food.kcal),
-    proteina: macro(food.proteina ?? food.protein),
-    carbs: macro(food.carbs),
-    grasas: macro(food.grasas ?? food.fat),
+    kcal: macro(food.kcal ?? food.calorias ?? food.calories),
+    proteina: macro(food.proteina ?? food.proteinas ?? food.protein),
+    carbs: macro(food.carbs ?? food.carbohidratos ?? food.carbohydrates),
+    grasas: macro(food.grasas ?? food.fat ?? food.fats),
+    source: food.source || "",
+    category: food.categoria || food.category || food.categoriaSnapshot || "",
+    imagen: normalizedImage,
+    imageUrl: food.imagenUrl || food.imageUrl || getFoodImageUrl({ ...food, imagen: normalizedImage }),
+    fixedQuantity: food.fixedQuantity === true,
   };
 }
 
@@ -664,6 +1118,7 @@ function foodReplacementEntry(row = {}, mealIndex = 0, foodIndex = 0) {
 
 function trackingFoodFromFood(food = {}, index = 0) {
   const totals = totalFromLike(food?.totals || food);
+  const image = food.imagen || food.image || null;
   return {
     id: String(food.alimentoId || food.id || food.foodId || `food-${index + 1}`),
     name: food.name || food.nombre || food.nombreSnapshot || `Alimento ${index + 1}`,
@@ -673,6 +1128,9 @@ function trackingFoodFromFood(food = {}, index = 0) {
     proteina: totals.proteina,
     carbs: totals.carbs,
     grasas: totals.grasas,
+    category: food.category || food.categoria || food.categoriaSnapshot || "",
+    imagen: image,
+    imageUrl: food.imagenUrl || food.imageUrl || getFoodImageUrl({ ...food, imagen: image }),
   };
 }
 
@@ -813,6 +1271,9 @@ function replacementOptionFromEquivalent(option = {}, originalFood = {}) {
     amount: foodAmount(cantidad, unidad),
     totals,
     totales: totals,
+    category: option.categoria || option.category || option.categoriaSnapshot || "",
+    imagen: option.imagen || null,
+    imageUrl: option.imagenUrl || option.imageUrl || getFoodImageUrl(option),
   };
   return {
     ...food,
@@ -846,6 +1307,9 @@ function replacementOptionFromFood(food = {}, originalFood = {}) {
     amount: foodAmount(quantity, unit),
     totals,
     totales: totals,
+    category: food.categoria || food.category || food.macroGroup || "",
+    imagen: food.imagen || null,
+    imageUrl: food.imagenUrl || food.imageUrl || getFoodImageUrl(food),
     diff: subtractTotals(totals, originalTotals),
     source: "search",
   };
@@ -877,9 +1341,13 @@ async function saveMenuTrackingDay(payload) {
 }
 
 export default function MenuPlan() {
-  const [weekStart, setWeekStart] = useState(() => mondayOfWeek());
-  const [weekData, setWeekData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialWeek = useMemo(() => {
+    const start = mondayOfWeek();
+    return { start, data: getCachedMenuWeek(start) };
+  }, []);
+  const [weekStart, setWeekStart] = useState(initialWeek.start);
+  const [weekData, setWeekData] = useState(initialWeek.data);
+  const [loading, setLoading] = useState(() => !initialWeek.data);
   const [error, setError] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [mobileView, setMobileView] = useState("overview");
@@ -890,14 +1358,33 @@ export default function MenuPlan() {
   const [foodDrawer, setFoodDrawer] = useState(null);
   const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState("");
   const isMobileLayout = useIsMobileMenuLayout();
 
-  async function loadWeek(start = weekStart) {
-    setLoading(true);
-    setError("");
+  async function loadWeek(start = weekStart, options = {}) {
+    const silent = !!options.silent;
+    const cached = getCachedMenuWeek(start);
+    const hydrateFromCache = !silent && cached;
+    const canUseFreshCacheOnly = hydrateFromCache && !shouldRefreshCachedMenuWeek(start);
+    if (hydrateFromCache) {
+      setWeekData(cached);
+      setLoading(false);
+      setError("");
+      if (canUseFreshCacheOnly) {
+        setRefreshing(false);
+        return cached;
+      }
+      setRefreshing(true);
+    } else if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setError("");
+    }
     try {
       const data = await getMenuTrackingWeek(start);
+      setCachedMenuWeek(start, data);
       setWeekData(data);
       setDetailRow((current) => current ? (data?.days || []).find((day) => day.date === current.date) || current : current);
       setMealDrawer((current) => {
@@ -917,9 +1404,15 @@ export default function MenuPlan() {
         setSelectedDate(dates.has(todayIso()) ? todayIso() : data?.days?.[0]?.date || start);
       }
     } catch (err) {
+      if (silent) throw err;
+      if (hydrateFromCache) {
+        console.warn("[MenuPlan] background refresh failed", err);
+        return;
+      }
       setError(err?.message || "No se pudo cargar tu menú.");
     } finally {
-      setLoading(false);
+      if (silent || hydrateFromCache) setRefreshing(false);
+      else setLoading(false);
     }
   }
 
@@ -936,6 +1429,10 @@ export default function MenuPlan() {
   const selectedRow = useMemo(
     () => days.find((day) => day.date === selectedDate) || todayRow,
     [days, selectedDate, todayRow]
+  );
+  const selectedDisplayRow = useMemo(
+    () => rowWithActiveGeneratedMeals(selectedRow, days),
+    [selectedRow, days]
   );
   const permissions = weekData?.permissions || {};
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
@@ -956,7 +1453,7 @@ export default function MenuPlan() {
     setSaving(true);
     try {
       await saveMenuTrackingDay(payload);
-      await loadWeek(weekStart);
+      await loadWeek(weekStart, { silent: true });
       setToast(message);
       window.setTimeout(() => setToast(""), 2600);
     } catch (err) {
@@ -1009,15 +1506,148 @@ export default function MenuPlan() {
     );
   }
 
-  function saveGeneratedRemaining(row, generatedMeals) {
-    const current = Array.isArray(row?.tracking?.generatedRemainingMeals) ? row.tracking.generatedRemainingMeals : [];
-    submitTracking(
-      trackingPayloadBase(row, {
-        generatedRemainingMeals: [...current, ...generatedMeals],
-      }),
-      "Comidas restantes guardadas."
-    );
+  async function saveGeneratedRemaining(row, generatedMeals) {
+    if (!row?.date) return;
+    const activeDate = row.date;
+    const activeWeekStart = mondayOfWeek(activeDate);
+    const activeWeekEnd = addDays(activeWeekStart, 6);
+    const nextRows = days.map((day) => {
+      const current = Array.isArray(day?.tracking?.generatedRemainingMeals) ? day.tracking.generatedRemainingMeals : [];
+      const filtered = current.filter((entry) =>
+        !isSameWeeklyGeneratedOverride(entry, activeWeekStart, activeWeekEnd)
+      );
+      const nextGeneratedMeals = day.date === row.date ? [...filtered, ...generatedMeals] : filtered;
+      return rowWithTracking(day, { generatedRemainingMeals: nextGeneratedMeals });
+    });
+    setWeekData((currentData) => currentData ? { ...currentData, days: nextRows } : currentData);
+    setDetailRow((currentRow) => currentRow ? nextRows.find((day) => day.date === currentRow.date) || currentRow : currentRow);
     setRemainingDraft(null);
+    setSaving(true);
+    try {
+      const rowsToSave = nextRows.filter((day) => {
+        const original = days.find((item) => item.date === day.date);
+        const originalIds = (original?.tracking?.generatedRemainingMeals || []).map((entry) => String(entry?.id || "")).join("|");
+        const nextIds = (day?.tracking?.generatedRemainingMeals || []).map((entry) => String(entry?.id || "")).join("|");
+        return day.date === row.date || originalIds !== nextIds;
+      });
+      await Promise.all(rowsToSave.map((day) =>
+        saveMenuTrackingDay(trackingPayloadBase(day, {
+          generatedRemainingMeals: day.tracking.generatedRemainingMeals,
+        }))
+      ));
+      await loadWeek(weekStart, { silent: true });
+      setToast("Comidas restantes guardadas.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudieron guardar las comidas generadas.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveManualRemaining(row, manualEntries) {
+    if (!row?.date || !Array.isArray(manualEntries) || !manualEntries.length) return;
+    const currentManualEntries = Array.isArray(row?.tracking?.manualEntries) ? row.tracking.manualEntries : [];
+    const nextManualEntries = [...currentManualEntries, ...manualEntries];
+    const optimisticRow = rowWithTracking(row, { manualEntries: nextManualEntries });
+    setWeekData((currentData) => currentData ? {
+      ...currentData,
+      days: (currentData.days || []).map((day) => day.date === row.date ? optimisticRow : day),
+    } : currentData);
+    setDetailRow((currentRow) => currentRow?.date === row.date ? optimisticRow : currentRow);
+    setRemainingDraft(null);
+    setSaving(true);
+    try {
+      await saveMenuTrackingDay(trackingPayloadBase(optimisticRow, {
+        manualEntries: nextManualEntries,
+      }));
+      await loadWeek(weekStart, { silent: true });
+      setToast("Registro guardado.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo guardar el registro.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateManualEntries(row, manualEntries, successMessage = "Registro actualizado.") {
+    if (!row?.date) return;
+    const nextManualEntries = Array.isArray(manualEntries) ? manualEntries : [];
+    const optimisticRow = rowWithTracking(row, { manualEntries: nextManualEntries });
+    setWeekData((currentData) => currentData ? {
+      ...currentData,
+      days: (currentData.days || []).map((day) => day.date === row.date ? optimisticRow : day),
+    } : currentData);
+    setDetailRow((currentRow) => currentRow?.date === row.date ? optimisticRow : currentRow);
+    setMealDrawer((current) => current?.row?.date === row.date ? null : current);
+    setSaving(true);
+    try {
+      await saveMenuTrackingDay(trackingPayloadBase(optimisticRow, {
+        manualEntries: nextManualEntries,
+      }));
+      await loadWeek(weekStart, { silent: true });
+      setToast(successMessage);
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo actualizar el registro.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function deleteManualEntry(row, manualEntry = {}) {
+    const manualId = String(manualEntry?.id || "");
+    const current = Array.isArray(row?.tracking?.manualEntries) ? row.tracking.manualEntries : [];
+    const next = manualId
+      ? current.filter((entry) => String(entry?.id || "") !== manualId)
+      : current.slice(0, -1);
+    updateManualEntries(row, next, "Registro manual eliminado.");
+  }
+
+  function restoreManualEntries(row) {
+    updateManualEntries(row, [], "Comidas originales restauradas.");
+  }
+
+  async function restoreGeneratedRemaining(row, generatedEntry = {}) {
+    const generatedId = String(generatedEntry?.id || "");
+    const runId = String(generatedEntry?.generationRunId || generatedEntry?.runId || "");
+    const activeWeekStart = generatedEntry.weekStart || mondayOfWeek(row?.date || generatedEntry.date || todayIso());
+    const activeWeekEnd = generatedEntry.weekEnd || addDays(activeWeekStart, 6);
+    if (!generatedId && !runId) return;
+    const nextRows = days.map((day) => {
+      const current = Array.isArray(day?.tracking?.generatedRemainingMeals) ? day.tracking.generatedRemainingMeals : [];
+      const nextGeneratedMeals = current.filter((entry) => {
+        const sameId = generatedId && String(entry?.id || "") === generatedId;
+        const sameRun = runId && String(entry?.generationRunId || entry?.runId || "") === runId;
+        const sameLegacyActiveWeek = !runId && isSameWeeklyGeneratedOverride(entry, activeWeekStart, activeWeekEnd);
+        return !(sameId || sameRun || sameLegacyActiveWeek);
+      });
+      return rowWithTracking(day, { generatedRemainingMeals: nextGeneratedMeals });
+    });
+    setWeekData((currentData) => currentData ? { ...currentData, days: nextRows } : currentData);
+    setDetailRow((currentRow) => currentRow ? nextRows.find((day) => day.date === currentRow.date) || currentRow : currentRow);
+    setSaving(true);
+    try {
+      const rowsToSave = nextRows.filter((day) => {
+        const original = days.find((item) => item.date === day.date);
+        const originalIds = (original?.tracking?.generatedRemainingMeals || []).map((entry) => String(entry?.id || "")).join("|");
+        const nextIds = (day?.tracking?.generatedRemainingMeals || []).map((entry) => String(entry?.id || "")).join("|");
+        return originalIds !== nextIds;
+      });
+      await Promise.all(rowsToSave.map((day) =>
+        saveMenuTrackingDay(trackingPayloadBase(day, {
+          generatedRemainingMeals: day.tracking.generatedRemainingMeals,
+        }))
+      ));
+      await loadWeek(weekStart, { silent: true });
+      setToast("Menu base restaurado para esta semana.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo restaurar el menu base.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function applyMealReplacement({ row, originalMeal, replacementMeal, mealIndex }) {
@@ -1124,6 +1754,8 @@ export default function MenuPlan() {
           </div>
         ) : null}
 
+        {(saving || refreshing) && weekData ? <MenuSyncIndicator /> : null}
+
         {loading ? <LoadingState /> : null}
         {error ? <ErrorState message={error} onRetry={() => loadWeek(weekStart)} /> : null}
 
@@ -1132,6 +1764,7 @@ export default function MenuPlan() {
             mobileView === "detail" ? (
               <MobileDayDetailView
                 row={selectedRow}
+                weekRows={days}
                 detailChoiceKey={mobileDetailChoiceKey}
                 onBack={() => setMobileView("overview")}
                 onPrevious={() => moveSelectedDay(-1)}
@@ -1139,6 +1772,9 @@ export default function MenuPlan() {
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onRestoreGenerated={restoreGeneratedRemaining}
+                onRestoreManual={restoreManualEntries}
+                onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
                 saving={saving}
@@ -1157,12 +1793,16 @@ export default function MenuPlan() {
             ) : (
               <MobileDayMenu
                 row={selectedRow}
+                weekRows={days}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onRestoreGenerated={restoreGeneratedRemaining}
+                onRestoreManual={restoreManualEntries}
+                onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
                 saving={saving}
@@ -1171,12 +1811,15 @@ export default function MenuPlan() {
           ) : (
             <>
               <TodayHero
-                row={selectedRow}
+                row={selectedDisplayRow}
+                weekRows={days}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
-                onView={() => setDetailRow(selectedRow)}
+                onView={() => setDetailRow(selectedDisplayRow)}
                 onToggleMeal={toggleMenuMeal}
-                onOpenRemaining={() => setRemainingDraft(selectedRow)}
+                onOpenMeal={(payload) => setMealDrawer(payload)}
+                onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
+                onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
                 saving={saving}
@@ -1194,13 +1837,19 @@ export default function MenuPlan() {
 
                 <div>
                   <DayDetail
-                    row={selectedRow}
+                    row={selectedDisplayRow}
+                    weekRows={days}
                     onMarkMissed={markDayMissed}
                     onToggleMeal={toggleMenuMeal}
-                    onOpenRemaining={() => setRemainingDraft(selectedRow)}
+                    onOpenMeal={(payload) => setMealDrawer(payload)}
+                    onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
+                    onRestoreGenerated={restoreGeneratedRemaining}
+                    onRestoreManual={restoreManualEntries}
+                    onDeleteManual={deleteManualEntry}
                     canMarkMeals={canMarkMeals}
                     canAutoCompleteRemaining={canAutoCompleteRemaining}
                     onUseAlternative={useAlternative}
+                    saving={saving}
                   />
                 </div>
               </section>
@@ -1211,23 +1860,31 @@ export default function MenuPlan() {
 
       {detailRow && !isMobileLayout ? (
         <DayDetailDrawer
-          row={detailRow}
+          row={rowWithActiveGeneratedMeals(detailRow, days)}
           onClose={() => setDetailRow(null)}
           onMarkMissed={markDayMissed}
           onToggleMeal={toggleMenuMeal}
-          onOpenRemaining={() => setRemainingDraft(detailRow)}
+          onOpenMeal={(payload) => setMealDrawer(payload)}
+          onOpenRemaining={() => setRemainingDraft(rowWithActiveGeneratedMeals(detailRow, days))}
+          onRestoreGenerated={restoreGeneratedRemaining}
+          onRestoreManual={restoreManualEntries}
+          onDeleteManual={deleteManualEntry}
           canMarkMeals={canMarkMeals}
           canAutoCompleteRemaining={canAutoCompleteRemaining}
           onUseAlternative={useAlternative}
+          weekRows={days}
+          saving={saving}
         />
       ) : null}
 
       {remainingDraft ? (
-        <RemainingMealsDrawer
+        <RemainingMealsDrawerV2
           row={remainingDraft}
+          weekRows={days}
           saving={saving}
           onClose={() => setRemainingDraft(null)}
           onSave={(generatedMeals) => saveGeneratedRemaining(remainingDraft, generatedMeals)}
+          onSaveManual={(manualEntries) => saveManualRemaining(remainingDraft, manualEntries)}
         />
       ) : null}
 
@@ -1241,6 +1898,7 @@ export default function MenuPlan() {
           canReplaceMeals={canUseMenuAlternatives}
           canReplaceFoods={canTrackFoods}
           onApplyMealReplacement={applyMealReplacement}
+          onDeleteManual={deleteManualEntry}
           saving={saving}
         />
       ) : null}
@@ -1267,6 +1925,15 @@ export default function MenuPlan() {
         />
       ) : null}
 
+    </div>
+  );
+}
+
+function MenuSyncIndicator() {
+  return (
+    <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-50 grid h-11 w-11 place-items-center rounded-2xl border border-[#D4AF37]/35 bg-[#11151c]/90 text-[#FFE8A3] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-md" aria-live="polite">
+      <RefreshCw size={18} className="animate-spin" />
+      <span className="sr-only">Actualizando menu</span>
     </div>
   );
 }
@@ -1368,27 +2035,35 @@ function MobileCalculateButton({ onClick, disabled = false }) {
 
 function MobileDayMenu({
   row,
+  weekRows = [],
   onPrevious,
   onNext,
   onOpenMenuOptions,
   onOpenRemaining,
   onToggleMeal,
   onOpenMeal,
+  onRestoreGenerated,
+  onRestoreManual,
+  onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
   saving,
 }) {
   if (!row) return null;
+  const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
   const choices = menuChoices(row);
   const primary = choices[0] || null;
   const activeChoice = trackingChoice(row) || primary;
   const activeMeals = activeChoice ? choiceMeals(activeChoice) : [];
-  const completed = completedMealIdSet(row);
-  const completedCount = activeMeals.filter((meal, index) => completed.has(mealId(meal, index))).length;
-  const target = targetTotals(row);
-  const consumed = consumedTotals(row);
-  const remaining = remainingTotals(row);
-  const percent = completionPercent(row);
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, activeMeals, weekRows);
+  const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
+  const manualEntries = effectiveMeals.filter((entry) => entry.manual);
+  const countableMeals = countableMealEntries(effectiveMeals);
+  const completedCount = completedCountableMeals(effectiveMeals);
+  const target = targetTotals(displayRow);
+  const consumed = consumedTotals(displayRow);
+  const remaining = remainingTotals(displayRow);
+  const percent = completionPercent(displayRow);
   const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
 
@@ -1435,7 +2110,7 @@ function MobileDayMenu({
             progress={target.kcal ? (consumed.kcal / target.kcal) * 100 : 0}
           />
           <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
-          <MobileMetric label="Comidas" value={`${completedCount} / ${activeMeals.length || 0}`} detail="completadas" tone="gold" />
+          <MobileMetric label="Comidas" value={`${completedCount} / ${countableMeals.length || 0}`} detail="completadas" tone="gold" />
         </div>
       </section>
 
@@ -1453,33 +2128,42 @@ function MobileDayMenu({
           <div className="flex items-center justify-between gap-3 px-1">
             <h3 className="text-base font-black text-white">Comidas</h3>
             <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
-              {completedCount} / {activeMeals.length || 0} completas
+              {completedCount} / {countableMeals.length || 0} completas
             </span>
           </div>
-          {activeMeals.length ? (
-            activeMeals.map((meal, index) => {
-              const displayMeal = mealWithTrackingReplacements(row, meal, index);
-              return (
-                <MobileMealCard
-                  key={mealId(meal, index)}
-                  row={row}
-                  meal={displayMeal}
-                  baseMeal={meal}
-                  mealIndex={index}
-                  done={completed.has(mealId(meal, index))}
-                  saving={saving}
-                  canMarkMeals={canMarkMeals}
-                  onToggleMeal={onToggleMeal}
-                  onOpenMeal={onOpenMeal}
-                />
-              );
-            })
+          {effectiveMeals.length ? (
+            effectiveMeals.map((entry) => (
+              <MobileMealCard
+                key={entry.key}
+                row={displayRow}
+                meal={entry.meal}
+                baseMeal={entry.baseMeal}
+                mealIndex={entry.mealIndex}
+                done={entry.done}
+                generated={entry.generated}
+                generatedEntry={entry.generatedEntry}
+                manualEntry={entry.manualEntry}
+                saving={saving}
+                canMarkMeals={canMarkMeals}
+                onToggleMeal={onToggleMeal}
+                onOpenMeal={onOpenMeal}
+                onDeleteManual={onDeleteManual}
+              />
+            ))
           ) : (
             <MobileEmptyCard
               title="Este menú no tiene comidas cargadas."
               text="Podés revisar otros días o avisarle a tu coach."
             />
           )}
+          <GeneratedWeeklyActions
+            row={displayRow}
+            generatedEntries={generatedEntries}
+            onRestoreGenerated={onRestoreGenerated}
+            manualEntries={manualEntries}
+            onRestoreManual={onRestoreManual}
+            onDeleteManual={onDeleteManual}
+          />
         </section>
       ) : null}
 
@@ -1717,6 +2401,7 @@ function MobileActiveMenuCard({ row, choice, onViewDetail }) {
 
 function MobileDayDetailView({
   row,
+  weekRows = [],
   detailChoiceKey = "",
   onBack,
   onPrevious,
@@ -1724,22 +2409,28 @@ function MobileDayDetailView({
   onToggleMeal,
   onOpenRemaining,
   onOpenMeal,
+  onRestoreGenerated,
+  onRestoreManual,
+  onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
   saving,
 }) {
   if (!row) return null;
-  const tracking = statusMeta(row);
+  const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
+  const tracking = statusMeta(displayRow);
   const choices = menuChoices(row);
   const detailChoice = choices.find((choice) => choice.key === detailChoiceKey) || choices[0] || null;
   const snapshot = detailChoice?.snapshot || null;
   const meals = detailChoice ? choiceMeals(detailChoice) : [];
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, meals, weekRows);
+  const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
+  const manualEntries = effectiveMeals.filter((entry) => entry.manual);
   const detailStatus = detailChoice ? choiceStatus(row, detailChoice) : menuState(row);
-  const target = targetTotals(row);
-  const consumed = consumedTotals(row);
-  const remaining = remainingTotals(row);
-  const percent = completionPercent(row);
-  const completed = completedMealIdSet(row);
+  const target = targetTotals(displayRow);
+  const consumed = consumedTotals(displayRow);
+  const remaining = remainingTotals(displayRow);
+  const percent = completionPercent(displayRow);
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
 
   return (
@@ -1785,30 +2476,39 @@ function MobileDayDetailView({
             title="Todavía no tenés menú para este día."
             text="Cuando tu coach lo asigne, lo vas a ver acá."
           />
-        ) : !meals.length ? (
+        ) : !effectiveMeals.length ? (
           <MobileEmptyCard
             title="Este menú no tiene comidas cargadas."
             text="Podés revisar otros días o avisarle a tu coach."
           />
         ) : (
-          meals.map((meal, index) => {
-            const displayMeal = mealWithTrackingReplacements(row, meal, index);
-            return (
-              <MobileMealCard
-                key={mealId(meal, index)}
-                row={row}
-                meal={displayMeal}
-                baseMeal={meal}
-                mealIndex={index}
-                done={completed.has(mealId(meal, index))}
-                saving={saving}
-                canMarkMeals={canMarkMeals}
-                onToggleMeal={onToggleMeal}
-                onOpenMeal={onOpenMeal}
-              />
-            );
-          })
+          effectiveMeals.map((entry) => (
+            <MobileMealCard
+              key={entry.key}
+              row={displayRow}
+              meal={entry.meal}
+              baseMeal={entry.baseMeal}
+              mealIndex={entry.mealIndex}
+              done={entry.done}
+              generated={entry.generated}
+              generatedEntry={entry.generatedEntry}
+              manualEntry={entry.manualEntry}
+              saving={saving}
+              canMarkMeals={canMarkMeals}
+              onToggleMeal={onToggleMeal}
+              onOpenMeal={onOpenMeal}
+              onDeleteManual={onDeleteManual}
+            />
+          ))
         )}
+        <GeneratedWeeklyActions
+          row={displayRow}
+          generatedEntries={generatedEntries}
+          manualEntries={manualEntries}
+          onRestoreGenerated={onRestoreGenerated}
+          onRestoreManual={onRestoreManual}
+          onDeleteManual={onDeleteManual}
+        />
       </div>
 
       <div className="mt-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -1972,33 +2672,58 @@ function MobileMealCard({
   baseMeal,
   mealIndex,
   done,
+  generated = false,
+  generatedEntry = null,
+  manualEntry = null,
   saving,
   canMarkMeals,
   onToggleMeal,
   onOpenMeal,
+  onDeleteManual,
 }) {
   const trackingMeal = baseMeal || meal;
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
   const previewFoods = foods.slice(0, 3);
+  const manual = meal?.source === "manual_food";
 
   return (
     <article className={`relative overflow-hidden rounded-[1.05rem] border shadow-[0_12px_28px_rgba(0,0,0,.20)] ${
-      done
+      manual
+        ? "border-sky-300/35 bg-[radial-gradient(circle_at_12%_12%,rgba(56,189,248,.18),transparent_34%),radial-gradient(circle_at_100%_0,rgba(212,175,55,.12),transparent_30%),linear-gradient(135deg,#0d1c24,#09131c)]"
+        : done
         ? "border-emerald-300/45 bg-[radial-gradient(circle_at_12%_12%,rgba(16,185,129,.20),transparent_34%),radial-gradient(circle_at_100%_0,rgba(212,175,55,.16),transparent_30%),linear-gradient(135deg,#102321,#09131c)] shadow-[0_0_0_1px_rgba(16,185,129,.15),0_16px_34px_rgba(0,0,0,.32)]"
         : "border-white/10 bg-[linear-gradient(135deg,#101824,#090f17)]"
     }`}>
-      {done ? (
-        <span className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-gradient-to-b from-emerald-300 to-[#D4AF37]" aria-hidden="true" />
+      {done || manual ? (
+        <span className={`pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-gradient-to-b ${manual ? "from-sky-300 to-[#D4AF37]" : "from-emerald-300 to-[#D4AF37]"}`} aria-hidden="true" />
       ) : null}
       <div className="flex items-center gap-2.5 p-3">
-        <button type="button" onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual });
+          }}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
           <MealTypeIcon meal={meal} index={mealIndex} done={done} />
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">{mealName(meal, mealIndex)}</span>
               <span className="shrink-0 text-xs font-black text-[#FFD76B]">{displayKcal(totals.kcal)}</span>
-              {done ? (
+              {manual ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-sky-300/30 bg-sky-300/10 px-1.5 py-0.5 text-[9px] font-black text-sky-100">
+                  <Utensils size={10} />
+                  Registrado
+                </span>
+              ) : generated ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-1.5 py-0.5 text-[9px] font-black text-[#FFE8A3]">
+                  <Calculator size={10} />
+                  Para esta semana
+                </span>
+              ) : done ? (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-1.5 py-0.5 text-[9px] font-black text-emerald-100">
                   <CheckCircle2 size={10} />
                   Hecha
@@ -2011,33 +2736,181 @@ function MobileMealCard({
               <span>G {formatNumber(totals.grasas, 0)} g</span>
             </span>
             <MobileFoodPreviewLine foods={previewFoods} />
+            {generatedEntry?.replacesMealNames?.length ? (
+              <span className="mt-1 block truncate text-[11px] font-black text-emerald-200/90">
+                Reemplaza {generatedEntry.replacesMealNames.join(" + ")}
+              </span>
+            ) : null}
           </span>
-        </button>
+        </div>
         <button
           type="button"
-          disabled={!canMarkMeals || saving}
-          onClick={() => onToggleMeal(row, trackingMeal, mealIndex)}
+          disabled={manual ? saving : generated || !canMarkMeals || saving}
+          onClick={() => {
+            if (manual) {
+              onDeleteManual?.(row, manualEntry);
+              return;
+            }
+            if (generated) return;
+            onToggleMeal(row, trackingMeal, mealIndex);
+          }}
           className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xs font-black disabled:opacity-50 ${
-            done
+            manual
+              ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
+              : done
               ? "border-emerald-300/55 bg-emerald-400 text-[#03140c] shadow-[0_0_0_4px_rgba(16,185,129,.12)]"
               : "border-white/20 bg-black/20 text-zinc-400"
           }`}
           aria-pressed={done}
-          aria-label={done ? "Comida completa" : "Marcar comida completa"}
+          aria-label={manual ? "Eliminar registro manual" : generated ? "Comida generada para esta semana" : done ? "Comida completa" : "Marcar comida completa"}
         >
-          {done ? <CheckCircle2 size={21} /> : <Square size={20} />}
+          {manual ? <Trash2 size={19} /> : generated ? <Calculator size={20} /> : done ? <CheckCircle2 size={21} /> : <Square size={20} />}
         </button>
         <button
           type="button"
-          onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex })}
+          onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
           className="grid h-8 w-6 shrink-0 place-items-center text-zinc-500"
           aria-label="Ver detalle de comida"
         >
           <ChevronRight size={20} />
         </button>
       </div>
-
     </article>
+  );
+}
+
+function GeneratedWeeklyActions({
+  row,
+  generatedEntries = [],
+  manualEntries = [],
+  onRestoreGenerated,
+  onRestoreManual,
+}) {
+  const [showOriginals, setShowOriginals] = useState(false);
+  if (!generatedEntries.length && !manualEntries.length) return null;
+
+  const primaryEntry = generatedEntries[0]?.generatedEntry || {};
+  const primaryManualEntry = manualEntries[0]?.manualEntry || {};
+  const names = [...new Set([...generatedEntries, ...manualEntries].flatMap((entry) =>
+    Array.isArray(entry?.generatedEntry?.replacesMealNames)
+      ? entry.generatedEntry.replacesMealNames
+      : Array.isArray(entry?.manualEntry?.replacesMealNames)
+        ? entry.manualEntry.replacesMealNames
+        : []
+  ).filter(Boolean))];
+  const originalMealMap = new Map();
+  [...generatedEntries, ...manualEntries].forEach((entry) => {
+    (entry.replacedOriginalMeals || []).forEach((item) => {
+      originalMealMap.set(mealId(item.meal, item.mealIndex), item);
+    });
+  });
+  const originalMeals = [...originalMealMap.values()];
+  const drawerEntry = {
+    ...(generatedEntries.length ? primaryEntry : primaryManualEntry),
+    replacesMealNames: names.length ? names : primaryEntry.replacesMealNames || primaryManualEntry.replacesMealNames,
+  };
+  const handleRestore = () => {
+    setShowOriginals(false);
+    if (generatedEntries.length) onRestoreGenerated?.(row, primaryEntry);
+    if (manualEntries.length) onRestoreManual?.(row);
+  };
+  const hasManualOnly = manualEntries.length && !generatedEntries.length;
+
+  return (
+    <div className={`mt-1 grid gap-2 rounded-[1rem] border p-2 sm:grid-cols-2 ${hasManualOnly ? "border-sky-300/15 bg-sky-300/[0.035]" : "border-emerald-300/15 bg-emerald-300/[0.035]"}`}>
+      <button
+        type="button"
+        onClick={() => setShowOriginals(true)}
+        className="flex min-h-11 items-center justify-center gap-2 rounded-[0.85rem] border border-white/10 bg-white/[0.04] px-3 text-xs font-black text-zinc-100 active:scale-[0.99]"
+      >
+        <Eye size={15} className="text-emerald-200" />
+        Ver comidas originales
+      </button>
+      <button
+        type="button"
+        onClick={handleRestore}
+        className="flex min-h-11 items-center justify-center gap-2 rounded-[0.85rem] border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] active:scale-[0.99]"
+      >
+        <RefreshCw size={15} />
+        Volver al menu base
+      </button>
+      {showOriginals ? (
+        <OriginalMealsDrawer
+          generatedEntry={drawerEntry}
+          originalMeals={originalMeals}
+          mode={hasManualOnly ? "manual" : "generated"}
+          onClose={() => setShowOriginals(false)}
+          onRestore={handleRestore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OriginalMealsDrawer({ generatedEntry = {}, originalMeals = [], mode = "generated", onClose, onRestore }) {
+  const names = generatedEntry.replacesMealNames || [];
+  const manualMode = mode === "manual";
+  return (
+    <section className="fixed inset-0 z-[90] flex items-end bg-black/70 px-3 pb-3 pt-10 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <button type="button" className="absolute inset-0" onClick={onClose} aria-label="Cerrar comidas originales" />
+      <div className="relative mx-auto max-h-[78dvh] w-full max-w-lg overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0b121b] shadow-[0_24px_70px_rgba(0,0,0,.6)]">
+        <header className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0">
+            <h3 className="text-lg font-black text-white">Comidas originales</h3>
+            <p className="mt-1 text-sm font-bold text-zinc-400">
+              {manualMode
+                ? "Estas comidas fueron reemplazadas por un registro manual de hoy."
+                : "Estas comidas fueron reemplazadas por una comida generada para esta semana."}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-200" aria-label="Cerrar">
+            <X size={18} />
+          </button>
+        </header>
+        <div className="max-h-[48dvh] overflow-y-auto p-4">
+          <div className="grid gap-2">
+            {originalMeals.length ? originalMeals.map(({ meal, mealIndex }) => {
+              const foods = mealFoods(meal);
+              return (
+                <div key={mealId(meal, mealIndex)} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <MealTypeIcon meal={meal} index={mealIndex} />
+                    <div className="min-w-0">
+                      <strong className="block truncate text-sm font-black text-white">{mealName(meal, mealIndex)}</strong>
+                      <span className="mt-1 block truncate text-xs font-bold text-zinc-400">
+                        {displayKcal(mealTotals(meal).kcal)} / {displayMenuMacros(mealTotals(meal))}
+                      </span>
+                    </div>
+                  </div>
+                  {foods.length ? (
+                    <div className="mt-3 grid gap-1.5">
+                      {foods.slice(0, 4).map((food, foodIndex) => (
+                        <div key={`${food.id}-${foodIndex}`} className="flex min-w-0 items-center justify-between gap-2 rounded-xl bg-black/20 px-2.5 py-2 text-xs font-bold">
+                          <span className="min-w-0 truncate text-zinc-100">{food.name}</span>
+                          <span className="shrink-0 text-[#FFE8A3]">{food.amount || foodMacroLine(food) || "s/d"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-sm font-bold text-zinc-400">
+                {names.length ? names.join(" + ") : "No se encontraron comidas originales para mostrar."}
+              </div>
+            )}
+          </div>
+        </div>
+        <footer className="grid gap-2 border-t border-white/10 p-4">
+          <button type="button" onClick={onRestore} className="min-h-12 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3]">
+            Restaurar comidas originales
+          </button>
+          <button type="button" onClick={onClose} className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-zinc-200">
+            {manualMode ? "Mantener registro manual" : "Mantener comida generada"}
+          </button>
+        </footer>
+      </div>
+    </section>
   );
 }
 
@@ -2064,6 +2937,8 @@ function MealTypeIcon({ meal, index, done }) {
     lunch: "border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#FFD76B]",
     snack: "border-rose-300/20 bg-rose-400/10 text-rose-300",
     dinner: "border-indigo-300/20 bg-indigo-400/10 text-indigo-200",
+    generated: "border-emerald-300/25 bg-[linear-gradient(135deg,rgba(16,185,129,.16),rgba(212,175,55,.10))] text-emerald-200",
+    manual: "border-sky-300/25 bg-[linear-gradient(135deg,rgba(56,189,248,.14),rgba(212,175,55,.08))] text-sky-200",
     meal: "border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#FFD76B]",
   };
   const icons = {
@@ -2071,6 +2946,8 @@ function MealTypeIcon({ meal, index, done }) {
     lunch: Sun,
     snack: Apple,
     dinner: Moon,
+    generated: Calculator,
+    manual: Utensils,
     meal: Utensils,
   };
   const Icon = icons[iconType] || Utensils;
@@ -2081,13 +2958,50 @@ function MealTypeIcon({ meal, index, done }) {
   );
 }
 
+function FoodThumb({ food = {}, size = "md" }) {
+  const [failed, setFailed] = useState(false);
+  const src = food.imageUrl || getFoodImageUrl(food);
+  const alt = food.imageAlt || food.imagen?.alt || food.name || "Alimento";
+  const fallback = placeholderForFoodCategory(food.category || food.categoria || food.raw?.categoriaSnapshot);
+  const sizeClass = size === "sm" ? "h-10 w-10 rounded-xl" : "h-14 w-14 rounded-2xl sm:h-16 sm:w-16";
+  const initial = String(food.name || "?").trim().charAt(0).toUpperCase() || "?";
+
+  if (failed || !src) {
+    return (
+      <span className={`grid shrink-0 place-items-center border border-[#D4AF37]/25 bg-[radial-gradient(circle_at_30%_20%,rgba(212,175,55,.18),transparent_55%),rgba(255,255,255,.04)] text-sm font-black text-[#FFE8A3] ${sizeClass}`} aria-hidden="true">
+        {initial}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={size === "sm" ? 40 : 64}
+      height={size === "sm" ? 40 : 64}
+      loading="lazy"
+      decoding="async"
+      className={`shrink-0 border border-white/10 bg-white/[0.04] object-cover shadow-[0_10px_24px_rgba(0,0,0,.22)] ${sizeClass}`}
+      onError={(event) => {
+        if (event.currentTarget.src.endsWith(fallback)) {
+          setFailed(true);
+          return;
+        }
+        event.currentTarget.src = fallback;
+      }}
+    />
+  );
+}
+
 function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood, canReplaceFoods = true }) {
   const replaced = food.replacementMeta?.type === "food";
   const originalFood = mealFoods(meal)[foodIndex] || food;
   const macroDetail = foodMacroLine(food);
   return (
     <div className={`flex min-h-[76px] items-center justify-between gap-3 px-4 py-3.5 ${replaced ? "bg-emerald-300/[0.045]" : ""}`}>
-      <div className="min-w-0">
+      <FoodThumb food={food} />
+      <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="min-w-0 truncate text-[15px] font-black text-zinc-100">{food.name}</div>
           {replaced ? (
@@ -2105,6 +3019,11 @@ function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood, canReplac
           {macroDetail ? (
             <span className="min-w-0 truncate rounded-full border border-white/[0.06] bg-black/15 px-2 py-1 text-[10.5px] font-bold text-zinc-400">
               {macroDetail}
+            </span>
+          ) : null}
+          {food.category ? (
+            <span className="min-w-0 truncate rounded-full border border-sky-300/15 bg-sky-300/10 px-2 py-1 text-[10.5px] font-black text-sky-100/80">
+              {food.category}
             </span>
           ) : null}
         </div>
@@ -2129,11 +3048,14 @@ function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood, canReplac
 
 function TodayHero({
   row,
+  weekRows = [],
   onPrevious,
   onNext,
   onView,
   onToggleMeal,
+  onOpenMeal,
   onOpenRemaining,
+  onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
   saving,
@@ -2142,13 +3064,17 @@ function TodayHero({
   const state = menuState(row);
   const tracking = statusMeta(row);
   const choices = menuChoices(row);
-  const primaryTotals = choiceTotals(choices[0]);
-  const snapshot = choices[0]?.snapshot || null;
-  const meals = snapshot ? snapshotMeals(snapshot) : [];
+  const activeChoice = trackingChoice(row) || choices[0] || null;
+  const activeTotals = choiceTotals(activeChoice);
+  const snapshot = activeChoice?.snapshot || null;
+  const baseMeals = activeChoice ? choiceMeals(activeChoice) : [];
+  const effectiveMeals = effectiveMealEntriesForDay(row, baseMeals, weekRows);
+  const countableMeals = countableMealEntries(effectiveMeals);
+  const completedCount = completedCountableMeals(effectiveMeals);
   const targetKcal = macro(row?.target?.kcal);
   const consumed = consumedTotals(row);
   const remaining = remainingTotals(row);
-  const menuKcal = primaryTotals.kcal;
+  const menuKcal = activeTotals.kcal;
   const pct = targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40;
 
@@ -2196,7 +3122,7 @@ function TodayHero({
             </span>
             <span className="mt-1 block text-xl font-black text-[#FFE8A3]">{displayKcal(menuKcal)}</span>
             <span className="block truncate text-sm font-bold text-zinc-300">
-              {snapshot ? displayMenuMacros(primaryTotals) : "Toca para ver el detalle cuando haya menú"}
+              {snapshot ? displayMenuMacros(activeTotals) : "Toca para ver el detalle cuando haya menú"}
             </span>
           </span>
         </span>
@@ -2216,17 +3142,34 @@ function TodayHero({
           <span className={`block h-full rounded-full bg-gradient-to-r ${progressTone(row)}`} style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
         <div className="mt-2 text-xs font-bold text-zinc-400">
-          Consumido: {displayKcal(consumed.kcal)} / faltan {signed(remaining.kcal, " kcal")} / proteína {signed(remaining.proteina, " g")}
+          Consumido: {displayKcal(consumed.kcal)} / faltan {signed(remaining.kcal, " kcal")} / comidas {completedCount}/{countableMeals.length || 0}
         </div>
       </div>
 
-      {meals.length && canMarkMeals ? (
-        <MealChecklist row={row} meals={meals} onToggleMeal={onToggleMeal} saving={saving} compact />
+      {snapshot ? (
+        <div className="mt-3 rounded-[1.2rem] border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-xs font-black uppercase tracking-wide text-zinc-400">Vista rapida</span>
+            <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
+              {completedCount} / {countableMeals.length || 0} completas
+            </span>
+          </div>
+          <DesktopMealsGrid
+            row={row}
+            effectiveMeals={effectiveMeals}
+                onToggleMeal={onToggleMeal}
+                onOpenMeal={onOpenMeal}
+                onDeleteManual={onDeleteManual}
+                canMarkMeals={canMarkMeals}
+            saving={saving}
+            compact
+          />
+        </div>
       ) : null}
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <button type="button" onClick={onView} className="rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-3 text-xs font-black text-sky-100">
-          Ver detalle
+          Ver menu completo
         </button>
         <button
           type="button"
@@ -2259,38 +3202,235 @@ function TrackingMiniPanel({ label, totals, tone = "blue" }) {
   );
 }
 
-function MealChecklist({ row, meals, onToggleMeal, saving, compact = false }) {
-  const completed = completedMealIdSet(row);
+function DesktopMealsSection({
+  row,
+  weekRows = [],
+  onToggleMeal,
+  onOpenMeal,
+  onRestoreGenerated,
+  onRestoreManual,
+  onDeleteManual,
+  canMarkMeals,
+  saving,
+}) {
+  const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
+  const choice = trackingChoice(displayRow);
+  const baseMeals = choice ? choiceMeals(choice) : [];
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, baseMeals, weekRows);
+  const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
+  const manualEntries = effectiveMeals.filter((entry) => entry.manual);
+  const countableMeals = countableMealEntries(effectiveMeals);
+  const completedCount = completedCountableMeals(effectiveMeals);
+
   return (
-    <div className={`mt-3 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
-      {meals.map((meal, index) => {
-        const id = mealId(meal, index);
-        const done = completed.has(id);
-        const totals = mealTotals(meal);
-        return (
+    <section className="grid gap-3 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comidas del menu</span>
+          <h4 className="mt-1 text-lg font-black text-white">Detalle visible del dia</h4>
+        </div>
+        <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
+          {completedCount} / {countableMeals.length || 0} completas
+        </span>
+      </div>
+
+      {effectiveMeals.length ? (
+        <>
+          <DesktopMealsGrid
+            row={displayRow}
+            effectiveMeals={effectiveMeals}
+            onToggleMeal={onToggleMeal}
+            onOpenMeal={onOpenMeal}
+            onDeleteManual={onDeleteManual}
+            canMarkMeals={canMarkMeals}
+            saving={saving}
+          />
+          <GeneratedWeeklyActions
+            row={displayRow}
+            generatedEntries={generatedEntries}
+            manualEntries={manualEntries}
+            onRestoreGenerated={onRestoreGenerated}
+            onRestoreManual={onRestoreManual}
+            onDeleteManual={onDeleteManual}
+          />
+        </>
+      ) : (
+        <MobileEmptyCard
+          title="Este menu no tiene comidas cargadas."
+          text="Cuando tu coach cargue comidas, las vas a ver aca con alimentos y cantidades."
+        />
+      )}
+    </section>
+  );
+}
+
+function DesktopMealsGrid({
+  row,
+  effectiveMeals = [],
+  onToggleMeal,
+  onOpenMeal,
+  onDeleteManual,
+  canMarkMeals,
+  saving,
+  compact = false,
+}) {
+  if (!effectiveMeals.length) return null;
+  return (
+    <div className={`grid gap-3 ${compact ? "" : "xl:grid-cols-2"}`}>
+      {effectiveMeals.map((entry) => (
+        <DesktopMealCard
+          key={entry.key}
+          row={row}
+          entry={entry}
+          onToggleMeal={onToggleMeal}
+          onOpenMeal={onOpenMeal}
+          onDeleteManual={onDeleteManual}
+          canMarkMeals={canMarkMeals}
+          saving={saving}
+          compact={compact}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DesktopMealCard({
+  row,
+  entry,
+  onToggleMeal,
+  onOpenMeal,
+  onDeleteManual,
+  canMarkMeals,
+  saving,
+  compact = false,
+}) {
+  const { meal, baseMeal, mealIndex, done, generated, generatedEntry, manual } = entry;
+  const trackingMeal = baseMeal || meal;
+  const totals = mealTotals(meal);
+  const foods = mealFoods(meal);
+  const visibleFoods = compact ? foods.slice(0, 3) : foods.slice(0, 5);
+  const hiddenCount = Math.max(0, foods.length - visibleFoods.length);
+  const replacementNames = (generatedEntry?.replacesMealNames?.length
+    ? generatedEntry.replacesMealNames
+    : (entry.replacedOriginalMeals || []).map((item) => mealName(item.meal, item.mealIndex)))
+    || meal.replacementMeta?.replacesMealNames
+    || [];
+
+  return (
+    <article className={`relative overflow-hidden rounded-3xl border p-4 shadow-[0_16px_34px_rgba(0,0,0,.24)] ${
+      manual
+        ? "border-sky-300/30 bg-[radial-gradient(circle_at_0_0,rgba(56,189,248,.16),transparent_34%),linear-gradient(135deg,#0d1c24,#0b121b)]"
+        : generated
+        ? "border-emerald-300/30 bg-[radial-gradient(circle_at_0_0,rgba(16,185,129,.18),transparent_34%),linear-gradient(135deg,#10211f,#0b121b)]"
+        : done
+          ? "border-emerald-300/35 bg-[radial-gradient(circle_at_0_0,rgba(16,185,129,.16),transparent_34%),linear-gradient(135deg,#101f1d,#0b121b)]"
+          : "border-white/10 bg-[linear-gradient(135deg,#101824,#090f17)]"
+    }`}>
+      {done || generated || manual ? (
+        <span className={`pointer-events-none absolute inset-y-4 left-0 w-1 rounded-r-full bg-gradient-to-b ${manual ? "from-sky-300 to-[#D4AF37]" : "from-emerald-300 to-[#D4AF37]"}`} aria-hidden="true" />
+      ) : null}
+
+      <div className="flex items-start gap-3">
+        <MealTypeIcon meal={meal} index={mealIndex} done={done || generated} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h5 className="min-w-0 truncate text-lg font-black text-white">{mealName(meal, mealIndex)}</h5>
+            {manual ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-1 text-[10px] font-black text-sky-100">
+                <Utensils size={12} />
+                Registrado
+              </span>
+            ) : generated ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-100">
+                <Calculator size={12} />
+                Para esta semana
+              </span>
+            ) : (
+              <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${done ? toneClass("green") : toneClass("slate")}`}>
+                {done ? "Cumplida" : "Pendiente"}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
+              {displayKcal(totals.kcal)}
+            </span>
+            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
+              P {formatNumber(totals.proteina, 0)} g
+            </span>
+            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
+              C {formatNumber(totals.carbs, 0)} g
+            </span>
+            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
+              G {formatNumber(totals.grasas, 0)} g
+            </span>
+          </div>
+          {generated && replacementNames.length ? (
+            <div className="mt-2 truncate text-xs font-black text-emerald-200/90">
+              Reemplaza: {replacementNames.join(" + ")}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-1.5">
+        {visibleFoods.length ? visibleFoods.map((food, index) => (
+          <div key={`${food.id}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-black/20 px-3 py-2 text-sm">
+            <span className="flex min-w-0 items-center gap-2">
+              <FoodThumb food={food} size="sm" />
+              <span className="min-w-0 truncate font-bold text-zinc-100">{food.name}</span>
+            </span>
+            <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
+              {food.amount || foodMacroLine(food) || "s/d"}
+            </span>
+          </div>
+        )) : (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
+            Sin alimentos cargados.
+          </div>
+        )}
+        {hiddenCount ? (
+          <div className="px-1 text-xs font-black text-[#FFE8A3]">+{hiddenCount} alimentos mas</div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        {manual ? (
           <button
-            key={id}
             type="button"
             disabled={saving}
-            onClick={() => onToggleMeal(row, meal, index)}
-            className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition disabled:opacity-60 ${done ? "border-emerald-400/30 bg-emerald-400/10" : "border-white/10 bg-black/20"}`}
+            onClick={() => onDeleteManual?.(row, entry.manualEntry)}
+            className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-3 text-xs font-black text-rose-100 disabled:opacity-50"
           >
-            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${done ? "border-emerald-400/35 bg-emerald-400/15 text-emerald-100" : "border-white/15 bg-white/[0.03] text-zinc-400"}`}>
-              {done ? <CheckCircle2 size={18} /> : <ClipboardCheck size={18} />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-black text-white">{mealName(meal, index)}</span>
-              <span className="block truncate text-xs font-bold text-zinc-400">
-                {displayKcal(totals.kcal)} / {displayMenuMacros(totals)}
-              </span>
-            </span>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${done ? toneClass("green") : toneClass("slate")}`}>
-              {done ? "Cumplida" : "Pendiente"}
-            </span>
+            <Trash2 size={16} />
+            Eliminar registro
           </button>
-        );
-      })}
-    </div>
+        ) : (
+          <button
+            type="button"
+            disabled={generated || !canMarkMeals || saving}
+            onClick={() => onToggleMeal(row, trackingMeal, mealIndex)}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-black disabled:opacity-50 ${
+              done
+                ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-100"
+                : "border-white/10 bg-white/[0.04] text-zinc-200"
+            }`}
+            aria-pressed={done}
+          >
+            {generated ? <Calculator size={16} /> : done ? <CheckCircle2 size={16} /> : <Square size={16} />}
+            {generated ? "Generada" : done ? "Comida completa" : "Marcar completa"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onOpenMeal?.({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
+          className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]"
+        >
+          Detalle de comida
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -2358,13 +3498,17 @@ function WeeklySelector({ days, selectedDate, onSelect, onView }) {
 
 function DayDetailDrawer({
   row,
+  weekRows = [],
   onClose,
   onMarkMissed,
   onToggleMeal,
+  onOpenMeal,
   onOpenRemaining,
+  onRestoreGenerated,
   canMarkMeals,
   canAutoCompleteRemaining,
   onUseAlternative,
+  saving,
 }) {
   return (
     <section className="fixed inset-0 z-40 bg-black/70 p-1 backdrop-blur-sm sm:p-3" role="dialog" aria-modal="true">
@@ -2381,12 +3525,16 @@ function DayDetailDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <DayDetail
             row={row}
+            weekRows={weekRows}
             onMarkMissed={onMarkMissed}
             onToggleMeal={onToggleMeal}
+            onOpenMeal={onOpenMeal}
             onOpenRemaining={onOpenRemaining}
+            onRestoreGenerated={onRestoreGenerated}
             canMarkMeals={canMarkMeals}
             canAutoCompleteRemaining={canAutoCompleteRemaining}
             onUseAlternative={onUseAlternative}
+            saving={saving}
           />
         </div>
       </div>
@@ -2396,16 +3544,18 @@ function DayDetailDrawer({
 
 function DayDetail({
   row,
+  weekRows = [],
   onMarkMissed,
   onToggleMeal,
+  onOpenMeal,
   onOpenRemaining,
+  onRestoreGenerated,
   canMarkMeals,
   canAutoCompleteRemaining,
   onUseAlternative,
+  saving,
 }) {
   if (!row) return null;
-  const snapshot = menuSnapshot(row);
-  const meals = snapshot ? snapshotMeals(snapshot) : [];
   const choices = menuChoices(row);
   const selectedAlternative = row?.tracking?.selectedAlternative;
 
@@ -2460,11 +3610,15 @@ function DayDetail({
         <EmptyMenu row={row} />
       )}
 
-      {meals.length && canMarkMeals ? (
-        <MealChecklist row={row} meals={meals} onToggleMeal={onToggleMeal} />
-      ) : null}
-
-      <GeneratedMealsBlock meals={(row?.tracking?.generatedRemainingMeals || []).filter((entry) => !String(entry?.source || "").includes("replacement"))} />
+      <DesktopMealsSection
+        row={row}
+        weekRows={weekRows}
+        onToggleMeal={onToggleMeal}
+        onOpenMeal={onOpenMeal}
+        onRestoreGenerated={onRestoreGenerated}
+        canMarkMeals={canMarkMeals}
+        saving={saving}
+      />
 
     </section>
   );
@@ -2541,45 +3695,6 @@ function EmptyMenu({ row }) {
   );
 }
 
-function GeneratedMealsBlock({ meals = [] }) {
-  if (!meals.length) return null;
-  return (
-    <section className="grid gap-3 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-      <div>
-        <span className="text-xs font-black uppercase tracking-wide text-emerald-100">Tracking agregado</span>
-        <h4 className="mt-1 text-lg font-black text-white">Comidas calculadas para completar</h4>
-      </div>
-      {meals.map((meal, index) => {
-        const totals = totalFromLike(meal.totals || meal);
-        const foods = Array.isArray(meal.foods) ? meal.foods : [];
-        return (
-          <article key={meal.id || index} className="rounded-2xl border border-white/10 bg-black/20 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <strong className="block truncate text-sm text-white">{meal.name || `Comida ${index + 1}`}</strong>
-                <p className="text-xs font-bold text-zinc-300">{displayKcal(totals.kcal)} / {displayMenuMacros(totals)}</p>
-              </div>
-              <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-black text-emerald-100">
-                Auto
-              </span>
-            </div>
-            {foods.length ? (
-              <div className="mt-2 grid gap-1.5">
-                {foods.map((food, foodIndex) => (
-                  <div key={food.id || foodIndex} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.04] px-2.5 py-2 text-xs font-bold">
-                    <span className="min-w-0 truncate text-zinc-100">{food.name}</span>
-                    <span className="shrink-0 text-[#FFE8A3]">{formatNumber(food.quantity, 1)} {food.unit || "g"}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
-    </section>
-  );
-}
-
 function MobileMealDetailDrawer({
   context,
   onToggleMeal,
@@ -2595,6 +3710,8 @@ function MobileMealDetailDrawer({
   const meal = context?.meal || {};
   const baseMeal = context?.baseMeal || meal;
   const mealIndex = context?.mealIndex || 0;
+  const manual = !!context?.manual || meal?.source === "manual_food";
+  const generated = !!context?.generated || meal?.source === "generated_remaining_meal";
   const [replaceOpen, setReplaceOpen] = useState(false);
   const done = completedMealIdSet(row).has(mealId(baseMeal, mealIndex));
   const foods = mealFoods(meal);
@@ -2642,36 +3759,45 @@ function MobileMealDetailDrawer({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <button
-            type="button"
-            disabled={!canMarkMeals || saving}
-            onClick={() => {
-              onToggleMeal(row, baseMeal, mealIndex);
-              onClose();
-            }}
-            className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] transition active:scale-[0.99] disabled:opacity-50 ${done ? "border-emerald-300/45 bg-[linear-gradient(135deg,rgba(16,185,129,.22),rgba(212,175,55,.08))] text-emerald-50" : "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}
-            aria-pressed={done}
-          >
-            <span>{done ? "Comida completa" : "Marcar completo"}</span>
-            {done ? <CheckSquare2 size={20} /> : <Square size={20} />}
-          </button>
+          {generated || manual ? (
+            <div className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] ${manual ? "border-sky-300/35 bg-sky-300/10 text-sky-100" : "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"}`}>
+              <span>{manual ? "Registro manual sumado al dia" : "Generada y guardada para esta semana"}</span>
+              {manual ? <Utensils size={20} /> : <CheckSquare2 size={20} />}
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!canMarkMeals || saving}
+              onClick={() => {
+                onToggleMeal(row, baseMeal, mealIndex);
+                onClose();
+              }}
+              className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] transition active:scale-[0.99] disabled:opacity-50 ${done ? "border-emerald-300/45 bg-[linear-gradient(135deg,rgba(16,185,129,.22),rgba(212,175,55,.08))] text-emerald-50" : "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}
+              aria-pressed={done}
+            >
+              <span>{done ? "Comida completa" : "Marcar completo"}</span>
+              {done ? <CheckSquare2 size={20} /> : <Square size={20} />}
+            </button>
+          )}
 
-          <button
-            type="button"
-            disabled={!canReplaceMeals || saving}
-            onClick={() => setReplaceOpen((value) => !value)}
-            className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55 ${
-              canReplaceMeals
-                ? "border-white/10 bg-white/[0.055] text-zinc-100"
-                : "border-white/10 bg-white/[0.025] text-zinc-500"
-            }`}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <RefreshCw size={17} className="shrink-0 text-[#FFD76B]" />
-              <span className="truncate">{canReplaceMeals ? "Cambiar comida" : "Tu coach no habilito cambios"}</span>
-            </span>
-            <ChevronRight size={18} className={`shrink-0 transition ${replaceOpen ? "rotate-90" : ""}`} />
-          </button>
+          {!generated && !manual ? (
+            <button
+              type="button"
+              disabled={!canReplaceMeals || saving}
+              onClick={() => setReplaceOpen((value) => !value)}
+              className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55 ${
+                canReplaceMeals
+                  ? "border-white/10 bg-white/[0.055] text-zinc-100"
+                  : "border-white/10 bg-white/[0.025] text-zinc-500"
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <RefreshCw size={17} className="shrink-0 text-[#FFD76B]" />
+                <span className="truncate">{canReplaceMeals ? "Cambiar comida" : "Tu coach no habilito cambios"}</span>
+              </span>
+              <ChevronRight size={18} className={`shrink-0 transition ${replaceOpen ? "rotate-90" : ""}`} />
+            </button>
+          ) : null}
 
           {replaceOpen ? (
             <MobileMealReplacementPanel
@@ -2695,7 +3821,7 @@ function MobileMealDetailDrawer({
                     food={food}
                     foodIndex={foodIndex}
                     onOpenFood={onOpenFood}
-                    canReplaceFoods={canReplaceFoods}
+                    canReplaceFoods={!manual && canReplaceFoods}
                   />
                 ))}
               </div>
@@ -3337,5 +4463,715 @@ function RemainingMealsDrawer({ row, saving, onClose, onSave }) {
         </footer>
       </div>
     </section>
+  );
+}
+
+function RemainingMealsDrawerV2({ row, weekRows = [], saving, onClose, onSave, onSaveManual }) {
+  const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
+  const initialCount = Math.min(3, Math.max(1, pendingBaseMealsForRemaining(displayRow, weekRows).length || 1));
+  const [count, setCount] = useState(initialCount);
+  const [mode, setMode] = useState("complete");
+  const [foods, setFoods] = useState([]);
+  const [foodsLoading, setFoodsLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeMeal, setActiveMeal] = useState(0);
+  const [selectedFoods, setSelectedFoods] = useState({});
+  const [results, setResults] = useState({});
+  const [loadingMeal, setLoadingMeal] = useState(null);
+  const [error, setError] = useState("");
+  const rawRemaining = remainingTotals(displayRow);
+  const remaining = positiveTotals(rawRemaining);
+  const consumed = consumedTotals(displayRow);
+  const baseMeals = choiceMeals(trackingChoice(displayRow));
+  const completedCount = effectiveMealEntriesForDay(displayRow, baseMeals, weekRows).filter((entry) => entry.done).length;
+  const exceeded = consumed.kcal > targetTotals(displayRow).kcal && rawRemaining.kcal <= 0;
+  const targets = useMemo(() => remainingGenerationTargets(displayRow, count, weekRows), [displayRow, count, weekRows]);
+  const activeTarget = targets[activeMeal] || targets[0] || null;
+  const isManualMode = mode === "manual";
+  const activeSelectedFoods = selectedFoods[activeMeal] || [];
+  const activeManualCount = activeSelectedFoods.filter(hasManualQuantity).length;
+  const showNoFoodResults = search.trim().length >= 2 && !foodsLoading && !foods.length;
+
+  useEffect(() => {
+    if (activeMeal >= targets.length) setActiveMeal(0);
+  }, [activeMeal, targets.length]);
+
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) {
+      setFoods([]);
+      setFoodsLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      setFoodsLoading(true);
+      listAlimentos({ search: term, limit: 12 })
+        .then((data) => {
+          if (!alive) return;
+          setFoods((data?.alimentos || data?.all || []).slice(0, 12));
+        })
+        .catch((err) => {
+          if (alive) setError(err?.message || "No se pudieron buscar alimentos.");
+        })
+        .finally(() => {
+          if (alive) setFoodsLoading(false);
+        });
+    }, 260);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [search]);
+
+  function normalizeSelectableFood(food = {}) {
+    return {
+      ...food,
+      id: String(food.id || food._id || food.alimentoId || food.nombre || food.name),
+      name: food.name || food.nombre || "Alimento",
+      manualQuantity: food.manualQuantity ?? "",
+    };
+  }
+
+  function manualQuantityOf(food = {}) {
+    return macro(food.manualQuantity);
+  }
+
+  function hasManualQuantity(food = {}) {
+    return manualQuantityOf(food) > 0;
+  }
+
+  function addFood(food) {
+    const normalized = normalizeSelectableFood(food);
+    setSelectedFoods((current) => {
+      const list = current[activeMeal] || [];
+      if (list.some((item) => item.id === normalized.id)) return current;
+      return { ...current, [activeMeal]: [...list, normalized] };
+    });
+    setSearch("");
+    setFoods([]);
+    setResults((current) => ({ ...current, [activeMeal]: null }));
+  }
+
+  function updateFoodQuantity(mealIndex, foodId, value) {
+    setSelectedFoods((current) => ({
+      ...current,
+      [mealIndex]: (current[mealIndex] || []).map((food) =>
+        food.id === foodId ? { ...food, manualQuantity: value } : food
+      ),
+    }));
+    setResults((current) => ({ ...current, [mealIndex]: null }));
+  }
+
+  function removeFood(mealIndex, foodId) {
+    setSelectedFoods((current) => ({
+      ...current,
+      [mealIndex]: (current[mealIndex] || []).filter((food) => food.id !== foodId),
+    }));
+    setResults((current) => ({ ...current, [mealIndex]: null }));
+  }
+
+  function fixedFoodPayload(food = {}) {
+    const quantity = manualQuantityOf(food);
+    const totals = {
+      kcal: foodPerUnit(food, "kcal") * quantity,
+      proteina: foodPerUnit(food, "proteina") * quantity,
+      carbs: foodPerUnit(food, "carbs") * quantity,
+      grasas: foodPerUnit(food, "grasas") * quantity,
+    };
+    return {
+      foodId: food.id,
+      name: food.name || food.nombre,
+      unit: food.unidad || food.unit || "g",
+      quantity,
+      kcal: totals.kcal,
+      protein: totals.proteina,
+      proteina: totals.proteina,
+      carbs: totals.carbs,
+      fat: totals.grasas,
+      grasas: totals.grasas,
+      source: "manual",
+    };
+  }
+
+  function pendingFoodPayload(food = {}) {
+    return {
+      foodId: food.id,
+      name: food.name || food.nombre,
+      unit: food.unidad || food.unit || "g",
+      source: "pending",
+      kcalPerUnitOrGram: foodPerUnit(food, "kcal"),
+      proteinPerUnitOrGram: foodPerUnit(food, "proteina"),
+      carbsPerUnitOrGram: foodPerUnit(food, "carbs"),
+      fatPerUnitOrGram: foodPerUnit(food, "grasas"),
+    };
+  }
+
+  function manualOnlyResult(selected = [], target = {}) {
+    const foods = selected.map((food) => {
+      const fixed = fixedFoodPayload(food);
+      return {
+        foodId: fixed.foodId,
+        name: fixed.name,
+        nombre: fixed.name,
+        quantity: fixed.quantity,
+        cantidad: fixed.quantity,
+        unit: fixed.unit,
+        unidad: fixed.unit,
+        source: "fixed",
+        kcal: fixed.kcal,
+        proteina: fixed.proteina,
+        protein: fixed.proteina,
+        carbs: fixed.carbs,
+        grasas: fixed.grasas,
+        fat: fixed.grasas,
+        fixedQuantity: true,
+      };
+    });
+    const totals = sumTotals(foods.map(normalizeGeneratedFood));
+    return {
+      status: "ok",
+      quality: "manual",
+      message: "Totales calculados con cantidades manuales.",
+      foods,
+      totals,
+      target: target.totals,
+      diff: {
+        kcal: totals.kcal - target.totals.kcal,
+        proteina: totals.proteina - target.totals.proteina,
+        carbs: totals.carbs - target.totals.carbs,
+        grasas: totals.grasas - target.totals.grasas,
+      },
+    };
+  }
+
+  async function calculateMeal(mealIndex) {
+    const target = targets[mealIndex];
+    const selected = selectedFoods[mealIndex] || [];
+    if (exceeded || !remaining.kcal) {
+      setError("Ya superaste la meta. Podes guardar el registro, pero no hay macros restantes para generar comidas.");
+      return;
+    }
+    if (!selected.length) {
+      setError("Elegi alimentos para calcular cantidades.");
+      return;
+    }
+    if (!target?.totals?.kcal) {
+      setError("No hay macros pendientes para esta comida.");
+      return;
+    }
+    try {
+      setError("");
+      setLoadingMeal(mealIndex);
+      const fixedFoods = selected.filter(hasManualQuantity).map(fixedFoodPayload);
+      const pendingFoods = selected.filter((food) => !hasManualQuantity(food)).map(pendingFoodPayload);
+
+      if (!pendingFoods.length) {
+        setResults((current) => ({ ...current, [mealIndex]: manualOnlyResult(selected, target) }));
+        return;
+      }
+
+      const payload = {
+        target: {
+          kcal: target.totals.kcal,
+          proteina: target.totals.proteina,
+          carbs: target.totals.carbs,
+          grasas: target.totals.grasas,
+        },
+        mode: target.totals.carbs || target.totals.grasas ? "full" : "kcalProteina",
+        generationType: "selectedOnly",
+        fixedFoods,
+        pendingFoods,
+        options: {
+          redondear: true,
+          usarMinMax: true,
+        },
+      };
+      const response = await generateMealQuantities(payload);
+      if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
+        throw new Error(response?.message || "No se pudo calcular una combinacion razonable.");
+      }
+      setResults((current) => ({ ...current, [mealIndex]: response }));
+    } catch (err) {
+      setError(err?.message || "No se pudieron generar cantidades.");
+    } finally {
+      setLoadingMeal(null);
+    }
+  }
+
+  function resultTotals(result = {}) {
+    if (result.totals) return totalFromLike(result.totals);
+    return sumTotals((result.foods || []).map(normalizeGeneratedFood));
+  }
+
+  function resultDiff(result = {}, target = {}) {
+    const totals = resultTotals(result);
+    const goal = target?.totals || {};
+    const explicit = result.diff || result.diferencia || {};
+    return {
+      kcal: macro(explicit.kcal ?? explicit.calorias ?? (totals.kcal - macro(goal.kcal))),
+      proteina: macro(explicit.proteina ?? explicit.protein ?? (totals.proteina - macro(goal.proteina))),
+      carbs: macro(explicit.carbs ?? explicit.carbohidratos ?? (totals.carbs - macro(goal.carbs))),
+      grasas: macro(explicit.grasas ?? explicit.fat ?? (totals.grasas - macro(goal.grasas))),
+    };
+  }
+
+  function signedMacro(value, digits = 0) {
+    const n = macro(value);
+    return `${n > 0 ? "+" : ""}${formatNumber(n, digits)}`;
+  }
+
+  function generatedFoodPayload(food = {}) {
+    const normalized = normalizeGeneratedFood(food);
+    return {
+      ...normalized,
+      alimentoId: normalized.id,
+      nombre: normalized.name,
+      cantidad: normalized.quantity,
+      unidad: normalized.unit,
+      source: normalized.fixedQuantity ? "manual_fixed" : "auto_calculated",
+      fixedQuantity: normalized.fixedQuantity,
+    };
+  }
+
+  function manualEntryFoodPayload(food = {}) {
+    const fixed = fixedFoodPayload(food);
+    return {
+      id: fixed.foodId,
+      alimentoId: fixed.foodId,
+      name: fixed.name,
+      nombre: fixed.name,
+      quantity: fixed.quantity,
+      cantidad: fixed.quantity,
+      unit: fixed.unit,
+      unidad: fixed.unit,
+      kcal: fixed.kcal,
+      proteina: fixed.proteina,
+      carbs: fixed.carbs,
+      grasas: fixed.grasas,
+      source: "manual_food",
+    };
+  }
+
+  function saveManual() {
+    const selected = activeSelectedFoods;
+    if (!selected.length) {
+      setError("Elegí alimentos para registrar.");
+      return;
+    }
+    const missingQuantity = selected.find((food) => !hasManualQuantity(food));
+    if (missingQuantity) {
+      setError("Para registrar algo distinto, indicá la cantidad de cada alimento.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const foodsFromManual = selected.map(manualEntryFoodPayload);
+    const totals = sumTotals(foodsFromManual.map(normalizeGeneratedFood));
+    const replacedMeals = pendingBaseMealsForRemaining(displayRow, weekRows);
+    const currentRemaining = remainingTotals(displayRow);
+    const nextRemaining = subtractTotals(currentRemaining, totals);
+    const proteinCaloriesNeeded = Math.max(0, nextRemaining.proteina) * 4;
+    if (nextRemaining.kcal < -5) {
+      setError("No conviene guardar esos alimentos: te pasás de las calorías pendientes. Ajustá la cantidad o elegí otra opción.");
+      return;
+    }
+    if (nextRemaining.proteina > 5 && nextRemaining.kcal < proteinCaloriesNeeded - 5) {
+      setError("No conviene guardar esos alimentos: te dejan sin calorías suficientes para cubrir la proteína pendiente.");
+      return;
+    }
+    onSaveManual?.([{
+      id: `manual-food-${row.date}-${Date.now()}`,
+      date: row.date,
+      dayKey: row.dayKey,
+      name: "Registro manual",
+      source: "manual_food",
+      mode: "ate_something_else",
+      scope: "day",
+      activeFromDate: row.date,
+      activeUntilDate: row.date,
+      isActiveReplacement: true,
+      replacesMealIds: replacedMeals.map((meal) => meal.id),
+      replacesMealTypes: replacedMeals.map((meal) => meal.type),
+      replacesMealNames: replacedMeals.map((meal) => meal.name),
+      foods: foodsFromManual,
+      items: foodsFromManual,
+      totals,
+      createdAt: now,
+      updatedAt: now,
+    }]);
+  }
+
+  function saveGenerated() {
+    const now = new Date().toISOString();
+    const activeWeekStart = mondayOfWeek(row.date);
+    const activeWeekEnd = addDays(activeWeekStart, 6);
+    const generationRunId = `generated-run-${row.date}-${Date.now()}`;
+    const generated = targets
+      .map((target, index) => {
+        const result = results[index];
+        if (!result?.foods?.length) return null;
+        const foodsFromResult = result.foods.map(generatedFoodPayload);
+        return {
+          id: `${generationRunId}-${index + 1}`,
+          generationRunId,
+          date: row.date,
+          dayKey: row.dayKey,
+          source: "generated_remaining_meal",
+          mode: "complete_pending_meals",
+          scope: "week",
+          weekStart: activeWeekStart,
+          weekEnd: activeWeekEnd,
+          activeFromDate: row.date,
+          activeUntilDate: activeWeekEnd,
+          isActiveReplacement: true,
+          replacesMealIds: target.replacesMealIds,
+          replacesMealTypes: target.replacesMealTypes,
+          replacesMealNames: target.replacesMealNames,
+          name: target.name,
+          mealType: target.mealType || "generated",
+          target: target.totals,
+          items: foodsFromResult,
+          foods: foodsFromResult,
+          totals: resultTotals(result),
+          createdAt: now,
+          updatedAt: now,
+        };
+      })
+      .filter(Boolean);
+    if (!generated.length) {
+      setError("Genera al menos una comida antes de guardar.");
+      return;
+    }
+    onSave(generated);
+  }
+
+  return (
+    <section className="fixed inset-0 z-50 bg-black/75 p-0 backdrop-blur-md sm:p-3" role="dialog" aria-modal="true">
+      <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_20%_0,rgba(45,212,191,.12),transparent_32%),radial-gradient(circle_at_100%_10%,rgba(212,175,55,.14),transparent_30%),linear-gradient(180deg,#0d141d,#070a0f)] shadow-2xl sm:rounded-[2rem]">
+        <header className="flex items-start justify-between border-b border-white/10 p-4">
+          <div className="min-w-0">
+            <h3 className="text-2xl font-black text-white">Calcular lo que falta</h3>
+            <p className="mt-1 text-sm font-bold text-zinc-400">Completa el resto del dia sin modificar tu menu base.</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.055] text-zinc-100" aria-label="Cerrar">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="grid gap-3">
+            <section className="overflow-hidden rounded-[1.35rem] border border-emerald-300/30 bg-[radial-gradient(circle_at_12%_50%,rgba(45,212,191,.22),transparent_30%),linear-gradient(135deg,rgba(15,31,31,.94),rgba(13,18,23,.94))] p-4 shadow-[0_16px_38px_rgba(0,0,0,.28)]">
+              <div className="flex items-center gap-4">
+                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-full border-[10px] border-emerald-300/20 bg-black/20 text-[#FFD76B] shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]">
+                  <Calculator size={28} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black text-zinc-200">Restante del dia</div>
+                  <div className="mt-1 text-2xl font-black leading-tight text-white">
+                    Faltan <span className="text-emerald-300">{formatNumber(remaining.kcal, 0)}</span> kcal
+                  </div>
+                  <div className="mt-1 text-sm font-black text-zinc-300">
+                    <span className="text-emerald-300">P</span> {formatNumber(remaining.proteina, 0)} g / <span className="text-emerald-300">C</span> {formatNumber(remaining.carbs, 0)} g / <span className="text-emerald-300">G</span> {formatNumber(remaining.grasas, 0)} g
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-black text-zinc-300">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-[#FFE8A3]">
+                      <CheckCircle2 size={13} />
+                      {completedCount} de {baseMeals.length || 0} comidas
+                    </span>
+                    <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-1 text-emerald-100">
+                      Para esta semana
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className="grid grid-cols-2 gap-2">
+              <RemainingModeCard
+                active={mode === "complete"}
+                icon={<ClipboardCheck size={24} />}
+                title="Completar comidas pendientes"
+                text="Elegi alimentos y ZumaFit calcula cantidades para lo que te falta."
+                onClick={() => {
+                  setMode("complete");
+                  setActiveMeal(0);
+                  setResults({});
+                  setSearch("");
+                  setFoods([]);
+                }}
+              />
+              <RemainingModeCard
+                active={mode === "manual"}
+                icon={<Calculator size={24} />}
+                title="Registrar algo distinto"
+                text="Cargá lo que comiste y recalculamos el resto."
+                onClick={() => {
+                  setMode("manual");
+                  setActiveMeal(0);
+                  setResults({});
+                  setSearch("");
+                  setFoods([]);
+                }}
+              />
+            </div>
+
+            {exceeded ? (
+              <div className="rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 p-3 text-sm font-bold text-[#FFE8A3]">
+                Ya superaste la meta. Podes guardar el registro, pero no hay macros restantes para generar comidas.
+              </div>
+            ) : null}
+
+            {!isManualMode ? (
+              <>
+                <section>
+                  <h4 className="px-1 text-base font-black text-white">En cuantas comidas queres dividirlo?</h4>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => {
+                          setCount(value);
+                          setActiveMeal(0);
+                          setResults({});
+                        }}
+                        className={`min-h-12 rounded-2xl border px-3 text-sm font-black transition active:scale-[0.99] ${count === value ? "border-[#D4AF37]/60 bg-[#D4AF37]/12 text-[#FFE8A3]" : "border-white/10 bg-white/[0.035] text-zinc-300"}`}
+                      >
+                        {value} comida{value > 1 ? "s" : ""}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <div className="grid gap-2">
+                  {targets.map((target, index) => (
+                    <RemainingTargetCard
+                      key={target.id}
+                      target={target}
+                      active={activeMeal === index}
+                      ready={Boolean(results[index])}
+                      selectedCount={(selectedFoods[index] || []).length}
+                      onClick={() => setActiveMeal(index)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-[1.2rem] border border-sky-300/20 bg-sky-300/[0.055] p-3 text-sm font-bold text-sky-100">
+                Registrá alimentos con cantidad real. Se suma al consumido del día y no modifica tu menú base.
+              </div>
+            )}
+
+            <section className="rounded-[1.25rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02))] p-3 shadow-[0_14px_32px_rgba(0,0,0,.24)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">
+                    {isManualMode ? "Registrar" : "Alimentos para"}
+                  </div>
+                  <h4 className="truncate text-lg font-black text-white">
+                    {isManualMode ? "Algo distinto" : activeTarget?.name || "Comida generada"}
+                  </h4>
+                </div>
+                {!isManualMode ? (
+                  <button
+                    type="button"
+                    onClick={() => calculateMeal(activeMeal)}
+                    disabled={exceeded || loadingMeal === activeMeal}
+                    className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-black text-emerald-200 disabled:opacity-50"
+                  >
+                    {loadingMeal === activeMeal ? <RefreshCw size={14} className="animate-spin" /> : <Calculator size={14} />}
+                    Generar
+                  </button>
+                ) : null}
+              </div>
+
+              <label className="mt-3 flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3">
+                <Search size={17} className="shrink-0 text-zinc-500" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar alimento"
+                  className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-500"
+                />
+                {foodsLoading ? <RefreshCw size={15} className="shrink-0 animate-spin text-zinc-400" /> : null}
+              </label>
+
+              {foods.length ? (
+                <div className="mt-2 grid gap-1.5">
+                  {foods.map((food) => {
+                    const normalized = normalizeSelectableFood(food);
+                    return (
+                      <button
+                        key={normalized.id}
+                        type="button"
+                        onClick={() => addFood(normalized)}
+                        className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 text-left text-sm font-bold text-zinc-100 transition hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">{normalized.name}</span>
+                          <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">{foodLibraryMacroLine(normalized)}</span>
+                        </span>
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]">
+                          <Plus size={16} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {showNoFoodResults ? (
+                <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-sm font-bold text-zinc-500">
+                  No encontramos alimentos para esa busqueda.
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid gap-2">
+                {activeSelectedFoods.map((food) => (
+                  <div key={food.id} className="grid gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-3 text-sm font-black text-zinc-100 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <span className="block truncate">{food.name || food.nombre}</span>
+                      <span className="mt-0.5 block truncate text-[11px] font-bold text-emerald-100/70">{foodLibraryMacroLine(food)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="flex h-10 min-w-0 flex-1 items-center gap-1 rounded-xl border border-white/10 bg-black/20 px-2 sm:w-28 sm:flex-none">
+                        <input
+                          value={food.manualQuantity ?? ""}
+                          onChange={(event) => updateFoodQuantity(activeMeal, food.id, event.target.value)}
+                          inputMode="decimal"
+                          placeholder={isManualMode ? "0" : "auto"}
+                          className="min-w-0 flex-1 bg-transparent text-right text-sm font-black text-white outline-none placeholder:text-[#FFE8A3]"
+                          aria-label={`Cantidad de ${food.name || food.nombre}`}
+                        />
+                        <span className="shrink-0 text-xs font-black text-zinc-500">g</span>
+                      </label>
+                      <button type="button" onClick={() => removeFood(activeMeal, food.id)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/15 bg-black/20 text-zinc-300" aria-label={`Quitar ${food.name || food.nombre}`}>
+                        <X size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!activeSelectedFoods.length ? (
+                  <div className="w-full rounded-2xl border border-dashed border-white/15 p-3 text-sm font-bold text-zinc-500">
+                    Elegi alimentos y despues genera cantidades.
+                  </div>
+                ) : null}
+              </div>
+
+              {activeManualCount ? (
+                <div className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1 text-[11px] font-black text-[#FFE8A3]">
+                  {activeManualCount} cantidad{activeManualCount === 1 ? "" : "es"} fija{activeManualCount === 1 ? "" : "s"}
+                </div>
+              ) : null}
+
+              {results[activeMeal] ? (
+                <div className="mt-3 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-black uppercase tracking-wide text-emerald-100">
+                      Resultado {results[activeMeal].quality ? `/${results[activeMeal].quality}` : ""}
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-black text-zinc-300">
+                      Meta {displayKcal(activeTarget?.totals?.kcal)} · P {formatNumber(activeTarget?.totals?.proteina, 0)} / C {formatNumber(activeTarget?.totals?.carbs, 0)} / G {formatNumber(activeTarget?.totals?.grasas, 0)}
+                    </div>
+                  </div>
+                  <div className="mt-2 grid gap-1.5">
+                    {results[activeMeal].foods.map((food, index) => {
+                      const item = normalizeGeneratedFood(food);
+                      return (
+                        <div key={item.id || index} className="grid gap-1 rounded-xl bg-black/15 px-2.5 py-2 text-sm font-bold text-zinc-100 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                          <span className="min-w-0">
+                            <span className="block truncate">{item.name}</span>
+                            <span className="mt-0.5 block text-[11px] font-bold text-zinc-500">P {formatNumber(item.proteina, 1)} / C {formatNumber(item.carbs, 1)} / G {formatNumber(item.grasas, 1)}</span>
+                          </span>
+                          <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-0.5 text-xs font-black text-[#FFE8A3]">
+                            {item.fixedQuantity ? <Lock size={11} /> : null}
+                            {formatNumber(item.quantity, 1)} {item.unit} · {displayKcal(item.kcal)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const totals = resultTotals(results[activeMeal]);
+                    const diff = resultDiff(results[activeMeal], activeTarget);
+                    return (
+                      <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-black text-zinc-300">
+                        <div>Total {displayKcal(totals.kcal)} · P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}</div>
+                        <div className="mt-1 text-zinc-500">Diferencia {signedMacro(diff.kcal, 0)} kcal / P {signedMacro(diff.proteina, 1)} / C {signedMacro(diff.carbs, 1)} / G {signedMacro(diff.grasas, 1)}</div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
+            </section>
+
+            {error ? (
+              <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm font-bold text-rose-100">
+                {error}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <footer className="grid gap-2 border-t border-white/10 bg-black/15 p-4 sm:grid-cols-2">
+          <button type="button" onClick={onClose} className="min-h-[52px] rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-black text-zinc-100">
+            Cancelar
+          </button>
+          <button type="button" disabled={saving} onClick={isManualMode ? saveManual : saveGenerated} className="min-h-[52px] rounded-2xl bg-[#D4AF37] px-4 py-4 text-sm font-black text-black shadow-[0_14px_30px_rgba(212,175,55,.22)] disabled:opacity-60">
+            {saving ? "Guardando..." : isManualMode ? "Guardar registro" : "Guardar comidas de la semana"}
+          </button>
+        </footer>
+      </div>
+    </section>
+  );
+}
+
+function RemainingModeCard({ active, disabled = false, icon, title, text, onClick }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`relative min-h-[136px] rounded-[1.25rem] border p-3 text-left transition active:scale-[0.99] disabled:opacity-65 ${
+        active ? "border-[#D4AF37]/70 bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.035]"
+      }`}
+    >
+      <span className={`grid h-10 w-10 place-items-center rounded-2xl border ${active ? "border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-black/20 text-zinc-300"}`}>
+        {icon}
+      </span>
+      <strong className="mt-3 block text-sm font-black leading-tight text-white">{title}</strong>
+      <span className="mt-1 block text-xs font-bold leading-snug text-zinc-400">{text}</span>
+      {active ? <CheckCircle2 size={18} className="absolute right-3 top-3 text-[#FFD76B]" /> : null}
+    </button>
+  );
+}
+
+function RemainingTargetCard({ target, active, ready, selectedCount, onClick }) {
+  const replaceText = target.replacesMealNames?.length ? target.replacesMealNames.join(" + ") : "bloque del dia";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-w-0 items-center gap-3 rounded-[1.2rem] border p-3 text-left transition active:scale-[0.99] ${
+        active ? "border-[#D4AF37]/45 bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.035]"
+      }`}
+    >
+      <MealTypeIcon meal={{ name: target.name, tipoComida: target.mealType }} index={0} done={ready} />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <strong className="min-w-0 truncate text-lg font-black text-white">{target.name}</strong>
+          <span className="shrink-0 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2 py-0.5 text-[10px] font-black text-[#FFE8A3]">
+            {target.replacesMealNames?.length ? "Pendiente del menu" : "Reemplazo semanal"}
+          </span>
+        </span>
+        <span className="mt-1 block truncate text-sm font-bold text-zinc-400">
+          {displayKcal(target.totals.kcal)} / {displayMenuMacros(target.totals)}
+        </span>
+        <span className="mt-1 block truncate text-xs font-bold text-zinc-500">
+          Reemplaza: {replaceText} - {selectedCount} alimento{selectedCount === 1 ? "" : "s"}
+        </span>
+      </span>
+      {ready ? <CheckCircle2 size={19} className="shrink-0 text-emerald-300" /> : <ChevronRight size={19} className="shrink-0 text-zinc-500" />}
+    </button>
   );
 }
