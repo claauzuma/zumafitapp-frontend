@@ -40,6 +40,7 @@ import Rutinas from "./entrenado/Rutinas.jsx";
 import Progresos from "./entrenado/Progresos.jsx";
 import Ajustes from "./entrenado/Ajustes.jsx";
 import TrackingDiario from "./entrenado/TrackingDiario.jsx";
+import SavedMealsPage from "./savedMeals/SavedMealsPage.jsx";
 
 // ✅ Admin
 import AdminInicio from "./admin/AdminInicio.jsx";
@@ -132,6 +133,7 @@ export default function App() {
         <Route path="clientes/:clientId" element={<ClienteDetalleProfesional />} />
         <Route path="rutinas" element={<RutinasProfesional />} />
         <Route path="menus" element={<MenusProfesional />} />
+        <Route path="comidas" element={<SavedMealsPage mode="professional" />} />
         <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
         <Route path="ajustes" element={<AjustesProfesional />} />
         <Route path="perfil" element={<PerfilProfesional />} />
@@ -161,6 +163,7 @@ export default function App() {
         <Route path="perfil" element={<Perfil />} />
         <Route path="rutinas" element={<Rutinas />} />
         <Route path="tracking" element={<TrackingDiario />} />
+        <Route path="nutricion" element={<SavedMealsPage mode="client" />} />
         <Route path="progresos" element={<Progresos />} />
         <Route path="ajustes" element={<Ajustes />} />
 

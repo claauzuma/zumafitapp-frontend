@@ -12,7 +12,7 @@ import {
   Eye,
   Lock,
   MoreHorizontal,
-  Moon,
+  MoonStar,
   Plus,
   RefreshCw,
   Search,
@@ -29,6 +29,7 @@ import { apiFetch } from "../../Api.js";
 import { getFoodEquivalents } from "../../menus/menusApi.js";
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
 import { getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
+import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
 
 const EMPTY_DAYS = [];
 const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -642,6 +643,68 @@ function mealIconType(meal = {}, index = 0) {
   if (text.includes("merienda") || text.includes("snack")) return "snack";
   if (text.includes("cena")) return "dinner";
   return "meal";
+}
+
+function savedMealTipoFromMenuMeal(meal = {}, index = 0) {
+  const explicit = String(meal?.tipoComida || meal?.mealType || meal?.type || "").trim();
+  const normalized = explicit.toLowerCase();
+  if (["desayuno", "almuerzo", "merienda", "cena", "snack", "preentreno", "postentreno", "otro"].includes(normalized)) {
+    return normalized;
+  }
+  const byIcon = mealIconType(meal, index);
+  if (byIcon === "breakfast") return "desayuno";
+  if (byIcon === "lunch") return "almuerzo";
+  if (byIcon === "snack") return "merienda";
+  if (byIcon === "dinner") return "cena";
+  return "otro";
+}
+
+function quantityFromMenuFood(food = {}) {
+  const direct = Number(food.cantidad ?? food.quantity ?? food.qty ?? food.gramos ?? food.grams);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const match = String(food.amount || "").replace(",", ".").match(/\d+(\.\d+)?/);
+  const parsed = match ? Number(match[0]) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function unitFromMenuFood(food = {}) {
+  const direct = food.unidad || food.unit;
+  if (direct) return direct;
+  const match = String(food.amount || "").match(/[a-zA-Z]+/);
+  return match?.[0] || "g";
+}
+
+function savedMealItemFromMenuFood(food = {}) {
+  const totals = totalFromLike(food?.totals || food);
+  return {
+    alimentoId: food.alimentoId || food.foodId || food.id || "",
+    nombre: food.name || food.nombre || "Alimento",
+    cantidad: quantityFromMenuFood(food),
+    unidad: unitFromMenuFood(food),
+    kcal: totals.kcal,
+    proteina: totals.proteina,
+    proteinas: totals.proteina,
+    carbs: totals.carbs,
+    carbohidratos: totals.carbs,
+    grasas: totals.grasas,
+    fibra: macro(food.fibra ?? food.raw?.fibra),
+    categoria: food.category || food.categoria || food.raw?.categoria || "",
+    imagenUrl: food.imageUrl || food.imagenUrl || "",
+    imagenAlt: food.imageAlt || food.imagenAlt || food.name || food.nombre || "Alimento",
+  };
+}
+
+function savedMealPayloadFromMenuMeal(meal = {}, mealIndex = 0) {
+  const items = mealFoods(meal).map(savedMealItemFromMenuFood);
+  const tipoComida = savedMealTipoFromMenuMeal(meal, mealIndex);
+  return {
+    nombre: mealName(meal, mealIndex),
+    descripcion: "Guardada desde el menu diario",
+    tipoComida,
+    origen: "guardadaDesdeMenu",
+    tags: ["menu"],
+    items,
+  };
 }
 
 function isGeneratedRemainingMeal(entry = {}) {
@@ -1506,6 +1569,26 @@ export default function MenuPlan() {
     );
   }
 
+  async function saveMenuMealAsSavedMeal(meal, mealIndex = 0) {
+    if (!meal || saving) return;
+    const payload = savedMealPayloadFromMenuMeal(meal, mealIndex);
+    if (!payload.items.length) {
+      setToast("Esta comida no tiene alimentos para guardar.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    setSaving(true);
+    try {
+      await createSavedMeal(payload);
+      setToast("Comida guardada en Mis comidas.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo guardar esta comida.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveGeneratedRemaining(row, generatedMeals) {
     if (!row?.date) return;
     const activeDate = row.date;
@@ -1772,6 +1855,7 @@ export default function MenuPlan() {
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
                 onRestoreManual={restoreManualEntries}
                 onDeleteManual={deleteManualEntry}
@@ -1800,6 +1884,7 @@ export default function MenuPlan() {
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
                 onRestoreManual={restoreManualEntries}
                 onDeleteManual={deleteManualEntry}
@@ -1818,6 +1903,7 @@ export default function MenuPlan() {
                 onView={() => setDetailRow(selectedDisplayRow)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
@@ -1842,6 +1928,7 @@ export default function MenuPlan() {
                     onMarkMissed={markDayMissed}
                     onToggleMeal={toggleMenuMeal}
                     onOpenMeal={(payload) => setMealDrawer(payload)}
+                    onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                     onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                     onRestoreGenerated={restoreGeneratedRemaining}
                     onRestoreManual={restoreManualEntries}
@@ -1865,6 +1952,7 @@ export default function MenuPlan() {
           onMarkMissed={markDayMissed}
           onToggleMeal={toggleMenuMeal}
           onOpenMeal={(payload) => setMealDrawer(payload)}
+          onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onOpenRemaining={() => setRemainingDraft(rowWithActiveGeneratedMeals(detailRow, days))}
           onRestoreGenerated={restoreGeneratedRemaining}
           onRestoreManual={restoreManualEntries}
@@ -1898,6 +1986,7 @@ export default function MenuPlan() {
           canReplaceMeals={canUseMenuAlternatives}
           canReplaceFoods={canTrackFoods}
           onApplyMealReplacement={applyMealReplacement}
+          onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onDeleteManual={deleteManualEntry}
           saving={saving}
         />
@@ -2042,6 +2131,7 @@ function MobileDayMenu({
   onOpenRemaining,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
   onDeleteManual,
@@ -2147,6 +2237,7 @@ function MobileDayMenu({
                 canMarkMeals={canMarkMeals}
                 onToggleMeal={onToggleMeal}
                 onOpenMeal={onOpenMeal}
+                onSaveAsSavedMeal={onSaveAsSavedMeal}
                 onDeleteManual={onDeleteManual}
               />
             ))
@@ -2409,6 +2500,7 @@ function MobileDayDetailView({
   onToggleMeal,
   onOpenRemaining,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
   onDeleteManual,
@@ -2497,6 +2589,7 @@ function MobileDayDetailView({
               canMarkMeals={canMarkMeals}
               onToggleMeal={onToggleMeal}
               onOpenMeal={onOpenMeal}
+              onSaveAsSavedMeal={onSaveAsSavedMeal}
               onDeleteManual={onDeleteManual}
             />
           ))
@@ -2679,103 +2772,184 @@ function MobileMealCard({
   canMarkMeals,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onDeleteManual,
 }) {
   const trackingMeal = baseMeal || meal;
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
-  const previewFoods = foods.slice(0, 3);
   const manual = meal?.source === "manual_food";
+  const visual = mealVisualStyle(meal, mealIndex, { done, generated, manual });
+  const completedVisual = done || generated;
+  const statusLabel = manual ? "Registrado" : generated ? "Generada" : done ? "Hecha" : "Pendiente";
+  const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
+  const statusClass = manual
+    ? visual.status
+    : completedVisual
+      ? "border-emerald-300/45 bg-emerald-300/14 text-emerald-100 shadow-[0_0_16px_rgba(16,185,129,.22)]"
+      : "border-white/10 bg-black/30 text-zinc-500";
+  const [isExpanded, setIsExpanded] = useState(false);
+  const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
+
+  function toggleExpanded() {
+    setIsExpanded((value) => !value);
+  }
+
+  function handlePrimaryAction(event) {
+    event.stopPropagation();
+    if (manual) {
+      onDeleteManual?.(row, manualEntry);
+      return;
+    }
+    if (generated) return;
+    onToggleMeal(row, trackingMeal, mealIndex);
+  }
+
+  function openMealDetail(event) {
+    event.stopPropagation();
+    onOpenMeal(detailPayload);
+  }
+
+  function saveAsMeal(event) {
+    event.stopPropagation();
+    onSaveAsSavedMeal?.(meal, mealIndex);
+  }
 
   return (
-    <article className={`relative overflow-hidden rounded-[1.05rem] border shadow-[0_12px_28px_rgba(0,0,0,.20)] ${
-      manual
-        ? "border-sky-300/35 bg-[radial-gradient(circle_at_12%_12%,rgba(56,189,248,.18),transparent_34%),radial-gradient(circle_at_100%_0,rgba(212,175,55,.12),transparent_30%),linear-gradient(135deg,#0d1c24,#09131c)]"
-        : done
-        ? "border-emerald-300/45 bg-[radial-gradient(circle_at_12%_12%,rgba(16,185,129,.20),transparent_34%),radial-gradient(circle_at_100%_0,rgba(212,175,55,.16),transparent_30%),linear-gradient(135deg,#102321,#09131c)] shadow-[0_0_0_1px_rgba(16,185,129,.15),0_16px_34px_rgba(0,0,0,.32)]"
-        : "border-white/10 bg-[linear-gradient(135deg,#101824,#090f17)]"
-    }`}>
-      {done || manual ? (
-        <span className={`pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-gradient-to-b ${manual ? "from-sky-300 to-[#D4AF37]" : "from-emerald-300 to-[#D4AF37]"}`} aria-hidden="true" />
-      ) : null}
-      <div className="flex items-center gap-2.5 p-3">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual });
-          }}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          <MealTypeIcon meal={meal} index={mealIndex} done={done} />
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">{mealName(meal, mealIndex)}</span>
-              <span className="shrink-0 text-xs font-black text-[#FFD76B]">{displayKcal(totals.kcal)}</span>
-              {manual ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-sky-300/30 bg-sky-300/10 px-1.5 py-0.5 text-[9px] font-black text-sky-100">
-                  <Utensils size={10} />
-                  Registrado
+    <article className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] shadow-[0_16px_34px_rgba(0,0,0,.28)] ${visual.frame} ${completedVisual ? "ring-1 ring-emerald-300/30" : "ring-1 ring-white/[0.035]"}`}>
+      <div className={`relative overflow-hidden rounded-[calc(1.05rem-1px)] p-3 ${visual.card}`}>
+        <span className={`pointer-events-none absolute inset-0 ${visual.haze}`} aria-hidden="true" />
+        {completedVisual ? <span className="pointer-events-none absolute inset-0 bg-emerald-300/[0.045]" aria-hidden="true" /> : null}
+        <span className={`pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full ${completedVisual ? "bg-gradient-to-b from-emerald-200 to-emerald-500 shadow-[0_0_18px_rgba(16,185,129,.55)]" : visual.rail}`} aria-hidden="true" />
+        <div className="relative z-10 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            aria-expanded={isExpanded}
+            className="grid min-w-0 flex-1 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 text-left active:scale-[0.995]"
+          >
+            <MealTypeIcon meal={meal} index={mealIndex} done={completedVisual} size="lg" />
+            <span className="min-w-0">
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">{mealName(meal, mealIndex)}</span>
+                <span className={`shrink-0 text-xs font-black ${visual.kcalText}`}>{displayKcal(totals.kcal)}</span>
+              </span>
+              <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+                <span className={`inline-flex min-h-5 items-center gap-1 rounded-full border px-1.5 text-[9px] font-black ${statusClass}`}>
+                  <StatusIcon size={10} />
+                  {statusLabel}
                 </span>
-              ) : generated ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-1.5 py-0.5 text-[9px] font-black text-[#FFE8A3]">
-                  <Calculator size={10} />
-                  Para esta semana
+              </span>
+              {!isExpanded ? (
+                <span className="mt-2 flex min-h-[30px] items-center">
+                  <MobileFoodThumbStack foods={foods} compact maxVisible={5} />
                 </span>
-              ) : done ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-1.5 py-0.5 text-[9px] font-black text-emerald-100">
-                  <CheckCircle2 size={10} />
-                  Hecha
+              ) : null}
+              {generatedEntry?.replacesMealNames?.length && isExpanded ? (
+                <span className="mt-1 block truncate text-[11px] font-black text-emerald-200/90">
+                  Reemplaza {generatedEntry.replacesMealNames.join(" + ")}
                 </span>
               ) : null}
             </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-bold text-zinc-500">
-              <span>P {formatNumber(totals.proteina, 0)} g</span>
-              <span>C {formatNumber(totals.carbs, 0)} g</span>
-              <span>G {formatNumber(totals.grasas, 0)} g</span>
-            </span>
-            <MobileFoodPreviewLine foods={previewFoods} />
-            {generatedEntry?.replacesMealNames?.length ? (
-              <span className="mt-1 block truncate text-[11px] font-black text-emerald-200/90">
-                Reemplaza {generatedEntry.replacesMealNames.join(" + ")}
-              </span>
-            ) : null}
-          </span>
+          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              disabled={manual ? saving : generated || !canMarkMeals || saving}
+              onClick={handlePrimaryAction}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border text-xs font-black transition active:scale-[0.96] disabled:opacity-50 ${
+                manual
+                  ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
+                  : completedVisual
+                    ? `${visual.doneButton}`
+                    : "border-white/15 bg-black/35 text-zinc-500"
+              }`}
+              aria-pressed={manual ? undefined : done}
+              aria-label={manual ? "Eliminar registro manual" : generated ? "Comida generada para esta semana" : done ? "Comida completa" : "Marcar comida completa"}
+            >
+              {manual ? <Trash2 size={18} /> : generated ? <Calculator size={18} /> : done ? <CheckCircle2 size={20} /> : <Square size={18} />}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleExpanded();
+              }}
+              className="grid h-9 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-400 transition active:scale-[0.96]"
+              aria-label={isExpanded ? "Contraer comida" : "Expandir comida"}
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? <ChevronLeft size={18} className="rotate-90" /> : <ChevronRight size={18} className="rotate-90" />}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          disabled={manual ? saving : generated || !canMarkMeals || saving}
-          onClick={() => {
-            if (manual) {
-              onDeleteManual?.(row, manualEntry);
-              return;
-            }
-            if (generated) return;
-            onToggleMeal(row, trackingMeal, mealIndex);
-          }}
-          className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border text-xs font-black disabled:opacity-50 ${
-            manual
-              ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
-              : done
-              ? "border-emerald-300/55 bg-emerald-400 text-[#03140c] shadow-[0_0_0_4px_rgba(16,185,129,.12)]"
-              : "border-white/20 bg-black/20 text-zinc-400"
-          }`}
-          aria-pressed={done}
-          aria-label={manual ? "Eliminar registro manual" : generated ? "Comida generada para esta semana" : done ? "Comida completa" : "Marcar comida completa"}
-        >
-          {manual ? <Trash2 size={19} /> : generated ? <Calculator size={20} /> : done ? <CheckCircle2 size={21} /> : <Square size={20} />}
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenMeal({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
-          className="grid h-8 w-6 shrink-0 place-items-center text-zinc-500"
-          aria-label="Ver detalle de comida"
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
+
+        {isExpanded ? (
+          <div className="relative z-10 mt-3 overflow-hidden rounded-[0.95rem] border border-white/10 bg-black/20 p-3 opacity-100 transition-[max-height,opacity] duration-200 ease-out">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <MobileMealMacroChip label="P" value={totals.proteina} />
+              <MobileMealMacroChip label="C" value={totals.carbs} />
+              <MobileMealMacroChip label="G" value={totals.grasas} />
+            </div>
+
+            <div className="mt-3 grid gap-1.5">
+              {foods.length ? foods.map((food, foodIndex) => {
+                const macroDetail = foodMacroLine(food);
+                return (
+                  <div key={`${food.id}-${foodIndex}`} className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2.5 py-2">
+                    <FoodThumb food={food} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-black text-zinc-100">{food.name}</span>
+                      {macroDetail ? (
+                        <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">{macroDetail}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-1 text-[11px] font-black text-[#FFE8A3]">
+                      {food.amount || "s/d"}
+                    </span>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
+                  Sin alimentos cargados.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={openMealDetail}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-3 text-xs font-black text-zinc-100"
+              >
+                Detalle de comida
+                <Eye size={15} />
+              </button>
+              {onSaveAsSavedMeal ? (
+                <button
+                  type="button"
+                  onClick={saveAsMeal}
+                  disabled={saving || !foods.length}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-55"
+                >
+                  Guardar en Mis comidas
+                  <Plus size={15} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        </div>
     </article>
+  );
+}
+
+function MobileMealMacroChip({ label, value }) {
+  return (
+    <span className="inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.055] px-2.5 text-[11px] font-black text-white">
+      <span className="text-[#FFE8A3]">{label}</span>
+      <span>{formatNumber(value, 0)} g</span>
+    </span>
   );
 }
 
@@ -2916,44 +3090,194 @@ function OriginalMealsDrawer({ generatedEntry = {}, originalMeals = [], mode = "
 
 function MobileFoodPreviewLine({ foods = [] }) {
   if (!foods.length) {
-    return <span className="mt-1 block truncate text-sm font-bold text-zinc-500">Sin alimentos cargados</span>;
+    return <span className="block truncate text-xs font-bold text-zinc-500">Sin alimentos cargados</span>;
   }
   return (
-    <span className="mt-1.5 grid gap-0.5">
+    <span className="grid min-w-0 gap-[3px]">
       {foods.map((food, index) => (
-        <span key={`${food.id}-${index}`} className="flex min-w-0 items-center gap-1.5 text-xs font-bold text-zinc-400">
+        <span key={`${food.id}-${index}`} className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold leading-tight text-zinc-400">
           <span className="min-w-0 truncate">{food.name}</span>
-          {food.amount ? <span className="shrink-0 text-[11px] font-black text-[#FFE8A3]/90">{food.amount}</span> : null}
+          {food.amount ? <span className="shrink-0 text-[10.5px] font-black text-[#FFE8A3]/95">{food.amount}</span> : null}
         </span>
       ))}
     </span>
   );
 }
 
-function MealTypeIcon({ meal, index, done }) {
+function foodPreviewImageSrc(food = {}) {
+  const src =
+    food.imageUrl ||
+    food.imagenUrl ||
+    food.imagen?.url ||
+    food.imagen?.urlExacta ||
+    food.imagen?.urlGenerica ||
+    getFoodImageUrl(food);
+  if (!src) return placeholderForFoodCategory(food.category || food.categoria || food.raw?.categoria);
+  return src;
+}
+
+function MobileFoodThumbStack({ foods = [], compact = false, maxVisible = compact ? 5 : 3 }) {
+  const candidates = foods
+    .map((food, index) => ({
+      food,
+      index,
+      src: foodPreviewImageSrc(food),
+      fallback: placeholderForFoodCategory(food.category || food.categoria || food.raw?.categoriaSnapshot),
+      key: `${food.id || food.name || "food"}-${index}`,
+    }))
+    .filter((item) => item.src);
+  const candidateKey = candidates.map((item) => `${item.key}:${item.src}`).join("|");
+  const [failed, setFailed] = useState(() => new Set());
+
+  useEffect(() => {
+    setFailed(new Set());
+  }, [candidateKey]);
+
+  const visible = candidates.filter((item) => !failed.has(item.key)).slice(0, maxVisible);
+  const hiddenCount = Math.max(0, foods.length - visible.length);
+  if (!visible.length && !hiddenCount) return null;
+  const sizeClass = compact ? "h-[30px] w-[30px]" : "h-9 w-9";
+
+  return (
+    <span className={`flex ${compact ? "h-[30px]" : "h-9"} shrink-0 items-center justify-start -space-x-2`} aria-hidden="true">
+      {visible.map((item) => (
+        <img
+          key={item.key}
+          src={item.src}
+          alt=""
+          width={compact ? 30 : 36}
+          height={compact ? 30 : 36}
+          loading="lazy"
+          decoding="async"
+          className={`${sizeClass} rounded-full border border-[#D4AF37]/35 bg-black/30 object-cover shadow-[0_8px_20px_rgba(0,0,0,.35)] ring-1 ring-black/60`}
+          onError={(event) => {
+            if (item.fallback && event.currentTarget.src !== item.fallback && !event.currentTarget.src.endsWith(item.fallback)) {
+              event.currentTarget.src = item.fallback;
+              return;
+            }
+            setFailed((current) => {
+              const next = new Set(current);
+              next.add(item.key);
+              return next;
+            });
+          }}
+        />
+      ))}
+      {hiddenCount ? (
+        <span className={`${sizeClass} grid place-items-center rounded-full border border-[#D4AF37]/35 bg-[#11151c] text-[10px] font-black text-[#FFE8A3] shadow-[0_8px_20px_rgba(0,0,0,.32)] ring-1 ring-black/60`}>
+          +{hiddenCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function mealVisualStyle(meal = {}, index = 0, state = {}) {
   const iconType = mealIconType(meal, index);
-  const styleMap = {
-    breakfast: "border-sky-300/15 bg-[linear-gradient(135deg,rgba(59,130,246,.20),rgba(212,175,55,.10))] text-[#FFD76B]",
-    lunch: "border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#FFD76B]",
-    snack: "border-rose-300/20 bg-rose-400/10 text-rose-300",
-    dinner: "border-indigo-300/20 bg-indigo-400/10 text-indigo-200",
-    generated: "border-emerald-300/25 bg-[linear-gradient(135deg,rgba(16,185,129,.16),rgba(212,175,55,.10))] text-emerald-200",
-    manual: "border-sky-300/25 bg-[linear-gradient(135deg,rgba(56,189,248,.14),rgba(212,175,55,.08))] text-sky-200",
-    meal: "border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#FFD76B]",
+  const base = {
+    breakfast: {
+      frame: "border-emerald-300/35 shadow-[0_0_28px_rgba(20,184,166,.18),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_18%,rgba(45,212,191,.28),transparent_34%),linear-gradient(135deg,#071f1b,#081015_60%,#07110f)]",
+      haze: "bg-[linear-gradient(90deg,rgba(45,212,191,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-emerald-300 to-teal-500",
+      icon: "border-emerald-300/35 bg-[radial-gradient(circle_at_50%_50%,rgba(255,215,107,.18),transparent_55%),rgba(45,212,191,.10)] text-[#FFD76B] shadow-[0_0_24px_rgba(45,212,191,.24)]",
+      status: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-emerald-300/60 bg-emerald-400/15 text-emerald-200 shadow-[0_0_22px_rgba(16,185,129,.28)]",
+      pendingButton: "border-emerald-300/35 bg-black/25 text-emerald-200",
+    },
+    lunch: {
+      frame: "border-[#D4AF37]/38 shadow-[0_0_28px_rgba(212,175,55,.18),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_20%,rgba(212,175,55,.25),transparent_34%),linear-gradient(135deg,#1d1a08,#0f1208_62%,#080b0b)]",
+      haze: "bg-[linear-gradient(90deg,rgba(212,175,55,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-[#FFD76B] to-[#D4AF37]",
+      icon: "border-[#D4AF37]/40 bg-[radial-gradient(circle_at_50%_50%,rgba(255,215,107,.20),transparent_55%),rgba(212,175,55,.09)] text-[#FFD76B] shadow-[0_0_24px_rgba(212,175,55,.26)]",
+      status: "border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-[#D4AF37]/60 bg-[#D4AF37]/14 text-[#FFE8A3] shadow-[0_0_22px_rgba(212,175,55,.24)]",
+      pendingButton: "border-[#D4AF37]/35 bg-black/25 text-[#FFE8A3]",
+    },
+    snack: {
+      frame: "border-rose-300/38 shadow-[0_0_28px_rgba(244,114,182,.18),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_20%,rgba(244,114,182,.24),transparent_34%),linear-gradient(135deg,#23101a,#120d13_62%,#080b0f)]",
+      haze: "bg-[linear-gradient(90deg,rgba(244,114,182,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-rose-300 to-pink-500",
+      icon: "border-rose-300/40 bg-[radial-gradient(circle_at_50%_50%,rgba(244,114,182,.18),transparent_55%),rgba(244,114,182,.09)] text-rose-200 shadow-[0_0_24px_rgba(244,114,182,.24)]",
+      status: "border-rose-300/30 bg-rose-400/10 text-rose-100",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-rose-300/60 bg-rose-400/14 text-rose-100 shadow-[0_0_22px_rgba(244,114,182,.22)]",
+      pendingButton: "border-rose-300/35 bg-black/25 text-rose-100",
+    },
+    dinner: {
+      frame: "border-indigo-300/38 shadow-[0_0_28px_rgba(129,140,248,.18),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_20%,rgba(129,140,248,.24),transparent_34%),linear-gradient(135deg,#0e1530,#090f1f_62%,#06090f)]",
+      haze: "bg-[linear-gradient(90deg,rgba(129,140,248,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-indigo-300 to-blue-500",
+      icon: "border-indigo-300/40 bg-[radial-gradient(circle_at_50%_50%,rgba(129,140,248,.18),transparent_55%),rgba(129,140,248,.09)] text-indigo-100 shadow-[0_0_24px_rgba(129,140,248,.24)]",
+      status: "border-indigo-300/30 bg-indigo-400/10 text-indigo-100",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-indigo-300/60 bg-indigo-400/14 text-indigo-100 shadow-[0_0_22px_rgba(129,140,248,.22)]",
+      pendingButton: "border-indigo-300/35 bg-black/25 text-indigo-100",
+    },
+    generated: {
+      frame: "border-emerald-300/35 shadow-[0_0_28px_rgba(16,185,129,.18),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_20%,rgba(16,185,129,.22),transparent_34%),linear-gradient(135deg,#0c211c,#081116_62%,#070b0f)]",
+      haze: "bg-[linear-gradient(90deg,rgba(16,185,129,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-emerald-300 to-[#D4AF37]",
+      icon: "border-emerald-300/35 bg-emerald-300/10 text-emerald-100 shadow-[0_0_24px_rgba(16,185,129,.22)]",
+      status: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-emerald-300/60 bg-emerald-400/15 text-emerald-200 shadow-[0_0_22px_rgba(16,185,129,.28)]",
+      pendingButton: "border-emerald-300/35 bg-black/25 text-emerald-200",
+    },
+    manual: {
+      frame: "border-sky-300/35 shadow-[0_0_28px_rgba(56,189,248,.16),0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[radial-gradient(circle_at_9%_20%,rgba(56,189,248,.20),transparent_34%),linear-gradient(135deg,#0c1d25,#081116_62%,#070b0f)]",
+      haze: "bg-[linear-gradient(90deg,rgba(56,189,248,.08),transparent_48%)]",
+      rail: "bg-gradient-to-b from-sky-300 to-[#D4AF37]",
+      icon: "border-sky-300/35 bg-sky-300/10 text-sky-100 shadow-[0_0_24px_rgba(56,189,248,.22)]",
+      status: "border-sky-300/30 bg-sky-300/10 text-sky-100",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-sky-300/60 bg-sky-400/15 text-sky-100 shadow-[0_0_22px_rgba(56,189,248,.24)]",
+      pendingButton: "border-sky-300/35 bg-black/25 text-sky-100",
+    },
+    meal: {
+      frame: "border-white/10 shadow-[0_16px_34px_rgba(0,0,0,.34)]",
+      card: "bg-[linear-gradient(135deg,#101824,#090f17)]",
+      haze: "bg-[linear-gradient(90deg,rgba(255,255,255,.035),transparent_48%)]",
+      rail: "bg-gradient-to-b from-[#D4AF37] to-zinc-600",
+      icon: "border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFD76B] shadow-[0_0_20px_rgba(212,175,55,.18)]",
+      status: "border-white/10 bg-white/[0.055] text-zinc-300",
+      kcalText: "text-[#FFD76B]",
+      doneButton: "border-emerald-300/55 bg-emerald-400/15 text-emerald-200 shadow-[0_0_22px_rgba(16,185,129,.22)]",
+      pendingButton: "border-white/18 bg-black/25 text-zinc-300",
+    },
   };
+
+  if (state.manual) return base.manual;
+  if (state.generated) return base.generated;
+  if (state.done && iconType === "meal") return { ...base.meal, status: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100" };
+  return base[iconType] || base.meal;
+}
+
+function MealTypeIcon({ meal, index, done, size = "md" }) {
+  const iconType = mealIconType(meal, index);
+  const visual = mealVisualStyle(meal, index, { done });
   const icons = {
     breakfast: Sunrise,
     lunch: Sun,
     snack: Apple,
-    dinner: Moon,
+    dinner: MoonStar,
     generated: Calculator,
     manual: Utensils,
     meal: Utensils,
   };
   const Icon = icons[iconType] || Utensils;
+  const sizeClass = size === "lg" ? "h-[58px] w-[58px] rounded-[1.05rem]" : "h-12 w-12 rounded-2xl";
+  const iconSize = size === "lg" ? 31 : 23;
   return (
-    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border ${styleMap[iconType] || styleMap.meal} ${done ? "ring-1 ring-emerald-300/25" : ""}`}>
-      <Icon size={23} />
+    <span className={`grid shrink-0 place-items-center border ${sizeClass} ${visual.icon} ${done ? "ring-1 ring-white/20" : ""}`}>
+      <Icon size={iconSize} strokeWidth={1.7} />
     </span>
   );
 }
@@ -3054,6 +3378,7 @@ function TodayHero({
   onView,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onOpenRemaining,
   onDeleteManual,
   canMarkMeals,
@@ -3159,6 +3484,7 @@ function TodayHero({
             effectiveMeals={effectiveMeals}
                 onToggleMeal={onToggleMeal}
                 onOpenMeal={onOpenMeal}
+                onSaveAsSavedMeal={onSaveAsSavedMeal}
                 onDeleteManual={onDeleteManual}
                 canMarkMeals={canMarkMeals}
             saving={saving}
@@ -3207,6 +3533,7 @@ function DesktopMealsSection({
   weekRows = [],
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
   onDeleteManual,
@@ -3241,6 +3568,7 @@ function DesktopMealsSection({
             effectiveMeals={effectiveMeals}
             onToggleMeal={onToggleMeal}
             onOpenMeal={onOpenMeal}
+            onSaveAsSavedMeal={onSaveAsSavedMeal}
             onDeleteManual={onDeleteManual}
             canMarkMeals={canMarkMeals}
             saving={saving}
@@ -3269,6 +3597,7 @@ function DesktopMealsGrid({
   effectiveMeals = [],
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onDeleteManual,
   canMarkMeals,
   saving,
@@ -3284,6 +3613,7 @@ function DesktopMealsGrid({
           entry={entry}
           onToggleMeal={onToggleMeal}
           onOpenMeal={onOpenMeal}
+          onSaveAsSavedMeal={onSaveAsSavedMeal}
           onDeleteManual={onDeleteManual}
           canMarkMeals={canMarkMeals}
           saving={saving}
@@ -3299,6 +3629,7 @@ function DesktopMealCard({
   entry,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onDeleteManual,
   canMarkMeals,
   saving,
@@ -3310,11 +3641,40 @@ function DesktopMealCard({
   const foods = mealFoods(meal);
   const visibleFoods = compact ? foods.slice(0, 3) : foods.slice(0, 5);
   const hiddenCount = Math.max(0, foods.length - visibleFoods.length);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const completedVisual = done || generated;
   const replacementNames = (generatedEntry?.replacesMealNames?.length
     ? generatedEntry.replacesMealNames
     : (entry.replacedOriginalMeals || []).map((item) => mealName(item.meal, item.mealIndex)))
     || meal.replacementMeta?.replacesMealNames
     || [];
+  const statusLabel = manual ? "Registrado" : generated ? "Generada" : done ? "Hecha" : "Pendiente";
+  const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
+  const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
+
+  function toggleExpanded() {
+    setIsExpanded((value) => !value);
+  }
+
+  function handlePrimaryAction(event) {
+    event.stopPropagation();
+    if (manual) {
+      onDeleteManual?.(row, entry.manualEntry);
+      return;
+    }
+    if (generated) return;
+    onToggleMeal(row, trackingMeal, mealIndex);
+  }
+
+  function openMealDetail(event) {
+    event.stopPropagation();
+    onOpenMeal?.(detailPayload);
+  }
+
+  function saveAsMeal(event) {
+    event.stopPropagation();
+    onSaveAsSavedMeal?.(meal, mealIndex);
+  }
 
   return (
     <article className={`relative overflow-hidden rounded-3xl border p-4 shadow-[0_16px_34px_rgba(0,0,0,.24)] ${
@@ -3331,105 +3691,123 @@ function DesktopMealCard({
       ) : null}
 
       <div className="flex items-start gap-3">
-        <MealTypeIcon meal={meal} index={mealIndex} done={done || generated} />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h5 className="min-w-0 truncate text-lg font-black text-white">{mealName(meal, mealIndex)}</h5>
-            {manual ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-1 text-[10px] font-black text-sky-100">
-                <Utensils size={12} />
-                Registrado
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          aria-expanded={isExpanded}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left active:scale-[0.995]"
+        >
+          <MealTypeIcon meal={meal} index={mealIndex} done={completedVisual} />
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="min-w-0 truncate text-lg font-black text-white">{mealName(meal, mealIndex)}</span>
+              <span className="shrink-0 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
+                {displayKcal(totals.kcal)}
               </span>
-            ) : generated ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-100">
-                <Calculator size={12} />
-                Para esta semana
+            </span>
+            <span className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black ${
+                manual
+                  ? "border-sky-300/25 bg-sky-300/10 text-sky-100"
+                  : completedVisual
+                    ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+                    : "border-white/10 bg-black/20 text-zinc-400"
+              }`}>
+                <StatusIcon size={12} />
+                {statusLabel}
               </span>
-            ) : (
-              <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${done ? toneClass("green") : toneClass("slate")}`}>
-                {done ? "Cumplida" : "Pendiente"}
-              </span>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
-              {displayKcal(totals.kcal)}
+              {!isExpanded ? <MobileFoodThumbStack foods={foods} compact maxVisible={5} /> : null}
             </span>
-            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
-              P {formatNumber(totals.proteina, 0)} g
-            </span>
-            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
-              C {formatNumber(totals.carbs, 0)} g
-            </span>
-            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-bold text-zinc-300">
-              G {formatNumber(totals.grasas, 0)} g
-            </span>
-          </div>
-          {generated && replacementNames.length ? (
-            <div className="mt-2 truncate text-xs font-black text-emerald-200/90">
-              Reemplaza: {replacementNames.join(" + ")}
-            </div>
-          ) : null}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={manual ? saving : generated || !canMarkMeals || saving}
+            onClick={handlePrimaryAction}
+            className={`grid h-10 w-10 place-items-center rounded-full border text-xs font-black disabled:opacity-50 ${
+              manual
+                ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
+                : completedVisual
+                  ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-100"
+                  : "border-white/10 bg-white/[0.04] text-zinc-400"
+            }`}
+            aria-pressed={manual ? undefined : done}
+            aria-label={manual ? "Eliminar registro manual" : generated ? "Comida generada" : done ? "Comida completa" : "Marcar comida completa"}
+          >
+            {manual ? <Trash2 size={17} /> : generated ? <Calculator size={17} /> : done ? <CheckCircle2 size={18} /> : <Square size={17} />}
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleExpanded();
+            }}
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-400"
+            aria-label={isExpanded ? "Contraer comida" : "Expandir comida"}
+            aria-expanded={isExpanded}
+          >
+            {isExpanded ? <ChevronLeft size={18} className="rotate-90" /> : <ChevronRight size={18} className="rotate-90" />}
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-1.5">
-        {visibleFoods.length ? visibleFoods.map((food, index) => (
-          <div key={`${food.id}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-black/20 px-3 py-2 text-sm">
-            <span className="flex min-w-0 items-center gap-2">
-              <FoodThumb food={food} size="sm" />
-              <span className="min-w-0 truncate font-bold text-zinc-100">{food.name}</span>
-            </span>
-            <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
-              {food.amount || foodMacroLine(food) || "s/d"}
-            </span>
+      {isExpanded ? (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-3 transition-[max-height,opacity] duration-200 ease-out">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <MobileMealMacroChip label="P" value={totals.proteina} />
+            <MobileMealMacroChip label="C" value={totals.carbs} />
+            <MobileMealMacroChip label="G" value={totals.grasas} />
           </div>
-        )) : (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
-            Sin alimentos cargados.
+          {generated && replacementNames.length ? (
+            <div className="mt-3 truncate text-xs font-black text-emerald-200/90">
+              Reemplaza: {replacementNames.join(" + ")}
+            </div>
+          ) : null}
+          <div className="mt-3 grid gap-1.5">
+            {visibleFoods.length ? visibleFoods.map((food, index) => (
+              <div key={`${food.id}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-black/20 px-3 py-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <FoodThumb food={food} size="sm" />
+                  <span className="min-w-0 truncate font-bold text-zinc-100">{food.name}</span>
+                </span>
+                <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-xs font-black text-[#FFE8A3]">
+                  {food.amount || foodMacroLine(food) || "s/d"}
+                </span>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
+                Sin alimentos cargados.
+              </div>
+            )}
+            {hiddenCount ? (
+              <div className="px-1 text-xs font-black text-[#FFE8A3]">+{hiddenCount} alimentos mas</div>
+            ) : null}
           </div>
-        )}
-        {hiddenCount ? (
-          <div className="px-1 text-xs font-black text-[#FFE8A3]">+{hiddenCount} alimentos mas</div>
-        ) : null}
-      </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        {manual ? (
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => onDeleteManual?.(row, entry.manualEntry)}
-            className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-3 text-xs font-black text-rose-100 disabled:opacity-50"
-          >
-            <Trash2 size={16} />
-            Eliminar registro
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={generated || !canMarkMeals || saving}
-            onClick={() => onToggleMeal(row, trackingMeal, mealIndex)}
-            className={`inline-flex min-h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-black disabled:opacity-50 ${
-              done
-                ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-100"
-                : "border-white/10 bg-white/[0.04] text-zinc-200"
-            }`}
-            aria-pressed={done}
-          >
-            {generated ? <Calculator size={16} /> : done ? <CheckCircle2 size={16} /> : <Square size={16} />}
-            {generated ? "Generada" : done ? "Comida completa" : "Marcar completa"}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onOpenMeal?.({ row, meal, baseMeal: trackingMeal, mealIndex, generated, manual })}
-          className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]"
-        >
-          Detalle de comida
-          <ChevronRight size={16} />
-        </button>
-      </div>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={openMealDetail}
+              className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-xs font-black text-zinc-100"
+            >
+              Detalle de comida
+              <Eye size={15} />
+            </button>
+            {onSaveAsSavedMeal ? (
+              <button
+                type="button"
+                onClick={saveAsMeal}
+                disabled={saving || !foods.length}
+                className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-55"
+              >
+                Guardar en Mis comidas
+                <Plus size={15} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -3503,6 +3881,7 @@ function DayDetailDrawer({
   onMarkMissed,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onOpenRemaining,
   onRestoreGenerated,
   canMarkMeals,
@@ -3529,6 +3908,7 @@ function DayDetailDrawer({
             onMarkMissed={onMarkMissed}
             onToggleMeal={onToggleMeal}
             onOpenMeal={onOpenMeal}
+            onSaveAsSavedMeal={onSaveAsSavedMeal}
             onOpenRemaining={onOpenRemaining}
             onRestoreGenerated={onRestoreGenerated}
             canMarkMeals={canMarkMeals}
@@ -3548,6 +3928,7 @@ function DayDetail({
   onMarkMissed,
   onToggleMeal,
   onOpenMeal,
+  onSaveAsSavedMeal,
   onOpenRemaining,
   onRestoreGenerated,
   canMarkMeals,
@@ -3615,6 +3996,7 @@ function DayDetail({
         weekRows={weekRows}
         onToggleMeal={onToggleMeal}
         onOpenMeal={onOpenMeal}
+        onSaveAsSavedMeal={onSaveAsSavedMeal}
         onRestoreGenerated={onRestoreGenerated}
         canMarkMeals={canMarkMeals}
         saving={saving}
@@ -3704,6 +4086,7 @@ function MobileMealDetailDrawer({
   canReplaceMeals,
   canReplaceFoods,
   onApplyMealReplacement,
+  onSaveAsSavedMeal,
   saving,
 }) {
   const row = useMemo(() => context?.row || {}, [context?.row]);
@@ -3779,6 +4162,19 @@ function MobileMealDetailDrawer({
               {done ? <CheckSquare2 size={20} /> : <Square size={20} />}
             </button>
           )}
+
+          <button
+            type="button"
+            disabled={saving || !foods.length}
+            onClick={() => onSaveAsSavedMeal?.(meal, mealIndex)}
+            className="mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3] shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Plus size={17} className="shrink-0" />
+              <span className="truncate">Guardar en Mis comidas</span>
+            </span>
+            {saving ? <RefreshCw size={18} className="shrink-0 animate-spin" /> : <ChevronRight size={18} className="shrink-0" />}
+          </button>
 
           {!generated && !manual ? (
             <button

@@ -1,15 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Bookmark,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Flame,
+  ClipboardList,
+  Crosshair,
   Loader2,
+  MoreVertical,
+  MoonStar,
   Plus,
   Search,
   SlidersHorizontal,
+  Star,
+  Sun,
+  Sunrise,
   Trash2,
   Utensils,
   X,
@@ -57,6 +65,7 @@ export default function TrackingDiario() {
   const [mealSettings, setMealSettings] = useState(() => loadMealSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState(() => loadMealSettings());
+  const [openMealMenu, setOpenMealMenu] = useState("");
   const [toast, setToast] = useState(null);
 
   const trackingQuery = useTrackingDay(date);
@@ -73,7 +82,6 @@ export default function TrackingDiario() {
   const objective = tracking.objetivo || null;
   const remaining = tracking.remaining || remainingTotals(objective, totals);
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
-  const objectiveTitle = tracking.planificado ? "Planificado" : objective ? "Objetivo diario" : "Objetivo";
   const objectiveHint = tracking.planificado
     ? tracking.planificado.nombre || "Menu asignado activo"
     : tracking.objetivoSource === "metasActuales"
@@ -93,6 +101,11 @@ export default function TrackingDiario() {
     if (!selectedPreview) return [];
     return trackingIssues(objective, addTotals(totals, selectedPreview));
   }, [objective, selectedPreview, totals]);
+  const diaryStatusText = trackingQuery.isLoading
+    ? "Cargando diario"
+    : isSaving
+      ? "Guardando cambios"
+      : "Diario guardado";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 260);
@@ -229,6 +242,23 @@ export default function TrackingDiario() {
     );
   }
 
+  function clearMeal(mealId, items = []) {
+    if (!items.length || deleteMutation.isPending) {
+      setToast({ type: "warning", message: "No hay alimentos para vaciar." });
+      return;
+    }
+    items.forEach((item) => {
+      if (item?.id) deleteMutation.mutate({ logId: item.id, date });
+    });
+    setOpenMealMenu("");
+    setToast({ type: "success", message: "Comida vaciada." });
+  }
+
+  function mealMenuFeedback(label) {
+    setOpenMealMenu("");
+    setToast({ type: "info", message: `${label} va a estar disponible desde el flujo de comidas guardadas.` });
+  }
+
   return (
     <div className="td-page">
       <section className="td-shell">
@@ -236,58 +266,47 @@ export default function TrackingDiario() {
           <div>
             <div className="td-kicker">
               <CalendarDays size={15} strokeWidth={2.3} aria-hidden="true" />
-              Diario guardado
+              {diaryStatusText}
             </div>
             <h1>Tracking diario</h1>
             <p>Registra lo que comiste y compara tus macros reales contra tu objetivo diario.</p>
           </div>
-          <div className="td-heroTools">
-            <div className="td-dateNav" aria-label="Selector de fecha">
-              <button type="button" onClick={() => shiftDate(-1)} aria-label="Dia anterior">
-                <ChevronLeft size={17} strokeWidth={2.4} aria-hidden="true" />
-              </button>
-              <div className="td-date">{formatDateLabel(date)}</div>
-              <button type="button" onClick={() => shiftDate(1)} aria-label="Dia siguiente">
-                <ChevronRight size={17} strokeWidth={2.4} aria-hidden="true" />
-              </button>
-            </div>
-            <button type="button" className="td-settingsBtn" onClick={openSettings}>
-              <SlidersHorizontal size={17} />
-              Ajustes
-            </button>
-          </div>
         </header>
 
-        {trackingQuery.isLoading ? (
-          <div className="td-saveNotice">
-            <Loader2 size={16} className="td-spin" aria-hidden="true" />
-            Cargando tu diario guardado...
+        <div className="td-dateNav" aria-label="Selector de fecha">
+          <button type="button" onClick={() => shiftDate(-1)} aria-label="Dia anterior">
+            <ChevronLeft size={21} strokeWidth={2.6} aria-hidden="true" />
+          </button>
+          <div className="td-date">
+            <CalendarDays size={18} strokeWidth={2.4} aria-hidden="true" />
+            <span>{formatDateLabel(date)}</span>
           </div>
-        ) : (
-          <div className="td-saveNotice">
-            <Flame size={16} aria-hidden="true" />
-            {isSaving ? "Guardando cambios..." : "Los cambios se guardan en tu cuenta."}
-          </div>
-        )}
+          <button type="button" onClick={() => shiftDate(1)} aria-label="Dia siguiente">
+            <ChevronRight size={21} strokeWidth={2.6} aria-hidden="true" />
+          </button>
+        </div>
+
+        <button type="button" className="td-actionRow" onClick={openSettings}>
+          <span className="td-actionIcon">
+            <SlidersHorizontal size={20} strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <span>Ajustes</span>
+          <ChevronRight size={22} strokeWidth={2.4} aria-hidden="true" />
+        </button>
+
         {trackingQuery.error ? (
           <div className="td-error">No se pudo cargar el tracking diario.</div>
         ) : null}
 
         <section className="td-goalCard">
-          <div className="td-goalMain">
-            <span>{objectiveTitle}</span>
-            <strong>{objective ? macroLine(objective) : "Sin objetivo configurado"}</strong>
-            <small>{objectiveHint}</small>
-          </div>
-          <div className="td-goalStats">
-            <MiniTotals label="Registrado" totals={totals} />
-            <MiniTotals label="Restante" totals={remaining} muted={!remaining} />
-          </div>
+          <MiniTotals label="Objetivo diario" totals={objective || emptyTotals()} hint={objectiveHint} />
+          <MiniTotals label="Registrado" totals={totals} />
+          <MiniTotals label="Restante" totals={remaining || emptyTotals()} muted={!remaining} />
         </section>
 
         <section className="td-summary">
           <MacroProgress label="Kcal" value={totals.kcal} target={objective?.kcal} tone="kcal" />
-          <MacroProgress label="Proteina" value={totals.proteina} target={objective?.proteina} suffix="g" tone="protein" />
+          <MacroProgress label="Proteína" value={totals.proteina} target={objective?.proteina} suffix="g" tone="protein" />
           <MacroProgress label="Carbs" value={totals.carbs} target={objective?.carbs} suffix="g" tone="carbs" />
           <MacroProgress label="Grasas" value={totals.grasas} target={objective?.grasas} suffix="g" tone="fat" />
         </section>
@@ -298,46 +317,78 @@ export default function TrackingDiario() {
           {meals.map((meal) => {
             const items = log[meal.id] || [];
             const mealTotals = totalItems(items);
+            const mealMenuOpen = openMealMenu === meal.id;
             return (
               <article className="td-meal" key={meal.id}>
                 <div className="td-mealHead">
-                  <div>
-                    <h2>{meal.label}</h2>
-                    <p>{macroLine(mealTotals)}</p>
-                    <div className="td-mealMeta">
-                      <span>{mealTypeLabel(meal.type)}</span>
-                      <span>{mealTargetLine(meal.target)}</span>
+                  <div className="td-mealTitleRow">
+                    <MealTypeBadge type={meal.type} />
+                    <div>
+                      <h2>{meal.label}</h2>
+                      <p>{macroLine(mealTotals)}</p>
+                      <div className="td-mealMeta">
+                        <span>{mealTypeLabel(meal.type)}</span>
+                        <span>{mealTargetLine(meal.target)}</span>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="td-iconBtn"
-                    onClick={() => openAdd(meal.id)}
-                    aria-label={`Agregar en ${meal.label}`}
-                  >
-                    <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
-                  </button>
+                  <div className="td-mealButtons">
+                    <button
+                      type="button"
+                      className="td-iconBtn add"
+                      onClick={() => openAdd(meal.id)}
+                      aria-label={`Agregar en ${meal.label}`}
+                    >
+                      <Plus size={23} strokeWidth={2.3} aria-hidden="true" />
+                    </button>
+                    <div className="td-menuWrap">
+                      <button
+                        type="button"
+                        className={`td-iconBtn menu ${mealMenuOpen ? "active" : ""}`}
+                        onClick={() => setOpenMealMenu((current) => current === meal.id ? "" : meal.id)}
+                        aria-expanded={mealMenuOpen}
+                        aria-label={`Opciones de ${meal.label}`}
+                      >
+                        <MoreVertical size={22} strokeWidth={2.4} aria-hidden="true" />
+                      </button>
+                      {mealMenuOpen ? (
+                        <MealOptionsMenu
+                          mealLabel={meal.label}
+                          onSaveMeal={() => mealMenuFeedback("Guardar como comida")}
+                          onFavorite={() => mealMenuFeedback("Guardar como favorita")}
+                          onUseSaved={() => mealMenuFeedback("Usar comida guardada")}
+                          onGenerate={() => mealMenuFeedback("Generar comida segun objetivo")}
+                          onClear={() => clearMeal(meal.id, items)}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
 
                 {items.length ? (
                   <div className="td-foodList">
                     {items.map((item) => (
                       <div className="td-food" key={item.id}>
+                        <FoodLogThumb item={item} />
                         <div className="td-foodMain">
                           <strong>{item.nombreSnapshot}</strong>
                           <span>
-                            {formatNumber(item.kcal)} kcal - P {formatNumber(item.proteina, 1)} / C{" "}
-                            {formatNumber(item.carbs, 1)} / G {formatNumber(item.grasas, 1)}
+                            {formatNumber(item.kcal)} kcal
                           </span>
+                          <small>
+                            P {formatNumber(item.proteina, 1)}g · C {formatNumber(item.carbs, 1)}g · G {formatNumber(item.grasas, 1)}g
+                          </small>
                         </div>
                         <div className="td-foodActions">
-                          <input
-                            key={`${item.id}-${item.cantidad}`}
-                            defaultValue={item.cantidad}
-                            onBlur={(event) => updateQuantity(meal.id, item, event.target.value)}
-                            aria-label="Cantidad"
-                          />
-                          <span>{item.unidad}</span>
+                          <label>
+                            <input
+                              key={`${item.id}-${item.cantidad}`}
+                              defaultValue={item.cantidad}
+                              onBlur={(event) => updateQuantity(meal.id, item, event.target.value)}
+                              aria-label="Cantidad"
+                            />
+                            <span>{item.unidad}</span>
+                          </label>
                           <button
                             type="button"
                             onClick={() => removeFood(item)}
@@ -353,6 +404,11 @@ export default function TrackingDiario() {
                 ) : (
                   <div className="td-empty compact">Todavia no registraste alimentos en esta comida.</div>
                 )}
+
+                <button type="button" className="td-mealSummary">
+                  <span>Ver resumen del {meal.label.toLowerCase()}</span>
+                  <ChevronDown size={20} strokeWidth={2.4} aria-hidden="true" />
+                </button>
               </article>
             );
           })}
@@ -457,35 +513,107 @@ export default function TrackingDiario() {
   );
 }
 
-function MacroProgress({ label, value, target, suffix = "", tone }) {
-  const hasTarget = Number(target) > 0;
-  const pct = hasTarget ? Math.min(100, Math.max(0, (value / target) * 100)) : 0;
+function MealTypeBadge({ type = "" }) {
+  const normalized = String(type || "").toLowerCase();
+  const Icon = normalized === "desayuno"
+    ? Sunrise
+    : normalized === "almuerzo"
+      ? Sun
+      : normalized === "cena"
+        ? MoonStar
+        : Utensils;
   return (
-    <div className={`td-macro ${tone}`}>
-      <div className="td-macroTop">
-        <span>{label}</span>
-        <strong>
-          {formatNumber(value, 0)}
-          {suffix}
-        </strong>
-      </div>
-      <div className="td-bar">
-        <span style={{ width: `${pct}%` }} />
-      </div>
-      <small>
-        Objetivo {hasTarget ? formatNumber(target, 0) : "-"}
-        {hasTarget ? suffix : ""}
-      </small>
+    <span className={`td-mealBadge ${normalized || "libre"}`} aria-hidden="true">
+      <Icon size={24} strokeWidth={1.9} />
+    </span>
+  );
+}
+
+function MealOptionsMenu({ onSaveMeal, onFavorite, onUseSaved, onGenerate, onClear }) {
+  return (
+    <div className="td-mealMenu" role="menu">
+      <button type="button" onClick={onSaveMeal} role="menuitem">
+        <Bookmark size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Guardar como comida</span>
+      </button>
+      <button type="button" onClick={onFavorite} role="menuitem">
+        <Star size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Guardar como favorita</span>
+      </button>
+      <button type="button" onClick={onUseSaved} role="menuitem">
+        <ClipboardList size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Usar comida guardada</span>
+      </button>
+      <button type="button" onClick={onGenerate} role="menuitem">
+        <Crosshair size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Generar comida segun objetivo</span>
+      </button>
+      <button type="button" className="danger" onClick={onClear} role="menuitem">
+        <Trash2 size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Vaciar comida</span>
+      </button>
     </div>
   );
 }
 
-function MiniTotals({ label, totals, muted = false }) {
+function FoodLogThumb({ item = {} }) {
+  const [failed, setFailed] = useState(false);
+  const src = item.imagenUrl || item.imageUrl || item.imagen?.url || "";
+  const fallback = getFoodImageUrl({
+    nombre: item.nombreSnapshot,
+    name: item.nombreSnapshot,
+    categoria: item.categoriaSnapshot,
+  });
+  const initial = String(item.nombreSnapshot || "?").trim().charAt(0).toUpperCase() || "?";
+
+  if (failed || (!src && !fallback)) {
+    return <span className="td-foodThumb fallback" aria-hidden="true">{initial}</span>;
+  }
+
+  return (
+    <img
+      className="td-foodThumb"
+      src={src || fallback}
+      alt={item.nombreSnapshot || "Alimento"}
+      width={48}
+      height={48}
+      loading="lazy"
+      decoding="async"
+      onError={(event) => {
+        if (fallback && event.currentTarget.src !== fallback && !event.currentTarget.src.endsWith(fallback)) {
+          event.currentTarget.src = fallback;
+          return;
+        }
+        setFailed(true);
+      }}
+    />
+  );
+}
+
+function MacroProgress({ label, value, target, suffix = "", tone }) {
+  const hasTarget = Number(target) > 0;
+  const pct = hasTarget ? Math.min(100, Math.max(0, (value / target) * 100)) : 0;
+  const current = `${formatNumber(value, 0)}${suffix}`;
+  const goal = `${hasTarget ? formatNumber(target, 0) : "0"}${suffix}`;
+  return (
+    <div className={`td-macro ${tone}`}>
+      <div className="td-macroTop">
+        <span>{label}</span>
+      </div>
+      <strong>{current} / {goal}</strong>
+      <div className="td-bar">
+        <span style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function MiniTotals({ label, totals, muted = false, hint = "" }) {
   return (
     <div className={`td-miniTotals ${muted ? "muted" : ""}`}>
       <span>{label}</span>
       <strong>{totals ? displayCompactKcal(totals.kcal) : "-"}</strong>
-      <small>{totals ? macroLineShort(totals) : "Sin comparacion"}</small>
+      <small>{hint || (totals ? macroLineShort(totals) : "Sin comparacion")}</small>
     </div>
   );
 }

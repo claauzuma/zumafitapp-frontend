@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
+  BookOpen,
   Dumbbell,
   LayoutDashboard,
   LoaderCircle,
@@ -220,7 +221,10 @@ function buildNavItems(me) {
   ];
 
   if (canRoutines) items.push({ to: "/profesional/rutinas", label: "Rutinas", icon: Dumbbell });
-  if (canMenus) items.push({ to: "/profesional/menus", label: "Menús", icon: Utensils });
+  if (canMenus) {
+    items.push({ to: "/profesional/menus", label: "Menús", icon: Utensils });
+    items.push({ to: "/profesional/comidas", label: "Plantillas", icon: BookOpen });
+  }
 
   items.push({ to: "/profesional/progreso", label: "Progreso", icon: Activity });
   items.push({ to: "/profesional/ajustes", label: "Ajustes", icon: Settings });
