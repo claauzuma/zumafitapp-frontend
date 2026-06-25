@@ -17,9 +17,32 @@ export async function getTrackingDay(date) {
   });
 }
 
+export async function getMenuTrackingWeek(start) {
+  return await apiFetch(`/api/usuarios/me/menu-tracking/week${qsFrom({ start })}`, {
+    method: "GET",
+    timeoutMs: 12000,
+  });
+}
+
 export async function addFoodLog(payload) {
   return await apiFetch("/api/tracking/day/logs", {
     method: "POST",
+    body: payload,
+    timeoutMs: 14000,
+  });
+}
+
+export async function updateTrackingMealsConfig(payload) {
+  return await apiFetch("/api/tracking/day/meals", {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 14000,
+  });
+}
+
+export async function deleteTrackingMeal(mealId, payload) {
+  return await apiFetch(`/api/tracking/day/meals/${mealId}`, {
+    method: "DELETE",
     body: payload,
     timeoutMs: 14000,
   });

@@ -1,0 +1,110 @@
+.route-loading {
+  display: grid;
+  min-height: min(360px, 70vh);
+  place-items: center;
+  padding: 20px;
+  color: #f8fbff;
+}
+
+.route-loading-card {
+  display: flex;
+  width: min(420px, 100%);
+  align-items: center;
+  gap: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(246, 212, 94, 0.12), transparent 38%),
+    linear-gradient(145deg, rgba(11, 21, 29, 0.98), rgba(4, 8, 13, 0.99));
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  padding: 16px;
+}
+
+.route-loading-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(246, 212, 94, 0.24);
+  border-radius: 13px;
+  background: rgba(246, 212, 94, 0.1);
+  color: #ffe480;
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.route-loading-mark.warning {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+}
+
+.route-loading-card div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.route-loading-card strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.route-loading-card span {
+  color: rgba(226, 236, 248, 0.68);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.route-loading-card i {
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border: 2px solid rgba(246, 212, 94, 0.18);
+  border-top-color: #ffe480;
+  border-radius: 999px;
+  animation: routeSpin 0.8s linear infinite;
+}
+
+.route-loading-actions {
+  display: flex;
+  flex-direction: row !important;
+  gap: 8px !important;
+  margin-left: auto;
+}
+
+.route-loading-actions button,
+.route-loading-actions a {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(246, 212, 94, 0.25);
+  border-radius: 11px;
+  background: rgba(246, 212, 94, 0.1);
+  color: #fff0a7;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+@keyframes routeSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .route-loading-card {
+    align-items: flex-start;
+  }
+
+  .route-loading-actions {
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+}

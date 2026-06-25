@@ -109,3 +109,26 @@ export async function assignProfessionalMealTemplate(id, clientIds = []) {
   });
   return data?.comida || null;
 }
+
+export async function previewAdminSavedMealsExcelImport(file, options = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  Object.entries(options).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    form.append(key, String(value));
+  });
+
+  return await apiFetch("/api/admin/comidas-globales/importar-excel/preview", {
+    method: "POST",
+    body: form,
+    timeoutMs: 30000,
+  });
+}
+
+export async function confirmAdminSavedMealsExcelImport(payload = {}) {
+  return await apiFetch("/api/admin/comidas-globales/importar-excel/confirm", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 30000,
+  });
+}

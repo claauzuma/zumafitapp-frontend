@@ -5,8 +5,10 @@ import {
   Calculator,
   CheckSquare2,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleAlert,
   ClipboardCheck,
   Eye,
@@ -1420,6 +1422,7 @@ export default function MenuPlan() {
   const [mealDrawer, setMealDrawer] = useState(null);
   const [foodDrawer, setFoodDrawer] = useState(null);
   const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
+  const [mealToggleConfirm, setMealToggleConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState("");
@@ -1528,9 +1531,25 @@ export default function MenuPlan() {
 
   function toggleMenuMeal(row, meal, index) {
     const id = mealId(meal, index);
+    const completed = new Set(trackingPayloadBase(row).completedMenuMealIds.map(String)).has(id);
+    setMealToggleConfirm({
+      row,
+      meal,
+      index,
+      completed,
+    });
+  }
+
+  function performToggleMenuMeal(payload = mealToggleConfirm) {
+    const row = payload?.row;
+    const meal = payload?.meal;
+    const index = payload?.index;
+    if (!row || !meal || index === undefined || saving) return;
+    const id = mealId(meal, index);
     const ids = new Set(trackingPayloadBase(row).completedMenuMealIds.map(String));
     if (ids.has(id)) ids.delete(id);
     else ids.add(id);
+    setMealToggleConfirm(null);
     const optimisticRow = rowWithTracking(row, {
       completedMenuMealIds: [...ids],
     });
@@ -1839,6 +1858,15 @@ export default function MenuPlan() {
 
         {(saving || refreshing) && weekData ? <MenuSyncIndicator /> : null}
 
+        {mealToggleConfirm ? (
+          <MealCompletionConfirmModal
+            payload={mealToggleConfirm}
+            saving={saving}
+            onCancel={() => setMealToggleConfirm(null)}
+            onConfirm={() => performToggleMenuMeal()}
+          />
+        ) : null}
+
         {loading ? <LoadingState /> : null}
         {error ? <ErrorState message={error} onRetry={() => loadWeek(weekStart)} /> : null}
 
@@ -2027,6 +2055,81 @@ function MenuSyncIndicator() {
   );
 }
 
+function MealCompletionConfirmModal({ payload, saving, onCancel, onConfirm }) {
+  const meal = payload?.meal || {};
+  const index = payload?.index || 0;
+  const completed = !!payload?.completed;
+  const totals = mealTotals(meal);
+  const title = completed ? "Volver a pendiente" : "Confirmar comida realizada";
+  const question = completed
+    ? "¿Querés volver a dejar esta comida como pendiente?"
+    : "¿Confirmás que realizaste esta comida?";
+  const detail = completed
+    ? "Se descontará de tu resumen de menú y volverá a figurar como pendiente."
+    : "Se sumará al resumen del día con sus calorías y macros planificados.";
+
+  return (
+    <section className="fixed inset-0 z-[120] flex items-center justify-center bg-black/78 px-4 py-6 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="meal-confirm-title">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onCancel} aria-label="Cerrar confirmacion" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-[1.6rem] border border-white/10 bg-[radial-gradient(circle_at_18%_0,rgba(212,175,55,.18),transparent_34%),radial-gradient(circle_at_100%_8%,rgba(16,185,129,.14),transparent_30%),linear-gradient(180deg,#111a25,#080d13)] p-4 shadow-[0_28px_90px_rgba(0,0,0,.68)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border ${completed ? "border-amber-200/30 bg-amber-300/10 text-[#FFE8A3]" : "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"}`}>
+              {completed ? <Square size={22} /> : <CheckCircle2 size={23} />}
+            </span>
+            <div className="min-w-0">
+              <span className="text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">{title}</span>
+              <h3 id="meal-confirm-title" className="mt-1 text-xl font-black leading-tight text-white">{question}</h3>
+            </div>
+          </div>
+          <button type="button" onClick={onCancel} disabled={saving} className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.055] text-zinc-100 disabled:opacity-50" aria-label="Cancelar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-white/10 bg-black/22 p-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <MealTypeIcon meal={meal} index={index} done={!completed} />
+            <div className="min-w-0">
+              <strong className="block truncate text-base font-black text-white">{mealName(meal, index)}</strong>
+              <span className="mt-1 block text-xs font-bold leading-relaxed text-zinc-400">{detail}</span>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            <ConfirmMacroPill label="Kcal" value={formatNumber(totals.kcal, 0)} tone="gold" />
+            <ConfirmMacroPill label="P" value={`${formatNumber(totals.proteina, 0)}g`} />
+            <ConfirmMacroPill label="C" value={`${formatNumber(totals.carbs, 0)}g`} />
+            <ConfirmMacroPill label="G" value={`${formatNumber(totals.grasas, 0)}g`} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[0.85fr_1.15fr]">
+          <button type="button" onClick={onCancel} disabled={saving} className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-zinc-200 transition active:scale-[0.99] disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className={`min-h-12 rounded-2xl px-4 text-sm font-black text-[#070707] shadow-[0_14px_30px_rgba(212,175,55,.20)] transition active:scale-[0.99] disabled:opacity-60 ${completed ? "bg-gradient-to-r from-[#FFE8A3] to-[#D4AF37]" : "bg-gradient-to-r from-emerald-200 to-[#D4AF37]"}`}
+          >
+            {saving ? "Guardando..." : completed ? "Dejar pendiente" : "Si, la realice"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ConfirmMacroPill({ label, value, tone = "neutral" }) {
+  return (
+    <span className={`rounded-2xl border px-2 py-2 text-center ${tone === "gold" ? "border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-white/[0.045] text-zinc-200"}`}>
+      <small className="block text-[9px] font-black uppercase tracking-wide opacity-75">{label}</small>
+      <strong className="mt-0.5 block text-xs font-black">{value}</strong>
+    </span>
+  );
+}
+
 function LoadingState() {
   return (
     <div className="rounded-3xl border border-[#D4AF37]/25 bg-[#11151c] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
@@ -2139,6 +2242,8 @@ function MobileDayMenu({
   canAutoCompleteRemaining,
   saving,
 }) {
+  const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+
   if (!row) return null;
   const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
   const choices = menuChoices(row);
@@ -2169,21 +2274,21 @@ function MobileDayMenu({
         />
       ) : null}
 
-      <section className="mt-2 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.14),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.09),transparent_36%),linear-gradient(145deg,#101923,#080d13)] p-3 shadow-[0_14px_34px_rgba(0,0,0,.30)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap gap-2">
-              <span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-black ${toneClass(activeMenuStatus.tone)}`}>
-                <Target size={13} />
-                {activeMenuStatus.label}
-              </span>
-              <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(statusMeta(row).tone)}`}>
-                {trackingLabel(row)}
-              </span>
-            </div>
-            <h2 className="mt-3 text-xl font-black leading-tight text-white">
-              Meta <span className="text-[#FFD76B]">{displayKcal(target.kcal)}</span>
-            </h2>
+      <MobileGoalAccordion
+        expanded={isGoalExpanded}
+        onToggle={() => setIsGoalExpanded((current) => !current)}
+        target={target}
+        consumed={consumed}
+        remaining={remaining}
+        percent={percent}
+        activeMenuStatus={activeMenuStatus}
+        trackingTone={statusMeta(row).tone}
+        trackingLabelText={trackingLabel(row)}
+        completedCount={completedCount}
+        mealsCount={countableMeals.length || 0}
+      />
+
+      {/*
             <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
               P {formatNumber(target.proteina, 0)} g · C {formatNumber(target.carbs, 0)} g · G {formatNumber(target.grasas, 0)} g
             </p>
@@ -2202,7 +2307,7 @@ function MobileDayMenu({
           <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
           <MobileMetric label="Comidas" value={`${completedCount} / ${countableMeals.length || 0}`} detail="completadas" tone="gold" />
         </div>
-      </section>
+      */}
 
       {!primary?.snapshot ? (
         <div className="mt-4">
@@ -2261,6 +2366,96 @@ function MobileDayMenu({
       <div className="mt-4">
         <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} />
       </div>
+    </section>
+  );
+}
+
+function MobileGoalAccordion({
+  expanded,
+  onToggle,
+  target = {},
+  consumed = {},
+  remaining = {},
+  percent = 0,
+  activeMenuStatus = {},
+  trackingTone = "slate",
+  trackingLabelText = "Pendiente",
+  completedCount = 0,
+  mealsCount = 0,
+}) {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const detailId = "mobile-goal-day-detail";
+  const ChevronIcon = expanded ? ChevronUp : ChevronDown;
+  const macroSummary = `P${formatNumber(target.proteina, 0)} / C${formatNumber(target.carbs, 0)} / G${formatNumber(target.grasas, 0)}`;
+
+  return (
+    <section className="mt-2 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_14px_34px_rgba(0,0,0,.30)]">
+      <button
+        type="button"
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 text-left"
+        aria-expanded={expanded}
+        aria-controls={detailId}
+        onClick={onToggle}
+      >
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
+          <Target size={18} strokeWidth={2.2} aria-hidden="true" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-black text-white">Meta del dÃ­a</span>
+          <span className="mt-0.5 block text-base font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
+          <span className="mt-0.5 block truncate text-[11px] font-black text-sky-200">{macroSummary}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="grid h-[54px] w-[54px] place-items-center rounded-full p-[4px]" style={{ background: `conic-gradient(#D4AF37 ${safePercent * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}>
+            <span className="grid h-full w-full place-items-center rounded-full bg-[#0b1119] text-center shadow-inner">
+              <span>
+                <strong className="block text-sm font-black text-white">{safePercent}%</strong>
+                <span className="block text-[8px] font-bold leading-none text-zinc-500">cumplimiento</span>
+              </span>
+            </span>
+          </span>
+          <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300">
+            <ChevronIcon size={16} strokeWidth={2.4} aria-hidden="true" />
+          </span>
+        </span>
+      </button>
+
+      {expanded ? (
+        <div id={detailId} className="border-t border-white/10 px-3 pb-3 pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-2">
+                <span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-black ${toneClass(activeMenuStatus.tone)}`}>
+                  <Target size={13} />
+                  {activeMenuStatus.label}
+                </span>
+                <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(trackingTone)}`}>
+                  {trackingLabelText}
+                </span>
+              </div>
+              <h2 className="mt-3 text-xl font-black leading-tight text-white">
+                Meta <span className="text-[#FFD76B]">{displayKcal(target.kcal)}</span>
+              </h2>
+              <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
+                P {formatNumber(target.proteina, 0)} g · C {formatNumber(target.carbs, 0)} g · G {formatNumber(target.grasas, 0)} g
+              </p>
+            </div>
+            <MobileProgressRing percent={percent} />
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MobileMetric
+              label="Consumido"
+              value={displayKcal(consumed.kcal)}
+              detail={`P ${formatNumber(consumed.proteina, 0)} / C ${formatNumber(consumed.carbs, 0)} / G ${formatNumber(consumed.grasas, 0)}`}
+              tone="green"
+              progress={target.kcal ? (consumed.kcal / target.kcal) * 100 : 0}
+            />
+            <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
+            <MobileMetric label="Comidas" value={`${completedCount} / ${mealsCount}`} detail="completadas" tone="gold" />
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -4068,11 +4263,19 @@ function EmptyMenu({ row }) {
         <strong>Sin menú asignado para {row?.dayLabel}</strong>
       </div>
       <p className="mt-2 text-sm font-semibold text-zinc-400">
-        Si tenés coach, va a aparecer cuando te asigne un menú. Si estás autogestionado, podés seguir usando el tracking detallado.
+        Organiza tu alimentacion a tu manera: crea un menu propio, explora la biblioteca ZumaFit o registra libremente en Tracking.
       </p>
-      <a href="/app/tracking" className="mt-4 inline-flex rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-4 py-2 text-sm font-black text-[#FFE8A3]">
-        Ir al tracking detallado
-      </a>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a href="/app/nutricion" className="inline-flex rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-4 py-2 text-sm font-black text-[#FFE8A3]">
+          Crear mi menu
+        </a>
+        <a href="/app/nutricion" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
+          Explorar ZumaFit
+        </a>
+        <a href="/app/tracking" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
+          Ir a Tracking
+        </a>
+      </div>
     </div>
   );
 }

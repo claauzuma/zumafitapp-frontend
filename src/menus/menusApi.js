@@ -148,3 +148,26 @@ export async function getFoodEquivalents(payload) {
     timeoutMs: 15000,
   });
 }
+
+export async function previewAdminMenusExcelImport(file, options = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  Object.entries(options).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    form.append(key, String(value));
+  });
+
+  return await apiFetch("/api/menus/admin/importar-excel/preview", {
+    method: "POST",
+    body: form,
+    timeoutMs: 30000,
+  });
+}
+
+export async function confirmAdminMenusExcelImport(payload = {}) {
+  return await apiFetch("/api/menus/admin/importar-excel/confirm", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 30000,
+  });
+}

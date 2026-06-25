@@ -1,6 +1,7 @@
 // src/bienvenida.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import BrandLogo from "./ui/BrandLogo.jsx";
 
 const CSS = `
 .lw{
@@ -47,6 +48,7 @@ const CSS = `
   align-items:center;
   gap:11px;
   min-width:0;
+  overflow:hidden;
 }
 
 .brand-mark{
@@ -79,6 +81,11 @@ const CSS = `
   font-weight:800;
   letter-spacing:.08em;
   text-transform:uppercase;
+}
+
+.brand-logoPublic .brand-logo-img{
+  height:52px;
+  max-width:225px;
 }
 
 .btn{
@@ -205,6 +212,11 @@ h1{
   .brand-sub{
     display:none;
   }
+
+  .brand-logoPublic .brand-logo-img{
+    height:46px;
+    max-width:188px;
+  }
 }
 `;
 
@@ -218,11 +230,7 @@ export default function Bienvenida() {
       <header className="lw-nav">
         <div className="nav-inner">
           <div className="brand" onClick={() => nav("/")}>
-            <span className="brand-mark">ZF</span>
-            <span className="brand-copy">
-              <span className="brand-title">ZumaFit</span>
-              <span className="brand-sub">Fitness & nutricion</span>
-            </span>
+            <BrandLogo className="brand-logoPublic" size="client" priority />
           </div>
 
           <button className="btn ghost" onClick={() => nav("/login")}>

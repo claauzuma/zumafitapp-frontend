@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { getCachedUser } from "../authCache.js";
+import BrandLogo from "../ui/BrandLogo.jsx";
 
 const CSS = `
 :root{
@@ -84,6 +85,14 @@ body:has(.zp-page) .cs-content{
   align-items:center;
   gap:12px;
   min-width:0;
+  overflow:hidden;
+}
+
+.zp-brand-stack{
+  display:grid;
+  min-width:0;
+  gap:2px;
+  justify-items:start;
 }
 
 .zp-logo{
@@ -114,6 +123,21 @@ body:has(.zp-page) .cs-content{
   color:var(--zp-muted);
   font-size:16px;
   line-height:1.1;
+}
+
+.zp-brandLogo{
+  min-width:0;
+}
+
+.zp-brandLogo .brand-logo-img{
+  height:52px;
+  max-width:215px;
+}
+
+.zp-brand-text.logo-caption span{
+  margin-top:0;
+  font-size:13px;
+  line-height:1.18;
 }
 
 .zp-header-actions{
@@ -998,6 +1022,13 @@ body:has(.zp-page) .cs-content{
   .zp-brand-text span{
     font-size:14px;
   }
+  .zp-brandLogo .brand-logo-img{
+    height:48px;
+    max-width:196px;
+  }
+  .zp-brand-text.logo-caption span{
+    font-size:12px;
+  }
   .zp-title-block h1{
     font-size:33px;
   }
@@ -1233,10 +1264,11 @@ function DesktopProgressScreen({ userName, activeTab, onTabChange, range, onRang
                 <span className="zp-notification-dot" />
               </button>
               <div className="zp-brand">
-                <div className="zp-logo">Z</div>
-                <div className="zp-brand-text">
-                  <strong>ZumaFit</strong>
-                  <span>Hola, {userName}</span>
+                <div className="zp-brand-stack">
+                  <BrandLogo className="zp-brandLogo" size="client" priority />
+                  <div className="zp-brand-text logo-caption">
+                    <span>Hola, {userName}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1262,10 +1294,11 @@ function AppHeader({ userName, onMenu }) {
   return (
     <header className="zp-topbar">
       <div className="zp-brand">
-        <div className="zp-logo">Z</div>
-        <div className="zp-brand-text">
-          <strong>ZumaFit</strong>
+        <div className="zp-brand-stack">
+          <BrandLogo className="zp-brandLogo" size="client" priority />
+          <div className="zp-brand-text logo-caption">
           <span>Hola, {userName} 👋</span>
+          </div>
         </div>
       </div>
       <div className="zp-header-actions">
@@ -1853,10 +1886,11 @@ function DesktopSidebar() {
   return (
     <aside className="zp-sidebar">
       <div className="zp-brand">
-        <div className="zp-logo">Z</div>
-        <div className="zp-brand-text">
-          <strong>ZumaFit</strong>
-          <span>Panel cliente</span>
+        <div className="zp-brand-stack">
+          <BrandLogo className="zp-brandLogo" size="client" priority />
+          <div className="zp-brand-text logo-caption">
+            <span>Panel cliente</span>
+          </div>
         </div>
       </div>
       <nav className="zp-side-nav" aria-label="Navegación desktop">

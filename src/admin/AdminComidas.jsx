@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Beef,
   BookOpen,
   ChefHat,
+  CheckCircle2,
   ChevronRight,
   Copy,
   Database,
@@ -16,11 +19,20 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  Upload,
   Utensils,
   X,
 } from "lucide-react";
 
-import { createMenuBase, createMenuBaseFromDisplay, deleteMenuBase, duplicateMenuBase, updateMenuBase } from "../menus/menusApi.js";
+import {
+  confirmAdminMenusExcelImport,
+  createMenuBase,
+  createMenuBaseFromDisplay,
+  deleteMenuBase,
+  duplicateMenuBase,
+  previewAdminMenusExcelImport,
+  updateMenuBase,
+} from "../menus/menusApi.js";
 import { useMenusBase } from "../menus/menusQueries.js";
 import { normalizeDemoMenu } from "../menus/menusUtils.js";
 import { MealRecipeEditor, MenuBaseEditor, MenuCreationFlow } from "../nutricion/NutritionEditors.jsx";
@@ -30,6 +42,14 @@ import { useAlimentos, useComidas, useMenusDemo } from "../nutricion/nutricionQu
 import { filterMeals, formatNumber } from "../nutricion/nutricionUtils.js";
 import { compactMacroLine, findIdenticalMeal, findIdenticalMenu } from "../nutricion/nutritionIdentity.js";
 import { invalidateComidasLibrary, invalidateMenusLibrary } from "../queryClient.js";
+import {
+  confirmAdminSavedMealsExcelImport,
+  deleteSavedMeal,
+  duplicateSavedMeal,
+  listSavedMeals,
+  previewAdminSavedMealsExcelImport,
+  updateSavedMeal,
+} from "../savedMeals/savedMealsApi.js";
 import AppToast from "../ui/AppToast.jsx";
 import "../nutricion/nutricion.css";
 
@@ -53,6 +73,52 @@ const GOALS = [
   ["saciante", "Saciante"],
 ];
 
+const SAVED_MEAL_VISIBILITY = [
+  ["global", "Global"],
+  ["premium", "Premium"],
+  ["solo_coaches", "Solo coaches"],
+  ["solo_clientes", "Solo clientes"],
+  ["privada", "Privada"],
+];
+
+function normalizeSavedMealForAdmin(meal = {}) {
+  const id = String(meal.id || meal._id || "");
+  const items = Array.isArray(meal.items) ? meal.items : Array.isArray(meal.alimentos) ? meal.alimentos : [];
+  const totals = meal.totales || meal.macrosTotales || {};
+  const protein = Number(totals.protein ?? totals.proteina ?? totals.proteinas ?? 0);
+  const carbs = Number(totals.carbs ?? totals.carbohidratos ?? 0);
+  const fat = Number(totals.fat ?? totals.grasas ?? 0);
+
+  return {
+    ...meal,
+    id: `saved-${id}`,
+    savedMealId: id,
+    savedMeal: true,
+    importedSavedMeal: meal.source === "excel_import" || meal.origen === "excel_import",
+    demo: false,
+    name: meal.nombre || meal.name || "Comida guardada",
+    nombre: meal.nombre || meal.name || "Comida guardada",
+    type: meal.tipoComida || meal.type || "otro",
+    tipoComida: meal.tipoComida || meal.type || "otro",
+    descripcion: meal.descripcion || (meal.source === "excel_import" ? "Importada desde Excel" : "Comida guardada admin"),
+    items,
+    totals: {
+      kcal: Number(totals.kcal || 0),
+      protein,
+      proteina: protein,
+      carbs,
+      fat,
+      grasas: fat,
+      fibra: Number(totals.fibra || 0),
+      matched: items.length,
+    },
+  };
+}
+
+function savedMealIdOf(meal = {}) {
+  return String(meal.savedMealId || meal._id || meal.id || "").replace(/^saved-/, "");
+}
+
 export default function AdminComidas() {
   const [activeTab, setActiveTab] = useState(TAB_MENUS);
   const [mealFilters, setMealFilters] = useState({ search: "", type: "todos" });
@@ -69,15 +135,31 @@ export default function AdminComidas() {
   const foodsQuery = useAlimentos({});
   const foods = foodsQuery.data?.all || [];
   const comidasQuery = useComidas(mealFilters, foods, { enabled: !foodsQuery.isLoading });
+  const savedMealsQuery = useQuery({
+    queryKey: ["admin", "comidasGuardadas", mealFilters],
+    queryFn: () => listSavedMeals({
+      limit: 200,
+      search: mealFilters.search,
+      tipoComida: mealFilters.type,
+      ownerType: "admin",
+    }),
+    staleTime: 30 * 1000,
+    placeholderData: (previous) => previous,
+  });
   const menusQuery = useMenusBase({ search: menuFilters.search, includeComidas: true });
   const demoMenusQuery = useMenusDemo(menuFilters);
 
   const realMeals = useMemo(() => comidasQuery.data?.comidas || [], [comidasQuery.data?.comidas]);
-  const usingDemoMeals = !comidasQuery.isLoading && realMeals.length === 0;
-  const displayMeals = usingDemoMeals ? filterMeals(DEMO_COMIDAS, mealFilters) : realMeals;
+  const savedMeals = useMemo(
+    () => (savedMealsQuery.data?.comidas || []).map(normalizeSavedMealForAdmin),
+    [savedMealsQuery.data?.comidas]
+  );
+  const storedMeals = useMemo(() => [...savedMeals, ...realMeals], [realMeals, savedMeals]);
+  const usingDemoMeals = !comidasQuery.isLoading && !savedMealsQuery.isLoading && storedMeals.length === 0;
+  const displayMeals = usingDemoMeals ? filterMeals(DEMO_COMIDAS, mealFilters) : storedMeals;
   const allMeals = useMemo(
-    () => (usingDemoMeals ? DEMO_COMIDAS : comidasQuery.data?.all || []),
-    [comidasQuery.data?.all, usingDemoMeals]
+    () => (usingDemoMeals ? DEMO_COMIDAS : [...savedMeals, ...(comidasQuery.data?.all || [])]),
+    [comidasQuery.data?.all, savedMeals, usingDemoMeals]
   );
   const realMenus = useMemo(() => menusQuery.data?.menus || [], [menusQuery.data?.menus]);
   const demoMenus = useMemo(
@@ -159,6 +241,21 @@ export default function AdminComidas() {
       }
 
       setBusy("meal-save");
+      if (current?.savedMeal) {
+        const savedMealId = savedMealIdOf(current);
+        const saved = await updateSavedMeal(savedMealId, {
+          ...payload,
+          planMinimo: current.planMinimo,
+          origen: current.origen,
+          source: current.source,
+          activo: payload.estado !== "inactivo",
+        });
+        await savedMealsQuery.refetch();
+        setMealEditor(null);
+        setToast({ type: "success", message: `${saved?.nombre || payload.nombre || "Comida"} actualizada.` });
+        return;
+      }
+
       const saved = current?.id && !current?.demo
         ? await updateComida(current.id, payload)
         : await createComida(payload);
@@ -176,6 +273,18 @@ export default function AdminComidas() {
     if (!meal?.id || meal.demo) return;
     try {
       setBusy(`meal-duplicate-${meal.id}`);
+      if (meal.savedMeal) {
+        const duplicated = await duplicateSavedMeal(savedMealIdOf(meal), {
+          nombre: `${meal.name || meal.nombre} copia`,
+          visibilidad: meal.visibilidad || "global",
+          planMinimo: meal.planMinimo || "free",
+          origen: meal.origen || "excel_import",
+        });
+        await savedMealsQuery.refetch();
+        setToast({ type: "success", message: `${duplicated?.nombre || "Comida"} duplicada.` });
+        return;
+      }
+
       const duplicated = await duplicateComida(meal.id, { nombre: `${meal.name || meal.nombre} copia` });
       await invalidateComidasLibrary(duplicated?.id || meal.id);
       setToast({ type: "success", message: "Comida duplicada." });
@@ -190,6 +299,13 @@ export default function AdminComidas() {
     if (!meal?.id || meal.demo) return;
     try {
       setBusy(`meal-delete-${meal.id}`);
+      if (meal.savedMeal) {
+        await deleteSavedMeal(savedMealIdOf(meal));
+        await savedMealsQuery.refetch();
+        setToast({ type: "success", message: "Comida guardada eliminada." });
+        return;
+      }
+
       await deleteComida(meal.id);
       await invalidateComidasLibrary(meal.id);
       setToast({ type: "success", message: "Comida eliminada." });
@@ -272,6 +388,7 @@ export default function AdminComidas() {
       return;
     }
     comidasQuery.refetch();
+    savedMealsQuery.refetch();
     foodsQuery.refetch();
   }
 
@@ -279,7 +396,7 @@ export default function AdminComidas() {
   const refreshing =
     activeTab === TAB_MENUS
       ? (menusQuery.isFetching || demoMenusQuery.isFetching) && !loadingMenus
-      : comidasQuery.isFetching && !comidasQuery.isLoading;
+      : (comidasQuery.isFetching || savedMealsQuery.isFetching) && !comidasQuery.isLoading;
 
   return (
     <div className="nf-page">
@@ -344,6 +461,11 @@ export default function AdminComidas() {
             onEdit={(menu) => setMenuEditor({ mode: menu.demo ? "create" : "edit", menu })}
             onDelete={removeMenuBase}
             busy={busy}
+            onToast={setToast}
+            onImported={() => {
+              menusQuery.refetch();
+              savedMealsQuery.refetch();
+            }}
           />
         ) : (
           <ComidasTab
@@ -351,8 +473,8 @@ export default function AdminComidas() {
             setFilters={setMealFilters}
             meals={displayMeals}
             usingDemo={usingDemoMeals}
-            loading={foodsQuery.isLoading || comidasQuery.isLoading}
-            error={comidasQuery.error || foodsQuery.error}
+            loading={foodsQuery.isLoading || comidasQuery.isLoading || savedMealsQuery.isLoading}
+            error={comidasQuery.error || savedMealsQuery.error || foodsQuery.error}
             withMacros={stats.mealsWithMacros}
             selectedGroup={selectedMealGroup}
             setSelectedGroup={setSelectedMealGroup}
@@ -361,6 +483,8 @@ export default function AdminComidas() {
             onDuplicate={duplicateMealRecipe}
             onDelete={removeMealRecipe}
             busy={busy}
+            onToast={setToast}
+            onImported={() => savedMealsQuery.refetch()}
           />
         )}
       </section>
@@ -375,6 +499,7 @@ export default function AdminComidas() {
           title={mealEditor.mode === "edit" ? "Editar comida / receta" : "Crear comida / receta"}
           submitLabel={mealEditor.mode === "edit" ? "Guardar cambios" : "Crear comida"}
           allowSystemVisibility
+          visibilityOptions={mealEditor.meal?.savedMeal ? SAVED_MEAL_VISIBILITY : undefined}
         />
       ) : null}
       {menuEditor ? (
@@ -436,6 +561,418 @@ function NutritionTabs({ activeTab, onChange }) {
   );
 }
 
+function ExcelImportPanel({ onToast, onImported }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [options, setOptions] = useState({
+    visibilidad: "global",
+    planMinimo: "free",
+    modo: "crear_nuevas",
+    importarSoloValidas: true,
+  });
+
+  const hasValidMeals = Number(preview?.totalValidas || 0) > 0;
+
+  function updateOption(key, value) {
+    setOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handlePreview(event) {
+    event.preventDefault();
+    if (!file) {
+      onToast?.({ type: "warning", message: "Subi un archivo .xlsx o .xls para previsualizar." });
+      return;
+    }
+
+    try {
+      setBusy("preview");
+      const data = await previewAdminSavedMealsExcelImport(file, options);
+      setPreview(data);
+      onToast?.({ type: "success", message: `Preview listo: ${data.totalComidasDetectadas} comida(s) detectadas.` });
+    } catch (error) {
+      setPreview(null);
+      onToast?.({ type: "error", message: error?.message || "No se pudo leer el Excel." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleConfirm() {
+    if (!preview?.importToken) return;
+    try {
+      setBusy("confirm");
+      const data = await confirmAdminSavedMealsExcelImport({
+        importToken: preview.importToken,
+        ...options,
+      });
+      onToast?.({ type: "success", message: `Importacion lista: ${data.imported} comida(s) guardadas.` });
+      await onImported?.();
+      setPreview(null);
+      setFile(null);
+    } catch (error) {
+      onToast?.({ type: "error", message: error?.message || "No se pudo confirmar la importacion." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <section className="nf-importPanel">
+      <div className="nf-importHead">
+        <div>
+          <span className="nf-pill good">Solo Hoja1</span>
+          <h3>Importar comidas guardadas desde Excel</h3>
+          <p>
+            Lee A:T y filas 1 a 30 de la hoja exacta <strong>Hoja1</strong>. No crea alimentos nuevos:
+            cruza cada item contra fooddatabase2 y calcula macros automaticamente.
+          </p>
+        </div>
+        <Upload size={26} strokeWidth={2.2} aria-hidden="true" />
+      </div>
+
+      <form className="nf-importForm" onSubmit={handlePreview}>
+        <label className="nf-importFile">
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(event) => {
+              setFile(event.target.files?.[0] || null);
+              setPreview(null);
+            }}
+          />
+          <span>{file ? file.name : "Seleccionar archivo .xlsx / .xls"}</span>
+        </label>
+
+        <div className="nf-importOptions">
+          <label>
+            Visibilidad
+            <select value={options.visibilidad} onChange={(event) => updateOption("visibilidad", event.target.value)}>
+              <option value="global">Global</option>
+              <option value="premium">Premium</option>
+              <option value="solo_coaches">Solo coaches</option>
+              <option value="solo_clientes">Solo clientes</option>
+              <option value="privada">Solo admin</option>
+            </select>
+          </label>
+          <label>
+            Plan minimo
+            <select value={options.planMinimo} onChange={(event) => updateOption("planMinimo", event.target.value)}>
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="vip">VIP</option>
+            </select>
+          </label>
+          <label>
+            Modo
+            <select value={options.modo} onChange={(event) => updateOption("modo", event.target.value)}>
+              <option value="crear_nuevas">Crear nuevas</option>
+              <option value="actualizar">Actualizar si existe</option>
+              <option value="duplicar">Duplicar aunque exista</option>
+            </select>
+          </label>
+          <label className="nf-importCheck">
+            <input
+              type="checkbox"
+              checked={options.importarSoloValidas}
+              onChange={(event) => updateOption("importarSoloValidas", event.target.checked)}
+            />
+            Importar solo comidas validas
+          </label>
+        </div>
+
+        <button type="submit" className="nf-btn gold" disabled={busy === "preview"}>
+          <Upload size={16} strokeWidth={2.3} aria-hidden="true" />
+          {busy === "preview" ? "Leyendo Excel..." : "Previsualizar"}
+        </button>
+      </form>
+
+      {preview ? (
+        <div className="nf-importPreview">
+          <div className="nf-importStats">
+            <span>Detectadas <strong>{preview.totalComidasDetectadas}</strong></span>
+            <span>Validas <strong>{preview.totalValidas}</strong></span>
+            <span>Advertencias <strong>{preview.totalAdvertencias ?? preview.totalConAdvertencias}</strong></span>
+            <span>Errores <strong>{preview.totalErrores ?? preview.totalConErrores}</strong></span>
+            {preview.totalDuplicadosExactos ? <span>Duplicadas <strong>{preview.totalDuplicadosExactos}</strong></span> : null}
+          </div>
+
+          <div className="nf-importList">
+            {(preview.comidas || []).map((comida) => (
+              <article className={`nf-importMeal ${comida.status}`} key={comida.numero}>
+                <div className="nf-importMealTop">
+                  <span className="nf-pill">Comida {comida.numero}</span>
+                  <span className="nf-pill">{comida.tipoComida || comida.tipoComidaExcel || "sin tipo"}</span>
+                  {comida.status === "ok" ? <CheckCircle2 size={17} aria-hidden="true" /> : <AlertTriangle size={17} aria-hidden="true" />}
+                </div>
+                <strong>{comida.nombreFinal || comida.nombre || "Sin nombre"}</strong>
+                {comida.nombreFinal && comida.nombreFinal !== comida.nombre ? (
+                  <small>Nombre original: {comida.nombre}</small>
+                ) : null}
+                <small>
+                  {formatNumber(comida.macrosTotales?.kcal)} kcal · P {formatNumber(comida.macrosTotales?.proteinas)} · C {formatNumber(comida.macrosTotales?.carbohidratos)} · G {formatNumber(comida.macrosTotales?.grasas)}
+                </small>
+                <ul>
+                  {(comida.alimentos || []).map((alimento, index) => (
+                    <li key={`${comida.numero}-${alimento.nombreExcel}-${index}`}>
+                      <span>
+                        {alimento.nombreExcel} · {formatNumber(alimento.cantidad)} {alimento.unidad || ""}
+                      </span>
+                      <b>{alimento.matchStatus === "error" ? "No encontrado" : alimento.nombreBase}</b>
+                    </li>
+                  ))}
+                </ul>
+                {(comida.errors || []).length ? (
+                  <div className="nf-importMessages error">
+                    {comida.errors.slice(0, 4).map((message) => <span key={message}>{message}</span>)}
+                  </div>
+                ) : null}
+                {(comida.warnings || []).length ? (
+                  <div className="nf-importMessages warning">
+                    {comida.warnings.slice(0, 4).map((message) => <span key={message}>{message}</span>)}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <div className="nf-importActions">
+            <button type="button" className="nf-btn ghost" onClick={() => setPreview(null)} disabled={busy === "confirm"}>
+              Cancelar preview
+            </button>
+            <button type="button" className="nf-btn gold" onClick={handleConfirm} disabled={!hasValidMeals || busy === "confirm"}>
+              <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
+              {busy === "confirm" ? "Importando..." : "Confirmar importacion"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MenuExcelImportPanel({ onToast, onImported }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [options, setOptions] = useState({
+    visibilidad: "global",
+    planMinimo: "free",
+    modo: "crear_nuevos",
+    guardarComidasComoBiblioteca: false,
+    importarSoloValidos: true,
+  });
+
+  const hasValidMenus = Number(preview?.totalValidos || 0) > 0;
+
+  function updateOption(key, value) {
+    setOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handlePreview(event) {
+    event.preventDefault();
+    if (!file) {
+      onToast?.({ type: "warning", message: "Subi un archivo .xlsx o .xls para previsualizar menus." });
+      return;
+    }
+
+    try {
+      setBusy("preview");
+      const data = await previewAdminMenusExcelImport(file, options);
+      setPreview(data);
+      onToast?.({ type: "success", message: `Preview listo: ${data.totalMenusDetectados} menu(s) detectados.` });
+    } catch (error) {
+      setPreview(null);
+      onToast?.({ type: "error", message: error?.message || "No se pudo leer el Excel de menus." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleConfirm() {
+    if (!preview?.importToken) return;
+    try {
+      setBusy("confirm");
+      const data = await confirmAdminMenusExcelImport({
+        importToken: preview.importToken,
+        ...options,
+      });
+      onToast?.({
+        type: "success",
+        message: `Importacion lista: ${data.imported} menu(s) guardados.`,
+      });
+      await onImported?.();
+      setPreview(null);
+      setFile(null);
+    } catch (error) {
+      onToast?.({ type: "error", message: error?.message || "No se pudo confirmar la importacion de menus." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <section className="nf-importPanel nf-importPanelMenus">
+      <div className="nf-importHead">
+        <div>
+          <span className="nf-pill good">Solo hoja Menus</span>
+          <h3>Importar menus completos desde Excel</h3>
+          <p>
+            Detecta bloques de 2 columnas, hasta 10 menus por archivo y hasta 5 comidas por menu.
+            Calcula macros desde fooddatabase2 y puede guardar cada comida como biblioteca global.
+          </p>
+        </div>
+        <Upload size={26} strokeWidth={2.2} aria-hidden="true" />
+      </div>
+
+      <form className="nf-importForm" onSubmit={handlePreview}>
+        <label className="nf-importFile">
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(event) => {
+              setFile(event.target.files?.[0] || null);
+              setPreview(null);
+            }}
+          />
+          <span>{file ? file.name : "Seleccionar Excel de menus .xlsx / .xls"}</span>
+        </label>
+
+        <div className="nf-importOptions">
+          <label>
+            Visibilidad menu
+            <select value={options.visibilidad} onChange={(event) => updateOption("visibilidad", event.target.value)}>
+              <option value="global">Global</option>
+              <option value="premium">Premium</option>
+              <option value="solo_coaches">Solo coaches</option>
+              <option value="solo_clientes">Solo clientes</option>
+            </select>
+          </label>
+          <label>
+            Plan minimo
+            <select value={options.planMinimo} onChange={(event) => updateOption("planMinimo", event.target.value)}>
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="vip">VIP</option>
+            </select>
+          </label>
+          <label>
+            Modo
+            <select value={options.modo} onChange={(event) => updateOption("modo", event.target.value)}>
+              <option value="crear_nuevos">Crear nuevos</option>
+              <option value="actualizar">Actualizar si existe</option>
+              <option value="duplicar">Duplicar aunque exista</option>
+            </select>
+          </label>
+          <label className="nf-importCheck">
+            <input
+              type="checkbox"
+              checked={options.guardarComidasComoBiblioteca}
+              onChange={(event) => updateOption("guardarComidasComoBiblioteca", event.target.checked)}
+            />
+            Guardar comidas como biblioteca
+          </label>
+          <label className="nf-importCheck">
+            <input
+              type="checkbox"
+              checked={options.importarSoloValidos}
+              onChange={(event) => updateOption("importarSoloValidos", event.target.checked)}
+            />
+            Importar solo menus validos
+          </label>
+        </div>
+
+        <button type="submit" className="nf-btn gold" disabled={busy === "preview"}>
+          <Upload size={16} strokeWidth={2.3} aria-hidden="true" />
+          {busy === "preview" ? "Leyendo menus..." : "Previsualizar menus"}
+        </button>
+      </form>
+
+      {preview ? (
+        <div className="nf-importPreview">
+          <div className="nf-importStats">
+            <span>Detectados <strong>{preview.totalMenusDetectados}</strong></span>
+            <span>Validos <strong>{preview.totalValidos}</strong></span>
+            <span>Advertencias <strong>{preview.totalAdvertencias ?? preview.totalConAdvertencias}</strong></span>
+            <span>Errores <strong>{preview.totalErrores ?? preview.totalConErrores}</strong></span>
+          </div>
+
+          <div className="nf-importList nf-importMenuList">
+            {(preview.menus || []).map((menu) => (
+              <article className={`nf-importMeal nf-importMenu ${menu.status}`} key={menu.numero}>
+                <div className="nf-importMealTop">
+                  <span className="nf-pill">Menu {menu.numero}</span>
+                  <span className="nf-pill">
+                    {menu.cantidadComidas} comida(s){menu.cantidadComidasDetectadas && menu.cantidadComidasDetectadas !== menu.cantidadComidas ? ` / ${menu.cantidadComidasDetectadas} detectadas` : ""}
+                  </span>
+                  {menu.status === "ok" ? <CheckCircle2 size={17} aria-hidden="true" /> : <AlertTriangle size={17} aria-hidden="true" />}
+                </div>
+                <strong>{menu.nombreGenerado}</strong>
+                <small>
+                  {formatNumber(menu.macrosTotales?.kcal)} kcal · P {formatNumber(menu.macrosTotales?.proteinas)} · C {formatNumber(menu.macrosTotales?.carbohidratos)} · G {formatNumber(menu.macrosTotales?.grasas)}
+                </small>
+
+                <div className="nf-importNested">
+                  {(menu.comidas || []).map((comida, index) => (
+                    <div className={`nf-importMealMini ${comida.status}`} key={`${menu.numero}-${comida.tipoComida}-${index}`}>
+                      <div>
+                        <b>{comida.nombre || `Comida ${index + 1}`}</b>
+                        <span>{comida.tipoComida || comida.tipoComidaExcel || "sin tipo"} · {formatNumber(comida.macrosTotales?.kcal)} kcal</span>
+                      </div>
+                      {comida.bibliotecaStatus ? (
+                        <em>{comida.bibliotecaStatus === "duplicado_exacto" ? "Ya existe" : comida.nombreBibliotecaFinal}</em>
+                      ) : null}
+                      <ul>
+                        {(comida.alimentos || []).slice(0, 8).map((alimento, foodIndex) => (
+                          <li key={`${menu.numero}-${index}-${foodIndex}`}>
+                            <span>{alimento.nombreExcel} · {formatNumber(alimento.cantidad)} {alimento.unidad || ""}</span>
+                            <b>{alimento.matchStatus === "error" ? "No encontrado" : alimento.nombreBase}</b>
+                          </li>
+                        ))}
+                      </ul>
+                      {(comida.errors || comida.errores || []).length ? (
+                        <div className="nf-importMessages error">
+                          {(comida.errors || comida.errores).slice(0, 6).map((message) => <span key={message}>{message}</span>)}
+                        </div>
+                      ) : null}
+                      {(comida.warnings || comida.advertencias || []).length ? (
+                        <div className="nf-importMessages warning">
+                          {(comida.warnings || comida.advertencias).slice(0, 6).map((message) => <span key={message}>{message}</span>)}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+
+                {(menu.advertencias || menu.warnings || []).length ? (
+                  <div className="nf-importMessages warning">
+                    {(menu.advertencias || menu.warnings).slice(0, 6).map((message) => <span key={message}>{message}</span>)}
+                  </div>
+                ) : null}
+                {(menu.errores || menu.errors || []).length ? (
+                  <div className="nf-importMessages error">
+                    {(menu.errores || menu.errors).slice(0, 8).map((message) => <span key={message}>{message}</span>)}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <div className="nf-importActions">
+            <button type="button" className="nf-btn ghost" onClick={() => setPreview(null)} disabled={busy === "confirm"}>
+              Cancelar preview
+            </button>
+            <button type="button" className="nf-btn gold" onClick={handleConfirm} disabled={!hasValidMenus || busy === "confirm"}>
+              <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
+              {busy === "confirm" ? "Importando..." : "Confirmar importacion"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function MenusTab({
   filters,
   setFilters,
@@ -459,6 +996,8 @@ function MenusTab({
   onEdit,
   onDelete,
   busy,
+  onToast,
+  onImported,
 }) {
   const [detailMenuId, setDetailMenuId] = useState("");
   const detailMenu = visibleProteinMenus.find((menu) => menu.id === detailMenuId) || null;
@@ -529,6 +1068,8 @@ function MenusTab({
           </div>
         </div>
       ) : null}
+
+      <MenuExcelImportPanel onToast={onToast} onImported={onImported} />
 
       {loading ? <SkeletonGrid /> : null}
       {error ? <div className="nf-error">{error.message || "No se pudieron cargar menus."}</div> : null}
@@ -797,6 +1338,8 @@ function ComidasTab({
   onDuplicate,
   onDelete,
   busy,
+  onToast,
+  onImported,
 }) {
   const [detailMealId, setDetailMealId] = useState("");
   const groupCards = useMemo(() => {
@@ -860,6 +1403,8 @@ function ComidasTab({
           </div>
         </div>
       )}
+
+      <ExcelImportPanel onToast={onToast} onImported={onImported} />
 
       {loading ? <SkeletonGrid /> : null}
       {error ? <div className="nf-error">{error.message || "No se pudieron cargar comidas."}</div> : null}
@@ -939,6 +1484,7 @@ function MealCard({ meal, onView, onEdit, onDuplicate, onDelete, busy }) {
         <div>
           <div className="nf-chipRow" style={{ marginTop: 0, marginBottom: 8 }}>
             {meal.demo ? <span className="nf-pill demo">Ejemplo demo</span> : null}
+            {meal.savedMeal ? <span className="nf-pill good">{meal.importedSavedMeal ? "Importada Excel" : "Comida guardada"}</span> : null}
             <span className="nf-pill">{meal.type}</span>
           </div>
           <h3>{meal.name || meal.nombre}</h3>
@@ -998,7 +1544,9 @@ function MealDetailModal({ meal, onClose, onEdit, onDuplicate, onDelete, busy })
       <aside className="nf-detailSheet">
         <div className="nf-cardTop">
           <div>
-            <span className={`nf-pill ${meal.demo ? "demo" : "good"}`}>{meal.demo ? "Comida demo" : "Comida real"}</span>
+            <span className={`nf-pill ${meal.demo ? "demo" : "good"}`}>
+              {meal.demo ? "Comida demo" : meal.savedMeal ? "Comida guardada admin" : "Comida real"}
+            </span>
             <h3>{meal.name || meal.nombre}</h3>
             <p>{meal.descripcion || "Receta reutilizable para construir menus base."}</p>
           </div>
@@ -1141,10 +1689,11 @@ function filterLibraryMenus(menus = [], filters = {}) {
 function mealsForGroup(meals = [], groupId = "todos") {
   if (!groupId || groupId === "todos") return meals;
   return meals.filter((meal) => {
+    const tipoComida = String(meal.tipoComida || meal.type || "").toLowerCase();
     if (meal.grupoComida === groupId) return true;
-    if (groupId === "desayuno_merienda") return ["desayuno", "merienda"].includes(meal.tipoComida);
-    if (groupId === "almuerzo_cena") return ["almuerzo", "cena"].includes(meal.tipoComida);
-    if (groupId === "snack") return meal.tipoComida === "snack";
+    if (groupId === "desayuno_merienda") return ["desayuno", "merienda"].includes(tipoComida);
+    if (groupId === "almuerzo_cena") return ["almuerzo", "cena"].includes(tipoComida);
+    if (groupId === "snack") return ["snack", "colacion", "pre_entreno", "post_entreno"].includes(tipoComida);
     return false;
   });
 }

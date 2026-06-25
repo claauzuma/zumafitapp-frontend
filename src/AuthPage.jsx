@@ -11,6 +11,7 @@ import {
   getCachedStatus,
   getCachedToken, // ✅ fallback token
 } from "./authCache.js";
+import BrandLogo from "./ui/BrandLogo.jsx";
 
 // Importante para Google: volver acá para que corra /me y redirija por rol.
 const AUTH_RETURN_PATH = "/auth";
@@ -795,11 +796,7 @@ return;
       <header className="ap-nav">
         <div className="ap-nav-inner">
           <button className="ap-brand" onClick={() => navigate("/")} type="button" disabled={loading || googleLoading}>
-            <span className="ap-brand-mark" aria-hidden="true">ZF</span>
-            <span className="ap-brand-copy">
-              <span>ZumaFit</span>
-              <small>Fitness & nutricion</small>
-            </span>
+            <BrandLogo className="ap-brandLogo" size="client" priority />
           </button>
 
 
@@ -1325,6 +1322,7 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
 .ap-brand-copy{ display:grid; gap:2px; min-width:0; text-align:left; }
 .ap-brand-copy span{ color:#f5d98a; line-height:1; }
 .ap-brand-copy small{ color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.ap-brandLogo .brand-logo-img{ height:52px; max-width:225px; }
 .ap-nav-links .ap-link{ background:#0f0f0f; color:#eaeaea; border:1px solid #2b2b2b; border-radius:12px; padding:8px 12px; cursor:pointer; }
 .ap-nav-links .ap-link:disabled, .ap-brand:disabled{ opacity:.7; cursor:not-allowed; }
 .ap-tabs-wrap{ padding:14px 16px 0; }
@@ -1547,6 +1545,7 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
   .ap-nav-inner{ padding:10px 12px; }
   .ap-brand-mark{ width:36px; height:36px; border-radius:13px; }
   .ap-brand-copy small{ display:none; }
+  .ap-brandLogo .brand-logo-img{ height:46px; max-width:188px; }
   .ap-tabs-wrap{ padding:12px 12px 0; }
   .ap-main{ padding:14px 12px 22px; }
   .ap-card{ padding:16px; border-radius:20px; }

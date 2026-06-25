@@ -10,16 +10,17 @@ export default function AdminUsuarios() {
   const [specialty, setSpecialty] = useState("todos");
   const [estado, setEstado] = useState("todos");
 
+  const roleForApi = role === "cliente_self" || role === "cliente_coach" ? "cliente" : role;
   const showSpecialtyFilter = role === "coach";
   const debouncedSearch = useDebouncedValue(search, 300);
   const queryFilters = useMemo(
     () => ({
       search: debouncedSearch,
-      role,
+      role: roleForApi,
       estado,
       limit: 100,
     }),
-    [debouncedSearch, estado, role]
+    [debouncedSearch, estado, roleForApi]
   );
   const usersQuery = useAdminUsers(queryFilters);
   const loading = usersQuery.isLoading;
@@ -44,7 +45,11 @@ export default function AdminUsuarios() {
       });
     }
 
-    if (role !== "todos") {
+    if (role === "cliente_self") {
+      arr = arr.filter((u) => String(u?.role || "").toLowerCase() === "cliente" && !u?.coach?.entrenadorId);
+    } else if (role === "cliente_coach") {
+      arr = arr.filter((u) => String(u?.role || "").toLowerCase() === "cliente" && Boolean(u?.coach?.entrenadorId));
+    } else if (role !== "todos") {
       arr = arr.filter((u) => String(u?.role || "").toLowerCase() === role);
     }
 
@@ -130,10 +135,12 @@ export default function AdminUsuarios() {
             if (nextRole !== "coach") setSpecialty("todos");
           }}
         >
-          <option value="todos">Rol: Todos</option>
-          <option value="admin">admin</option>
-          <option value="coach">coach</option>
-          <option value="cliente">cliente</option>
+          <option value="todos">Todos</option>
+          <option value="admin">Admin</option>
+          <option value="coach">Coach</option>
+          <option value="cliente">Clientes</option>
+          <option value="cliente_self">Autogestionados</option>
+          <option value="cliente_coach">Clientes con coach</option>
         </select>
 
         {showSpecialtyFilter ? (
@@ -184,6 +191,7 @@ export default function AdminUsuarios() {
             const activo = estadoActual === "activo";
 
             const kind = getUserKindMeta(u);
+            const userType = getUserTypeMeta(u);
             const plan = getUserPlanMeta(u);
 
             const activityLabel = formatLastActivity(u?.lastActivityAt);
@@ -217,6 +225,14 @@ export default function AdminUsuarios() {
 
                 <div className="au-firstName" title={nombre || "Sin nombre"}>
                   {nombre || "Sin nombre"}
+                </div>
+
+                <div
+                  className={`au-userTypeChip ${userType.className}`}
+                  title={userType.label}
+                  aria-label={`Tipo de usuario: ${userType.label}`}
+                >
+                  {userType.label}
                 </div>
 
                 <div
@@ -322,6 +338,39 @@ function getUserKindMeta(u) {
   }
 
   return { emoji: "👤", label: "Cliente", className: "user" };
+}
+
+function getUserTypeMeta(u) {
+  const role = String(u?.role || "").toLowerCase();
+  const hasCoach = Boolean(u?.coach?.entrenadorId);
+
+  if (role === "admin") {
+    return { label: "Admin", className: "admin" };
+  }
+
+  if (role === "coach") {
+    return { label: "Coach", className: "coach" };
+  }
+
+  if (role === "cliente" && hasCoach) {
+    return { label: "Cliente con coach", className: "clientCoach" };
+  }
+
+  if (role === "cliente") {
+    return { label: "Autogestionado", className: "self" };
+  }
+
+  return { label: toDisplayRole(role) || "Cliente", className: "fallback" };
+}
+
+function toDisplayRole(role) {
+  const value = String(role || "").trim().toLowerCase();
+  if (!value) return "";
+  if (value === "admin") return "Admin";
+  if (value === "coach") return "Coach";
+  if (value === "cliente") return "Cliente";
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function getUserPlanMeta(u) {
@@ -641,6 +690,51 @@ const styles = `
   overflow:hidden;
   text-overflow:ellipsis;
 }
+.au-userTypeChip{
+  margin-top:8px;
+  max-width:100%;
+  min-height:24px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.045);
+  color:#e8eef8;
+  font-size:10.5px;
+  line-height:1;
+  font-weight:1000;
+  letter-spacing:.55px;
+  text-transform:uppercase;
+  white-space:nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.au-userTypeChip.admin{
+  color:#ffe48a;
+  border-color:rgba(245,215,110,.34);
+  background:rgba(245,215,110,.09);
+}
+.au-userTypeChip.coach{
+  color:#b9dcff;
+  border-color:rgba(96,165,250,.34);
+  background:rgba(96,165,250,.09);
+}
+.au-userTypeChip.self{
+  color:#a9f5d0;
+  border-color:rgba(45,212,191,.32);
+  background:rgba(45,212,191,.08);
+}
+.au-userTypeChip.clientCoach{
+  color:#d9ccff;
+  border-color:rgba(167,139,250,.34);
+  background:rgba(88,80,180,.12);
+}
+.au-userTypeChip.fallback{
+  color:#d8e2f0;
+  border-color:rgba(148,163,184,.28);
+  background:rgba(148,163,184,.08);
+}
 .au-lastActivity{
   margin-top:10px;
   min-height:22px;
@@ -782,6 +876,14 @@ const styles = `
   }
   .au-firstName{
     font-size:11px;
+  }
+  .au-userTypeChip{
+    min-height:22px;
+    padding:4px 8px;
+    font-size:9px;
+    line-height:1.12;
+    letter-spacing:.32px;
+    white-space:normal;
   }
   .au-lastActivity{
     font-size:10px;

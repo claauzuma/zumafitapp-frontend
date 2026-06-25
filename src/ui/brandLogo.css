@@ -1,0 +1,96 @@
+.brand-logo {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.brand-logo::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: 12%;
+  bottom: -5px;
+  left: 10%;
+  height: 10px;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at center, rgba(245, 153, 0, 0.28), rgba(245, 215, 110, 0.08) 48%, transparent 76%);
+  filter: blur(8px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.brand-logo-img {
+  display: block;
+  width: auto;
+  height: 48px;
+  max-width: 190px;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 2px 8px rgba(255, 153, 0, 0.12));
+}
+
+.brand-logo--xs .brand-logo-img {
+  height: 44px;
+  max-width: 165px;
+}
+
+.brand-logo--sm .brand-logo-img {
+  height: 46px;
+  max-width: 180px;
+}
+
+.brand-logo--client .brand-logo-img {
+  height: 50px;
+  max-width: 200px;
+}
+
+.brand-logo--lg .brand-logo-img {
+  height: 54px;
+  max-width: 230px;
+}
+
+@media (min-width: 768px) {
+  .brand-logo-img {
+    height: 54px;
+    max-width: 225px;
+  }
+
+  .brand-logo--client .brand-logo-img {
+    height: 56px;
+    max-width: 235px;
+  }
+
+  .brand-logo--lg .brand-logo-img {
+    height: 60px;
+    max-width: 260px;
+  }
+}
+
+@media (max-width: 420px) {
+  .brand-logo-img {
+    height: 46px;
+    max-width: 180px;
+  }
+
+  .brand-logo--client .brand-logo-img {
+    height: 48px;
+    max-width: 190px;
+  }
+
+  .brand-logo--lg .brand-logo-img {
+    height: 50px;
+    max-width: 205px;
+  }
+
+  .brand-logo::after {
+    bottom: -4px;
+    height: 9px;
+    filter: blur(7px);
+  }
+}

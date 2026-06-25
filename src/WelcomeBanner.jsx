@@ -1,6 +1,7 @@
 // src/WelcomeBanner.jsx
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import BrandLogo from "./ui/BrandLogo.jsx";
 
 const CSS = `
 .wb{
@@ -32,8 +33,11 @@ const CSS = `
   gap:10px;
   cursor:pointer;
   user-select:none;
+  min-width:0;
+  overflow:hidden;
 }
 .wb-logo{ font-size: 18px; }
+.wb-brandLogo .brand-logo-img{ height:50px; max-width:210px; }
 .wb-title{
   font-weight: 900;
   letter-spacing: .2px;
@@ -74,11 +78,7 @@ export default function WelcomeBanner() {
       <style>{CSS}</style>
       <div className="wb-inner">
         <div className="wb-brand" onClick={() => nav("/")}>
-          <div className="wb-logo">🍏</div>
-          <div>
-            <div className="wb-title">ZumaFit</div>
-            <div className="wb-sub">Menús inteligentes • Macros • Progreso</div>
-          </div>
+          <BrandLogo className="wb-brandLogo" size="client" priority />
         </div>
 
         <div className="wb-right">

@@ -20,6 +20,7 @@ import { useProfessionalMe } from "../authQueries.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
 import ImpersonationBanner from "../ImpersonationBanner.jsx";
 import AppToast from "../ui/AppToast.jsx";
+import BrandLogo from "../ui/BrandLogo.jsx";
 
 export default function ProfesionalLayout({ me: meProp }) {
   const navigate = useNavigate();
@@ -173,9 +174,8 @@ export default function ProfesionalLayout({ me: meProp }) {
 function BrandBlock({ compact = false }) {
   return (
     <div className={`pl-brandBlock ${compact ? "compact" : ""}`}>
-      <div className="pl-mark">ZF</div>
+      <BrandLogo className="pl-brandLogo" size={compact ? "sm" : "client"} priority />
       <div className="pl-brandCopy">
-        <div className="pl-brand">ZumaFit Pro</div>
         <div className="pl-sub">Panel profesional</div>
       </div>
     </div>
@@ -223,7 +223,7 @@ function buildNavItems(me) {
   if (canRoutines) items.push({ to: "/profesional/rutinas", label: "Rutinas", icon: Dumbbell });
   if (canMenus) {
     items.push({ to: "/profesional/menus", label: "Menús", icon: Utensils });
-    items.push({ to: "/profesional/comidas", label: "Plantillas", icon: BookOpen });
+    items.push({ to: "/profesional/comidas", label: "Biblioteca", icon: BookOpen });
   }
 
   items.push({ to: "/profesional/progreso", label: "Progreso", icon: Activity });
@@ -304,6 +304,7 @@ const styles = `
   align-items:center;
   gap:12px;
   min-width:0;
+  overflow:hidden;
 }
 .pl-mark{
   width:42px;
@@ -320,6 +321,17 @@ const styles = `
 }
 .pl-brandCopy{
   min-width:0;
+}
+.pl-brandLogo{
+  min-width:0;
+}
+.pl-brandLogo .brand-logo-img{
+  height:52px;
+  max-width:225px;
+}
+.pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
+  height:46px;
+  max-width:188px;
 }
 .pl-brand{
   font-size:20px;
@@ -549,6 +561,10 @@ const styles = `
     min-width:0;
     flex:1 1 auto;
   }
+  .pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
+    height:44px;
+    max-width:176px;
+  }
   .pl-brand{
     max-width:155px;
     overflow:hidden;
@@ -564,6 +580,10 @@ const styles = `
   }
 }
 @media (max-width: 420px){
+  .pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
+    height:44px;
+    max-width:175px;
+  }
   .pl-brand{
     max-width:130px;
   }

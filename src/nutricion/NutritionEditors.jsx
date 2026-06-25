@@ -329,6 +329,7 @@ export function MealRecipeEditor({
   title = "Comida / receta",
   submitLabel = "Guardar receta",
   allowSystemVisibility = true,
+  visibilityOptions = VISIBILITY,
 }) {
   const [draft, setDraft] = useState(() => normalizeMealDraft(initialMeal || createEmptyMealDraft()));
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -393,7 +394,7 @@ export function MealRecipeEditor({
             <SelectField
               label="Visibilidad"
               value={draft.visibilidad}
-              options={allowSystemVisibility ? VISIBILITY : VISIBILITY.filter(([value]) => value !== "sistema")}
+              options={allowSystemVisibility ? visibilityOptions : visibilityOptions.filter(([value]) => value !== "sistema")}
               onChange={(value) => update({ visibilidad: value })}
             />
           </div>

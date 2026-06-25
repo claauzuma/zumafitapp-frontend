@@ -14,7 +14,10 @@ export default function RequireRole({ role, children }) {
     ? role.map((x) => String(x).toLowerCase()).includes(r)
     : r === String(role).toLowerCase();
 
-  if (!allowed) return <Navigate to="/app/inicio" replace />;
+  if (!allowed) {
+    const fallback = r === "admin" ? "/admin/inicio" : r === "coach" ? "/profesional" : "/app/inicio";
+    return <Navigate to={fallback} replace />;
+  }
 
   return children;
 }

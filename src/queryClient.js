@@ -89,6 +89,17 @@ export function normalizeAdminUsersFilters(filters = {}) {
   };
 }
 
+function normalizeAdminCollectionParams(params = {}) {
+  return {
+    page: Number(params.page) || 1,
+    limit: Number(params.limit) || 25,
+    q: cleanText(params.q),
+    field: cleanId(params.field),
+    fieldExists: cleanId(params.fieldExists),
+    fieldMissing: cleanId(params.fieldMissing),
+  };
+}
+
 export const queryKeys = {
   authMe: () => ["auth", "me"],
   adminUsersRoot: () => ["admin", "users"],
@@ -102,6 +113,21 @@ export const queryKeys = {
   adminCoachPlans: () => ["admin", "coachPlans"],
   adminEffectiveCapabilities: (coachId) => ["admin", "effectiveCapabilities", cleanId(coachId)],
   adminDatabaseStats: () => ["admin", "databaseStats"],
+  adminCollectionDetail: (collectionName) => ["admin", "collection", cleanId(collectionName), "detail"],
+  adminCollectionDocuments: (collectionName, params = {}) => [
+    "admin",
+    "collection",
+    cleanId(collectionName),
+    "documents",
+    normalizeAdminCollectionParams(params),
+  ],
+  adminCollectionDocument: (collectionName, documentId) => [
+    "admin",
+    "collection",
+    cleanId(collectionName),
+    "document",
+    cleanId(documentId),
+  ],
   professionalMe: () => ["professional", "me"],
   professionalClients: () => ["professional", "clients"],
   professionalClientDetail: (clientId) => ["professional", "client", cleanId(clientId)],

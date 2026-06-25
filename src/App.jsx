@@ -1,67 +1,72 @@
-import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-
-import Bienvenida from "./bienvenida.jsx";
-import AuthPage from "./AuthPage.jsx";
+import React, { lazy, Suspense } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import PublicOnlyRoute from "./PublicOnlyRoute.jsx";
-import RequireRole from "./RequireRole.jsx";
 import RequireOnboarding from "./RequireOnboarding.jsx";
+import RequireRole from "./RequireRole.jsx";
+import { RouteChunkErrorBoundary, RouteLoadingFallback } from "./routes/RouteLoading.jsx";
 
-import CrearUsuario from "./admin/CrearUsuario.jsx";
-import AppLayout from "./AppLayout.jsx";
-import AdminLayout from "./admin/AdminLayout.jsx";
+const Bienvenida = lazy(() => import("./bienvenida.jsx"));
+const AuthPage = lazy(() => import("./AuthPage.jsx"));
 
-import ProfesionalLayout from "./profesional/ProfesionalLayout.jsx";
-import InicioProfesional from "./profesional/InicioProfesional.jsx";
-import ProfesionalPlaceholder from "./profesional/ProfesionalPlaceholder.jsx";
-import ClientesProfesional from "./profesional/ClientesProfesional.jsx";
-import ClienteDetalleProfesional from "./profesional/ClienteDetalleProfesional.jsx";
-import PerfilProfesional from "./profesional/PerfilProfesional.jsx";
-import RutinasProfesional from "./profesional/RutinasProfesional.jsx";
-import AjustesProfesional from "./profesional/AjustesProfesional.jsx";
-import MenusProfesional from "./profesional/MenusProfesional.jsx";
+const AppLayout = lazy(() => import("./AppLayout.jsx"));
+const OnboardingWizard = lazy(() => import("./onboarding_v2/OnboardingWizard.jsx"));
+const InicioEntrenado = lazy(() => import("./entrenado/InicioEntrenado.jsx"));
+const MenuEj = lazy(() => import("./entrenado/MenuEj.jsx"));
+const MenuPlan = lazy(() => import("./entrenado/menu/MenuPlan.jsx"));
+const MenuPreferencias = lazy(() => import("./entrenado/menu/MenuPreferencias.jsx"));
+const MenuFavoritas = lazy(() => import("./entrenado/menu/MenuFavoritas.jsx"));
+const Perfil = lazy(() => import("./entrenado/Perfil.jsx"));
+const Rutinas = lazy(() => import("./entrenado/Rutinas.jsx"));
+const Progresos = lazy(() => import("./entrenado/Progresos.jsx"));
+const Ajustes = lazy(() => import("./entrenado/Ajustes.jsx"));
+const TrackingDiario = lazy(() => import("./entrenado/TrackingDiario.jsx"));
+const NutritionLibraryPage = lazy(() => import("./nutritionLibrary/NutritionLibraryPage.jsx"));
+const ClientPlansPage = lazy(() => import("./clientPlans/ClientPlansPage.jsx"));
 
-// ✅ Onboarding v2 (wizard con basics/goal/program)
-import OnboardingWizard from "./onboarding_v2/OnboardingWizard.jsx";
+const AdminLayout = lazy(() => import("./admin/AdminLayout.jsx"));
+const CrearUsuario = lazy(() => import("./admin/CrearUsuario.jsx"));
+const AdminInicio = lazy(() => import("./admin/AdminInicio.jsx"));
+const AdminUsuarios = lazy(() => import("./admin/AdminUsuarios.jsx"));
+const AdminInvitaciones = lazy(() => import("./admin/AdminInvitaciones.jsx"));
+const AdminUsuarioDetalle = lazy(() => import("./admin/AdminUsuarioDetalle.jsx"));
+const AdminComidas = lazy(() => import("./admin/AdminComidas.jsx"));
+const AdminAlimentos = lazy(() => import("./admin/AdminAlimentos.jsx"));
+const AdminRutinas = lazy(() => import("./admin/AdminRutinas.jsx"));
+const AdminCoachPlanes = lazy(() => import("./admin/AdminCoachPlanes.jsx"));
+const AdminSystem = lazy(() => import("./admin/AdminSystem.jsx"));
 
-// ✅ Cliente (entrenado)
-import InicioEntrenado from "./entrenado/InicioEntrenado.jsx";
+const ProfesionalLayout = lazy(() => import("./profesional/ProfesionalLayout.jsx"));
+const InicioProfesional = lazy(() => import("./profesional/InicioProfesional.jsx"));
+const ProfesionalPlaceholder = lazy(() => import("./profesional/ProfesionalPlaceholder.jsx"));
+const ClientesProfesional = lazy(() => import("./profesional/ClientesProfesional.jsx"));
+const ClienteDetalleProfesional = lazy(() => import("./profesional/ClienteDetalleProfesional.jsx"));
+const PerfilProfesional = lazy(() => import("./profesional/PerfilProfesional.jsx"));
+const RutinasProfesional = lazy(() => import("./profesional/RutinasProfesional.jsx"));
+const AjustesProfesional = lazy(() => import("./profesional/AjustesProfesional.jsx"));
+const MenusProfesional = lazy(() => import("./profesional/MenusProfesional.jsx"));
 
-// ✅ Menú con tabs
-import MenuEj from "./entrenado/MenuEj.jsx";
-import MenuPlan from "./entrenado/menu/MenuPlan.jsx";
-import MenuPreferencias from "./entrenado/menu/MenuPreferencias.jsx";
-import MenuFavoritas from "./entrenado/menu/MenuFavoritas.jsx";
-
-import Perfil from "./entrenado/Perfil.jsx";
-import Rutinas from "./entrenado/Rutinas.jsx";
-import Progresos from "./entrenado/Progresos.jsx";
-import Ajustes from "./entrenado/Ajustes.jsx";
-import TrackingDiario from "./entrenado/TrackingDiario.jsx";
-import SavedMealsPage from "./savedMeals/SavedMealsPage.jsx";
-
-// ✅ Admin
-import AdminInicio from "./admin/AdminInicio.jsx";
-import AdminUsuarios from "./admin/AdminUsuarios.jsx";
-import AdminInvitaciones from "./admin/AdminInvitaciones.jsx";
-import AdminUsuarioDetalle from "./admin/AdminUsuarioDetalle.jsx";
-import AdminComidas from "./admin/AdminComidas.jsx";
-import AdminAlimentos from "./admin/AdminAlimentos.jsx";
-import AdminRutinas from "./admin/AdminRutinas.jsx";
-import AdminCoachPlanes from "./admin/AdminCoachPlanes.jsx";
-import AdminSystem from "./admin/AdminSystem.jsx";
+function LazyRoute({ children, label = "Cargando..." }) {
+  return (
+    <RouteChunkErrorBoundary>
+      <Suspense fallback={<RouteLoadingFallback label={label} />}>
+        {children}
+      </Suspense>
+    </RouteChunkErrorBoundary>
+  );
+}
 
 export default function App() {
   return (
     <Routes>
-      {/* ✅ PUBLIC */}
       <Route
         path="/"
         element={
           <PublicOnlyRoute>
-            <Bienvenida />
+            <LazyRoute label="Cargando inicio...">
+              <Bienvenida />
+            </LazyRoute>
           </PublicOnlyRoute>
         }
       />
@@ -70,7 +75,9 @@ export default function App() {
         path="/login"
         element={
           <PublicOnlyRoute>
-            <AuthPage defaultMode="login" />
+            <LazyRoute label="Cargando acceso...">
+              <AuthPage defaultMode="login" />
+            </LazyRoute>
           </PublicOnlyRoute>
         }
       />
@@ -79,7 +86,9 @@ export default function App() {
         path="/auth"
         element={
           <PublicOnlyRoute>
-            <AuthPage defaultMode="login" />
+            <LazyRoute label="Cargando acceso...">
+              <AuthPage defaultMode="login" />
+            </LazyRoute>
           </PublicOnlyRoute>
         }
       />
@@ -88,89 +97,96 @@ export default function App() {
         path="/register"
         element={
           <PublicOnlyRoute>
-            <AuthPage defaultMode="register" />
+            <LazyRoute label="Cargando registro...">
+              <AuthPage defaultMode="register" />
+            </LazyRoute>
           </PublicOnlyRoute>
         }
       />
 
-      {/* ✅ ADMIN */}
       <Route
         path="/admin"
         element={
           <ProtectedRoute>
             <RequireRole role="admin">
-              <AdminLayout />
+              <LazyRoute label="Cargando panel admin...">
+                <AdminLayout />
+              </LazyRoute>
             </RequireRole>
           </ProtectedRoute>
         }
       >
         <Route index element={<Navigate to="inicio" replace />} />
-        <Route path="inicio" element={<AdminInicio />} />
-        <Route path="usuarios" element={<AdminUsuarios />} />
-        <Route path="usuarios/invitaciones" element={<AdminInvitaciones />} />
-        <Route path="usuarios/crear" element={<CrearUsuario />} />
-        <Route path="usuarios/:id" element={<AdminUsuarioDetalle />} />
-        <Route path="comidas" element={<AdminComidas />} />
-        <Route path="alimentos" element={<AdminAlimentos />} />
-        <Route path="rutinas" element={<AdminRutinas />} />
-        <Route path="coach-planes" element={<AdminCoachPlanes />} />
-        <Route path="sistema" element={<AdminSystem />} />
+        <Route path="inicio" element={<LazyRoute label="Cargando inicio admin..."><AdminInicio /></LazyRoute>} />
+        <Route path="usuarios" element={<LazyRoute label="Cargando usuarios..."><AdminUsuarios /></LazyRoute>} />
+        <Route path="usuarios/invitaciones" element={<LazyRoute label="Cargando invitaciones..."><AdminInvitaciones /></LazyRoute>} />
+        <Route path="usuarios/crear" element={<LazyRoute label="Cargando creacion de usuario..."><CrearUsuario /></LazyRoute>} />
+        <Route path="usuarios/:id" element={<LazyRoute label="Cargando usuario..."><AdminUsuarioDetalle /></LazyRoute>} />
+        <Route path="comidas" element={<LazyRoute label="Cargando comidas..."><AdminComidas /></LazyRoute>} />
+        <Route path="alimentos" element={<LazyRoute label="Cargando alimentos..."><AdminAlimentos /></LazyRoute>} />
+        <Route path="rutinas" element={<LazyRoute label="Cargando rutinas..."><AdminRutinas /></LazyRoute>} />
+        <Route path="coach-planes" element={<LazyRoute label="Cargando planes..."><AdminCoachPlanes /></LazyRoute>} />
+        <Route path="sistema" element={<LazyRoute label="Cargando sistema..."><AdminSystem /></LazyRoute>} />
       </Route>
 
-      {/* ✅ PROFESIONAL */}
       <Route
         path="/profesional"
         element={
           <ProtectedRoute>
             <RequireRole role="coach">
-              <ProfesionalLayout />
+              <LazyRoute label="Cargando panel profesional...">
+                <ProfesionalLayout />
+              </LazyRoute>
             </RequireRole>
           </ProtectedRoute>
         }
       >
-        <Route index element={<InicioProfesional />} />
-        <Route path="clientes" element={<ClientesProfesional />} />
-        <Route path="clientes/:clientId" element={<ClienteDetalleProfesional />} />
-        <Route path="rutinas" element={<RutinasProfesional />} />
-        <Route path="menus" element={<MenusProfesional />} />
-        <Route path="comidas" element={<SavedMealsPage mode="professional" />} />
-        <Route path="progreso" element={<ProfesionalPlaceholder type="progreso" />} />
-        <Route path="ajustes" element={<AjustesProfesional />} />
-        <Route path="perfil" element={<PerfilProfesional />} />
+        <Route index element={<LazyRoute label="Cargando profesional..."><InicioProfesional /></LazyRoute>} />
+        <Route path="clientes" element={<LazyRoute label="Cargando clientes..."><ClientesProfesional /></LazyRoute>} />
+        <Route path="clientes/:clientId" element={<LazyRoute label="Cargando cliente..."><ClienteDetalleProfesional /></LazyRoute>} />
+        <Route path="rutinas" element={<LazyRoute label="Cargando rutinas..."><RutinasProfesional /></LazyRoute>} />
+        <Route path="menus" element={<LazyRoute label="Cargando menus..."><MenusProfesional /></LazyRoute>} />
+        <Route path="comidas" element={<LazyRoute label="Cargando biblioteca..."><NutritionLibraryPage mode="professional" /></LazyRoute>} />
+        <Route path="progreso" element={<LazyRoute label="Cargando progreso..."><ProfesionalPlaceholder type="progreso" /></LazyRoute>} />
+        <Route path="ajustes" element={<LazyRoute label="Cargando ajustes..."><AjustesProfesional /></LazyRoute>} />
+        <Route path="perfil" element={<LazyRoute label="Cargando perfil..."><PerfilProfesional /></LazyRoute>} />
       </Route>
 
-      {/* ✅ APP (CLIENTE) */}
       <Route
         path="/app"
         element={
           <ProtectedRoute>
-            <RequireOnboarding>
-              <AppLayout />
-            </RequireOnboarding>
+            <RequireRole role="cliente">
+              <RequireOnboarding>
+                <LazyRoute label="Cargando app...">
+                  <AppLayout />
+                </LazyRoute>
+              </RequireOnboarding>
+            </RequireRole>
           </ProtectedRoute>
         }
       >
-        <Route path="onboarding/*" element={<OnboardingWizard />} />
+        <Route path="onboarding/*" element={<LazyRoute label="Cargando onboarding..."><OnboardingWizard /></LazyRoute>} />
         <Route index element={<Navigate to="inicio" replace />} />
-        <Route path="inicio" element={<InicioEntrenado />} />
+        <Route path="inicio" element={<LazyRoute label="Cargando inicio..."><InicioEntrenado /></LazyRoute>} />
 
-        <Route path="menu" element={<MenuEj />}>
-          <Route index element={<MenuPlan />} />
-          <Route path="preferencias" element={<MenuPreferencias />} />
-          <Route path="favoritas" element={<MenuFavoritas />} />
+        <Route path="menu" element={<LazyRoute label="Cargando menu..."><MenuEj /></LazyRoute>}>
+          <Route index element={<LazyRoute label="Cargando menu del dia..."><MenuPlan /></LazyRoute>} />
+          <Route path="preferencias" element={<LazyRoute label="Cargando preferencias..."><MenuPreferencias /></LazyRoute>} />
+          <Route path="favoritas" element={<LazyRoute label="Cargando favoritas..."><MenuFavoritas /></LazyRoute>} />
         </Route>
 
-        <Route path="perfil" element={<Perfil />} />
-        <Route path="rutinas" element={<Rutinas />} />
-        <Route path="tracking" element={<TrackingDiario />} />
-        <Route path="nutricion" element={<SavedMealsPage mode="client" />} />
-        <Route path="progresos" element={<Progresos />} />
-        <Route path="ajustes" element={<Ajustes />} />
+        <Route path="perfil" element={<LazyRoute label="Cargando perfil..."><Perfil /></LazyRoute>} />
+        <Route path="rutinas" element={<LazyRoute label="Cargando rutinas..."><Rutinas /></LazyRoute>} />
+        <Route path="tracking" element={<LazyRoute label="Cargando tracking..."><TrackingDiario /></LazyRoute>} />
+        <Route path="nutricion" element={<LazyRoute label="Cargando nutricion..."><NutritionLibraryPage mode="client" /></LazyRoute>} />
+        <Route path="planes" element={<LazyRoute label="Cargando plan..."><ClientPlansPage /></LazyRoute>} />
+        <Route path="progresos" element={<LazyRoute label="Cargando progreso..."><Progresos /></LazyRoute>} />
+        <Route path="ajustes" element={<LazyRoute label="Cargando ajustes..."><Ajustes /></LazyRoute>} />
 
         <Route path="*" element={<Navigate to="/app/inicio" replace />} />
       </Route>
 
-      {/* fallback global */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

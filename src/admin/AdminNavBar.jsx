@@ -8,7 +8,6 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
-  ShieldCheck,
   SlidersHorizontal,
   Utensils,
   Users,
@@ -18,6 +17,7 @@ import { apiFetch } from "../Api.js";
 import { setAuthGuest } from "../authCache.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
 import AppToast from "../ui/AppToast.jsx";
+import BrandLogo from "../ui/BrandLogo.jsx";
 
 const NAV_ITEMS = [
   { to: "/admin/inicio", label: "Inicio", icon: Home },
@@ -69,11 +69,8 @@ export default function AdminNavBar() {
             type="button"
             onClick={() => navigate("/admin/inicio")}
           >
-            <span className="an-brand-mark" aria-hidden="true">
-              <ShieldCheck size={21} strokeWidth={2.4} />
-            </span>
+            <BrandLogo className="an-brandLogo" size="client" priority />
             <span className="an-brand-copy">
-              <span className="an-brand-text">ZumaFit Admin</span>
               <span className="an-brand-sub">Panel de control</span>
             </span>
           </button>
@@ -138,10 +135,8 @@ export default function AdminNavBar() {
         </div>
 
         <div className="an-drawer-brand">
-          <span className="an-brand-mark" aria-hidden="true">
-            <ShieldCheck size={21} strokeWidth={2.4} />
-          </span>
-          <strong>ZumaFit Admin</strong>
+          <BrandLogo className="an-brandLogo" size="client" priority />
+          <strong>Admin</strong>
         </div>
 
         <nav className="an-mobile-nav" aria-label="Navegacion admin mobile">
@@ -210,6 +205,7 @@ export default function AdminNavBar() {
           cursor: pointer;
           padding: 0;
           min-width: 0;
+          overflow: hidden;
         }
 
         .an-brand-mark{
@@ -230,6 +226,15 @@ export default function AdminNavBar() {
           gap: 2px;
           min-width: 0;
           text-align: left;
+        }
+
+        .an-brandLogo{
+          min-width: 0;
+        }
+
+        .an-brandLogo .brand-logo-img{
+          height: 50px;
+          max-width: 210px;
         }
 
         .an-brand-text{
@@ -488,6 +493,11 @@ export default function AdminNavBar() {
             max-width: 150px;
             overflow: hidden;
             text-overflow: ellipsis;
+          }
+
+          .an-brandLogo .brand-logo-img{
+            height: 44px;
+            max-width: 172px;
           }
 
           .an-brand-sub{

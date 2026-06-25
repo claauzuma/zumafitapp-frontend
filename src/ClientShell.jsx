@@ -1,6 +1,7 @@
 // src/ClientShell.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Crown } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { setAuthGuest, setAuthLogged, getCachedUser, isImpersonating } from "./authCache.js";
@@ -15,6 +16,9 @@ import {
   getPendingCoachInvitations,
 } from "./clientInvitationsApi.js";
 import PendingCoachInvitationModal, { ClientInvitationBanner } from "./PendingCoachInvitationModal.jsx";
+import BrandLogo from "./ui/BrandLogo.jsx";
+import { clientPlanLabel, planFromCapabilities } from "./clientPlans/clientPlanUtils.js";
+import { clientPlanCapabilitiesKey, fetchClientPlanCapabilities } from "./clientPlans/clientPlanQueries.js";
 
 const CSS = `
 :root{
@@ -47,17 +51,20 @@ const CSS = `
 .cs-header-inner{
   max-width: 1200px;
   margin: 0 auto;
-  padding: 10px 14px;
+  min-height: 86px;
+  padding: 12px 16px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:14px;
 }
 .cs-brand{
   display:flex;
   align-items:center;
   gap:10px;
+  flex:1 1 auto;
   min-width:0;
+  overflow:hidden;
 }
 .cs-logo{
   width:42px;
@@ -71,6 +78,19 @@ const CSS = `
   font-weight:900;
   color: var(--gold);
 }
+.cs-brand-stack{
+  display:grid;
+  min-width:0;
+  gap:2px;
+  justify-items:start;
+}
+.cs-brandLogo{
+  min-width:0;
+}
+.cs-brandLogo .brand-logo-img{
+  height:52px;
+  max-width:215px;
+}
 .cs-title{
   font-weight: 900;
   line-height:1.1;
@@ -79,7 +99,9 @@ const CSS = `
   text-overflow:ellipsis;
 }
 .cs-sub{
-  font-size:12px;
+  margin-top:1px;
+  font-size:13px;
+  line-height:1.18;
   color: var(--muted);
   white-space:nowrap;
   overflow:hidden;
@@ -89,6 +111,7 @@ const CSS = `
   display:flex;
   align-items:center;
   gap:10px;
+  flex:0 0 auto;
 }
 
 /* botones */
@@ -352,6 +375,10 @@ const CSS = `
   font-size: 18px;
   flex: 0 0 auto;
 }
+.cs-ic svg{
+  width:20px;
+  height:20px;
+}
 .cs-item.active .cs-ic{
   border-color: rgba(0,0,0,.15);
   background: rgba(0,0,0,.08);
@@ -469,9 +496,20 @@ const CSS = `
 @keyframes cnShimmer{ 0%{ transform: translateX(-60%);} 100%{ transform: translateX(160%);} }
 
 @media (max-width:520px){
-  .cs-header-inner{ padding:10px 12px; }
+  .cs-header-inner{
+    min-height:82px;
+    padding:11px 12px;
+    gap:10px;
+  }
   .cs-btn{ width:42px; height:42px; border-radius:13px; }
   .cs-logo{ width:40px; height:40px; border-radius:13px; }
+  .cs-brandLogo .brand-logo-img{
+    height:48px;
+    max-width:196px;
+  }
+  .cs-sub{
+    font-size:12px;
+  }
   .cs-avatar{ width:46px; height:46px; }
   .cs-coachNotice{
     align-items:flex-start;
@@ -482,6 +520,13 @@ const CSS = `
   }
   .cs-actionBtn{
     flex:1 1 140px;
+  }
+}
+
+@media (min-width:768px){
+  .cs-brandLogo .brand-logo-img{
+    height:54px;
+    max-width:230px;
   }
 }
 `;
@@ -618,6 +663,13 @@ export default function ClientShell() {
     enabled: isClientUser && !isImpersonating(),
     staleTime: 0,
     refetchOnMount: "always",
+    retry: false,
+  });
+  const planSummaryQuery = useQuery({
+    queryKey: clientPlanCapabilitiesKey,
+    queryFn: fetchClientPlanCapabilities,
+    enabled: isClientUser && !isImpersonating(),
+    staleTime: 2 * 60 * 1000,
     retry: false,
   });
   const pendingInvitations = Array.isArray(pendingInvitationsQuery.data?.invitations)
@@ -765,6 +817,20 @@ export default function ClientShell() {
   const fullName = user?.profile?.nombre || user?.nombre || "";
   const nombre = firstName(fullName);
   const sub = nombre ? `Hola, ${nombre}` : "Tu espacio";
+  const shellCapabilities = planSummaryQuery.data || user?.nutritionCapabilities || null;
+  const rawShellPlan = shellCapabilities?.plan || user?.nutritionCapabilities?.plan || user?.plan;
+  const shellPlan = rawShellPlan ? planFromCapabilities(user, shellCapabilities) : "";
+  const planDrawerItem = {
+    to: "/app/planes",
+    label: "Mi plan",
+    sub: rawShellPlan
+      ? `${clientPlanLabel(shellPlan)} · Ver beneficios`
+      : planSummaryQuery.isLoading
+        ? "Cargando beneficios"
+        : "Ver beneficios",
+    icon: <Crown size={19} aria-hidden="true" />,
+    enabled: true,
+  };
 
   // (opcional) si en el futuro tenés una URL de avatar:
   const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl || "";
@@ -834,9 +900,8 @@ export default function ClientShell() {
       <header className="cs-header">
         <div className="cs-header-inner">
           <div className="cs-brand">
-            <div className="cs-logo">Z</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="cs-title">ZumaFit</div>
+            <div className="cs-brand-stack">
+              <BrandLogo className="cs-brandLogo" size="client" priority />
               <div className="cs-sub">{sub}</div>
             </div>
           </div>
@@ -887,6 +952,11 @@ export default function ClientShell() {
         <div className="cs-d-body">
           {/* TOP */}
           <div className="cs-sec">{NAV_TOP.map(renderItem)}</div>
+
+          <div className="cs-sec">
+            <div className="cs-sec-title">Plan</div>
+            {renderItem(planDrawerItem)}
+          </div>
 
           {/* SECTIONS */}
           {NAV_SECTIONS.map((sec) => (

@@ -7,8 +7,10 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ClipboardList,
   Crosshair,
+  Flag,
   Loader2,
   MoreVertical,
   MoonStar,
@@ -29,19 +31,15 @@ import AppToast from "../ui/AppToast.jsx";
 import {
   useAddFoodLog,
   useDeleteFoodLog,
+  useDeleteTrackingMeal,
+  useMenuTrackingWeek,
   useTrackingDay,
   useUpdateFoodLog,
+  useUpdateTrackingMealsConfig,
 } from "../tracking/trackingQueries.js";
 import "./trackingDiario.css";
 
-const TRACKING_MEAL_SETTINGS_KEY = "zumafit_tracking_meal_settings_v1";
-
-const DEFAULT_MEALS = [
-  { id: "desayuno", label: "Desayuno", type: "desayuno", target: emptyTotals() },
-  { id: "almuerzo", label: "Almuerzo", type: "almuerzo", target: emptyTotals() },
-  { id: "merienda", label: "Merienda", type: "merienda", target: emptyTotals() },
-  { id: "cena", label: "Cena", type: "cena", target: emptyTotals() },
-];
+const TRACKING_MEAL_TYPES = ["desayuno", "almuerzo", "merienda", "cena", "snack", "otra"];
 
 const MEAL_TYPE_OPTIONS = [
   { value: "desayuno", label: "Desayuno" },
@@ -49,7 +47,7 @@ const MEAL_TYPE_OPTIONS = [
   { value: "merienda", label: "Merienda" },
   { value: "cena", label: "Cena" },
   { value: "snack", label: "Snack" },
-  { value: "libre", label: "Libre" },
+  { value: "otra", label: "Otra" },
 ];
 
 export default function TrackingDiario() {
@@ -62,33 +60,45 @@ export default function TrackingDiario() {
   const [foodSearchError, setFoodSearchError] = useState("");
   const [selectedFood, setSelectedFood] = useState(null);
   const [quantity, setQuantity] = useState("100");
-  const [mealSettings, setMealSettings] = useState(() => loadMealSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsDraft, setSettingsDraft] = useState(() => loadMealSettings());
+  const [settingsDraft, setSettingsDraft] = useState([]);
   const [openMealMenu, setOpenMealMenu] = useState("");
+  const [isDailySummaryExpanded, setIsDailySummaryExpanded] = useState(false);
+  const [addMealOpen, setAddMealOpen] = useState(false);
+  const [goalMealId, setGoalMealId] = useState("");
+  const [goalDraft, setGoalDraft] = useState(() => emptyTotals());
+  const [deleteMealCandidate, setDeleteMealCandidate] = useState(null);
   const [toast, setToast] = useState(null);
 
+  const weekStart = useMemo(() => mondayOfWeek(date), [date]);
   const trackingQuery = useTrackingDay(date);
+  const menuTrackingQuery = useMenuTrackingWeek(weekStart);
   const addMutation = useAddFoodLog();
   const updateMutation = useUpdateFoodLog();
   const deleteMutation = useDeleteFoodLog();
+  const updateMealsMutation = useUpdateTrackingMealsConfig();
+  const deleteMealMutation = useDeleteTrackingMeal();
 
-  const isSaving = addMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isSaving =
+    addMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending ||
+    updateMealsMutation.isPending ||
+    deleteMealMutation.isPending;
   const tracking = trackingQuery.data || emptyTrackingDay(date);
-  const configuredMeals = useMemo(() => normalizeMealSettings(mealSettings), [mealSettings]);
+  const configuredMeals = useMemo(() => normalizeMealSettings(tracking.mealsConfig || []), [tracking.mealsConfig]);
   const log = useMemo(() => normalizeMeals(tracking.meals, configuredMeals), [tracking.meals, configuredMeals]);
   const meals = useMemo(() => mealsWithLoggedExtras(configuredMeals, log), [configuredMeals, log]);
-  const totals = tracking.totals || emptyTotals();
+  const trackedTotals = tracking.totals || emptyTotals();
+  const menuTrackingDay = useMemo(
+    () => (menuTrackingQuery.data?.days || []).find((day) => day.date === date) || null,
+    [date, menuTrackingQuery.data]
+  );
+  const menuConsumedTotals = useMemo(() => normalizeMenuConsumedTotals(menuTrackingDay), [menuTrackingDay]);
+  const totals = useMemo(() => addTotals(trackedTotals, menuConsumedTotals), [menuConsumedTotals, trackedTotals]);
   const objective = tracking.objetivo || null;
-  const remaining = tracking.remaining || remainingTotals(objective, totals);
+  const remaining = remainingTotals(objective, totals);
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
-  const objectiveHint = tracking.planificado
-    ? tracking.planificado.nombre || "Menu asignado activo"
-    : tracking.objetivoSource === "metasActuales"
-      ? "Metas actuales"
-      : tracking.objetivoSource === "default"
-        ? "Meta visual inicial"
-        : "Sin menu asignado";
 
   const searchReady = debouncedSearch.trim().length >= 2;
   const selectedPreview = useMemo(() => {
@@ -144,6 +154,27 @@ export default function TrackingDiario() {
     };
   }, [debouncedSearch, modalMeal]);
 
+  useEffect(() => {
+    if (!openMealMenu) return undefined;
+
+    function closeMenuFromOutside(event) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-td-meal-menu]")) return;
+      setOpenMealMenu("");
+    }
+
+    function closeMenuWithEscape(event) {
+      if (event.key === "Escape") setOpenMealMenu("");
+    }
+
+    document.addEventListener("pointerdown", closeMenuFromOutside);
+    document.addEventListener("keydown", closeMenuWithEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenuFromOutside);
+      document.removeEventListener("keydown", closeMenuWithEscape);
+    };
+  }, [openMealMenu]);
+
   function openAdd(mealId) {
     setModalMeal(mealId);
     setSearch("");
@@ -162,6 +193,11 @@ export default function TrackingDiario() {
 
   function addFood() {
     if (!modalMeal || !selectedFood || addMutation.isPending) return;
+    const selectedMeal = meals.find((meal) => meal.id === modalMeal);
+    if (!selectedMeal) {
+      setToast({ type: "error", message: "Primero crea la comida donde queres cargar el alimento." });
+      return;
+    }
     const quantityValue = Number(quantity);
     if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
       setToast({ type: "warning", message: "Ingresa una cantidad valida." });
@@ -169,7 +205,9 @@ export default function TrackingDiario() {
     }
     const payload = {
       date,
-      mealType: modalMeal,
+      mealId: selectedMeal.id,
+      mealType: selectedMeal.type,
+      mealName: selectedMeal.label,
       food: foodPayload(selectedFood),
       cantidad: quantityValue,
       unidad: selectedFood.unidad || selectedFood.unit || "g",
@@ -197,19 +235,25 @@ export default function TrackingDiario() {
   }
 
   function openSettings() {
-    setSettingsDraft(normalizeMealSettings(mealSettings));
+    setSettingsDraft(normalizeMealSettings(configuredMeals));
     setSettingsOpen(true);
   }
 
   function saveSettings() {
     const next = normalizeMealSettings(settingsDraft);
-    setMealSettings(next);
-    saveMealSettings(next);
-    setSettingsOpen(false);
-    setToast({ type: "success", message: "Ajustes de comidas guardados." });
+    updateMealsMutation.mutate(
+      { date, mealsConfig: toBackendMealsConfig(next) },
+      {
+        onSuccess: () => {
+          setSettingsOpen(false);
+          setToast({ type: "success", message: "Ajustes de comidas guardados para este dia." });
+        },
+        onError: (error) => setToast({ type: "error", message: error?.message || "No se pudieron guardar los ajustes." }),
+      }
+    );
   }
 
-  function updateQuantity(mealId, item, nextQuantity) {
+  function updateQuantity(meal, item, nextQuantity) {
     const quantityValue = Number(nextQuantity);
     if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
       setToast({ type: "warning", message: "Ingresa una cantidad valida." });
@@ -220,7 +264,8 @@ export default function TrackingDiario() {
       {
         logId: item.id,
         date,
-        mealType: mealId,
+        mealId: meal.id,
+        mealType: meal.type,
         cantidad: quantityValue,
         unidad: item.unidad || "g",
       },
@@ -252,6 +297,103 @@ export default function TrackingDiario() {
     });
     setOpenMealMenu("");
     setToast({ type: "success", message: "Comida vaciada." });
+  }
+
+  function persistMealsConfig(nextMeals, successMessage = "Cambios guardados.") {
+    updateMealsMutation.mutate(
+      { date, mealsConfig: toBackendMealsConfig(nextMeals) },
+      {
+        onSuccess: () => setToast({ type: "success", message: successMessage }),
+        onError: (error) => setToast({ type: "error", message: error?.message || "No se pudo guardar la comida." }),
+      }
+    );
+  }
+
+  function createMealSection(type, customName = "") {
+    const safeType = normalizeTrackingMealType(type);
+    if (!safeType) return;
+    const current = normalizeMealSettings(configuredMeals);
+    const newMeal = createMealConfig(safeType, customName, current);
+    const next = [...current, newMeal];
+    setAddMealOpen(false);
+    persistMealsConfig(next, `${newMeal.label} agregada al diario.`);
+  }
+
+  function openMealGoal(meal) {
+    setOpenMealMenu("");
+    setGoalMealId(meal.id);
+    setGoalDraft(sanitizeTotals(meal.target || {}));
+  }
+
+  function saveMealGoal() {
+    const target = sanitizeTotals(autofillMealGoalCalories(goalDraft));
+    const next = normalizeMealSettings(configuredMeals).map((meal) => (
+      meal.id === goalMealId ? { ...meal, target } : meal
+    ));
+    setGoalMealId("");
+    persistMealsConfig(next, hasMealTarget(target) ? "Meta de comida guardada." : "Meta de comida quitada.");
+  }
+
+  function removeMealGoal(mealId) {
+    const next = normalizeMealSettings(configuredMeals).map((meal) => (
+      meal.id === mealId ? { ...meal, target: emptyTotals() } : meal
+    ));
+    setOpenMealMenu("");
+    setGoalMealId("");
+    persistMealsConfig(next, "Meta de comida quitada.");
+  }
+
+  function requestDeleteMeal(meal, items = []) {
+    setOpenMealMenu("");
+    setDeleteMealCandidate({ meal, itemsCount: items.length });
+  }
+
+  function confirmDeleteMeal() {
+    const meal = deleteMealCandidate?.meal;
+    if (!meal?.id || deleteMealMutation.isPending) return;
+    deleteMealMutation.mutate(
+      { date, mealId: meal.id },
+      {
+        onSuccess: () => {
+          setDeleteMealCandidate(null);
+          setToast({ type: "success", message: `${meal.label} eliminada del dia.` });
+        },
+        onError: (error) => setToast({ type: "error", message: error?.message || "No se pudo eliminar la comida." }),
+      }
+    );
+  }
+
+  function calculateRemainingTargets() {
+    if (!objective) {
+      setToast({ type: "warning", message: "No hay una meta diaria para calcular el restante." });
+      return;
+    }
+
+    const positiveRemaining = positiveTotals(remaining || emptyTotals());
+    if (!hasPositiveTotals(positiveRemaining)) {
+      setToast({ type: "info", message: "No queda restante para distribuir." });
+      return;
+    }
+
+    const emptyMeals = meals.filter((meal) => !(log[meal.id] || []).length);
+    const targetMeals = emptyMeals.length ? emptyMeals : meals.filter((meal) => !hasMealTarget(meal.target));
+    if (!targetMeals.length) {
+      setToast({ type: "warning", message: "No hay comidas pendientes para calcular el restante." });
+      return;
+    }
+
+    const distribution = distributeRemainingTarget(positiveRemaining, targetMeals.length);
+    const targetsByMealId = new Map(targetMeals.map((meal, index) => [meal.id, distribution[index] || emptyTotals()]));
+    const next = normalizeMealSettings(configuredMeals).map((meal) => (
+      targetsByMealId.has(meal.id) ? { ...meal, target: targetsByMealId.get(meal.id) } : meal
+    ));
+
+    persistMealsConfig(
+      next,
+      targetMeals.length === 1
+        ? `Restante asignado a ${targetMeals[0].label}.`
+        : `Restante distribuido en ${targetMeals.length} comidas.`
+    );
   }
 
   function mealMenuFeedback(label) {
@@ -298,28 +440,38 @@ export default function TrackingDiario() {
           <div className="td-error">No se pudo cargar el tracking diario.</div>
         ) : null}
 
-        <section className="td-goalCard">
-          <MiniTotals label="Objetivo diario" totals={objective || emptyTotals()} hint={objectiveHint} />
-          <MiniTotals label="Registrado" totals={totals} />
-          <MiniTotals label="Restante" totals={remaining || emptyTotals()} muted={!remaining} />
-        </section>
+        <DailySummaryCard
+          expanded={isDailySummaryExpanded}
+          onToggle={() => setIsDailySummaryExpanded((current) => !current)}
+          menuTotals={menuConsumedTotals}
+          objective={objective || emptyTotals()}
+          remaining={remaining || emptyTotals()}
+          totals={totals}
+        />
 
-        <section className="td-summary">
-          <MacroProgress label="Kcal" value={totals.kcal} target={objective?.kcal} tone="kcal" />
-          <MacroProgress label="Proteína" value={totals.proteina} target={objective?.proteina} suffix="g" tone="protein" />
-          <MacroProgress label="Carbs" value={totals.carbs} target={objective?.carbs} suffix="g" tone="carbs" />
-          <MacroProgress label="Grasas" value={totals.grasas} target={objective?.grasas} suffix="g" tone="fat" />
-        </section>
+        <button
+          type="button"
+          className="td-calcRemainingBtn"
+          onClick={calculateRemainingTargets}
+          disabled={updateMealsMutation.isPending}
+        >
+          <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
+          <span>
+            <strong>Calcular restante</strong>
+            <small>Distribuir lo que falta entre las comidas pendientes</small>
+          </span>
+        </button>
 
         {issues.length ? <TrackingIssueList issues={issues} /> : null}
 
-        <section className="td-meals">
-          {meals.map((meal) => {
+        <section className={`td-meals ${meals.length ? "" : "is-empty"}`}>
+          {meals.length ? meals.map((meal) => {
             const items = log[meal.id] || [];
             const mealTotals = totalItems(items);
             const mealMenuOpen = openMealMenu === meal.id;
+            const mealHasTarget = hasMealTarget(meal.target);
             return (
-              <article className="td-meal" key={meal.id}>
+              <article className={`td-meal ${mealMenuOpen ? "menu-open" : ""}`} key={meal.id}>
                 <div className="td-mealHead">
                   <div className="td-mealTitleRow">
                     <MealTypeBadge type={meal.type} />
@@ -328,7 +480,7 @@ export default function TrackingDiario() {
                       <p>{macroLine(mealTotals)}</p>
                       <div className="td-mealMeta">
                         <span>{mealTypeLabel(meal.type)}</span>
-                        <span>{mealTargetLine(meal.target)}</span>
+                        {mealHasTarget ? <span className="goal">Meta {mealTargetLine(meal.target)}</span> : null}
                       </div>
                     </div>
                   </div>
@@ -341,7 +493,7 @@ export default function TrackingDiario() {
                     >
                       <Plus size={23} strokeWidth={2.3} aria-hidden="true" />
                     </button>
-                    <div className="td-menuWrap">
+                    <div className="td-menuWrap" data-td-meal-menu>
                       <button
                         type="button"
                         className={`td-iconBtn menu ${mealMenuOpen ? "active" : ""}`}
@@ -353,12 +505,15 @@ export default function TrackingDiario() {
                       </button>
                       {mealMenuOpen ? (
                         <MealOptionsMenu
-                          mealLabel={meal.label}
                           onSaveMeal={() => mealMenuFeedback("Guardar como comida")}
                           onFavorite={() => mealMenuFeedback("Guardar como favorita")}
                           onUseSaved={() => mealMenuFeedback("Usar comida guardada")}
                           onGenerate={() => mealMenuFeedback("Generar comida segun objetivo")}
+                          hasTarget={mealHasTarget}
+                          onSetGoal={() => openMealGoal(meal)}
+                          onRemoveGoal={() => removeMealGoal(meal.id)}
                           onClear={() => clearMeal(meal.id, items)}
+                          onDeleteMeal={() => requestDeleteMeal(meal, items)}
                         />
                       ) : null}
                     </div>
@@ -384,7 +539,7 @@ export default function TrackingDiario() {
                             <input
                               key={`${item.id}-${item.cantidad}`}
                               defaultValue={item.cantidad}
-                              onBlur={(event) => updateQuantity(meal.id, item, event.target.value)}
+                              onBlur={(event) => updateQuantity(meal, item, event.target.value)}
                               aria-label="Cantidad"
                             />
                             <span>{item.unidad}</span>
@@ -402,18 +557,76 @@ export default function TrackingDiario() {
                     ))}
                   </div>
                 ) : (
-                  <div className="td-empty compact">Todavia no registraste alimentos en esta comida.</div>
+                  <button type="button" className="td-emptyMeal" onClick={() => openAdd(meal.id)}>
+                    <Plus size={17} strokeWidth={2.4} aria-hidden="true" />
+                    <span>Todavia no registraste alimentos en esta comida</span>
+                    <strong>Agregar alimento</strong>
+                  </button>
                 )}
-
-                <button type="button" className="td-mealSummary">
-                  <span>Ver resumen del {meal.label.toLowerCase()}</span>
-                  <ChevronDown size={20} strokeWidth={2.4} aria-hidden="true" />
-                </button>
               </article>
             );
-          })}
+          }) : (
+            <div className="td-dayEmpty">
+              <span className="td-addMealIcon">
+                <Plus size={22} strokeWidth={2.6} aria-hidden="true" />
+              </span>
+              <div>
+                <strong>Todavia no hay comidas en este dia</strong>
+                <p>Agrega la primera seccion y carga alimentos cuando los registres.</p>
+              </div>
+              <button type="button" className="td-primaryBtn" onClick={() => setAddMealOpen(true)}>
+                <Plus size={17} />
+                Agregar comida
+              </button>
+            </div>
+          )}
+
+          {meals.length ? (
+            <button type="button" className="td-addMealCard" onClick={() => setAddMealOpen(true)}>
+              <span className="td-addMealIcon">
+                <Plus size={22} strokeWidth={2.6} aria-hidden="true" />
+              </span>
+              <span>
+                <strong>Agregar comida</strong>
+                <small>Crear una nueva seccion para snack u otra comida del dia.</small>
+              </span>
+            </button>
+          ) : null}
         </section>
       </section>
+
+      {deleteMealCandidate ? (
+        <div className="td-modalBackdrop">
+          <div className="td-modal td-compactModal">
+            <div className="td-modalTop">
+              <div>
+                <span className="td-kicker">
+                  <Trash2 size={14} strokeWidth={2.4} aria-hidden="true" />
+                  Eliminar comida
+                </span>
+                <h3>{deleteMealCandidate.meal?.label}</h3>
+              </div>
+              <button type="button" className="td-iconBtn" onClick={() => setDeleteMealCandidate(null)} aria-label="Cerrar">
+                <X size={18} strokeWidth={2.4} aria-hidden="true" />
+              </button>
+            </div>
+            <p className="td-confirmText">
+              {deleteMealCandidate.itemsCount
+                ? `Esta comida tiene ${deleteMealCandidate.itemsCount} alimento${deleteMealCandidate.itemsCount > 1 ? "s" : ""}. Se van a borrar la card, su meta y sus alimentos del dia.`
+                : "Se va a borrar la card y su meta de este dia."}
+            </p>
+            <div className="td-modalActions">
+              <button type="button" className="td-secondaryBtn" onClick={() => setDeleteMealCandidate(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="td-dangerBtn" onClick={confirmDeleteMeal} disabled={deleteMealMutation.isPending}>
+                {deleteMealMutation.isPending ? <Loader2 size={17} className="td-spin" /> : <Trash2 size={17} />}
+                Eliminar comida
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {modalMeal ? (
         <div className="td-modalBackdrop">
@@ -508,6 +721,25 @@ export default function TrackingDiario() {
         />
       ) : null}
 
+      {addMealOpen ? (
+        <AddMealTypeModal
+          onClose={() => setAddMealOpen(false)}
+          onCreate={createMealSection}
+        />
+      ) : null}
+
+      {goalMealId ? (
+        <MealGoalModal
+          meal={meals.find((meal) => meal.id === goalMealId)}
+          draft={goalDraft}
+          remaining={remaining || emptyTotals()}
+          setDraft={setGoalDraft}
+          onClose={() => setGoalMealId("")}
+          onSave={saveMealGoal}
+          onRemove={() => removeMealGoal(goalMealId)}
+        />
+      ) : null}
+
       <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
@@ -523,13 +755,23 @@ function MealTypeBadge({ type = "" }) {
         ? MoonStar
         : Utensils;
   return (
-    <span className={`td-mealBadge ${normalized || "libre"}`} aria-hidden="true">
+    <span className={`td-mealBadge ${normalized || "otra"}`} aria-hidden="true">
       <Icon size={24} strokeWidth={1.9} />
     </span>
   );
 }
 
-function MealOptionsMenu({ onSaveMeal, onFavorite, onUseSaved, onGenerate, onClear }) {
+function MealOptionsMenu({
+  hasTarget,
+  onSaveMeal,
+  onFavorite,
+  onUseSaved,
+  onGenerate,
+  onSetGoal,
+  onRemoveGoal,
+  onClear,
+  onDeleteMeal,
+}) {
   return (
     <div className="td-mealMenu" role="menu">
       <button type="button" onClick={onSaveMeal} role="menuitem">
@@ -548,10 +790,160 @@ function MealOptionsMenu({ onSaveMeal, onFavorite, onUseSaved, onGenerate, onCle
         <Crosshair size={20} strokeWidth={2.2} aria-hidden="true" />
         <span>Generar comida segun objetivo</span>
       </button>
+      <button type="button" onClick={onSetGoal} role="menuitem">
+        <Flag size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>{hasTarget ? "Editar meta de esta comida" : "Definir meta de esta comida"}</span>
+      </button>
+      {hasTarget ? (
+        <button type="button" onClick={onRemoveGoal} role="menuitem">
+          <X size={20} strokeWidth={2.2} aria-hidden="true" />
+          <span>Quitar meta de esta comida</span>
+        </button>
+      ) : null}
+      <span className="td-menuDivider" aria-hidden="true" />
       <button type="button" className="danger" onClick={onClear} role="menuitem">
         <Trash2 size={20} strokeWidth={2.2} aria-hidden="true" />
         <span>Vaciar comida</span>
       </button>
+      <button type="button" className="danger strong" onClick={onDeleteMeal} role="menuitem">
+        <Trash2 size={20} strokeWidth={2.2} aria-hidden="true" />
+        <span>Eliminar comida</span>
+      </button>
+    </div>
+  );
+}
+
+function AddMealTypeModal({ onClose, onCreate }) {
+  const [selectedType, setSelectedType] = useState("snack");
+  const [customName, setCustomName] = useState("");
+  const selectedLabel = mealTypeLabel(selectedType);
+
+  function confirmCreate() {
+    onCreate(selectedType, customName);
+  }
+
+  return (
+    <div className="td-modalBackdrop">
+      <div className="td-modal td-compactModal">
+        <div className="td-modalTop">
+          <div>
+            <span className="td-kicker">
+              <Plus size={14} strokeWidth={2.4} aria-hidden="true" />
+              Nueva comida
+            </span>
+            <h3>Agregar comida</h3>
+          </div>
+          <button type="button" className="td-iconBtn" onClick={onClose} aria-label="Cerrar">
+            <X size={18} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="td-typeGrid">
+          {MEAL_TYPE_OPTIONS.map((option) => (
+            <button
+              type="button"
+              className={selectedType === option.value ? "active" : ""}
+              key={option.value}
+              onClick={() => setSelectedType(option.value)}
+            >
+              <MealTypeBadge type={option.value} />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <label className="td-nameField">
+          <span>Nombre opcional</span>
+          <input
+            value={customName}
+            onChange={(event) => setCustomName(event.target.value)}
+            placeholder={selectedLabel}
+          />
+        </label>
+
+        <button type="button" className="td-primaryBtn" onClick={confirmCreate}>
+          <Plus size={17} />
+          Crear {customName.trim() || selectedLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRemove }) {
+  const title = meal?.label || "Comida";
+  const macroKcal = macroCaloriesFromTotals(draft || {});
+  const hasMacroDraft = macroKcal > 0;
+  const kcalValue = hasMacroDraft ? inputNumber(macroKcal) : draft?.kcal;
+  const remainingKcal = Number(remaining?.kcal) || 0;
+  const exceedsRemaining = remainingKcal > 0 && Number(kcalValue) > remainingKcal;
+
+  function update(key, value) {
+    setDraft((current) => ({
+      ...autofillMealGoalCalories({
+        ...(current || emptyTotals()),
+        [key]: value,
+      }),
+    }));
+  }
+
+  return (
+    <div className="td-modalBackdrop">
+      <div className="td-modal td-compactModal">
+        <div className="td-modalTop">
+          <div>
+            <span className="td-kicker">
+              <Flag size={14} strokeWidth={2.4} aria-hidden="true" />
+              Meta por comida
+            </span>
+            <h3>{title}</h3>
+          </div>
+          <button type="button" className="td-iconBtn" onClick={onClose} aria-label="Cerrar">
+            <X size={18} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        </div>
+
+        <p className="td-goalIntro">Defini una meta sutil para esta comida. Si queda vacia, no se muestra nada en la card.</p>
+
+        <div className="td-goalGrid">
+          <TargetInput
+            label="Kcal"
+            value={kcalValue}
+            onChange={(value) => update("kcal", value)}
+            placeholder={hasMacroDraft ? "Auto" : "Libre"}
+            readOnly={hasMacroDraft}
+          />
+          <TargetInput label="Proteina" value={draft?.proteina} onChange={(value) => update("proteina", value)} />
+          <TargetInput label="Carbs" value={draft?.carbs} onChange={(value) => update("carbs", value)} />
+          <TargetInput label="Grasas" value={draft?.grasas} onChange={(value) => update("grasas", value)} />
+        </div>
+
+        {hasMacroDraft ? (
+          <div className="td-goalAutoNote">
+            Kcal calculadas desde macros: P x4 + C x4 + G x9.
+          </div>
+        ) : null}
+
+        {exceedsRemaining ? (
+          <div className="td-goalWarning">
+            <AlertTriangle size={16} strokeWidth={2.4} aria-hidden="true" />
+            <span>
+              Esta meta supera las kcal restantes del dia: {displayCompactKcal(remainingKcal)} disponibles.
+            </span>
+          </div>
+        ) : null}
+
+        <div className="td-modalActions">
+          <button type="button" className="td-secondaryBtn" onClick={onRemove}>
+            <X size={16} strokeWidth={2.4} />
+            Quitar meta
+          </button>
+          <button type="button" className="td-primaryBtn" onClick={onSave}>
+            <CheckCircle2 size={17} />
+            Guardar meta
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -590,30 +982,119 @@ function FoodLogThumb({ item = {} }) {
   );
 }
 
-function MacroProgress({ label, value, target, suffix = "", tone }) {
-  const hasTarget = Number(target) > 0;
-  const pct = hasTarget ? Math.min(100, Math.max(0, (value / target) * 100)) : 0;
-  const current = `${formatNumber(value, 0)}${suffix}`;
-  const goal = `${hasTarget ? formatNumber(target, 0) : "0"}${suffix}`;
+function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), objective, totals, remaining }) {
+  const target = objective || emptyTotals();
+  const consumed = totals || emptyTotals();
+  const rest = remaining || emptyTotals();
+  const hasMenuTotals = hasPositiveTotals(menuTotals);
+  const progress = macroProgressPct(consumed.kcal, target.kcal);
+  const progressLabel = Math.round(progress);
+  const hasKcalTarget = Number(target.kcal) > 0;
+  const ChevronIcon = expanded ? ChevronUp : ChevronDown;
+  const primaryMetrics = [
+    {
+      label: "Objetivo",
+      value: hasKcalTarget ? displayCompactKcal(target.kcal) : "Libre",
+      tone: "goal",
+    },
+    {
+      label: "Consumido",
+      value: displayCompactKcal(consumed.kcal),
+      tone: "consumed",
+    },
+    {
+      label: "Restante",
+      value: hasKcalTarget ? displayCompactKcal(rest.kcal) : "-",
+      tone: "remaining",
+    },
+  ];
+
   return (
-    <div className={`td-macro ${tone}`}>
-      <div className="td-macroTop">
-        <span>{label}</span>
-      </div>
-      <strong>{current} / {goal}</strong>
-      <div className="td-bar">
-        <span style={{ width: `${pct}%` }} />
-      </div>
-    </div>
+    <section className={`td-dailySummary ${expanded ? "expanded" : ""}`}>
+      <button
+        type="button"
+        className="td-dailySummaryToggle"
+        aria-expanded={expanded}
+        aria-controls="td-daily-summary-detail"
+        onClick={onToggle}
+      >
+        <span className="td-dailySummaryContent">
+          <span className="td-dailySummaryLabelRow">
+            <span className="td-dailySummaryTitle">Resumen diario</span>
+          </span>
+          <span className="td-dailySummaryMetrics" aria-label="Resumen de calorias">
+            {primaryMetrics.map((metric) => (
+              <span className={`td-dailyMetric ${metric.tone}`} key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label.toLowerCase()}</span>
+              </span>
+            ))}
+          </span>
+          <span className="td-dailySummaryMacroPills">
+            <span>
+              <small>Consumidos</small>
+              <strong>{macroLineCurrent(consumed)}</strong>
+            </span>
+            {hasKcalTarget ? (
+              <span>
+                <small>Restantes</small>
+                <strong>{macroLineCurrent(rest)}</strong>
+              </span>
+            ) : null}
+            {hasMenuTotals ? (
+              <span className="menu">
+                <small>Menu hecho</small>
+                <strong>{displayCompactKcal(menuTotals.kcal)} · {macroLineCurrent(menuTotals)}</strong>
+              </span>
+            ) : null}
+          </span>
+        </span>
+        <span className="td-dailySummarySide">
+          <span
+            className="td-dailySummaryPct"
+            style={{
+              background: `conic-gradient(#ffe25e ${progress * 3.6}deg, rgba(255,255,255,0.13) 0deg)`,
+            }}
+            aria-hidden="true"
+          >
+            <span>
+              <strong>{progressLabel}%</strong>
+              <small>cumplimiento</small>
+            </span>
+          </span>
+          <span className="td-dailySummaryChevron">
+            <ChevronIcon size={20} strokeWidth={2.5} aria-hidden="true" />
+          </span>
+        </span>
+      </button>
+
+      {expanded ? (
+        <div className="td-dailySummaryDetail" id="td-daily-summary-detail">
+          <span className="td-dailySummaryDetailTitle">Progreso de macros</span>
+          <div className="td-summaryMetricGrid">
+            <MacroProgress label="Calorías" value={consumed.kcal} target={target.kcal} suffix="kcal" tone="kcal" />
+            <MacroProgress label="Proteína" value={consumed.proteina} target={target.proteina} suffix="g" tone="protein" />
+            <MacroProgress label="Carbs" value={consumed.carbs} target={target.carbs} suffix="g" tone="carbs" />
+            <MacroProgress label="Grasas" value={consumed.grasas} target={target.grasas} suffix="g" tone="fat" />
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
-function MiniTotals({ label, totals, muted = false, hint = "" }) {
+function MacroProgress({ label, value, target, suffix = "", tone }) {
+  const pct = macroProgressPct(value, target);
+
   return (
-    <div className={`td-miniTotals ${muted ? "muted" : ""}`}>
-      <span>{label}</span>
-      <strong>{totals ? displayCompactKcal(totals.kcal) : "-"}</strong>
-      <small>{hint || (totals ? macroLineShort(totals) : "Sin comparacion")}</small>
+    <div className={`td-summaryMetric ${tone}`}>
+      <div className="td-summaryMetricTop">
+        <span className="td-summaryMetricName">{label}</span>
+        <strong>{progressValueLabel(value, target, suffix)}</strong>
+      </div>
+      <div className="td-summaryBar">
+        <span style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }
@@ -637,16 +1118,11 @@ function MealSettingsDrawer({ settings, onChange, onClose, onSave }) {
   const count = normalized.length;
 
   function setCount(nextCount) {
-    const safeCount = Math.max(1, Math.min(6, Number(nextCount) || 4));
+    const safeCount = Math.max(0, Math.min(8, Number(nextCount) || 0));
     const next = [...normalized];
     while (next.length < safeCount) {
-      const index = next.length;
-      next.push({
-        id: `comida-${index + 1}`,
-        label: `Comida ${index + 1}`,
-        type: "libre",
-        target: emptyTotals(),
-      });
+      const type = nextAvailableMealType(next);
+      next.push(createMealConfig(type, "", next));
     }
     onChange(next.slice(0, safeCount));
   }
@@ -689,7 +1165,7 @@ function MealSettingsDrawer({ settings, onChange, onClose, onSave }) {
             <strong>{count}</strong>
           </div>
           <select value={count} onChange={(event) => setCount(event.target.value)}>
-            {[1, 2, 3, 4, 5, 6].map((value) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
               <option key={value} value={value}>{value} comida{value > 1 ? "s" : ""}</option>
             ))}
           </select>
@@ -709,7 +1185,7 @@ function MealSettingsDrawer({ settings, onChange, onClose, onSave }) {
                 </label>
                 <label>
                   <span>Tipo</span>
-                  <select value={meal.type || "libre"} onChange={(event) => updateMeal(index, { type: event.target.value })}>
+                  <select value={meal.type || "otra"} onChange={(event) => updateMeal(index, { type: event.target.value })}>
                     {MEAL_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
@@ -740,11 +1216,17 @@ function MealSettingsDrawer({ settings, onChange, onClose, onSave }) {
   );
 }
 
-function TargetInput({ label, value, onChange }) {
+function TargetInput({ label, value, onChange, placeholder = "Libre", readOnly = false }) {
   return (
     <label className="td-targetInput">
       <span>{label}</span>
-      <input value={value ?? ""} onChange={(event) => onChange(event.target.value)} inputMode="decimal" placeholder="Libre" />
+      <input
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value)}
+        inputMode="decimal"
+        placeholder={placeholder}
+        readOnly={readOnly}
+      />
     </label>
   );
 }
@@ -757,11 +1239,12 @@ function emptyTrackingDay(date) {
     totals: emptyTotals(),
     remaining: null,
     planificado: null,
-    meals: normalizeMeals({}),
+    mealsConfig: [],
+    meals: {},
   };
 }
 
-function normalizeMeals(raw = {}, meals = DEFAULT_MEALS) {
+function normalizeMeals(raw = {}, meals = []) {
   const base = meals.reduce((acc, meal) => {
     acc[meal.id] = Array.isArray(raw?.[meal.id]) ? raw[meal.id] : [];
     return acc;
@@ -773,43 +1256,90 @@ function normalizeMeals(raw = {}, meals = DEFAULT_MEALS) {
 }
 
 function normalizeMealSettings(value = []) {
-  const input = Array.isArray(value) && value.length ? value : DEFAULT_MEALS;
-  return input.slice(0, 6).map((meal, index) => ({
-    id: String(meal.id || `comida-${index + 1}`),
-    label: String(meal.label || meal.name || `Comida ${index + 1}`).trim() || `Comida ${index + 1}`,
-    type: String(meal.type || "libre"),
-    target: sanitizeTotals(meal.target || {}),
-  }));
+  const input = Array.isArray(value) ? value : [];
+  const used = new Set();
+  return input.slice(0, 24).map((meal, index) => {
+    const type = normalizeTrackingMealType(meal.type || meal.tipo || meal.mealType) || normalizeTrackingMealType(meal.id) || "snack";
+    let id = normalizeMealId(meal.id || meal.mealId || meal.mealConfigId);
+    if (!id) id = createMealId(type);
+    if (used.has(id)) id = createMealId(type);
+    used.add(id);
+    return {
+      id,
+      label: String(meal.label || meal.nombre || meal.name || mealTypeLabel(type) || `Comida ${index + 1}`).trim() || `Comida ${index + 1}`,
+      type,
+      target: sanitizeTotals(meal.target || meal.meta || {}),
+      order: Number.isFinite(Number(meal.order ?? meal.orden)) ? Number(meal.order ?? meal.orden) : index,
+    };
+  }).sort((a, b) => (a.order || 0) - (b.order || 0)).map((meal, index) => ({ ...meal, order: index }));
 }
 
 function mealsWithLoggedExtras(meals = [], log = {}) {
   const known = new Set(meals.map((meal) => meal.id));
   const extras = Object.keys(log || {})
     .filter((key) => !known.has(key) && Array.isArray(log[key]) && log[key].length)
-    .map((key) => ({
+    .map((key) => {
+      const first = (log[key] || [])[0] || {};
+      const type = normalizeTrackingMealType(first.mealType || key) || "snack";
+      return {
       id: key,
-      label: mealTypeLabel(key),
-      type: key,
+      label: mealTypeLabel(type),
+      type,
       target: emptyTotals(),
-    }));
+      order: meals.length,
+    };
+    });
   return [...meals, ...extras];
 }
 
-function loadMealSettings() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(TRACKING_MEAL_SETTINGS_KEY) || "null");
-    return normalizeMealSettings(stored);
-  } catch {
-    return normalizeMealSettings(DEFAULT_MEALS);
-  }
+function createMealConfig(type = "snack", customName = "", existingMeals = []) {
+  const safeType = normalizeTrackingMealType(type) || "snack";
+  return {
+    id: createMealId(safeType),
+    label: cleanMealName(customName) || mealTypeLabel(safeType),
+    type: safeType,
+    target: emptyTotals(),
+    order: existingMeals.length,
+  };
 }
 
-function saveMealSettings(settings) {
-  try {
-    localStorage.setItem(TRACKING_MEAL_SETTINGS_KEY, JSON.stringify(normalizeMealSettings(settings)));
-  } catch {
-    // localStorage puede no estar disponible en todos los entornos.
-  }
+function toBackendMealsConfig(meals = []) {
+  return normalizeMealSettings(meals).map((meal, index) => ({
+    mealId: meal.id,
+    tipo: meal.type,
+    nombre: meal.label,
+    orden: index,
+    meta: hasMealTarget(meal.target) ? sanitizeTotalsForServer(meal.target) : null,
+  }));
+}
+
+function createMealId(type = "snack") {
+  const random =
+    typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return `${normalizeTrackingMealType(type) || "meal"}_${random}`;
+}
+
+function normalizeMealId(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 80);
+}
+
+function cleanMealName(value = "") {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 60);
+}
+
+function sanitizeTotalsForServer(value = {}) {
+  const safe = sanitizeTotals(value);
+  return {
+    kcal: Number(safe.kcal) || 0,
+    proteina: Number(safe.proteina) || 0,
+    carbs: Number(safe.carbs) || 0,
+    grasas: Number(safe.grasas) || 0,
+  };
 }
 
 function sanitizeTotals(value = {}) {
@@ -853,6 +1383,107 @@ function addTotals(a, b) {
   };
 }
 
+function normalizeMenuConsumedTotals(day = null) {
+  const tracking = day?.tracking || {};
+  const consumed = totalsFromAny(tracking.consumedTotals || {});
+  if (hasPositiveTotals(consumed)) return consumed;
+  return (tracking.completedMenuMeals || []).reduce((acc, meal) => addTotals(acc, totalsFromAny(meal)), emptyTotals());
+}
+
+function totalsFromAny(value = {}) {
+  const safe = value && typeof value === "object" ? value : {};
+  const nested = safe.totals || safe.totales || safe.macros || safe.macrosTotales || {};
+  return {
+    kcal: round(readNumber(nested.kcal ?? nested.calorias ?? safe.kcal ?? safe.calorias ?? safe.calories)),
+    proteina: round(readNumber(nested.proteina ?? nested.proteinas ?? nested.p ?? safe.proteina ?? safe.proteinas ?? safe.p)),
+    carbs: round(readNumber(nested.carbs ?? nested.carbohidratos ?? nested.c ?? safe.carbs ?? safe.carbohidratos ?? safe.c)),
+    grasas: round(readNumber(nested.grasas ?? nested.g ?? safe.grasas ?? safe.g)),
+  };
+}
+
+function readNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function positiveTotals(value = {}) {
+  const totals = totalsFromAny(value);
+  return {
+    kcal: Math.max(0, totals.kcal),
+    proteina: Math.max(0, totals.proteina),
+    carbs: Math.max(0, totals.carbs),
+    grasas: Math.max(0, totals.grasas),
+  };
+}
+
+function hasPositiveTotals(value = {}) {
+  const totals = positiveTotals(value);
+  return Boolean(totals.kcal || totals.proteina || totals.carbs || totals.grasas);
+}
+
+function macroCaloriesFromTotals(value = {}) {
+  const totals = totalsFromAny(value);
+  return round((totals.proteina || 0) * 4 + (totals.carbs || 0) * 4 + (totals.grasas || 0) * 9);
+}
+
+function autofillMealGoalCalories(value = {}) {
+  const next = { ...(value || {}) };
+  const macroKcal = macroCaloriesFromTotals(next);
+  if (macroKcal > 0) next.kcal = inputNumber(macroKcal);
+  return next;
+}
+
+function distributeRemainingTarget(remaining = {}, count = 1) {
+  const safeCount = Math.max(1, Number(count) || 1);
+  const base = balancedRemainingTarget(remaining);
+  const keys = ["kcal", "proteina", "carbs", "grasas"];
+  const rows = Array.from({ length: safeCount }, () => emptyTotals());
+
+  keys.forEach((key) => {
+    const values = splitNumber(base[key], safeCount);
+    values.forEach((value, index) => {
+      rows[index][key] = value;
+    });
+  });
+
+  return rows.map((row) => autofillMealGoalCalories(row));
+}
+
+function balancedRemainingTarget(remaining = {}) {
+  const positive = positiveTotals(remaining);
+  const macroKcal = macroCaloriesFromTotals(positive);
+
+  if (macroKcal > 0) {
+    const factor = positive.kcal > 0 && macroKcal > positive.kcal ? positive.kcal / macroKcal : 1;
+    const scaled = {
+      kcal: 0,
+      proteina: round(positive.proteina * factor),
+      carbs: round(positive.carbs * factor),
+      grasas: round(positive.grasas * factor),
+    };
+    return {
+      ...scaled,
+      kcal: macroCaloriesFromTotals(scaled),
+    };
+  }
+
+  return {
+    kcal: positive.kcal,
+    proteina: 0,
+    carbs: 0,
+    grasas: 0,
+  };
+}
+
+function splitNumber(value = 0, count = 1) {
+  const safeCount = Math.max(1, Number(count) || 1);
+  const total = round(Math.max(0, Number(value) || 0));
+  const base = Math.floor((total / safeCount) * 10) / 10;
+  const values = Array.from({ length: safeCount }, () => base);
+  values[safeCount - 1] = round(total - base * (safeCount - 1));
+  return values;
+}
+
 function remainingTotals(objective, totals) {
   if (!objective) return null;
   return {
@@ -867,23 +1498,63 @@ function macroLine(macros = {}) {
   return `${formatNumber(macros.kcal, 0)} kcal - P ${formatNumber(macros.proteina, 0)} / C ${formatNumber(macros.carbs, 0)} / G ${formatNumber(macros.grasas, 0)}`;
 }
 
-function macroLineShort(macros = {}) {
+function macroLineCurrent(macros = {}) {
   return `P ${formatNumber(macros.proteina, 0)} / C ${formatNumber(macros.carbs, 0)} / G ${formatNumber(macros.grasas, 0)}`;
+}
+
+function macroProgressPct(value, target) {
+  const targetValue = Number(target);
+  if (!Number.isFinite(targetValue) || targetValue <= 0) return 0;
+  const currentValue = Number(value) || 0;
+  return Math.min(100, Math.max(0, (currentValue / targetValue) * 100));
+}
+
+function progressValueLabel(value, target, suffix = "") {
+  const unit = suffix ? ` ${suffix}` : "";
+  if (Number(target) > 0) return `${formatNumber(value, 0)} / ${formatNumber(target, 0)}${unit}`;
+  return `${formatNumber(value, 0)}${unit}`;
 }
 
 function displayCompactKcal(value) {
   return `${formatNumber(value, 0)} kcal`;
 }
 
+function inputNumber(value) {
+  const number = round(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return Number.isInteger(number) ? String(number) : String(number);
+}
+
 function mealTargetLine(target = {}) {
   const safe = sanitizeTotals(target);
-  if (!safe.kcal && !safe.proteina && !safe.carbs && !safe.grasas) return "Meta libre";
   const parts = [];
   if (safe.kcal) parts.push(`${formatNumber(safe.kcal, 0)} kcal`);
   if (safe.proteina) parts.push(`P ${formatNumber(safe.proteina, 0)}`);
   if (safe.carbs) parts.push(`C ${formatNumber(safe.carbs, 0)}`);
   if (safe.grasas) parts.push(`G ${formatNumber(safe.grasas, 0)}`);
   return parts.join(" / ");
+}
+
+function hasMealTarget(target = {}) {
+  const safe = sanitizeTotals(target);
+  return Boolean(safe.kcal || safe.proteina || safe.carbs || safe.grasas);
+}
+
+function normalizeTrackingMealType(value = "") {
+  const token = String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (token === "libre" || token === "otro") return "otra";
+  return TRACKING_MEAL_TYPES.includes(token) ? token : "";
+}
+
+function nextAvailableMealType(meals = []) {
+  const used = new Set((meals || []).map((meal) => meal.type || meal.id).filter(Boolean));
+  return TRACKING_MEAL_TYPES.find((type) => !used.has(type)) || "otra";
 }
 
 function mealTypeLabel(value = "") {
@@ -935,6 +1606,14 @@ function trackingIssues(objective, totals = {}) {
 
 function round(value) {
   return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function mondayOfWeek(date) {
+  const parsed = new Date(`${date}T12:00:00`);
+  const day = parsed.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  parsed.setDate(parsed.getDate() + diff);
+  return toDateInputValue(parsed);
 }
 
 function todayLocalString() {
