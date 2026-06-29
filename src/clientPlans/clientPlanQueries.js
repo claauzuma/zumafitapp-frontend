@@ -1,11 +1,16 @@
 import { getClientNutritionCapabilities, listClientMenus } from "../clientMenus/clientMenusApi.js";
+import { apiFetch } from "../Api.js";
+import { queryClient } from "../queryClient.js";
 import {
+  capabilitiesFromAccessContext,
   extractCapabilities,
+  extractAccessContext,
   normalizeCapabilities,
   resolveEffectiveClientNutritionCapabilities,
   responseShape,
 } from "./clientPlanUtils.js";
 
+export const clientAccessContextKey = ["client", "access-context"];
 export const clientPlanCapabilitiesKey = ["client", "nutritionCapabilities"];
 export const clientPlanMenusUsageKey = ["client", "planMenusUsage"];
 
@@ -25,7 +30,57 @@ function debugClientPlanRequest(label, meta = {}) {
   console.debug(`[ClientPlans] ${label}`, meta);
 }
 
+export async function fetchClientAccessContext() {
+  try {
+    const data = await apiFetch("/api/clientes/me/access-context", {
+      method: "GET",
+      timeoutMs: 10000,
+    });
+    const accessContext = extractAccessContext(data);
+    if (!accessContext) {
+      const error = new Error("ACCESS_CONTEXT_INVALID");
+      error.status = 200;
+      throw error;
+    }
+    debugClientPlanRequest("access context", {
+      url: "/api/clientes/me/access-context",
+      status: 200,
+      primaryAccess: accessContext.primaryAccess?.id,
+      personalPlan: accessContext.personalPlan,
+      effectivePersonalPlan: accessContext.effectivePersonalPlan,
+    });
+    return accessContext;
+  } catch (error) {
+    logClientPlanQueryError("GET /api/clientes/me/access-context", error);
+    throw error;
+  }
+}
+
 export async function fetchClientPlanCapabilities() {
+  try {
+    const accessContext = await queryClient.fetchQuery({
+      queryKey: clientAccessContextKey,
+      queryFn: fetchClientAccessContext,
+      staleTime: 2 * 60 * 1000,
+    });
+    const capabilities = capabilitiesFromResolvedAccess(accessContext);
+    if (capabilities) {
+      debugClientPlanRequest("capabilities from access-context cache", {
+        source: "access-context",
+        plan: capabilities.plan,
+        hasCapabilities: true,
+        limits: capabilities.limits,
+      });
+      return capabilities;
+    }
+  } catch (error) {
+    debugClientPlanRequest("access-context primary failed, trying fallback", {
+      status: error?.status ?? "unknown",
+      code: error?.code,
+      message: error?.message,
+    });
+  }
+
   const resolved = await resolveEffectiveClientNutritionCapabilities({
     fetchDirect: getClientNutritionCapabilities,
     fetchMenusFallback: () => listClientMenus({ includeComidas: false, limit: 1 }),
@@ -39,6 +94,12 @@ export async function fetchClientPlanCapabilities() {
     limits: finalCapabilities.limits,
   });
   return finalCapabilities;
+}
+
+export function capabilitiesFromResolvedAccess(accessContext = null) {
+  const capabilities = capabilitiesFromAccessContext(accessContext);
+  if (!capabilities) return null;
+  return { ...capabilities, _source: "access-context" };
 }
 
 export async function fetchClientPlanMenusUsage() {
@@ -61,6 +122,68 @@ export async function fetchClientPlanMenusUsage() {
     logClientPlanQueryError("GET /api/clientes/me/menus?includeComidas=false&limit=1", error);
     throw error;
   }
+}
+
+export async function startClientProTrial() {
+  try {
+    const data = await apiFetch("/api/clientes/me/trial/activate", {
+      method: "POST",
+      timeoutMs: 12000,
+    });
+    const accessContext = extractAccessContext(data);
+    if (!accessContext) {
+      const error = new Error("ACCESS_CONTEXT_INVALID");
+      error.status = 200;
+      throw error;
+    }
+    debugClientPlanRequest("trial activation success", {
+      url: "/api/clientes/me/trial/activate",
+      status: 200,
+      trialStatus: accessContext.trial?.status,
+      effectiveAccess: accessContext.effectiveAccess?.id,
+    });
+    return accessContext;
+  } catch (error) {
+    logClientPlanQueryError("POST /api/clientes/me/trial/activate", error);
+    throw error;
+  }
+}
+
+export async function acknowledgeClientTrialOnboardingOffer() {
+  const data = await apiFetch("/api/clientes/me/trial/onboarding-offer/ack", {
+    method: "POST",
+    timeoutMs: 12000,
+  });
+  const accessContext = extractAccessContext(data);
+  if (!accessContext) {
+    const error = new Error("ACCESS_CONTEXT_INVALID");
+    error.status = 200;
+    throw error;
+  }
+  return accessContext;
+}
+
+export async function acknowledgeClientTrialExpiryNotice() {
+  const data = await apiFetch("/api/clientes/me/trial/expiry-notice/ack", {
+    method: "POST",
+    timeoutMs: 12000,
+  });
+  const accessContext = extractAccessContext(data);
+  if (!accessContext) {
+    const error = new Error("ACCESS_CONTEXT_INVALID");
+    error.status = 200;
+    throw error;
+  }
+  return accessContext;
+}
+
+export async function createClientPlanChangeRequest(requestedPlan) {
+  const data = await apiFetch("/api/clientes/me/plan-change-requests", {
+    method: "POST",
+    body: { requestedPlan },
+    timeoutMs: 12000,
+  });
+  return data;
 }
 
 // Compatibilidad para imports anteriores: ahora esta query representa solo el uso secundario.

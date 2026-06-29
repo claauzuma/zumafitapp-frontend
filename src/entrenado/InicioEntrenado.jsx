@@ -6,8 +6,10 @@ import { useNavigate } from "react-router-dom";
 
 import { getCachedUser } from "../authCache.js";
 import {
+  clientAccessContextKey,
   clientPlanCapabilitiesKey,
   clientPlanMenusUsageKey,
+  fetchClientAccessContext,
   fetchClientPlanCapabilities,
   fetchClientPlanMenusUsage,
 } from "../clientPlans/clientPlanQueries.js";
@@ -168,12 +170,71 @@ html, body, #root{
   font-weight:850;
 }
 
+.homeActionBtn{
+  margin-top:12px;
+  width:100%;
+  min-height:40px;
+  border:1px solid rgba(245,215,110,.22);
+  border-radius:13px;
+  background:rgba(245,215,110,.10);
+  color:#f5d76e;
+  padding:0 12px;
+  font-weight:950;
+  cursor:pointer;
+}
+
+.trialActive{
+  margin-top:12px;
+  border:1px solid rgba(245,215,110,.25);
+  background:
+    radial-gradient(420px 180px at 100% 0%, rgba(245,215,110,.18), transparent 58%),
+    linear-gradient(145deg, rgba(17,24,31,.96), rgba(6,9,13,.98));
+  border-radius:16px;
+  padding:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.trialActive strong{
+  color:#fff4bd;
+  display:block;
+  font-size:14px;
+}
+
+.trialActive span{
+  color:rgba(255,255,255,.72);
+  display:block;
+  margin-top:3px;
+  font-size:12px;
+  font-weight:800;
+}
+
+.trialActive button{
+  flex:0 0 auto;
+  min-height:38px;
+  border:1px solid rgba(245,215,110,.25);
+  border-radius:12px;
+  background:rgba(245,215,110,.10);
+  color:#f5d76e;
+  padding:0 12px;
+  font-weight:950;
+}
+
 @media (max-width:520px){
   .planRow{
     align-items:stretch;
     flex-direction:column;
   }
   .planRow button{
+    width:100%;
+  }
+  .trialActive{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .trialActive button{
     width:100%;
   }
 }
@@ -193,12 +254,43 @@ function getSaludo(genero) {
   return "Bienvenido/a";
 }
 
+function formatHomeDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function homeObjective(user = {}) {
+  const metas = user?.metasActuales || {};
+  const macros = metas?.macros || {};
+  const kcal = numberOrNull(metas.kcal ?? user?.goal?.initialBudgetKcal);
+  return {
+    kcal,
+    p: numberOrNull(macros.p),
+    c: numberOrNull(macros.c),
+    g: numberOrNull(macros.g),
+  };
+}
+
 export default function InicioEntrenado() {
   const navigate = useNavigate();
   const user = useMemo(() => getCachedUser(), []);
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+  });
+  const accessContextQuery = useQuery({
+    queryKey: clientAccessContextKey,
+    queryFn: fetchClientAccessContext,
     staleTime: 2 * 60 * 1000,
     retry: 1,
   });
@@ -220,6 +312,8 @@ export default function InicioEntrenado() {
   const usage = ownMenusUsage(summary, capabilities);
   const usageKnown = usageQuery.isSuccess && Number.isFinite(Number(usage.used));
   const planTone = clientPlanTone(plan || "free");
+  const trial = accessContextQuery.data?.trial || null;
+  const objective = homeObjective(user);
 
   return (
     <div className="wrap">
@@ -264,9 +358,33 @@ export default function InicioEntrenado() {
         ) : (
           <div className="planMuted">Cargando plan y limites...</div>
         )}
+
+        {trial?.active ? (
+          <div className="trialActive">
+            <div>
+              <strong>Prueba Pro activa · te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} dias</strong>
+              <span>Finaliza el {formatHomeDate(trial.endsAt) || "dia indicado por el servidor"}</span>
+            </div>
+            <button type="button" onClick={() => navigate("/app/planes")}>
+              Ver funciones Pro
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid">
+        <div className="card">
+          <strong>Objetivos</strong>
+          <p className="p" style={{ marginTop: 6 }}>
+            {objective.kcal
+              ? `${objective.kcal} kcal · P ${objective.p ?? "-"} / C ${objective.c ?? "-"} / G ${objective.g ?? "-"}`
+              : "Completa tu objetivo diario base."}
+          </p>
+          <button type="button" className="homeActionBtn" onClick={() => navigate("/app/objetivos")}>
+            Ver objetivos
+          </button>
+        </div>
+
         <div className="card">
           <strong>Menu</strong>
           <p className="p" style={{ marginTop: 6 }}>

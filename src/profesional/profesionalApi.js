@@ -125,6 +125,13 @@ export async function cancelProfessionalClientInvitation(invitationId) {
   return data?.invitation || null;
 }
 
+export async function activateProfessionalClientInvitation(invitationId) {
+  return await apiFetch(`/api/usuarios/users/me/client-invitations/${invitationId}/activate`, {
+    method: "PATCH",
+    timeoutMs: 12000,
+  });
+}
+
 export async function deleteProfessionalClientInvitation(invitationId) {
   return await apiFetch(`/api/usuarios/users/me/client-invitations/${invitationId}`, {
     method: "DELETE",

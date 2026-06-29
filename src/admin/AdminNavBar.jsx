@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Apple,
@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   SlidersHorizontal,
+  ShieldCheck,
   Utensils,
   Users,
   X,
@@ -18,6 +19,7 @@ import { setAuthGuest } from "../authCache.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
 import AppToast from "../ui/AppToast.jsx";
 import BrandLogo from "../ui/BrandLogo.jsx";
+import { createNavigationPrefetchHandlers, scheduleIdleRoutePrefetch } from "../routes/routePrefetch.js";
 
 const NAV_ITEMS = [
   { to: "/admin/inicio", label: "Inicio", icon: Home },
@@ -26,6 +28,7 @@ const NAV_ITEMS = [
   { to: "/admin/alimentos", label: "Alimentos", icon: Apple },
   { to: "/admin/rutinas", label: "Rutinas", icon: Dumbbell },
   { to: "/admin/coach-planes", label: "Planes", icon: SlidersHorizontal },
+  { to: "/admin/profesionales", label: "Profesionales", icon: ShieldCheck },
   { to: "/admin/sistema", label: "Sistema", icon: Database },
 ];
 
@@ -60,6 +63,15 @@ export default function AdminNavBar() {
   const linkClass = ({ isActive }) => `an-link ${isActive ? "active" : ""}`;
   const mobileLinkClass = ({ isActive }) => `an-m-link ${isActive ? "active" : ""}`;
 
+  useEffect(() => {
+    return scheduleIdleRoutePrefetch([
+      "/admin/usuarios",
+      "/admin/comidas",
+      "/admin/rutinas",
+      "/admin/coach-planes",
+    ]);
+  }, []);
+
   return (
     <>
       <header className="an-wrap">
@@ -79,7 +91,12 @@ export default function AdminNavBar() {
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
-                <NavLink key={item.to} to={item.to} className={linkClass}>
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={linkClass}
+                  {...createNavigationPrefetchHandlers(item.to)}
+                >
                   <Icon size={17} strokeWidth={2.2} aria-hidden="true" />
                   <span>{item.label}</span>
                 </NavLink>
@@ -143,7 +160,13 @@ export default function AdminNavBar() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             return (
-              <NavLink key={item.to} to={item.to} className={mobileLinkClass} onClick={() => setOpen(false)}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={mobileLinkClass}
+                onClick={() => setOpen(false)}
+                {...createNavigationPrefetchHandlers(item.to)}
+              >
                 <Icon size={18} strokeWidth={2.2} aria-hidden="true" />
                 <span>{item.label}</span>
               </NavLink>

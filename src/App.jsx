@@ -9,10 +9,12 @@ import { RouteChunkErrorBoundary, RouteLoadingFallback } from "./routes/RouteLoa
 
 const Bienvenida = lazy(() => import("./bienvenida.jsx"));
 const AuthPage = lazy(() => import("./AuthPage.jsx"));
+const RegistroProfesional = lazy(() => import("./profesional/RegistroProfesional.jsx"));
 
 const AppLayout = lazy(() => import("./AppLayout.jsx"));
 const OnboardingWizard = lazy(() => import("./onboarding_v2/OnboardingWizard.jsx"));
 const InicioEntrenado = lazy(() => import("./entrenado/InicioEntrenado.jsx"));
+const Objetivos = lazy(() => import("./entrenado/Objetivos.jsx"));
 const MenuEj = lazy(() => import("./entrenado/MenuEj.jsx"));
 const MenuPlan = lazy(() => import("./entrenado/menu/MenuPlan.jsx"));
 const MenuPreferencias = lazy(() => import("./entrenado/menu/MenuPreferencias.jsx"));
@@ -35,6 +37,7 @@ const AdminComidas = lazy(() => import("./admin/AdminComidas.jsx"));
 const AdminAlimentos = lazy(() => import("./admin/AdminAlimentos.jsx"));
 const AdminRutinas = lazy(() => import("./admin/AdminRutinas.jsx"));
 const AdminCoachPlanes = lazy(() => import("./admin/AdminCoachPlanes.jsx"));
+const AdminProfessionalAccess = lazy(() => import("./admin/AdminProfessionalAccess.jsx"));
 const AdminSystem = lazy(() => import("./admin/AdminSystem.jsx"));
 
 const ProfesionalLayout = lazy(() => import("./profesional/ProfesionalLayout.jsx"));
@@ -105,6 +108,17 @@ export default function App() {
       />
 
       <Route
+        path="/registro-profesional"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando registro profesional...">
+              <RegistroProfesional />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
         path="/admin"
         element={
           <ProtectedRoute>
@@ -126,6 +140,7 @@ export default function App() {
         <Route path="alimentos" element={<LazyRoute label="Cargando alimentos..."><AdminAlimentos /></LazyRoute>} />
         <Route path="rutinas" element={<LazyRoute label="Cargando rutinas..."><AdminRutinas /></LazyRoute>} />
         <Route path="coach-planes" element={<LazyRoute label="Cargando planes..."><AdminCoachPlanes /></LazyRoute>} />
+        <Route path="profesionales" element={<LazyRoute label="Cargando profesionales..."><AdminProfessionalAccess /></LazyRoute>} />
         <Route path="sistema" element={<LazyRoute label="Cargando sistema..."><AdminSystem /></LazyRoute>} />
       </Route>
 
@@ -169,6 +184,7 @@ export default function App() {
         <Route path="onboarding/*" element={<LazyRoute label="Cargando onboarding..."><OnboardingWizard /></LazyRoute>} />
         <Route index element={<Navigate to="inicio" replace />} />
         <Route path="inicio" element={<LazyRoute label="Cargando inicio..."><InicioEntrenado /></LazyRoute>} />
+        <Route path="objetivos" element={<LazyRoute label="Cargando objetivos..."><Objetivos /></LazyRoute>} />
 
         <Route path="menu" element={<LazyRoute label="Cargando menu..."><MenuEj /></LazyRoute>}>
           <Route index element={<LazyRoute label="Cargando menu del dia..."><MenuPlan /></LazyRoute>} />

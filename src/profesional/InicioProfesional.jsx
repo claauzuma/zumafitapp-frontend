@@ -1,28 +1,46 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import { getCachedUser, setAuthLogged } from "../authCache.js";
 import { useProfessionalMe } from "../authQueries.js";
 import { setAuthUserQueryData } from "../queryClient.js";
+import { createCoachSubscriptionRequest, getCoachSubscription } from "../professionalAccessApi.js";
 
 export default function InicioProfesional() {
+  const queryClient = useQueryClient();
   const meQuery = useProfessionalMe();
+  const subscriptionQuery = useQuery({
+    queryKey: ["coach", "subscription"],
+    queryFn: getCoachSubscription,
+    staleTime: 60 * 1000,
+    retry: 1,
+  });
+  const subscriptionMutation = useMutation({
+    mutationFn: createCoachSubscriptionRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["coach", "subscription"] });
+      setSubscriptionNotice("Solicitud enviada. Admin debe revisarla y activarla manualmente.");
+    },
+    onError: (error) => setSubscriptionNotice(error?.message || "No se pudo solicitar el plan."),
+  });
   const [optimisticMe, setOptimisticMe] = useState(null);
   const [closingWelcome, setClosingWelcome] = useState(false);
+  const [subscriptionNotice, setSubscriptionNotice] = useState("");
   const me = optimisticMe || meQuery.data || getCachedUser() || null;
 
   const role = String(me?.role || "").toLowerCase();
 
   const canTraining = useMemo(() => {
     if (role !== "coach") return false;
-    const hasSpecialty = !!me?.coachProfile?.specialties?.training;
+    const hasSpecialty = !!(me?.professionalScopes || me?.coachProfile?.specialties || {}).training;
     const routines = me?.effectiveCapabilities?.features?.routines || {};
     return hasSpecialty && (!me?.effectiveCapabilities || Object.values(routines).some(Boolean));
   }, [me, role]);
 
   const canNutrition = useMemo(() => {
     if (role !== "coach") return false;
-    const hasSpecialty = !!me?.coachProfile?.specialties?.nutrition;
+    const hasSpecialty = !!(me?.professionalScopes || me?.coachProfile?.specialties || {}).nutrition;
     const menus = me?.effectiveCapabilities?.features?.menus || {};
     return hasSpecialty && (!me?.effectiveCapabilities || Object.values(menus).some(Boolean));
   }, [me, role]);
@@ -33,9 +51,9 @@ export default function InicioProfesional() {
     const training = !!me?.coachWelcome?.specialties?.training;
     const nutrition = !!me?.coachWelcome?.specialties?.nutrition;
 
-    if (training && nutrition) return "Entrenamiento + Nutrición";
+    if (training && nutrition) return "Entrenamiento + NutriciÃ³n";
     if (training) return "Entrenamiento";
-    if (nutrition) return "Nutrición";
+    if (nutrition) return "NutriciÃ³n";
     return "Coach";
   }, [me]);
 
@@ -87,7 +105,7 @@ async function handleCloseWelcome() {
             <h1 className="pro-welcomeTitle">Fuiste invitado como coach</h1>
 
             <p className="pro-welcomeText">
-              Ya tenés acceso a tu panel profesional en ZumaFit.
+              Ya tenÃ©s acceso a tu panel profesional en ZumaFit.
             </p>
 
             <div className="pro-welcomeMeta">
@@ -121,20 +139,32 @@ async function handleCloseWelcome() {
         <div className="pro-hero">
           <h1 className="pro-title">Panel profesional</h1>
           <p className="pro-sub">
-            Desde acá vas a poder gestionar clientes, planes y seguimiento.
+            Desde acÃ¡ vas a poder gestionar clientes, planes y seguimiento.
           </p>
         </div>
 
+        <ProfessionalStatusCard
+          me={me}
+          data={subscriptionQuery.data}
+          loading={subscriptionQuery.isLoading}
+          notice={subscriptionNotice}
+          onRequestPlan={(plan) => {
+            setSubscriptionNotice("");
+            subscriptionMutation.mutate({ requestedPlan: plan });
+          }}
+          requesting={subscriptionMutation.isPending}
+        />
+
         <div className="pro-grid">
           <Link to="/profesional/clientes" className="pro-card">
-            <div className="pro-icon">👥</div>
+            <div className="pro-icon">ðŸ‘¥</div>
             <div className="pro-cardTitle">Clientes</div>
             <div className="pro-cardText">Ver y administrar tus clientes.</div>
           </Link>
 
           {canTraining && (
             <Link to="/profesional/rutinas" className="pro-card">
-              <div className="pro-icon">🏋️</div>
+              <div className="pro-icon">ðŸ‹ï¸</div>
               <div className="pro-cardTitle">Rutinas</div>
               <div className="pro-cardText">Crear y editar entrenamientos.</div>
             </Link>
@@ -142,8 +172,8 @@ async function handleCloseWelcome() {
 
           {canNutrition && (
             <Link to="/profesional/menus" className="pro-card">
-              <div className="pro-icon">🥗</div>
-              <div className="pro-cardTitle">Menús</div>
+              <div className="pro-icon">ðŸ¥—</div>
+              <div className="pro-cardTitle">MenÃºs</div>
               <div className="pro-cardText">
                 Armar planes y seguimiento nutricional.
               </div>
@@ -151,9 +181,9 @@ async function handleCloseWelcome() {
           )}
 
           <Link to="/profesional/perfil" className="pro-card">
-            <div className="pro-icon">⚙️</div>
+            <div className="pro-icon">âš™ï¸</div>
             <div className="pro-cardTitle">Perfil profesional</div>
-            <div className="pro-cardText">Datos, foto y configuración.</div>
+            <div className="pro-cardText">Datos, foto y configuraciÃ³n.</div>
           </Link>
         </div>
 
@@ -169,6 +199,55 @@ async function handleCloseWelcome() {
   );
 }
 
+function ProfessionalStatusCard({ me, data, loading, notice, onRequestPlan, requesting }) {
+  const subscription = data?.subscription || me?.effectiveCapabilities?.professionalSubscription || null;
+  const scopes = data?.scopes || me?.professionalScopes || me?.coachProfile?.specialties || {};
+  const status = data?.professionalStatus || me?.professionalStatus || me?.coachProfile?.status || "approved";
+  const currentClients = me?.effectiveCapabilities?.currentClients || me?.coachStats?.currentClients || 0;
+  const limit = subscription?.clientLimit ?? me?.effectiveCapabilities?.maxClients ?? 0;
+  const available = limit ? Math.max(0, Number(limit) - Number(currentClients || 0)) : null;
+
+  return (
+    <section className="pro-statusCard">
+      <div>
+        <span className="pro-statusKicker">Estado profesional</span>
+        <h2>{statusLabel(status)}</h2>
+        <p>
+          {loading
+            ? "Consultando suscripcion..."
+            : `Suscripcion: ${subscriptionLabel(subscription)}. Cupos disponibles: ${available === null ? "sin limite" : available}.`}
+        </p>
+        <div className="pro-statusChips">
+          <span>Training: {scopes.training ? "aprobado" : "pendiente"}</span>
+          <span>Nutricion: {scopes.nutrition ? "aprobado" : "pendiente"}</span>
+          <span>{currentClients} / {limit || "sin limite"} clientes</span>
+        </div>
+      </div>
+      <div className="pro-statusActions">
+        <button type="button" onClick={() => onRequestPlan("coach_initial")} disabled={requesting}>Coach Inicial</button>
+        <button type="button" onClick={() => onRequestPlan("coach_pro")} disabled={requesting}>Coach Pro</button>
+        <button type="button" onClick={() => onRequestPlan("coach_ai")} disabled={requesting}>Coach IA</button>
+      </div>
+      {notice ? <div className="pro-statusNotice">{notice}</div> : null}
+    </section>
+  );
+}
+
+function statusLabel(value) {
+  const raw = String(value || "").replaceAll("_", " ");
+  if (raw === "approved") return "Aprobado";
+  if (raw === "corrections required") return "Correcciones requeridas";
+  if (raw === "rejected") return "Rechazado";
+  if (raw === "suspended") return "Suspendido";
+  return "Pendiente de verificacion";
+}
+
+function subscriptionLabel(subscription) {
+  if (!subscription) return "sin datos";
+  const label = subscription.label || planLabel(subscription.plan);
+  return `${label} - ${subscription.status || "pendiente"}`;
+}
+
 const styles = `
 .pro-wrap{
   min-height:100%;
@@ -176,6 +255,7 @@ const styles = `
   color:#eaeaea;
   padding:0;
 }
+
 
 .pro-wrapCenter{
   display:flex;
@@ -313,6 +393,87 @@ const styles = `
   color:#b8c0cc;
 }
 
+.pro-statusCard{
+  margin:0 0 16px;
+  border:1px solid rgba(245,215,110,.18);
+  border-radius:22px;
+  background:
+    radial-gradient(circle at top right, rgba(245,215,110,.10), transparent 34%),
+    linear-gradient(145deg, rgba(17,24,32,.96), rgba(8,12,18,.98));
+  padding:16px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  box-shadow:0 18px 46px rgba(0,0,0,.26);
+}
+
+.pro-statusKicker{
+  color:#f5d76e;
+  font-size:12px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.pro-statusCard h2{
+  margin:6px 0 0;
+  font-size:24px;
+}
+
+.pro-statusCard p{
+  margin:7px 0 0;
+  color:#b8c0cc;
+}
+
+.pro-statusChips{
+  margin-top:12px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.pro-statusChips span{
+  border:1px solid rgba(255,255,255,.10);
+  background:#0e151e;
+  border-radius:999px;
+  padding:7px 10px;
+  color:#d9e2ec;
+  font-size:12px;
+  font-weight:900;
+}
+
+.pro-statusActions{
+  display:grid;
+  gap:8px;
+  align-self:start;
+}
+
+.pro-statusActions button{
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.10);
+  color:#f5d76e;
+  border-radius:14px;
+  min-height:40px;
+  padding:0 12px;
+  font-weight:1000;
+  cursor:pointer;
+}
+
+.pro-statusActions button:disabled{
+  opacity:.65;
+  cursor:not-allowed;
+}
+
+.pro-statusNotice{
+  grid-column:1/-1;
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.09);
+  color:#f5d76e;
+  border-radius:14px;
+  padding:10px 12px;
+  font-weight:900;
+}
+
 .pro-grid{
   display:grid;
   grid-template-columns:repeat(2, minmax(0,1fr));
@@ -363,6 +524,14 @@ const styles = `
 }
 
 @media (max-width: 700px){
+  .pro-statusCard{
+    grid-template-columns:1fr;
+  }
+
+  .pro-statusActions{
+    grid-template-columns:1fr;
+  }
+
   .pro-grid{
     grid-template-columns:1fr;
     gap:12px;

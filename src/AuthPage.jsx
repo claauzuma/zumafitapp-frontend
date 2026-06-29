@@ -1059,6 +1059,20 @@ return;
                   </button>
                 </p>
               )}
+
+              {mode === "register" ? (
+                <p className="ap-muted ap-small">
+                  ¿Sos entrenador o profesional?{" "}
+                  <button
+                    type="button"
+                    className="ap-link-btn"
+                    onClick={() => navigate("/registro-profesional")}
+                    disabled={loading || googleLoading}
+                  >
+                    Registrate como profesional
+                  </button>
+                </p>
+              ) : null}
             </form>
           )}
 

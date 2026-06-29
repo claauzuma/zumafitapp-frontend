@@ -26,6 +26,9 @@
 .cp-usage-card,
 .cp-error,
 .cp-upgrade-note,
+.cp-trial-card,
+.cp-trial-active-card,
+.cp-service-card,
 .cp-plan-card{
   border:1px solid rgba(255,255,255,.09);
   background:
@@ -33,6 +36,139 @@
     linear-gradient(145deg, rgba(14,22,30,.98), rgba(6,9,13,.98));
   border-radius:22px;
   box-shadow:0 18px 48px rgba(0,0,0,.30);
+}
+
+.cp-trial-card{
+  padding:15px;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:12px;
+  align-items:start;
+  border-color:rgba(45,212,191,.22);
+  background:
+    radial-gradient(480px 220px at 100% 0%, rgba(45,212,191,.13), transparent 52%),
+    linear-gradient(145deg, rgba(13,24,31,.98), rgba(5,9,13,.99));
+}
+
+.cp-trial-card.featured{
+  border-color:rgba(245,215,110,.38);
+  background:
+    radial-gradient(520px 240px at 100% 0%, rgba(250,204,21,.20), transparent 55%),
+    radial-gradient(420px 210px at 0% 0%, rgba(255,255,255,.07), transparent 58%),
+    linear-gradient(145deg, rgba(18,25,31,.99), rgba(6,9,13,.99));
+}
+
+.cp-trial-card h2{
+  margin:6px 0 0;
+  font-size:22px;
+  line-height:1.05;
+}
+
+.cp-trial-card p{
+  margin:7px 0 0;
+  color:rgba(255,255,255,.72);
+  line-height:1.42;
+}
+
+.cp-trial-actions{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:9px;
+}
+
+.cp-trial-card button,
+.cp-trial-active-card button{
+  min-height:46px;
+  border:0;
+  border-radius:15px;
+  background:linear-gradient(135deg,#facc15,#f5d76e);
+  color:#070707;
+  font-weight:950;
+  padding:0 14px;
+  cursor:pointer;
+}
+
+.cp-trial-card button.ghost,
+.cp-trial-active-card button{
+  color:#f7f7f7;
+  background:rgba(255,255,255,.055);
+  border:1px solid rgba(255,255,255,.10);
+}
+
+.cp-trial-card button:disabled,
+.cp-trial-active-card button:disabled,
+.cp-upgrade-action:disabled{
+  opacity:.72;
+  cursor:wait;
+}
+
+.cp-trial-benefits{
+  margin-top:12px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.cp-trial-benefits span{
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.08);
+  color:#ffe89b;
+  border-radius:999px;
+  padding:7px 9px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.cp-trial-note{
+  grid-column:1 / -1;
+  color:rgba(255,255,255,.62);
+  font-size:12px;
+  font-weight:800;
+}
+
+.cp-trial-active-card{
+  padding:15px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-color:rgba(45,212,191,.28);
+  background:
+    radial-gradient(420px 190px at 100% 0%, rgba(45,212,191,.16), transparent 58%),
+    linear-gradient(145deg, rgba(13,24,31,.98), rgba(5,9,13,.99));
+}
+
+.cp-trial-active-card h2{
+  margin:6px 0 0;
+  font-size:22px;
+  line-height:1.06;
+}
+
+.cp-trial-active-card p{
+  margin:6px 0 0;
+  color:rgba(255,255,255,.72);
+  line-height:1.38;
+}
+
+.cp-trial-icon,
+.cp-service-icon{
+  width:44px;
+  height:44px;
+  border-radius:16px;
+  display:grid;
+  place-items:center;
+  color:#f5d76e;
+  border:1px solid rgba(245,215,110,.24);
+  background:rgba(245,215,110,.10);
+}
+
+.cp-inline-error{
+  display:block;
+  margin-top:8px;
+  color:#fecaca;
+  font-size:12px;
+  font-weight:800;
 }
 
 .cp-hero{
@@ -333,6 +469,56 @@
   font-weight:950;
 }
 
+.cp-coach-state{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:14px;
+  align-items:center;
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(129,230,217,.22);
+  background:
+    radial-gradient(circle at top left, rgba(129,230,217,.13), transparent 34%),
+    linear-gradient(145deg, rgba(12,24,31,.96), rgba(7,12,18,.98));
+  box-shadow:0 18px 40px rgba(0,0,0,.26);
+}
+
+.cp-coach-state h2{
+  margin:6px 0 4px;
+  color:#f8fafc;
+  font-size:22px;
+  line-height:1.05;
+}
+
+.cp-coach-state p{
+  margin:0;
+  color:rgba(226,232,240,.76);
+  line-height:1.45;
+}
+
+.cp-coach-state-meta{
+  min-width:178px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.045);
+  padding:12px;
+}
+
+.cp-coach-state-meta span,
+.cp-coach-state-meta small{
+  display:block;
+  color:rgba(226,232,240,.62);
+  font-size:11px;
+  font-weight:800;
+}
+
+.cp-coach-state-meta strong{
+  display:block;
+  margin:4px 0;
+  color:#f5d76e;
+  font-size:16px;
+}
+
 .cp-partial-error{
   margin-top:14px;
   border:1px solid rgba(250,204,21,.22);
@@ -442,6 +628,46 @@
   border-color:rgba(45,212,191,.28);
   background:rgba(20,184,166,.10);
   color:#9bf2d2;
+}
+
+.cp-service-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+
+.cp-service-card{
+  padding:15px;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  gap:12px;
+  border-color:rgba(139,92,246,.18);
+  background:
+    radial-gradient(560px 220px at 100% 0%, rgba(139,92,246,.13), transparent 52%),
+    linear-gradient(145deg, rgba(13,19,30,.98), rgba(5,8,13,.99));
+}
+
+.cp-service-card.current{
+  border-color:rgba(139,92,246,.44);
+  box-shadow:0 18px 52px rgba(139,92,246,.14), 0 18px 48px rgba(0,0,0,.30);
+}
+
+.cp-service-card h3{
+  margin:0;
+  font-size:23px;
+  line-height:1;
+}
+
+.cp-service-card.service_vip{
+  border-color:rgba(245,215,110,.22);
+  background:
+    radial-gradient(560px 220px at 100% 0%, rgba(168,85,247,.18), transparent 52%),
+    radial-gradient(360px 180px at 0% 0%, rgba(245,215,110,.12), transparent 58%),
+    linear-gradient(145deg, rgba(13,19,30,.98), rgba(5,8,13,.99));
+}
+
+.cp-feature-list.compact{
+  margin-top:12px;
 }
 
 .cp-feature-list{
@@ -581,6 +807,12 @@
   color:#080808;
 }
 
+.cp-current-label.pending{
+  color:#ffe89b;
+  background:rgba(245,215,110,.10);
+  border-color:rgba(245,215,110,.24);
+}
+
 .cp-disabled-action{
   color:rgba(255,255,255,.64);
   background:rgba(255,255,255,.04);
@@ -666,6 +898,19 @@
   .cp-grid{
     grid-template-columns:repeat(3, minmax(0, 1fr));
   }
+  .cp-trial-card{
+    grid-template-columns:auto minmax(0, 1fr) auto;
+    align-items:center;
+  }
+  .cp-trial-actions{
+    grid-column:auto;
+    min-width:220px;
+  }
+  .cp-trial-card button{ grid-column:auto; }
+  .cp-trial-note{ grid-column:2 / 4; }
+  .cp-service-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
   .cp-plan-orb{
     width:118px;
     height:118px;
@@ -683,12 +928,16 @@
 
 @media (max-width:620px){
   .cp-partial-error,
-  .cp-upgrade-request{
+  .cp-upgrade-request,
+  .cp-trial-active-card,
+  .cp-coach-state{
     align-items:stretch;
+    grid-template-columns:1fr;
     flex-direction:column;
   }
   .cp-partial-error button,
-  .cp-upgrade-request button{
+  .cp-upgrade-request button,
+  .cp-trial-active-card button{
     width:100%;
   }
   .cp-current-stats{

@@ -501,10 +501,31 @@
   font-weight:850;
 }
 
+.prof-inviteMain .prof-positive{
+  color:#7dd3fc;
+}
+
 .prof-inviteActions{
   display:flex;
   gap:7px;
   flex:0 0 auto;
+}
+
+.prof-chipButton{
+  min-height:36px;
+  border-radius:12px;
+  border:1px solid rgba(245,215,110,.25);
+  background:rgba(245,215,110,.12);
+  color:#f5d76e;
+  padding:0 11px;
+  font-size:12px;
+  font-weight:1000;
+  cursor:pointer;
+}
+
+.prof-chipButton:disabled{
+  opacity:.55;
+  cursor:not-allowed;
 }
 
 .prof-modalBackdrop{

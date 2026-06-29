@@ -1,7 +1,7 @@
 // src/ClientShell.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Crown } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Crown, Target } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { setAuthGuest, setAuthLogged, getCachedUser, isImpersonating } from "./authCache.js";
@@ -18,7 +18,17 @@ import {
 import PendingCoachInvitationModal, { ClientInvitationBanner } from "./PendingCoachInvitationModal.jsx";
 import BrandLogo from "./ui/BrandLogo.jsx";
 import { clientPlanLabel, planFromCapabilities } from "./clientPlans/clientPlanUtils.js";
-import { clientPlanCapabilitiesKey, fetchClientPlanCapabilities } from "./clientPlans/clientPlanQueries.js";
+import {
+  acknowledgeClientTrialExpiryNotice,
+  acknowledgeClientTrialOnboardingOffer,
+  clientAccessContextKey,
+  clientPlanCapabilitiesKey,
+  createClientPlanChangeRequest,
+  fetchClientAccessContext,
+  fetchClientPlanCapabilities,
+  startClientProTrial,
+} from "./clientPlans/clientPlanQueries.js";
+import { createNavigationPrefetchHandlers, scheduleIdleRoutePrefetch } from "./routes/routePrefetch.js";
 
 const CSS = `
 :root{
@@ -234,6 +244,95 @@ const CSS = `
 .cs-actionBtn:disabled{
   opacity:.65;
   cursor:not-allowed;
+}
+
+.cs-planModalOverlay{
+  position:fixed;
+  inset:0;
+  z-index:10001;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(3,7,12,.68);
+  backdrop-filter:blur(10px) saturate(145%);
+}
+.cs-planModal{
+  width:min(520px, 100%);
+  border:1px solid rgba(245,215,110,.25);
+  border-radius:24px;
+  background:
+    radial-gradient(520px 240px at 100% 0%, rgba(245,215,110,.18), transparent 56%),
+    radial-gradient(420px 220px at 0% 0%, rgba(255,255,255,.07), transparent 58%),
+    linear-gradient(145deg, rgba(16,23,30,.98), rgba(5,8,12,.99));
+  box-shadow:0 26px 90px rgba(0,0,0,.72);
+  padding:20px;
+  color:#f8fafc;
+}
+.cs-planModalBadge{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  border:1px solid rgba(245,215,110,.30);
+  background:rgba(245,215,110,.11);
+  color:var(--gold);
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:11px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.cs-planModal h2{
+  margin:12px 0 0;
+  font-size:30px;
+  line-height:1.03;
+}
+.cs-planModal p{
+  margin:10px 0 0;
+  color:rgba(255,255,255,.74);
+  line-height:1.45;
+}
+.cs-planModalList{
+  display:grid;
+  gap:8px;
+  margin:14px 0 0;
+  padding:0;
+  list-style:none;
+}
+.cs-planModalList li{
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.045);
+  border-radius:14px;
+  padding:10px 11px;
+  color:#fff4bd;
+  font-size:13px;
+  font-weight:850;
+}
+.cs-planModalActions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:9px;
+  margin-top:16px;
+}
+.cs-planModalActions button{
+  min-height:46px;
+  border-radius:15px;
+  padding:0 14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.055);
+  color:#f8fafc;
+  font-weight:950;
+  cursor:pointer;
+}
+.cs-planModalActions button.primary{
+  border-color:transparent;
+  background:linear-gradient(135deg,var(--gold2),var(--gold));
+  color:#080808;
+}
+.cs-planModalActions button:disabled{
+  opacity:.7;
+  cursor:wait;
 }
 
 /* overlay + drawer */
@@ -541,6 +640,12 @@ function initialFromName(fullName) {
   if (!s) return "Z";
   return s[0].toUpperCase();
 }
+function formatShellDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 function normalizeShellRole(role) {
   return String(role || "").trim().toLowerCase();
 }
@@ -607,6 +712,7 @@ const NAV_SECTIONS = [
   {
     title: "Tu plan",
     items: [
+      { to: "/app/objetivos", label: "Objetivos", sub: "Nutricion y entrenamiento", icon: <Target size={19} aria-hidden="true" />, enabled: true },
       { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: "🍽️", enabled: true },
       { to: "/app/nutricion", label: "Mis comidas", sub: "Guardadas y favoritas", icon: "M", enabled: true },
       { to: "/app/tracking", label: "Tracking", sub: "Registro diario", icon: "T", enabled: true },
@@ -665,6 +771,13 @@ export default function ClientShell() {
     refetchOnMount: "always",
     retry: false,
   });
+  const accessContextQuery = useQuery({
+    queryKey: clientAccessContextKey,
+    queryFn: fetchClientAccessContext,
+    enabled: isClientUser && !isImpersonating(),
+    staleTime: 2 * 60 * 1000,
+    retry: false,
+  });
   const planSummaryQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
@@ -682,6 +795,71 @@ export default function ClientShell() {
     !isImpersonating() &&
     coachNotice?.type === "admin_coach_assigned" &&
     coachNotice?.status === "unread";
+
+  function applyAccessContext(nextAccessContext) {
+    if (!nextAccessContext) return;
+    queryClient.setQueryData(clientAccessContextKey, nextAccessContext);
+    queryClient.invalidateQueries({ queryKey: clientPlanCapabilitiesKey });
+  }
+
+  const dismissTrialOfferMutation = useMutation({
+    mutationFn: acknowledgeClientTrialOnboardingOffer,
+    onSuccess: (nextAccessContext) => {
+      applyAccessContext(nextAccessContext);
+      setToast({ type: "success", message: "Listo. Seguís con Free y podés activar la prueba desde Mi plan." });
+    },
+    onError: (error) => {
+      setToast({ type: "error", message: error?.message || "No se pudo guardar tu preferencia." });
+    },
+  });
+
+  const startTrialMutation = useMutation({
+    mutationFn: startClientProTrial,
+    onSuccess: (nextAccessContext) => {
+      applyAccessContext(nextAccessContext);
+      const ends = formatShellDate(nextAccessContext?.trial?.endsAt);
+      setToast({
+        type: "success",
+        message: ends ? `Tu prueba Pro está activa hasta el ${ends}.` : "Tu prueba Pro está activa.",
+      });
+    },
+    onError: (error) => {
+      setToast({ type: "error", message: error?.message || "No se pudo activar la prueba Pro." });
+    },
+  });
+
+  const acknowledgeExpiryMutation = useMutation({
+    mutationFn: acknowledgeClientTrialExpiryNotice,
+    onSuccess: (nextAccessContext) => {
+      applyAccessContext(nextAccessContext);
+      setToast({ type: "success", message: "Seguís en Free. Podés solicitar Pro cuando quieras." });
+    },
+    onError: (error) => {
+      setToast({ type: "error", message: error?.message || "No se pudo cerrar el aviso." });
+    },
+  });
+
+  const requestProAfterTrialMutation = useMutation({
+    mutationFn: async () => {
+      const requestData = await createClientPlanChangeRequest("pro");
+      const nextAccessContext = await acknowledgeClientTrialExpiryNotice();
+      return { requestData, nextAccessContext };
+    },
+    onSuccess: ({ requestData, nextAccessContext }) => {
+      applyAccessContext(requestData?.accessContext || nextAccessContext);
+      if (nextAccessContext) applyAccessContext(nextAccessContext);
+      setToast({
+        type: "success",
+        message: requestData?.pendingAlreadyExists
+          ? "Ya tenés una solicitud Pro pendiente."
+          : "Solicitud Pro enviada. Administración la va a revisar.",
+      });
+      nav("/app/planes");
+    },
+    onError: (error) => {
+      setToast({ type: "error", message: error?.message || "No se pudo solicitar el plan Pro." });
+    },
+  });
 
   // ✅ cierra drawer cuando cambia la ruta
   useEffect(() => {
@@ -722,6 +900,8 @@ export default function ClientShell() {
 
   async function refreshInvitations() {
     await queryClient.invalidateQueries({ queryKey: invitationQueryKey, exact: true });
+    await queryClient.invalidateQueries({ queryKey: clientAccessContextKey });
+    await queryClient.invalidateQueries({ queryKey: clientPlanCapabilitiesKey });
   }
 
   function cacheAcceptedUser(nextUser) {
@@ -768,7 +948,7 @@ export default function ClientShell() {
       }
       setToast({
         type: "success",
-        message: `Invitacion aceptada. ${invitation.coachName || "Tu coach"} ya puede acompañarte.`,
+        message: `Invitacion aceptada. ${invitation.coachName || "Tu coach"} debe confirmar el inicio del servicio.`,
       });
       const nextPath = skipOnboarding
         ? "/app/inicio"
@@ -831,6 +1011,32 @@ export default function ClientShell() {
     icon: <Crown size={19} aria-hidden="true" />,
     enabled: true,
   };
+  const shellAccessContext = accessContextQuery.data || null;
+  const isOnboardingRoute = loc.pathname.startsWith("/app/onboarding");
+  const showTrialWelcomeModal = Boolean(
+    isClientUser &&
+    !isImpersonating() &&
+    !isOnboardingRoute &&
+    !primaryInvitation &&
+    shellAccessContext?.trialOffer?.showOnboardingOffer
+  );
+  const showTrialExpiredModal = Boolean(
+    isClientUser &&
+    !isImpersonating() &&
+    !showTrialWelcomeModal &&
+    !primaryInvitation &&
+    shellAccessContext?.trial?.expiryNoticeRequired
+  );
+
+  useEffect(() => {
+    return scheduleIdleRoutePrefetch([
+      "/app/objetivos",
+      "/app/menu",
+      "/app/nutricion",
+      "/app/tracking",
+      "/app/planes",
+    ]);
+  }, []);
 
   // (opcional) si en el futuro tenés una URL de avatar:
   const avatarUrl = user?.profile?.avatarUrl || user?.avatarUrl || "";
@@ -855,6 +1061,7 @@ export default function ClientShell() {
         to={it.to}
         className={({ isActive }) => `cs-item ${isActive ? "active" : ""}`}
         title={it.label}
+        {...createNavigationPrefetchHandlers(it.to)}
       >
         <span className="cs-ic">{it.icon}</span>
         <span className="cs-desc">
@@ -879,6 +1086,71 @@ export default function ClientShell() {
           onDecline={handleDeclineInvitation}
           onSnooze={handleSnoozeInvitation}
         />
+      ) : null}
+
+      {showTrialWelcomeModal ? (
+        <div className="cs-planModalOverlay" role="dialog" aria-modal="true" aria-labelledby="trial-welcome-title">
+          <section className="cs-planModal">
+            <span className="cs-planModalBadge">Tu cuenta Free está lista</span>
+            <h2 id="trial-welcome-title">Probá ZumaFit Pro gratis durante 14 días</h2>
+            <p>
+              Accedé a menús semanales, más capacidad, biblioteca global, equivalencias, historial completo y progreso avanzado.
+              La prueba no se activa sola.
+            </p>
+            <ul className="cs-planModalList">
+              <li>Sin cobro automático.</li>
+              <li>Tu plan personal sigue siendo Free.</li>
+              <li>Al terminar, volvés a Free y tus datos quedan guardados.</li>
+            </ul>
+            <div className="cs-planModalActions">
+              <button
+                type="button"
+                className="primary"
+                disabled={startTrialMutation.isPending || dismissTrialOfferMutation.isPending}
+                onClick={() => startTrialMutation.mutate()}
+              >
+                {startTrialMutation.isPending ? "Activando..." : "Activar 14 días Pro"}
+              </button>
+              <button
+                type="button"
+                disabled={startTrialMutation.isPending || dismissTrialOfferMutation.isPending}
+                onClick={() => dismissTrialOfferMutation.mutate()}
+              >
+                {dismissTrialOfferMutation.isPending ? "Guardando..." : "Seguir con Free"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {showTrialExpiredModal ? (
+        <div className="cs-planModalOverlay" role="dialog" aria-modal="true" aria-labelledby="trial-expired-title">
+          <section className="cs-planModal">
+            <span className="cs-planModalBadge">Prueba Pro finalizada</span>
+            <h2 id="trial-expired-title">Tu prueba Pro terminó</h2>
+            <p>
+              Volviste al plan Free. Tus menús, comidas, progreso y registros siguen guardados. Podés continuar gratis o
+              solicitar Pro para recuperar las funciones avanzadas.
+            </p>
+            <div className="cs-planModalActions">
+              <button
+                type="button"
+                className="primary"
+                disabled={requestProAfterTrialMutation.isPending || acknowledgeExpiryMutation.isPending}
+                onClick={() => requestProAfterTrialMutation.mutate()}
+              >
+                {requestProAfterTrialMutation.isPending ? "Enviando..." : "Solicitar plan Pro"}
+              </button>
+              <button
+                type="button"
+                disabled={requestProAfterTrialMutation.isPending || acknowledgeExpiryMutation.isPending}
+                onClick={() => acknowledgeExpiryMutation.mutate()}
+              >
+                {acknowledgeExpiryMutation.isPending ? "Guardando..." : "Continuar con Free"}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {loading && (

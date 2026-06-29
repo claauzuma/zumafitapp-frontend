@@ -5,6 +5,7 @@ import { Eye, RefreshCw, Search, Send, Trash2, UserPlus, Users, X } from "lucide
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import { useProfessionalClientInvitations, useProfessionalClients } from "./profesionalQueries.js";
 import {
+  activateProfessionalClientInvitation,
   cancelProfessionalClientInvitation,
   createProfessionalClientInvitation,
   deleteProfessionalClientInvitation,
@@ -26,6 +27,7 @@ const EMPTY_INVITE_FORM = {
   nombre: "",
   apellido: "",
   email: "",
+  servicePackage: "service_pro",
   onboarding: {
     enabled: true,
     mode: "full",
@@ -60,7 +62,7 @@ export default function ClientesProfesional() {
   const [inviteForm, setInviteForm] = useState(() => structuredCloneSafe(EMPTY_INVITE_FORM));
   const [toast, setToast] = useState(null);
   const clientsQuery = useProfessionalClients();
-  const invitationsQuery = useProfessionalClientInvitations({ status: "pending" });
+  const invitationsQuery = useProfessionalClientInvitations({ status: "todos" });
   const loading = clientsQuery.isLoading;
   const refreshing = clientsQuery.isFetching && !clientsQuery.isLoading;
   const err = clientsQuery.error?.message || "";
@@ -117,6 +119,21 @@ export default function ClientesProfesional() {
       setToast({
         type: "error",
         message: error?.message || "No se pudo cancelar la invitacion.",
+      });
+    },
+  });
+
+  const activateInviteMutation = useMutation({
+    mutationFn: activateProfessionalClientInvitation,
+    onSuccess: async () => {
+      setToast({ type: "success", message: "Servicio activado correctamente." });
+      await invalidateProfessionalClientInvitations();
+      await clientsQuery.refetch();
+    },
+    onError: (error) => {
+      setToast({
+        type: "error",
+        message: error?.message || "No se pudo activar el servicio.",
       });
     },
   });
@@ -199,6 +216,7 @@ export default function ClientesProfesional() {
     createInviteMutation.mutate({
       email,
       profile: { nombre, apellido },
+      servicePackage: inviteForm.servicePackage || "service_pro",
       onboarding: inviteForm.onboarding,
       clientPermissions: inviteForm.clientPermissions,
     });
@@ -271,14 +289,16 @@ export default function ClientesProfesional() {
           loading={invitationsQuery.isLoading}
           refreshing={invitationsQuery.isFetching && !invitationsQuery.isLoading}
           onCancel={(id) => cancelInviteMutation.mutate(id)}
+          onActivate={(id) => activateInviteMutation.mutate(id)}
           onDelete={(id) => deleteInviteMutation.mutate(id)}
           readOnly={readOnlySimulation}
           busyId={
             cancelInviteMutation.variables ||
+            activateInviteMutation.variables ||
             deleteInviteMutation.variables ||
             ""
           }
-          isBusy={cancelInviteMutation.isPending || deleteInviteMutation.isPending}
+          isBusy={cancelInviteMutation.isPending || activateInviteMutation.isPending || deleteInviteMutation.isPending}
         />
 
         {refreshing ? <div className="prof-empty compact">Actualizando datos...</div> : null}
@@ -340,6 +360,7 @@ function ClientInvitationsPanel({
   loading,
   refreshing,
   onCancel,
+  onActivate,
   onDelete,
   readOnly,
   busyId,
@@ -355,9 +376,9 @@ function ClientInvitationsPanel({
     <section className="prof-invitePanel">
       <div className="prof-invitePanelHead">
         <div>
-          <div className="prof-sectionTitle compact">Invitaciones pendientes</div>
+          <div className="prof-sectionTitle compact">Invitaciones de clientes</div>
           <div className="prof-inviteMuted">
-            {refreshing ? "Actualizando..." : `${invitations.length} pendiente(s)`}
+            {refreshing ? "Actualizando..." : `${invitations.length} invitacion(es)`}
           </div>
         </div>
       </div>
@@ -367,6 +388,8 @@ function ClientInvitationsPanel({
           const id = invite?._id || invite?.id;
           const full = `${invite?.profile?.nombre || ""} ${invite?.profile?.apellido || ""}`.trim() || "Sin nombre";
           const locked = isBusy && String(busyId || "") === String(id || "");
+          const status = String(invite?.status || "pending");
+          const canActivate = status === "accepted_pending_activation";
 
           return (
             <article className="prof-inviteCard" key={id || invite?.email}>
@@ -374,8 +397,19 @@ function ClientInvitationsPanel({
                 <strong>{full}</strong>
                 <span>{invite?.email || "Sin email"}</span>
                 <small>Invitada: {fmtDate(invite?.invitedAt || invite?.createdAt)}</small>
+                {canActivate ? <small className="prof-positive">Aceptada: falta activar servicio</small> : null}
               </div>
               <div className="prof-inviteActions">
+                {canActivate ? (
+                  <button
+                    type="button"
+                    className="prof-chipButton"
+                    disabled={locked || readOnly}
+                    onClick={() => onActivate(id)}
+                  >
+                    Activar servicio
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="prof-iconBtn small"
@@ -453,6 +487,18 @@ function InviteClientDialog({
                 onChange={(event) => onField("email", event.target.value)}
                 placeholder="cliente@email.com"
               />
+            </label>
+            <label className="prof-field prof-full">
+              Paquete de servicio
+              <select
+                value={form.servicePackage || "service_pro"}
+                onChange={(event) => onField("servicePackage", event.target.value)}
+              >
+                <option value="service_pro">Coach Pro</option>
+                <option value="service_vip" disabled={!access.canOfferServiceVip}>
+                  Coach VIP{access.canOfferServiceVip ? "" : " - requiere Coach IA"}
+                </option>
+              </select>
             </label>
           </div>
 
@@ -657,6 +703,10 @@ function getInviteAccess(coach, readOnlySimulation = false) {
   const coachActive = String(coach?.estado || "activo").toLowerCase() === "activo";
   const canInviteFlag = coach?.coachCapabilities?.canInviteClients !== false;
   const hasSpecialty = !!specialties.training || !!specialties.nutrition;
+  const subscriptionPlan = String(coach?.coachSubscription?.plan || coach?.subscription?.plan || coach?.plan || "")
+    .trim()
+    .toLowerCase();
+  const canOfferServiceVip = ["coach_ai", "coach_vip", "vip", "premium2"].includes(subscriptionPlan);
 
   let reason = "";
   if (readOnlySimulation) reason = "Estas viendo el panel en modo simulacion de solo lectura.";
@@ -674,6 +724,7 @@ function getInviteAccess(coach, readOnlySimulation = false) {
   return {
     canInvite: !reason,
     reason,
+    canOfferServiceVip,
     menu: {
       available: menuAvailable,
       automatic: menuAvailable && !!features?.menus?.automaticGenerator,

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Apple, Database, Filter, RefreshCcw, Search } from "lucide-react";
 
 import { useAlimentos } from "../nutricion/nutricionQueries.js";
@@ -7,7 +7,8 @@ import "../nutricion/nutricion.css";
 
 export default function AdminAlimentos() {
   const [filters, setFilters] = useState({ search: "", category: "todos" });
-  const alimentosQuery = useAlimentos(filters);
+  const debouncedFilters = useDebouncedValue(filters, 320);
+  const alimentosQuery = useAlimentos(debouncedFilters);
   const foods = useMemo(() => alimentosQuery.data?.alimentos || [], [alimentosQuery.data?.alimentos]);
   const allFoods = useMemo(() => alimentosQuery.data?.all || [], [alimentosQuery.data?.all]);
   const loading = alimentosQuery.isLoading;
@@ -131,6 +132,17 @@ export default function AdminAlimentos() {
       </section>
     </div>
   );
+}
+
+function useDebouncedValue(value, delay = 320) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay, value]);
+
+  return debounced;
 }
 
 function Stat({ label, value }) {

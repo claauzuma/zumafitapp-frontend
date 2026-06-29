@@ -202,6 +202,21 @@
   cursor:not-allowed;
 }
 
+.pci-waiting{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  min-height:44px;
+  border-radius:14px;
+  border:1px solid rgba(245,215,110,.22);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  font-size:13px;
+  font-weight:1000;
+}
+
 .pci-banner{
   margin:0 0 14px;
   display:flex;

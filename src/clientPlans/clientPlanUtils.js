@@ -3,7 +3,7 @@ export const PLAN_ORDER = ["free", "pro", "vip"];
 export const PLAN_PRESETS = {
   free: {
     plan: "free",
-    limits: { ownMenus: 2, ownMeals: 10 },
+    limits: { ownMenus: 1, ownMeals: 5, favorites: 3, menuDays: 1, trackingHistoryDays: 7 },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -11,13 +11,15 @@ export const PLAN_PRESETS = {
     canUseGlobalLibrary: false,
     canUsePremiumLibrary: false,
     canGenerateAutomaticMenu: false,
+    automaticMenusStatus: "blocked",
+    automaticRoutineStatus: "blocked",
     autoCoachNutrition: "manual",
     autoCoachTraining: "manual",
     canExportMenuPdf: false,
   },
   pro: {
     plan: "pro",
-    limits: { ownMenus: 20, ownMeals: 100 },
+    limits: { ownMenus: 10, ownMeals: 100, favorites: 20, menuDays: 7, trackingHistoryDays: null },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -25,13 +27,17 @@ export const PLAN_PRESETS = {
     canUseGlobalLibrary: true,
     canUsePremiumLibrary: false,
     canGenerateAutomaticMenu: false,
-    autoCoachNutrition: "suggestions",
-    autoCoachTraining: "suggestions",
+    automaticMenusStatus: "coming_soon",
+    automaticRoutineStatus: "coming_soon",
+    autoCoachNutrition: "coming_soon",
+    autoCoachNutritionMode: "suggestions",
+    autoCoachTraining: "coming_soon",
+    autoCoachTrainingMode: "suggestions",
     canExportMenuPdf: false,
   },
   vip: {
     plan: "vip",
-    limits: { ownMenus: 100, ownMeals: 500 },
+    limits: { ownMenus: 50, ownMeals: 500, favorites: 100, menuDays: 7, trackingHistoryDays: null },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -39,8 +45,12 @@ export const PLAN_PRESETS = {
     canUseGlobalLibrary: true,
     canUsePremiumLibrary: true,
     canGenerateAutomaticMenu: false,
-    autoCoachNutrition: "adaptive",
-    autoCoachTraining: "adaptive",
+    automaticMenusStatus: "coming_soon",
+    automaticRoutineStatus: "coming_soon",
+    autoCoachNutrition: "coming_soon",
+    autoCoachNutritionMode: "adaptive_review",
+    autoCoachTraining: "coming_soon",
+    autoCoachTrainingMode: "adaptive_review",
     canExportMenuPdf: false,
   },
 };
@@ -55,13 +65,13 @@ export const PLAN_MARKETING_COPY = {
   pro: {
     eyebrow: "Mas autonomia",
     title: "Plan Pro",
-    summary: "Mas cupos para tus menus y comidas propias, con acceso a la biblioteca global ZumaFit.",
+    summary: "Mas cupos, planificacion semanal y biblioteca global. AutoCoach queda preparado como mejora futura.",
     library: "Biblioteca global",
   },
   vip: {
     eyebrow: "Experiencia completa",
     title: "Plan VIP",
-    summary: "Limites altos, biblioteca premium y mayor margen para guardar tu organizacion nutricional.",
+    summary: "Biblioteca premium, limites altos y funciones avanzadas preparadas. AutoCoach adaptativo figura como proximo paso.",
     library: "Biblioteca premium",
   },
 };
@@ -78,21 +88,21 @@ export const PLAN_DETAIL_COPY = {
     ],
   },
   pro: {
-    title: "Mas control y mejores sugerencias",
-    description: "Pro suma margen para organizarte y recibir senales inteligentes sin que la app cambie objetivos automaticamente.",
+    title: "Mas control para organizarte",
+    description: "Pro suma margen para planificar, usar biblioteca global y administrar metas sin cooldown manual.",
     bullets: [
       "Biblioteca global ZumaFit",
-      "Sugerencias nutricionales segun progreso",
-      "Sugerencias de progresion para rutina",
+      "Menus semanales y mas comidas propias",
+      "Rutinas automaticas y AutoCoach marcados como proximamente",
       "Ideal para usuarios autogestionados constantes",
     ],
   },
   vip: {
-    title: "AutoCoach adaptativo",
-    description: "VIP es el nivel pensado para ajustes semi automaticos segun peso, adherencia, entrenamientos y progreso.",
+    title: "Biblioteca premium y limites altos",
+    description: "VIP es el nivel pensado para mayor personalizacion y futuras revisiones adaptativas, sin presentar IA como activa todavia.",
     bullets: [
-      "AutoCoach Nutricional con ajustes de calorias y macros",
-      "AutoCoach de Entrenamiento con progresion y deload sugerido",
+      "AutoCoach Nutricional marcado como proximamente",
+      "AutoCoach de Entrenamiento marcado como proximamente",
       "Biblioteca premium ZumaFit",
       "Limites altos para menus y comidas propias",
     ],
@@ -118,6 +128,28 @@ export function extractCapabilities(response) {
   if (response?.data?.capabilities && typeof response.data.capabilities === "object") return response.data.capabilities;
   if (response && typeof response === "object" && (response.plan || response.limits || response.canTrack !== undefined)) return response;
   return null;
+}
+
+export function extractAccessContext(response) {
+  if (response?.accessContext && typeof response.accessContext === "object") return response.accessContext;
+  if (response?.data?.accessContext && typeof response.data.accessContext === "object") return response.data.accessContext;
+  if (response && typeof response === "object" && response.primaryAccess && response.capabilities) return response;
+  return null;
+}
+
+export function capabilitiesFromAccessContext(accessContext = null) {
+  if (!accessContext || typeof accessContext !== "object") return null;
+  const capabilities = accessContext.capabilities || null;
+  if (!capabilities || typeof capabilities !== "object") return null;
+  return {
+    ...capabilities,
+    role: "cliente",
+    plan: normalizeClientPlan(accessContext.effectivePersonalPlan || capabilities.plan || accessContext.personalPlan),
+    personalPlan: normalizeClientPlan(accessContext.personalPlan || capabilities.personalPlan || capabilities.plan),
+    effectivePersonalPlan: normalizeClientPlan(accessContext.effectivePersonalPlan || capabilities.effectivePersonalPlan || capabilities.plan),
+    hasCoach: !!accessContext.hasCoach,
+    clientType: accessContext.clientType || (accessContext.hasCoach ? "with_coach" : "self_managed"),
+  };
 }
 
 export function validateCapabilities(capabilities = null) {
@@ -332,6 +364,8 @@ export function planBenefits(capabilities = {}) {
     benefits.push("Biblioteca basica");
   }
   if (capabilities.canGenerateAutomaticMenu) benefits.push("Generacion automatica");
+  if (capabilities.autoCoachNutrition === "coming_soon") benefits.push("AutoCoach nutricional proximamente");
+  if (capabilities.autoCoachTraining === "coming_soon") benefits.push("AutoCoach entrenamiento proximamente");
   if (capabilities.canExportMenuPdf) benefits.push("Exportar PDF");
   return benefits;
 }
@@ -339,8 +373,12 @@ export function planBenefits(capabilities = {}) {
 export function planFeatureRows(capabilities = {}) {
   const ownMenus = Number(capabilities?.limits?.ownMenus);
   const ownMeals = Number(capabilities?.limits?.ownMeals);
+  const favorites = Number(capabilities?.limits?.favorites);
+  const menuDays = Number(capabilities?.limits?.menuDays);
   const nutritionMode = String(capabilities?.autoCoachNutrition || "manual");
   const trainingMode = String(capabilities?.autoCoachTraining || "manual");
+  const automaticMenusStatus = String(capabilities?.automaticMenusStatus || (capabilities.canGenerateAutomaticMenu ? "enabled" : "blocked"));
+  const automaticRoutineStatus = String(capabilities?.automaticRoutineStatus || "blocked");
   return [
     {
       key: "tracking",
@@ -355,10 +393,24 @@ export function planFeatureRows(capabilities = {}) {
       included: Number.isFinite(ownMenus) && ownMenus > 0,
     },
     {
+      key: "menuDays",
+      label: "Dias por menu",
+      value: Number.isFinite(menuDays) ? `${menuDays} dia${menuDays === 1 ? "" : "s"}` : "Semanal",
+      included: Number.isFinite(menuDays) && menuDays > 1,
+      muted: Number.isFinite(menuDays) && menuDays <= 1,
+    },
+    {
       key: "ownMeals",
       label: "Comidas propias",
       value: Number.isFinite(ownMeals) ? `Hasta ${ownMeals}` : "No disponible",
       included: Number.isFinite(ownMeals) && ownMeals > 0,
+    },
+    {
+      key: "favorites",
+      label: "Favoritos",
+      value: Number.isFinite(favorites) ? `Hasta ${favorites}` : "Sin limite alto",
+      included: Number.isFinite(favorites) && favorites > 3,
+      muted: Number.isFinite(favorites) && favorites <= 3,
     },
     {
       key: "library",
@@ -369,29 +421,42 @@ export function planFeatureRows(capabilities = {}) {
     {
       key: "automaticMenu",
       label: "Menus automaticos",
-      value: capabilities.canGenerateAutomaticMenu ? "Incluido" : "No disponible aun",
+      value: capabilities.canGenerateAutomaticMenu
+        ? "Incluido"
+        : automaticMenusStatus === "coming_soon"
+          ? "Proximamente"
+          : "No incluido",
       included: !!capabilities.canGenerateAutomaticMenu,
       muted: !capabilities.canGenerateAutomaticMenu,
+    },
+    {
+      key: "automaticRoutine",
+      label: "Rutinas automaticas",
+      value: automaticRoutineStatus === "coming_soon" ? "Proximamente" : capabilities.canGenerateAutomaticRoutine ? "Incluido" : "No incluido",
+      included: !!capabilities.canGenerateAutomaticRoutine,
+      muted: !capabilities.canGenerateAutomaticRoutine,
     },
     {
       key: "autoCoachNutrition",
       label: "AutoCoach nutricion",
       value: autoCoachModeLabel(nutritionMode),
-      included: nutritionMode !== "manual",
-      muted: nutritionMode === "manual",
+      included: nutritionMode !== "manual" && nutritionMode !== "coming_soon",
+      muted: nutritionMode === "manual" || nutritionMode === "coming_soon",
     },
     {
       key: "autoCoachTraining",
       label: "AutoCoach entrenamiento",
       value: autoCoachModeLabel(trainingMode),
-      included: trainingMode !== "manual",
-      muted: trainingMode === "manual",
+      included: trainingMode !== "manual" && trainingMode !== "coming_soon",
+      muted: trainingMode === "manual" || trainingMode === "coming_soon",
     },
   ];
 }
 
 export function autoCoachModeLabel(mode = "manual") {
+  if (mode === "coming_soon") return "Proximamente";
   if (mode === "adaptive") return "Ajustes adaptativos";
+  if (mode === "adaptive_review") return "Proximamente";
   if (mode === "suggestions") return "Sugerencias";
   return "Manual";
 }
@@ -407,6 +472,12 @@ export function planUpgradeHighlights(planId = "free", currentPlan = "free") {
   const mealDiff = Number(target.limits?.ownMeals) - Number(current.limits?.ownMeals);
   if (Number.isFinite(mealDiff) && mealDiff > 0) highlights.push(`+${mealDiff} comidas`);
 
+  const favoriteDiff = Number(target.limits?.favorites) - Number(current.limits?.favorites);
+  if (Number.isFinite(favoriteDiff) && favoriteDiff > 0) highlights.push(`+${favoriteDiff} favoritos`);
+
+  const dayDiff = Number(target.limits?.menuDays) - Number(current.limits?.menuDays);
+  if (Number.isFinite(dayDiff) && dayDiff > 0) highlights.push("Menu semanal");
+
   if (target.canUsePremiumLibrary && !current.canUsePremiumLibrary) {
     highlights.push("Biblioteca premium");
   } else if (target.canUseGlobalLibrary && !current.canUseGlobalLibrary) {
@@ -416,17 +487,11 @@ export function planUpgradeHighlights(planId = "free", currentPlan = "free") {
   if (target.canGenerateAutomaticMenu && !current.canGenerateAutomaticMenu) {
     highlights.push("Menus automaticos");
   }
-  if (target.autoCoachNutrition === "suggestions" && current.autoCoachNutrition === "manual") {
-    highlights.push("AutoCoach nutricion");
+  if (target.autoCoachNutrition === "coming_soon" && current.autoCoachNutrition === "manual") {
+    highlights.push("AutoCoach nutricion proximamente");
   }
-  if (target.autoCoachNutrition === "adaptive" && current.autoCoachNutrition !== "adaptive") {
-    highlights.push("AutoCoach adaptativo");
-  }
-  if (target.autoCoachTraining === "suggestions" && current.autoCoachTraining === "manual") {
-    highlights.push("AutoCoach training");
-  }
-  if (target.autoCoachTraining === "adaptive" && current.autoCoachTraining !== "adaptive") {
-    highlights.push("Rutina adaptativa");
+  if (target.autoCoachTraining === "coming_soon" && current.autoCoachTraining === "manual") {
+    highlights.push("AutoCoach entrenamiento proximamente");
   }
 
   return highlights;

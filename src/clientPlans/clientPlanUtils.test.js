@@ -23,8 +23,10 @@ const validCapabilities = {
   canUseGlobalLibrary: false,
   canUsePremiumLibrary: false,
   limits: {
-    ownMenus: 2,
-    ownMeals: 10,
+    ownMenus: 1,
+    ownMeals: 5,
+    favorites: 3,
+    menuDays: 1,
   },
 };
 
@@ -122,40 +124,48 @@ test("resolveEffectiveClientNutritionCapabilities propaga 500 sin fallback", asy
 test("menusUsageFromResponse usa pagination.total y soporta contador no disponible", () => {
   assert.deepEqual(
     menusUsageFromResponse({ items: [{ id: 1 }], pagination: { total: 4 } }, validCapabilities),
-    { used: 4, limit: 2 }
+    { used: 4, limit: 1 }
   );
   assert.deepEqual(
     menusUsageFromResponse(null, validCapabilities),
-    { used: null, limit: 2 }
+    { used: null, limit: 1 }
   );
   assert.equal(usageText({ used: null, limit: 2 }), "No disponible");
 });
 
-test("planFeatureRows marca menus automaticos como no disponibles si backend no los habilita", () => {
-  for (const preset of Object.values(PLAN_PRESETS)) {
-    const automaticRow = planFeatureRows(preset).find((row) => row.key === "automaticMenu");
-    assert.equal(automaticRow.included, false);
-    assert.equal(automaticRow.value, "No disponible aun");
-  }
+test("planFeatureRows diferencia bloqueos actuales y proximamente", () => {
+  const freeAutomatic = planFeatureRows(PLAN_PRESETS.free).find((row) => row.key === "automaticMenu");
+  const proAutomatic = planFeatureRows(PLAN_PRESETS.pro).find((row) => row.key === "automaticMenu");
+  const vipRoutine = planFeatureRows(PLAN_PRESETS.vip).find((row) => row.key === "automaticRoutine");
+  assert.equal(freeAutomatic.included, false);
+  assert.equal(freeAutomatic.value, "No incluido");
+  assert.equal(proAutomatic.value, "Proximamente");
+  assert.equal(vipRoutine.value, "Proximamente");
 
   const proNutrition = planFeatureRows(PLAN_PRESETS.pro).find((row) => row.key === "autoCoachNutrition");
   const vipTraining = planFeatureRows(PLAN_PRESETS.vip).find((row) => row.key === "autoCoachTraining");
-  assert.equal(proNutrition.value, "Sugerencias");
-  assert.equal(vipTraining.value, "Ajustes adaptativos");
+  assert.equal(proNutrition.value, "Proximamente");
+  assert.equal(proNutrition.included, false);
+  assert.equal(vipTraining.value, "Proximamente");
+  assert.equal(vipTraining.included, false);
 
   assert.deepEqual(planUpgradeHighlights("pro", "free"), [
-    "+18 menus",
-    "+90 comidas",
+    "+9 menus",
+    "+95 comidas",
+    "+17 favoritos",
+    "Menu semanal",
     "Biblioteca global",
-    "AutoCoach nutricion",
-    "AutoCoach training",
+    "AutoCoach nutricion proximamente",
+    "AutoCoach entrenamiento proximamente",
   ]);
   assert.deepEqual(planUpgradeHighlights("vip", "free"), [
-    "+98 menus",
-    "+490 comidas",
+    "+49 menus",
+    "+495 comidas",
+    "+97 favoritos",
+    "Menu semanal",
     "Biblioteca premium",
-    "AutoCoach adaptativo",
-    "Rutina adaptativa",
+    "AutoCoach nutricion proximamente",
+    "AutoCoach entrenamiento proximamente",
   ]);
 });
 

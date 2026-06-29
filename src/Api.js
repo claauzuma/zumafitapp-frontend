@@ -104,8 +104,15 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (!res.ok) {
-      const err = new Error(data?.error || data?.message || "Error");
+      const serverMessage =
+        data?.error ||
+        data?.errors ||
+        data?.message ||
+        data?.code ||
+        `Error HTTP ${res.status}`;
+      const err = new Error(serverMessage);
       if (data && typeof data === "object") Object.assign(err, data);
+      err.error = serverMessage;
       err.status = res.status;
       throw err;
     }

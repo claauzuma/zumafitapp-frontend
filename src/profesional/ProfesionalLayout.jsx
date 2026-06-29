@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -21,6 +21,7 @@ import { clearPrivateQueryCache } from "../queryClient.js";
 import ImpersonationBanner from "../ImpersonationBanner.jsx";
 import AppToast from "../ui/AppToast.jsx";
 import BrandLogo from "../ui/BrandLogo.jsx";
+import { createNavigationPrefetchHandlers, scheduleIdleRoutePrefetch } from "../routes/routePrefetch.js";
 
 export default function ProfesionalLayout({ me: meProp }) {
   const navigate = useNavigate();
@@ -31,6 +32,13 @@ export default function ProfesionalLayout({ me: meProp }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    const frequentRoutes = navItems
+      .map((item) => item.to)
+      .filter((to) => ["/profesional/clientes", "/profesional/menus", "/profesional/comidas"].includes(to));
+    return scheduleIdleRoutePrefetch(frequentRoutes);
+  }, [navItems]);
 
   async function logout() {
     if (loggingOut || isImpersonating()) return;
@@ -194,6 +202,7 @@ function ProfesionalNav({ items, className, onNavigate }) {
             end={item.end}
             className={({ isActive }) => `pl-link ${isActive ? "active" : ""}`}
             onClick={onNavigate}
+            {...createNavigationPrefetchHandlers(item.to)}
           >
             <Icon size={18} strokeWidth={2.2} aria-hidden="true" />
             <span>{item.label}</span>
@@ -205,7 +214,7 @@ function ProfesionalNav({ items, className, onNavigate }) {
 }
 
 function buildNavItems(me) {
-  const specialties = me?.coachProfile?.specialties || {};
+  const specialties = me?.professionalScopes || me?.coachProfile?.specialties || {};
   const features = me?.effectiveCapabilities?.features || {};
 
   const canRoutines =

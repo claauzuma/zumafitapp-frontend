@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api";
 import { setAuthLogged } from "../authCache.js";
 import { leaveCurrentCoach, requestCoachChange } from "../clientCoachApi.js";
@@ -62,6 +63,12 @@ function labelDist(v) {
   return "—";
 }
 
+function formatMacro(value) {
+  if (value === null || value === undefined || value === "") return "Sin definir";
+  const n = Number(value);
+  return Number.isFinite(n) ? `${Math.round(n)} g` : "Sin definir";
+}
+
 function readPerfilCache() {
   try {
     const raw = localStorage.getItem(PERFIL_CACHE_KEY);
@@ -106,6 +113,7 @@ function extractUpdatedAt(payload) {
 }
 
 export default function Perfil() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingBasics, setSavingBasics] = useState(false);
@@ -136,6 +144,7 @@ export default function Perfil() {
   const [tdeeEstimado, setTdeeEstimado] = useState("");
 
   const [goal, setGoal] = useState(null);
+  const [metasActuales, setMetasActuales] = useState(null);
   const [program, setProgram] = useState(null);
   const [coach, setCoach] = useState(null);
   const [clientCoachNotice, setClientCoachNotice] = useState(null);
@@ -199,6 +208,7 @@ export default function Perfil() {
     );
 
     setGoal(data?.goal || null);
+    setMetasActuales(data?.metasActuales || null);
     setProgram(data?.program || null);
     setCoach(data?.coach || null);
     setClientCoachNotice(data?.clientCoachNotice || null);
@@ -839,8 +849,8 @@ export default function Perfil() {
           <div className="card">
             <div className="cardTop">
               <h2>Objetivo actual</h2>
-              <button className="btn ghost" disabled>
-                Editar después
+              <button className="btn ghost" type="button" onClick={() => navigate("/app/objetivos")}>
+                Ver y editar objetivos
               </button>
             </div>
 
@@ -881,8 +891,11 @@ export default function Perfil() {
 
               <div className="infoRow">
                 <div className="infoLeft">
-                  <div className="infoLabel">Calorías iniciales</div>
-                  <div className="infoValue">{fmtValue(goal?.initialBudgetKcal, " kcal")}</div>
+                  <div className="infoLabel">Objetivo nutricional</div>
+                  <div className="infoValue">{fmtValue(metasActuales?.kcal ?? goal?.initialBudgetKcal, " kcal")}</div>
+                  <div className="infoHint">
+                    P {formatMacro(metasActuales?.macros?.p)} · C {formatMacro(metasActuales?.macros?.c)} · G {formatMacro(metasActuales?.macros?.g)}
+                  </div>
                 </div>
               </div>
             </div>
