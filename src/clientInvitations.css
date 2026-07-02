@@ -190,6 +190,18 @@
   color:#b8c5d4;
 }
 
+.pci-btn.danger{
+  border-color:rgba(248,113,113,.28);
+  color:#fecaca;
+  background:rgba(127,29,29,.10);
+}
+
+.pci-btn.danger.solid{
+  border-color:rgba(248,113,113,.42);
+  color:#fff1f1;
+  background:linear-gradient(135deg, rgba(185,28,28,.95), rgba(127,29,29,.92));
+}
+
 .pci-btn.compact{
   min-height:38px;
   border-radius:12px;
@@ -215,6 +227,65 @@
   color:#f5d76e;
   font-size:13px;
   font-weight:1000;
+}
+
+.pci-blockBox{
+  margin-top:16px;
+  border:1px solid rgba(248,113,113,.22);
+  background:
+    radial-gradient(circle at top left, rgba(248,113,113,.10), transparent 36%),
+    rgba(8,13,20,.86);
+  border-radius:16px;
+  padding:13px;
+}
+
+.pci-blockBox strong{
+  display:block;
+  color:#fff1f1;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.pci-blockBox p{
+  margin:6px 0 0;
+  color:#cbd5e1;
+  font-size:13px;
+  line-height:1.4;
+  font-weight:750;
+}
+
+.pci-check{
+  margin-top:11px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#edf2f7;
+  font-size:13px;
+  font-weight:900;
+}
+
+.pci-check input{
+  accent-color:#f5d76e;
+}
+
+.pci-select{
+  width:100%;
+  margin-top:10px;
+  min-height:40px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:#09111a;
+  color:#edf2f7;
+  padding:0 11px;
+  font-weight:850;
+}
+
+.pci-blockActions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  margin-top:12px;
 }
 
 .pci-banner{

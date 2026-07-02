@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Apple,
@@ -15,6 +16,7 @@ import {
   Lock,
   MoreHorizontal,
   MoonStar,
+  PencilLine,
   Plus,
   RefreshCw,
   Search,
@@ -30,7 +32,9 @@ import {
 import { apiFetch } from "../../Api.js";
 import { getFoodEquivalents } from "../../menus/menusApi.js";
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
-import { getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
+import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
+import { getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
+import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
 import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
 
 const EMPTY_DAYS = [];
@@ -46,6 +50,10 @@ const TOTAL_KEYS = {
   carbs: ["carbs", "carbohidratos", "carbohydrates", "hidratos", "carbsTotal", "carbohidratosTotal", "c"],
   grasas: ["grasas", "grasa", "fat", "fats", "grasasTotal", "fatTotal", "g"],
 };
+
+function uid(prefix = "id") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -246,17 +254,6 @@ function choiceDisplayName(choice = {}) {
   return choice?.snapshot?.name || choice?.snapshot?.nombre || choice?.label || "Menú asignado";
 }
 
-function choiceMobileName(choice = {}) {
-  const explicitName = choice?.snapshot?.name || choice?.snapshot?.nombre;
-  if (explicitName && !String(explicitName).toLowerCase().includes("sin nombre")) return explicitName;
-  const totals = choiceTotals(choice);
-  if (totals.kcal || totals.proteina) {
-    return `${formatNumber(totals.kcal, 0)} kcal / ${formatNumber(totals.proteina, 0)} g proteina`;
-  }
-  if (choice?.type === "primary") return "Menu principal";
-  return choice?.label || "Menu asignado";
-}
-
 function choiceMeals(choice = {}) {
   return choice?.snapshot ? snapshotMeals(choice.snapshot) : [];
 }
@@ -283,6 +280,118 @@ function menuCountTitle(row) {
   if (!choices.length) return "Sin menu asignado";
   if (choices.length === 1) return choices[0].snapshot?.name || "Menu asignado";
   return `Total menus (${choices.length})`;
+}
+
+function menuSourceMeta(source = "") {
+  const key = String(source || "none").toLowerCase();
+  if (key === "own") {
+    return {
+      key,
+      label: "Mi menu",
+      descriptor: "Planificacion propia",
+      pillClass: "border-[#D4AF37]/35 bg-[#D4AF37]/12 text-[#FFE8A3]",
+    };
+  }
+  if (key === "coach") {
+    return {
+      key,
+      label: "Coach",
+      descriptor: "Plan asignado",
+      pillClass: "border-sky-300/30 bg-sky-300/10 text-sky-100",
+    };
+  }
+  return {
+    key: "none",
+    label: "Menu",
+    descriptor: "Planificacion",
+    pillClass: "border-white/10 bg-white/[0.055] text-zinc-300",
+  };
+}
+
+function normalizeMenuNameText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function isGenericMenuName(value = "") {
+  const normalized = normalizeMenuNameText(value);
+  return !normalized || ["mi menu", "menu", "menu principal", "menu asignado", "sin nombre"].includes(normalized);
+}
+
+function activeMenuIdFrom(row = {}, activePlan = {}) {
+  const primary = row?.assignment?.primaryMenu || {};
+  const snapshot = primary.menuSnapshot || {};
+  return String(
+    activePlan?.menuId ||
+      primary.menuId ||
+      snapshot.baseId ||
+      snapshot.id ||
+      snapshot._id ||
+      ""
+  );
+}
+
+function activeMenuDisplayName(choice = {}, activePlan = {}, source = "none") {
+  const snapshot = choice?.snapshot || {};
+  const raw =
+    activePlan?.name ||
+    activePlan?.nombre ||
+    snapshot.name ||
+    snapshot.nombre ||
+    choiceDisplayName(choice);
+  if (!isGenericMenuName(raw)) return raw;
+  return menuSourceMeta(source).key === "coach" ? "Menu asignado" : "Mi menu diario";
+}
+
+function activeMenuSummary(choice = {}, source = "none") {
+  const parts = activeMenuSummaryParts(choice, source);
+  return `${parts.primary} - ${parts.secondary}`;
+}
+
+function activeMenuSummaryParts(choice = {}, source = "none") {
+  const totals = choiceTotals(choice);
+  const meals = choiceMeals(choice);
+  const sourceKey = menuSourceMeta(source).key;
+  const dayLabel = sourceKey === "own" ? "Dia base" : sourceKey === "coach" ? "Asignado" : "Dia";
+  const mealsLabel = `${meals.length} comida${meals.length === 1 ? "" : "s"}`;
+  return {
+    primary: `${dayLabel} · ${displayKcal(totals.kcal)}`,
+    secondary: mealsLabel,
+  };
+}
+
+function completedMealsLabel(completed = 0, total = 0) {
+  const completedNumber = Number(completed) || 0;
+  const totalNumber = Number(total) || 0;
+  const noun = totalNumber === 1 ? "completada" : "completadas";
+  return `${completedNumber} / ${totalNumber} ${noun}`;
+}
+
+function emptyMenuCopy(source = "none") {
+  const key = menuSourceMeta(source).key;
+  if (key === "coach") {
+    return {
+      title: "Todavia no tenes menu para este dia.",
+      text: "Cuando tu coach lo asigne, lo vas a ver aca.",
+      emptyMealsText: "Podés revisar otros dias o avisarle a tu coach.",
+    };
+  }
+  if (key === "own") {
+    return {
+      title: "Todavia no tenes menu propio para este dia.",
+      text: "Edita o activa tu menu propio para verlo aca con comidas y cantidades.",
+      emptyMealsText: "Edita tu menu propio para agregar comidas y alimentos.",
+    };
+  }
+  return {
+    title: "Todavia no tenes menu para este dia.",
+    text: "Crea tu propio menu, explora la biblioteca ZumaFit o registra libremente en Tracking.",
+    emptyMealsText: "Crea tu menu o usa Tracking mientras lo armas.",
+  };
 }
 
 function dayHeading(row) {
@@ -620,7 +729,7 @@ function foodMacroLine(food = {}) {
   if (totals.proteina || totals.carbs || totals.grasas) {
     pieces.push(`P ${formatNumber(totals.proteina, 0)} / C ${formatNumber(totals.carbs, 0)} / G ${formatNumber(totals.grasas, 0)}`);
   }
-  return pieces.join(" · ");
+  return pieces.join(" - ");
 }
 
 function foodLibraryMacroLine(food = {}) {
@@ -706,6 +815,149 @@ function savedMealPayloadFromMenuMeal(meal = {}, mealIndex = 0) {
     origen: "guardadaDesdeMenu",
     tags: ["menu"],
     items,
+  };
+}
+
+function defaultQuickFoodQuantity(unit = "") {
+  const normalized = String(unit || "").toLowerCase();
+  return ["unidad", "u", "porcion"].some((part) => normalized.includes(part)) ? 1 : 100;
+}
+
+function foodDisplayName(food = {}) {
+  return food.nombre || food.name || food.Alimentos || food.alimentos || "Alimento";
+}
+
+function foodDisplayUnit(food = {}) {
+  return food.unidad || food.unit || food.Unidad || food.unidadBase || "g";
+}
+
+function suggestedQuickFoodQuantity(food = {}) {
+  const raw = food.porcionSugerida ?? food.raw?.porcionSugerida ?? food.cantidadSugerida ?? food.raw?.cantidadSugerida;
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return defaultQuickFoodQuantity(foodDisplayUnit(food));
+}
+
+function normalizeFoodSearchResults(payload) {
+  if (Array.isArray(payload)) return payload.filter(Boolean);
+  if (Array.isArray(payload?.alimentos)) return payload.alimentos.filter(Boolean);
+  if (Array.isArray(payload?.items)) return payload.items.filter(Boolean);
+  if (Array.isArray(payload?.data)) return payload.data.filter(Boolean);
+  if (Array.isArray(payload?.rows)) return payload.rows.filter(Boolean);
+  if (Array.isArray(payload?.results)) return payload.results.filter(Boolean);
+  if (Array.isArray(payload?.all)) return payload.all.filter(Boolean);
+  return [];
+}
+
+function normalizeQuickMenuItem(item = {}, index = 0) {
+  const normalized = normalizeMealFood(item, index);
+  const totals = totalFromLike(item?.totals || item?.totales || item);
+  const fallbackTotals = normalized.totals || emptyTotals();
+  return {
+    ...item,
+    id: item.id || uid("item"),
+    alimentoId: item.alimentoId || item.foodId || normalized.alimentoId || normalized.id || null,
+    nombreSnapshot: item.nombreSnapshot || item.nombre || item.name || normalized.name,
+    nombre: item.nombre || item.nombreSnapshot || item.name || normalized.name,
+    cantidad: quantityFromMenuFood(item) || quantityFromMenuFood(normalized),
+    unidad: unitFromMenuFood(item) || unitFromMenuFood(normalized),
+    kcal: macro(item.kcal ?? item.calorias ?? totals.kcal ?? fallbackTotals.kcal),
+    proteina: macro(item.proteina ?? item.proteinas ?? item.protein ?? totals.proteina ?? fallbackTotals.proteina),
+    carbs: macro(item.carbs ?? item.carbohidratos ?? item.carbohydrates ?? totals.carbs ?? fallbackTotals.carbs),
+    grasas: macro(item.grasas ?? item.grasa ?? item.fat ?? totals.grasas ?? fallbackTotals.grasas),
+    fibra: macro(item.fibra ?? item.fiber),
+    categoriaSnapshot: item.categoriaSnapshot || item.categoria || item.category || normalized.category || "",
+    imagen: item.imagen || normalized.imagen || null,
+    imagenUrl: item.imagenUrl || item.imageUrl || normalized.imageUrl || "",
+    imagenAlt: item.imagenAlt || item.imageAlt || normalized.imageAlt || normalized.name,
+  };
+}
+
+function normalizeQuickMeal(meal = {}, index = 0) {
+  const items = Array.isArray(meal.items)
+    ? meal.items
+    : Array.isArray(meal.alimentos)
+      ? meal.alimentos
+      : Array.isArray(meal.foods)
+        ? meal.foods
+        : [];
+  return {
+    ...meal,
+    id: meal.id || meal._id || uid("meal"),
+    nombre: meal.nombre || meal.name || mealName(meal, index),
+    tipoComida: meal.tipoComida || meal.type || savedMealTipoFromMenuMeal(meal, index),
+    orden: Number(meal.orden ?? meal.order ?? index + 1) || index + 1,
+    items: items.map(normalizeQuickMenuItem),
+  };
+}
+
+function normalizeClientMenuForQuickEdit(menu = {}, fallbackChoice = {}, activePlan = {}) {
+  const dayKeys = Object.keys(menu?.dias || {}).filter(Boolean);
+  const fallbackMeals = choiceMeals(fallbackChoice);
+  const sourceMeals = Array.isArray(menu?.comidas) && menu.comidas.length
+    ? menu.comidas
+    : dayKeys.length
+      ? menu.dias[dayKeys[0]]?.comidas || []
+      : fallbackMeals;
+  const selectedDays =
+    (Array.isArray(menu.selectedDays) && menu.selectedDays.length ? menu.selectedDays : null) ||
+    (Array.isArray(menu.diasActivos) && menu.diasActivos.length ? menu.diasActivos : null) ||
+    (dayKeys.length ? dayKeys : null) ||
+    ["monday"];
+
+  return {
+    id: menu.id || menu._id || activePlan?.menuId || fallbackChoice?.key || "",
+    nombre: menu.nombre || menu.name || activePlan?.nombre || activePlan?.name || fallbackChoice?.snapshot?.name || "Mi menu",
+    descripcion: menu.descripcion || menu.description || "",
+    selectedDays: selectedDays.slice(0, 7),
+    comidas: (Array.isArray(sourceMeals) ? sourceMeals : []).map(normalizeQuickMeal),
+  };
+}
+
+function findQuickMealIndex(draft = {}, baseMeal = {}, fallbackIndex = 0) {
+  const wanted = mealId(baseMeal, fallbackIndex);
+  const exact = (draft.comidas || []).findIndex((meal, index) =>
+    mealId(meal, index) === wanted ||
+    String(meal.id || "") === String(baseMeal.id || baseMeal._id || "")
+  );
+  if (exact >= 0) return exact;
+  return (draft.comidas || [])[fallbackIndex] ? fallbackIndex : 0;
+}
+
+function quickMenuPayload(draft = {}, nextComidas = []) {
+  return {
+    nombre: draft.nombre || "Mi menu",
+    descripcion: draft.descripcion || "",
+    selectedDays: Array.isArray(draft.selectedDays) && draft.selectedDays.length ? draft.selectedDays : ["monday"],
+    comidas: nextComidas.map((meal, index) => ({
+      id: meal.id || uid("meal"),
+      nombre: meal.nombre || mealName(meal, index),
+      tipoComida: meal.tipoComida || "otra",
+      orden: Number(meal.orden ?? index + 1) || index + 1,
+      items: (meal.items || []).map(normalizeQuickMenuItem),
+    })),
+    activate: true,
+  };
+}
+
+function buildQuickMenuItemFromFood(food = {}, quantity = 100, unit = "g") {
+  return {
+    ...buildMenuItemSnapshot(food, quantity, unit),
+    id: uid("item"),
+  };
+}
+
+function rescaleQuickMenuItem(item = {}, nextCantidad = item.cantidad) {
+  const currentQty = Math.max(Number(item.cantidad) || 0, 0.0001);
+  const nextQty = Math.max(Number(nextCantidad) || 0, 0);
+  const factor = nextQty / currentQty;
+  return {
+    ...item,
+    cantidad: nextQty,
+    kcal: Math.round(macro(item.kcal) * factor * 10) / 10,
+    proteina: Math.round(macro(item.proteina ?? item.proteinas) * factor * 10) / 10,
+    carbs: Math.round(macro(item.carbs ?? item.carbohidratos) * factor * 10) / 10,
+    grasas: Math.round(macro(item.grasas ?? item.fat) * factor * 10) / 10,
   };
 }
 
@@ -1406,6 +1658,7 @@ async function saveMenuTrackingDay(payload) {
 }
 
 export default function MenuPlan() {
+  const navigate = useNavigate();
   const initialWeek = useMemo(() => {
     const start = mondayOfWeek();
     return { start, data: getCachedMenuWeek(start) };
@@ -1421,7 +1674,9 @@ export default function MenuPlan() {
   const [remainingDraft, setRemainingDraft] = useState(null);
   const [mealDrawer, setMealDrawer] = useState(null);
   const [foodDrawer, setFoodDrawer] = useState(null);
+  const [quickMealEditor, setQuickMealEditor] = useState(null);
   const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
+  const [trackingOnlyConfirmOpen, setTrackingOnlyConfirmOpen] = useState(false);
   const [mealToggleConfirm, setMealToggleConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -1501,10 +1756,164 @@ export default function MenuPlan() {
     [selectedRow, days]
   );
   const permissions = weekData?.permissions || {};
+  const activePlan = weekData?.activePlan || {};
+  const activePlanSource = activePlan?.source || "none";
+  const canQuickEditActiveMenu = menuSourceMeta(activePlanSource).key === "own";
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
   const canAutoCompleteRemaining = permissions.canAutoCompleteRemainingMeals !== false;
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canTrackFoods = permissions.canTrackFoods !== false;
+
+  function openActiveMenuEditor(row = selectedRow, options = {}) {
+    if (menuSourceMeta(activePlanSource).key !== "own") return;
+    const id = activeMenuIdFrom(row, activePlan);
+    if (!id) {
+      setToast("No pudimos abrir el editor de este menu.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    navigate("/app/menu/nuevo", {
+      state: {
+        from: "/app/menu",
+        editMenuId: id,
+        editToken: `${id}-${Date.now()}`,
+        focus: options.focus || "",
+      },
+    });
+  }
+
+  async function renameActiveMenuFromOptions(nextName) {
+    if (saving || menuSourceMeta(activePlanSource).key !== "own") return;
+    const cleanName = String(nextName || "").trim();
+    if (!cleanName) {
+      setToast("Escribi un nombre para el menu.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    const menuId = activeMenuIdFrom(selectedRow, activePlan);
+    if (!menuId) {
+      setToast("No pudimos identificar tu menu activo.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    setSaving(true);
+    try {
+      const menu = await getClientMenu(menuId);
+      const draft = normalizeClientMenuForQuickEdit(menu || {}, trackingChoice(selectedRow), activePlan);
+      const payload = {
+        ...quickMenuPayload({ ...draft, nombre: cleanName }, draft.comidas || []),
+        nombre: cleanName,
+        name: cleanName,
+        activate: true,
+      };
+      await updateClientMenu(menuId, payload);
+      await loadWeek(weekStart, { silent: true });
+      setMenuOptionsDrawerOpen(false);
+      setToast("Nombre del menu actualizado.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo renombrar el menu.");
+      window.setTimeout(() => setToast(""), 2600);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function requestDeactivateOwnMenuFromDay() {
+    if (saving || menuSourceMeta(activePlanSource).key !== "own") return;
+    setTrackingOnlyConfirmOpen(true);
+  }
+
+  async function deactivateOwnMenuFromDay() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await apiFetch("/api/clientes/me/menus/deactivate", {
+        method: "POST",
+        timeoutMs: 12000,
+      });
+      await loadWeek(weekStart, { silent: true });
+      setMenuOptionsDrawerOpen(false);
+      setTrackingOnlyConfirmOpen(false);
+      setToast("Menu desactivado.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo desactivar el menu.");
+      window.setTimeout(() => setToast(""), 2600);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function openQuickMealEditor(context = {}) {
+    if (!canQuickEditActiveMenu || saving) return;
+    const row = context.row || selectedRow;
+    const baseMeal = context.baseMeal || context.meal || {};
+    const mealIndex = Number(context.mealIndex) || 0;
+    const menuId = activeMenuIdFrom(row, activePlan);
+    if (!menuId) {
+      setToast("No pudimos identificar tu menu activo.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+
+    const loadingContext = {
+      loading: true,
+      menuId,
+      row,
+      baseMeal,
+      mealIndex,
+      title: mealName(baseMeal, mealIndex),
+    };
+    setQuickMealEditor(loadingContext);
+
+    try {
+      const menu = await getClientMenu(menuId);
+      const choice = trackingChoice(row);
+      const draft = normalizeClientMenuForQuickEdit(menu || {}, choice, activePlan);
+      const resolvedMealIndex = findQuickMealIndex(draft, baseMeal, mealIndex);
+      const mealDraft = draft.comidas[resolvedMealIndex] || normalizeQuickMeal(baseMeal, mealIndex);
+      setQuickMealEditor({
+        ...loadingContext,
+        loading: false,
+        draft,
+        mealDraft,
+        mealIndex: resolvedMealIndex,
+        token: `${menuId}-${resolvedMealIndex}-${Date.now()}`,
+      });
+    } catch (err) {
+      setQuickMealEditor({
+        ...loadingContext,
+        loading: false,
+        error: err?.message || "No pudimos abrir la edicion rapida.",
+      });
+    }
+  }
+
+  async function saveQuickMealChanges(nextMeal) {
+    if (!quickMealEditor?.menuId || !quickMealEditor?.draft || saving) return;
+    const draft = quickMealEditor.draft;
+    const mealIndex = quickMealEditor.mealIndex;
+    const nextComidas = (draft.comidas || []).map((meal, index) =>
+      index === mealIndex
+        ? normalizeQuickMeal({ ...meal, ...nextMeal, items: nextMeal.items || [] }, index)
+        : normalizeQuickMeal(meal, index)
+    );
+    const payload = quickMenuPayload(draft, nextComidas);
+    setSaving(true);
+    try {
+      await updateClientMenu(quickMealEditor.menuId, payload);
+      await loadWeek(weekStart, { silent: true });
+      setQuickMealEditor(null);
+      setToast("Alimentos del menu actualizados.");
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudieron guardar los cambios.");
+      window.setTimeout(() => setToast(""), 2600);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function moveSelectedDay(amount) {
     const baseDate = selectedRow?.date || todayRow?.date || todayIso();
@@ -1876,6 +2285,8 @@ export default function MenuPlan() {
               <MobileDayDetailView
                 row={selectedRow}
                 weekRows={days}
+                activePlan={activePlan}
+                activePlanSource={activePlanSource}
                 detailChoiceKey={mobileDetailChoiceKey}
                 onBack={() => setMobileView("overview")}
                 onPrevious={() => moveSelectedDay(-1)}
@@ -1883,6 +2294,7 @@ export default function MenuPlan() {
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
                 onRestoreManual={restoreManualEntries}
@@ -1906,12 +2318,16 @@ export default function MenuPlan() {
               <MobileDayMenu
                 row={selectedRow}
                 weekRows={days}
+                activePlan={activePlan}
+                activePlanSource={activePlanSource}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
+                onEditActiveMenu={(options) => openActiveMenuEditor(selectedRow, options)}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
                 onRestoreManual={restoreManualEntries}
@@ -1926,11 +2342,16 @@ export default function MenuPlan() {
               <TodayHero
                 row={selectedDisplayRow}
                 weekRows={days}
+                activePlan={activePlan}
+                activePlanSource={activePlanSource}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
                 onView={() => setDetailRow(selectedDisplayRow)}
+                onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
+                onEditActiveMenu={(options) => openActiveMenuEditor(selectedDisplayRow, options)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
+                onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                 onDeleteManual={deleteManualEntry}
@@ -1953,9 +2374,11 @@ export default function MenuPlan() {
                   <DayDetail
                     row={selectedDisplayRow}
                     weekRows={days}
+                    activePlanSource={activePlanSource}
                     onMarkMissed={markDayMissed}
                     onToggleMeal={toggleMenuMeal}
                     onOpenMeal={(payload) => setMealDrawer(payload)}
+                    onQuickEditMeal={openQuickMealEditor}
                     onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                     onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                     onRestoreGenerated={restoreGeneratedRemaining}
@@ -1976,10 +2399,12 @@ export default function MenuPlan() {
       {detailRow && !isMobileLayout ? (
         <DayDetailDrawer
           row={rowWithActiveGeneratedMeals(detailRow, days)}
+          activePlanSource={activePlanSource}
           onClose={() => setDetailRow(null)}
           onMarkMissed={markDayMissed}
           onToggleMeal={toggleMenuMeal}
           onOpenMeal={(payload) => setMealDrawer(payload)}
+          onQuickEditMeal={openQuickMealEditor}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onOpenRemaining={() => setRemainingDraft(rowWithActiveGeneratedMeals(detailRow, days))}
           onRestoreGenerated={restoreGeneratedRemaining}
@@ -2010,6 +2435,11 @@ export default function MenuPlan() {
           onToggleMeal={toggleMenuMeal}
           onOpenFood={(payload) => setFoodDrawer(payload)}
           onClose={() => setMealDrawer(null)}
+          canEditOwnMenuMeal={canQuickEditActiveMenu}
+          onQuickEditMeal={(payload) => {
+            setMealDrawer(null);
+            openQuickMealEditor(payload);
+          }}
           canMarkMeals={canMarkMeals}
           canReplaceMeals={canUseMenuAlternatives}
           canReplaceFoods={canTrackFoods}
@@ -2030,15 +2460,39 @@ export default function MenuPlan() {
         />
       ) : null}
 
-      {menuOptionsDrawerOpen && isMobileLayout ? (
+      {quickMealEditor ? (
+        <QuickMealEditorDrawer
+          context={quickMealEditor}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setQuickMealEditor(null);
+          }}
+          onRetry={() => openQuickMealEditor(quickMealEditor)}
+          onSave={saveQuickMealChanges}
+        />
+      ) : null}
+
+      {menuOptionsDrawerOpen ? (
         <MobileMenuOptionsDrawer
           row={selectedRow}
+          activePlan={activePlan}
+          activePlanSource={activePlanSource}
           saving={saving}
           onClose={() => setMenuOptionsDrawerOpen(false)}
+          onRenameMenu={renameActiveMenuFromOptions}
+          onUseTrackingOnly={requestDeactivateOwnMenuFromDay}
           onSelectChoice={(row, choice) => {
             setMenuOptionsDrawerOpen(false);
             selectMenuChoice(row, choice);
           }}
+        />
+      ) : null}
+
+      {trackingOnlyConfirmOpen ? (
+        <TrackingOnlyConfirmModal
+          saving={saving}
+          onCancel={() => setTrackingOnlyConfirmOpen(false)}
+          onConfirm={deactivateOwnMenuFromDay}
         />
       ) : null}
 
@@ -2116,6 +2570,81 @@ function MealCompletionConfirmModal({ payload, saving, onCancel, onConfirm }) {
             {saving ? "Guardando..." : completed ? "Dejar pendiente" : "Si, la realice"}
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function TrackingOnlyConfirmModal({ saving, onCancel, onConfirm }) {
+  const cancelRef = useRef(null);
+  const openerRef = useRef(null);
+
+  useEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !saving) onCancel?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      openerRef.current?.focus?.();
+    };
+  }, [onCancel, saving]);
+
+  return (
+    <section className="fixed inset-0 z-[125] flex items-end justify-center bg-black/78 px-3 pb-3 pt-8 backdrop-blur-md sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="tracking-only-confirm-title">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onCancel} aria-label="Cerrar confirmacion" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-[1.7rem] border border-amber-300/18 bg-[radial-gradient(circle_at_18%_0,rgba(245,158,11,.18),transparent_34%),linear-gradient(180deg,#111922,#080d12)] p-4 shadow-[0_28px_90px_rgba(0,0,0,.72)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-amber-300/30 bg-amber-300/10 text-[#FFE8A3]">
+              <Utensils size={22} />
+            </span>
+            <div className="min-w-0">
+              <span className="text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">Planificacion activa</span>
+              <h3 id="tracking-only-confirm-title" className="mt-1 text-xl font-black leading-tight text-white">Usar solo Tracking</h3>
+              <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-300">
+                Tu menu seguira guardado, pero dejara de mostrarse como planificacion activa. Podras volver a activarlo mas adelante.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-200 disabled:opacity-60"
+            aria-label="Cerrar"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-xs font-bold text-zinc-300">
+          <span>No elimina el menu.</span>
+          <span>No borra comidas ni alimentos.</span>
+          <span>No borra historial ni Tracking.</span>
+        </div>
+
+        <footer className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            ref={cancelRef}
+            onClick={onCancel}
+            disabled={saving}
+            className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.045] px-4 text-sm font-black text-zinc-100 disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className="min-h-12 rounded-2xl border border-amber-300/35 bg-amber-300/15 px-4 text-sm font-black text-[#FFE8A3] disabled:opacity-60"
+          >
+            {saving ? "Desactivando..." : "Usar solo Tracking"}
+          </button>
+        </footer>
       </div>
     </section>
   );
@@ -2228,12 +2757,16 @@ function MobileCalculateButton({ onClick, disabled = false }) {
 function MobileDayMenu({
   row,
   weekRows = [],
+  activePlan = {},
+  activePlanSource = "none",
   onPrevious,
   onNext,
   onOpenMenuOptions,
+  onEditActiveMenu,
   onOpenRemaining,
   onToggleMeal,
   onOpenMeal,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
@@ -2261,6 +2794,7 @@ function MobileDayMenu({
   const percent = completionPercent(displayRow);
   const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
+  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
 
   return (
     <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -2269,8 +2803,11 @@ function MobileDayMenu({
       {activeChoice?.snapshot ? (
         <MobileActiveMenuLine
           choice={activeChoice}
+          activePlan={activePlan}
           choicesCount={choices.length}
+          activePlanSource={activePlanSource}
           onOpenOptions={onOpenMenuOptions}
+          onEditMenu={onEditActiveMenu}
         />
       ) : null}
 
@@ -2290,7 +2827,7 @@ function MobileDayMenu({
 
       {/*
             <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
-              P {formatNumber(target.proteina, 0)} g · C {formatNumber(target.carbs, 0)} g · G {formatNumber(target.grasas, 0)} g
+              P {formatNumber(target.proteina, 0)} g - C {formatNumber(target.carbs, 0)} g - G {formatNumber(target.grasas, 0)} g
             </p>
           </div>
           <MobileProgressRing percent={percent} />
@@ -2321,9 +2858,9 @@ function MobileDayMenu({
       {activeChoice?.snapshot ? (
         <section className="mt-4 grid gap-2.5">
           <div className="flex items-center justify-between gap-3 px-1">
-            <h3 className="text-base font-black text-white">Comidas</h3>
+            <h3 className="text-base font-black text-white">Comidas del dia</h3>
             <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
-              {completedCount} / {countableMeals.length || 0} completas
+              {completedMealsLabel(completedCount, countableMeals.length || 0)}
             </span>
           </div>
           {effectiveMeals.length ? (
@@ -2342,6 +2879,8 @@ function MobileDayMenu({
                 canMarkMeals={canMarkMeals}
                 onToggleMeal={onToggleMeal}
                 onOpenMeal={onOpenMeal}
+                canQuickEdit={canQuickEditMeals}
+                onQuickEditMeal={onQuickEditMeal}
                 onSaveAsSavedMeal={onSaveAsSavedMeal}
                 onDeleteManual={onDeleteManual}
               />
@@ -2401,7 +2940,7 @@ function MobileGoalAccordion({
           <Target size={18} strokeWidth={2.2} aria-hidden="true" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-black text-white">Meta del dÃ­a</span>
+          <span className="block truncate text-sm font-black text-white">Meta del día</span>
           <span className="mt-0.5 block text-base font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
           <span className="mt-0.5 block truncate text-[11px] font-black text-sky-200">{macroSummary}</span>
         </span>
@@ -2437,7 +2976,7 @@ function MobileGoalAccordion({
                 Meta <span className="text-[#FFD76B]">{displayKcal(target.kcal)}</span>
               </h2>
               <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
-                P {formatNumber(target.proteina, 0)} g · C {formatNumber(target.carbs, 0)} g · G {formatNumber(target.grasas, 0)} g
+                P {formatNumber(target.proteina, 0)} g - C {formatNumber(target.carbs, 0)} g - G {formatNumber(target.grasas, 0)} g
               </p>
             </div>
             <MobileProgressRing percent={percent} />
@@ -2478,32 +3017,118 @@ function MobileProgressRing({ percent = 0 }) {
   );
 }
 
-function MobileActiveMenuLine({ choice, choicesCount = 0, onOpenOptions }) {
-  const menuName = choiceMobileName(choice);
-  const optionLabel = choicesCount > 1 ? "Cambiar menu" : "Opciones";
+function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activePlanSource = "none", onOpenOptions, onEditMenu }) {
+  const sourceMeta = menuSourceMeta(activePlanSource);
+  const menuName = activeMenuDisplayName(choice, activePlan, activePlanSource);
+  const summaryParts = activeMenuSummaryParts(choice, activePlanSource);
+  const summary = `${summaryParts.primary} · ${summaryParts.secondary}`;
+  const isOwn = sourceMeta.key === "own";
+  const isCoach = sourceMeta.key === "coach";
   return (
-    <section className="mt-2 flex min-h-11 min-w-0 items-center gap-2 rounded-[0.95rem] border border-white/10 bg-[linear-gradient(180deg,#101923,#0b121b)] px-3 shadow-[0_10px_24px_rgba(0,0,0,.18)]">
-      <Utensils size={18} className="shrink-0 text-[#D4AF37]" />
-      <div className="min-w-0 flex-1 truncate text-[13px] font-black text-zinc-100" title={menuName}>
-        {menuName}
+    <section className="mt-2 overflow-hidden rounded-[1.15rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.12),transparent_34%),linear-gradient(145deg,#101923,#090f16)] p-3 shadow-[0_12px_28px_rgba(0,0,0,.24)]">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[10px] font-black uppercase tracking-wide ${sourceMeta.pillClass}`}>
+          {sourceMeta.label}
+        </span>
+        {isCoach ? (
+          <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 text-[10px] font-black text-zinc-300">
+            <Lock size={12} />
+            Solo lectura
+          </span>
+        ) : null}
       </div>
-      <button
-        type="button"
-        onClick={onOpenOptions}
-        className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full px-1 text-[11px] font-black text-[#FFD76B] active:scale-[0.98]"
-        aria-label="Ver opciones de menu"
-      >
-        <RefreshCw size={13} />
-        {optionLabel}
-      </button>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <div className="min-w-0">
+          <h2 className="line-clamp-2 text-lg font-black leading-tight text-white" title={menuName}>
+            {menuName}
+          </h2>
+          <p className="mt-1 text-[12px] font-bold leading-snug text-zinc-400" title={summary}>
+            <span className="block sm:inline">{summaryParts.primary}</span>
+            <span className="hidden sm:inline"> · </span>
+            <span className="block sm:inline">{summaryParts.secondary}</span>
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {isOwn ? (
+            <button
+              type="button"
+              onClick={() => onEditMenu?.()}
+              className="grid h-11 w-11 place-items-center rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3] shadow-[0_8px_20px_rgba(0,0,0,.20)] active:scale-[0.98]"
+              aria-label={`Editar menu ${menuName}`}
+              title="Editar menu"
+            >
+              <PencilLine size={18} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onOpenOptions}
+            className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-black/25 text-zinc-200 shadow-[0_8px_20px_rgba(0,0,0,.18)] active:scale-[0.98]"
+            aria-label={choicesCount > 1 ? "Cambiar menu u opciones" : "Ver opciones de menu"}
+            title="Opciones"
+          >
+            <MoreHorizontal size={20} />
+          </button>
+        </div>
+      </div>
     </section>
   );
 }
 
-function MobileMenuOptionsDrawer({ row, saving, onClose, onSelectChoice }) {
+function MobileMenuOptionsDrawer({
+  row,
+  activePlan = {},
+  activePlanSource = "none",
+  saving,
+  onClose,
+  onRenameMenu,
+  onUseTrackingOnly,
+  onSelectChoice,
+}) {
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const closeButtonRef = useRef(null);
+  const openerRef = useRef(null);
   const choices = menuChoices(row);
+  const sourceMeta = menuSourceMeta(activePlanSource);
+  const activeChoice = trackingChoice(row) || choices[0] || null;
+  const menuName = activeChoice ? activeMenuDisplayName(activeChoice, activePlan, activePlanSource) : "Menu";
+  const summaryParts = activeChoice ? activeMenuSummaryParts(activeChoice, activePlanSource) : null;
+  const summary = activeChoice ? activeMenuSummary(activeChoice, activePlanSource) : "";
+  const isOwn = sourceMeta.key === "own";
+  const isCoach = sourceMeta.key === "coach";
+  const showChoiceSelector = choices.length > 1;
+  const drawerTitle = showChoiceSelector ? "Cambiar menu" : "Opciones del menu";
+
+  useEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !saving) onClose?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      openerRef.current?.focus?.();
+    };
+  }, [onClose, saving]);
+
+  useEffect(() => {
+    if (renaming) setRenameValue(menuName);
+  }, [menuName, renaming]);
+
+  const submitRename = (event) => {
+    event.preventDefault();
+    const cleanName = renameValue.trim();
+    if (!cleanName || cleanName === menuName || saving) return;
+    onRenameMenu?.(cleanName);
+  };
+
   return (
-    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Cambiar menu">
+    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label={drawerTitle}>
       <button
         type="button"
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -2514,14 +3139,15 @@ function MobileMenuOptionsDrawer({ row, saving, onClose, onSelectChoice }) {
         <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/20" />
         <header className="flex items-center justify-between gap-3 px-4 pb-3 pt-4">
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-black text-white">Cambiar menu</h3>
+            <h3 className="truncate text-lg font-black text-white">{drawerTitle}</h3>
             <p className="mt-0.5 text-xs font-bold text-zinc-500">
-              {choices.length} opcion{choices.length === 1 ? "" : "es"} disponible{choices.length === 1 ? "" : "s"}
+              {menuName}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
+            ref={closeButtonRef}
             className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-200"
             aria-label="Cerrar"
           >
@@ -2530,7 +3156,115 @@ function MobileMenuOptionsDrawer({ row, saving, onClose, onSelectChoice }) {
         </header>
 
         <div className="max-h-[calc(82dvh-92px)] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          {choices.length ? (
+          <div className="mb-3 rounded-[1.1rem] border border-white/10 bg-white/[0.035] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[10px] font-black uppercase tracking-wide ${sourceMeta.pillClass}`}>
+                {sourceMeta.label}
+              </span>
+              {isCoach ? (
+                <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 text-[10px] font-black text-zinc-300">
+                  <Lock size={12} />
+                  Solo lectura
+                </span>
+              ) : null}
+            </div>
+            <strong className="mt-2 block truncate text-sm font-black text-white">{menuName}</strong>
+            {summaryParts ? (
+              <span className="mt-1 block text-xs font-bold leading-snug text-zinc-500" title={summary}>
+                <span className="block sm:inline">{summaryParts.primary}</span>
+                <span className="hidden sm:inline"> · </span>
+                <span className="block sm:inline">{summaryParts.secondary}</span>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mb-3 grid gap-2">
+            {isOwn ? (
+              <>
+                {renaming ? (
+                  <form onSubmit={submitRename} className="grid gap-2 rounded-[1.05rem] border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3">
+                    <label className="text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]" htmlFor="menu-quick-rename">
+                      Renombrar menu
+                    </label>
+                    <input
+                      id="menu-quick-rename"
+                      value={renameValue}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      disabled={saving}
+                      autoFocus
+                      maxLength={80}
+                      className="min-h-12 rounded-2xl border border-white/10 bg-black/30 px-3 text-sm font-black text-white outline-none ring-[#D4AF37]/0 transition focus:border-[#D4AF37]/45 focus:ring-4 focus:ring-[#D4AF37]/10 disabled:opacity-60"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRenaming(false)}
+                        disabled={saving}
+                        className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-xs font-black text-zinc-200 disabled:opacity-60"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saving || !renameValue.trim() || renameValue.trim() === menuName}
+                        className="min-h-11 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/15 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-50"
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setRenaming(true)}
+                    className="flex min-h-12 items-center justify-between rounded-[1.05rem] border border-white/10 bg-white/[0.045] px-4 text-sm font-black text-zinc-100 focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/15"
+                  >
+                    <span className="inline-flex items-center gap-2"><PencilLine size={17} /> Renombrar</span>
+                    <ChevronRight size={17} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInfoOpen((value) => !value)}
+                  className="flex min-h-12 items-center justify-between rounded-[1.05rem] border border-white/10 bg-white/[0.035] px-4 text-sm font-black text-zinc-100 focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/15"
+                  aria-expanded={infoOpen}
+                >
+                  <span className="inline-flex items-center gap-2"><CircleAlert size={17} /> Informacion del menu</span>
+                  <ChevronRight size={17} className={infoOpen ? "rotate-90" : ""} />
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={onUseTrackingOnly}
+                  className="mt-1 flex min-h-12 items-center justify-between rounded-[1.05rem] border border-amber-300/25 bg-amber-300/[0.075] px-4 text-sm font-black text-amber-100 disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-amber-300/15"
+                >
+                  <span className="inline-flex items-center gap-2"><Utensils size={17} /> Usar solo Tracking</span>
+                  <ChevronRight size={17} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setInfoOpen((value) => !value)}
+                className="flex min-h-12 items-center justify-between rounded-[1.05rem] border border-white/10 bg-white/[0.035] px-4 text-sm font-black text-zinc-100 focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/15"
+                aria-expanded={infoOpen}
+              >
+                <span className="inline-flex items-center gap-2"><CircleAlert size={17} /> Informacion del menu</span>
+                <ChevronRight size={17} className={infoOpen ? "rotate-90" : ""} />
+              </button>
+            )}
+            {infoOpen ? (
+              <div className="rounded-[1.05rem] border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3 text-xs font-bold leading-relaxed text-zinc-300">
+                {isOwn
+                  ? "Este menu es tuyo. El dia base se reutiliza y podes editarlo cuando quieras; el cumplimiento diario se registra aparte."
+                  : isCoach
+                    ? "Este menu fue asignado por tu coach. Lo podes consultar y marcar como realizado, pero no modificar desde tu cliente."
+                    : "Este menu se muestra como referencia para el dia seleccionado."}
+              </div>
+            ) : null}
+          </div>
+
+          {showChoiceSelector ? (
             <div className="grid gap-2.5">
               {choices.map((choice) => (
                 <MobileMenuOptionRow
@@ -2542,21 +3276,13 @@ function MobileMenuOptionsDrawer({ row, saving, onClose, onSelectChoice }) {
                   onSelectChoice={onSelectChoice}
                 />
               ))}
-              <button
-                type="button"
-                disabled
-                className="mt-1 flex min-h-12 items-center justify-center gap-2 rounded-[1.05rem] border border-dashed border-sky-300/20 bg-sky-300/[0.035] px-4 text-sm font-black text-sky-200 disabled:opacity-70"
-              >
-                <Plus size={17} />
-                Buscar alternativa
-              </button>
             </div>
-          ) : (
+          ) : !activeChoice ? (
             <MobileEmptyCard
               title="No hay menus disponibles."
               text="Cuando tu coach asigne un menu, va a aparecer aca."
             />
-          )}
+          ) : null}
         </div>
       </section>
     </div>
@@ -2666,7 +3392,7 @@ function MobileActiveMenuCard({ row, choice, onViewDetail }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-black text-white">{choiceDisplayName(choice)}</div>
           <div className="mt-1 truncate text-sm font-bold text-zinc-400">
-            {displayKcal(totals.kcal)} · {meals.length} comida{meals.length === 1 ? "" : "s"}
+            {displayKcal(totals.kcal)} - {meals.length} comida{meals.length === 1 ? "" : "s"}
           </div>
           <span className={`mt-2 inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(activeStatus.tone)}`}>
             {choice.type === "alternative" ? "Elegido" : "Asignado"}
@@ -2688,6 +3414,7 @@ function MobileActiveMenuCard({ row, choice, onViewDetail }) {
 function MobileDayDetailView({
   row,
   weekRows = [],
+  activePlanSource = "none",
   detailChoiceKey = "",
   onBack,
   onPrevious,
@@ -2695,6 +3422,7 @@ function MobileDayDetailView({
   onToggleMeal,
   onOpenRemaining,
   onOpenMeal,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
@@ -2719,6 +3447,7 @@ function MobileDayDetailView({
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
+  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
 
   return (
     <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
@@ -2757,7 +3486,7 @@ function MobileDayDetailView({
       </header>
 
       <div className="mt-4 grid gap-3">
-        <h3 className="px-1 text-lg font-black text-white">Comidas</h3>
+        <h3 className="px-1 text-lg font-black text-white">Comidas del dia</h3>
         {!snapshot ? (
           <MobileEmptyCard
             title="Todavía no tenés menú para este día."
@@ -2784,6 +3513,8 @@ function MobileDayDetailView({
               canMarkMeals={canMarkMeals}
               onToggleMeal={onToggleMeal}
               onOpenMeal={onOpenMeal}
+              canQuickEdit={canQuickEditMeals}
+              onQuickEditMeal={onQuickEditMeal}
               onSaveAsSavedMeal={onSaveAsSavedMeal}
               onDeleteManual={onDeleteManual}
             />
@@ -2844,7 +3575,7 @@ function MobileAlternativesView({
                         </span>
                       </div>
                       <p className="mt-1 text-sm font-bold text-zinc-400">
-                        {displayKcal(choiceTotals(choice).kcal)} · {choiceMeals(choice).length} comida{choiceMeals(choice).length === 1 ? "" : "s"}
+                        {displayKcal(choiceTotals(choice).kcal)} - {choiceMeals(choice).length} comida{choiceMeals(choice).length === 1 ? "" : "s"}
                       </p>
                       <span className={`mt-2 inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(choiceStatus(row, choice).tone)}`}>
                         {choiceStatus(row, choice).label}
@@ -2943,13 +3674,43 @@ function MobileMetric({ label, value, detail, tone = "blue", progress = null }) 
 }
 
 function MobileEmptyCard({ title, text }) {
+  const joined = `${title || ""} ${text || ""}`.toLowerCase();
+  const isMissingAssignedMenuCopy = joined.includes("coach lo asigne") || joined.includes("coach asigne") || joined.includes("avisarle a tu coach");
+  const genericCopy = emptyMenuCopy("none");
+  const displayTitle = isMissingAssignedMenuCopy ? genericCopy.title : title;
+  const displayText = isMissingAssignedMenuCopy
+    ? genericCopy.text
+    : text;
   return (
     <div className="rounded-[1.3rem] border border-dashed border-white/15 bg-[#101824] p-4">
       <div className="flex items-center gap-3 text-zinc-100">
         <CircleAlert size={19} className="text-[#FFD76B]" />
-        <strong className="text-base font-black">{title}</strong>
+        <strong className="text-base font-black">{displayTitle}</strong>
       </div>
-      {text ? <p className="mt-2 text-sm font-bold text-zinc-400">{text}</p> : null}
+      {displayText ? <p className="mt-2 text-sm font-bold text-zinc-400">{displayText}</p> : null}
+      {isMissingAssignedMenuCopy ? (
+        <>
+          <div className="mx-auto mt-5 grid h-28 w-28 place-items-center rounded-full border border-[#D4AF37]/20 bg-[radial-gradient(circle,rgba(212,175,55,.18),rgba(255,255,255,.03)_58%,transparent_70%)] text-[#FFE8A3]">
+            <div className="grid place-items-center gap-1">
+              <Apple size={34} strokeWidth={1.8} />
+              <Utensils size={28} strokeWidth={1.8} />
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2">
+            <Link
+              to="/app/menu/nuevo"
+              state={{ from: "/app/menu" }}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-3 text-sm font-black text-[#080808]"
+              {...createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false })}
+            >
+              Crear mi menu
+            </Link>
+            <a href="/app/tracking" className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-3 text-xs font-black text-zinc-100">
+              Ir a Tracking
+            </a>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -2967,6 +3728,8 @@ function MobileMealCard({
   canMarkMeals,
   onToggleMeal,
   onOpenMeal,
+  canQuickEdit = false,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onDeleteManual,
 }) {
@@ -2985,6 +3748,7 @@ function MobileMealCard({
       : "border-white/10 bg-black/30 text-zinc-500";
   const [isExpanded, setIsExpanded] = useState(false);
   const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
+  const canEditThisMeal = canQuickEdit && !manual && !generated;
 
   function toggleExpanded() {
     setIsExpanded((value) => !value);
@@ -3008,6 +3772,11 @@ function MobileMealCard({
   function saveAsMeal(event) {
     event.stopPropagation();
     onSaveAsSavedMeal?.(meal, mealIndex);
+  }
+
+  function quickEditMeal(event) {
+    event.stopPropagation();
+    onQuickEditMeal?.(detailPayload);
   }
 
   return (
@@ -3106,12 +3875,23 @@ function MobileMealCard({
                 );
               }) : (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
-                  Sin alimentos cargados.
+                  Todavia no agregaste alimentos.
                 </div>
               )}
             </div>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {canEditThisMeal ? (
+                <button
+                  type="button"
+                  onClick={quickEditMeal}
+                  disabled={saving}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-55"
+                >
+                  {foods.length ? <PencilLine size={15} /> : <Plus size={15} />}
+                  {foods.length ? "Editar alimentos" : "Agregar alimentos"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={openMealDetail}
@@ -3568,11 +4348,16 @@ function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood, canReplac
 function TodayHero({
   row,
   weekRows = [],
+  activePlan = {},
+  activePlanSource = "none",
   onPrevious,
   onNext,
   onView,
+  onOpenMenuOptions,
+  onEditActiveMenu,
   onToggleMeal,
   onOpenMeal,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
   onDeleteManual,
@@ -3597,6 +4382,11 @@ function TodayHero({
   const menuKcal = activeTotals.kcal;
   const pct = targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
   const canCalculateRemaining = positiveTotals(remaining).kcal > 40;
+  const sourceMeta = menuSourceMeta(activePlanSource);
+  const menuName = activeChoice ? activeMenuDisplayName(activeChoice, activePlan, activePlanSource) : "Menu del dia";
+  const menuSummary = activeChoice ? activeMenuSummary(activeChoice, activePlanSource) : "";
+  const isOwnMenu = sourceMeta.key === "own";
+  const isCoachMenu = sourceMeta.key === "coach";
 
   return (
     <section className="overflow-hidden rounded-[1.6rem] border border-[#D4AF37]/25 bg-gradient-to-br from-[#141a23] via-[#0c1118] to-[#090b0f] p-3 shadow-[0_14px_45px_rgba(0,0,0,0.38)] sm:rounded-[2rem] sm:p-5">
@@ -3627,30 +4417,62 @@ function TodayHero({
         </button>
       </div>
 
-      <button
-        type="button"
-        onClick={onView}
-        className="mt-3 flex w-full items-center justify-between gap-3 rounded-[1.35rem] border border-white/10 bg-black/25 p-3 text-left"
-      >
+      <section className="mt-3 flex w-full items-center justify-between gap-3 rounded-[1.35rem] border border-white/10 bg-black/25 p-3 text-left">
         <span className="flex min-w-0 items-center gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-xl" aria-hidden="true">
             {choices.length > 1 ? MENU_BOX_EMOJI : MENU_EMOJI}
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-black uppercase tracking-wide text-zinc-300">
-              {menuCountTitle(row)}
+            <span className="block truncate text-xl font-black text-white" title={menuName}>
+              {snapshot ? menuName : menuCountTitle(row)}
             </span>
-            <span className="mt-1 block text-xl font-black text-[#FFE8A3]">{displayKcal(menuKcal)}</span>
+            {snapshot ? (
+              <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${sourceMeta.pillClass}`}>
+                {sourceMeta.label}
+              </span>
+            ) : null}
+            <span className="mt-1 block text-sm font-bold text-zinc-400">{snapshot ? menuSummary : displayKcal(menuKcal)}</span>
             <span className="block truncate text-sm font-bold text-zinc-300">
               {snapshot ? displayMenuMacros(activeTotals) : "Toca para ver el detalle cuando haya menú"}
             </span>
           </span>
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-2 text-xs font-black text-sky-100">
-          <span aria-hidden="true">{EYE_EMOJI}</span>
-          <Eye size={15} />
+        <span className="inline-flex shrink-0 items-center gap-2">
+          {isOwnMenu ? (
+            <button
+              type="button"
+              onClick={onEditActiveMenu}
+              className="grid h-11 w-11 place-items-center rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]"
+              aria-label={`Editar menu ${menuName}`}
+              title="Editar menu"
+            >
+              <PencilLine size={18} />
+            </button>
+          ) : isCoachMenu ? (
+            <span className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.045] text-zinc-300" title="Solo lectura">
+              <Lock size={17} />
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={onOpenMenuOptions || onView}
+            className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-200"
+            aria-label={choices.length > 1 ? "Cambiar menu u opciones" : "Ver opciones de menu"}
+            title="Opciones"
+          >
+            <MoreHorizontal size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={onView}
+            className="inline-flex h-11 items-center gap-1 rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 text-xs font-black text-sky-100"
+            aria-label="Ver detalle del menu"
+          >
+            <span aria-hidden="true">{EYE_EMOJI}</span>
+            <Eye size={15} />
+          </button>
         </span>
-      </button>
+      </section>
 
       <div className="mt-3 grid gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-3">
         <div className="grid grid-cols-3 gap-2">
@@ -3671,17 +4493,19 @@ function TodayHero({
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="text-xs font-black uppercase tracking-wide text-zinc-400">Vista rapida</span>
             <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
-              {completedCount} / {countableMeals.length || 0} completas
+              {completedMealsLabel(completedCount, countableMeals.length || 0)}
             </span>
           </div>
           <DesktopMealsGrid
             row={row}
             effectiveMeals={effectiveMeals}
-                onToggleMeal={onToggleMeal}
-                onOpenMeal={onOpenMeal}
-                onSaveAsSavedMeal={onSaveAsSavedMeal}
-                onDeleteManual={onDeleteManual}
-                canMarkMeals={canMarkMeals}
+            onToggleMeal={onToggleMeal}
+            onOpenMeal={onOpenMeal}
+            canQuickEditMeals={isOwnMenu}
+            onQuickEditMeal={onQuickEditMeal}
+            onSaveAsSavedMeal={onSaveAsSavedMeal}
+            onDeleteManual={onDeleteManual}
+            canMarkMeals={canMarkMeals}
             saving={saving}
             compact
           />
@@ -3728,6 +4552,8 @@ function DesktopMealsSection({
   weekRows = [],
   onToggleMeal,
   onOpenMeal,
+  canQuickEditMeals = false,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onRestoreGenerated,
   onRestoreManual,
@@ -3748,11 +4574,11 @@ function DesktopMealsSection({
     <section className="grid gap-3 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comidas del menu</span>
+          <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comidas del dia</span>
           <h4 className="mt-1 text-lg font-black text-white">Detalle visible del dia</h4>
         </div>
         <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
-          {completedCount} / {countableMeals.length || 0} completas
+          {completedMealsLabel(completedCount, countableMeals.length || 0)}
         </span>
       </div>
 
@@ -3763,6 +4589,8 @@ function DesktopMealsSection({
             effectiveMeals={effectiveMeals}
             onToggleMeal={onToggleMeal}
             onOpenMeal={onOpenMeal}
+            canQuickEditMeals={canQuickEditMeals}
+            onQuickEditMeal={onQuickEditMeal}
             onSaveAsSavedMeal={onSaveAsSavedMeal}
             onDeleteManual={onDeleteManual}
             canMarkMeals={canMarkMeals}
@@ -3792,6 +4620,8 @@ function DesktopMealsGrid({
   effectiveMeals = [],
   onToggleMeal,
   onOpenMeal,
+  canQuickEditMeals = false,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onDeleteManual,
   canMarkMeals,
@@ -3808,6 +4638,8 @@ function DesktopMealsGrid({
           entry={entry}
           onToggleMeal={onToggleMeal}
           onOpenMeal={onOpenMeal}
+          canQuickEdit={canQuickEditMeals}
+          onQuickEditMeal={onQuickEditMeal}
           onSaveAsSavedMeal={onSaveAsSavedMeal}
           onDeleteManual={onDeleteManual}
           canMarkMeals={canMarkMeals}
@@ -3824,6 +4656,8 @@ function DesktopMealCard({
   entry,
   onToggleMeal,
   onOpenMeal,
+  canQuickEdit = false,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onDeleteManual,
   canMarkMeals,
@@ -3846,6 +4680,7 @@ function DesktopMealCard({
   const statusLabel = manual ? "Registrado" : generated ? "Generada" : done ? "Hecha" : "Pendiente";
   const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
   const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
+  const canEditThisMeal = canQuickEdit && !manual && !generated;
 
   function toggleExpanded() {
     setIsExpanded((value) => !value);
@@ -3869,6 +4704,11 @@ function DesktopMealCard({
   function saveAsMeal(event) {
     event.stopPropagation();
     onSaveAsSavedMeal?.(meal, mealIndex);
+  }
+
+  function quickEditMeal(event) {
+    event.stopPropagation();
+    onQuickEditMeal?.(detailPayload);
   }
 
   return (
@@ -3972,7 +4812,7 @@ function DesktopMealCard({
               </div>
             )) : (
               <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
-                Sin alimentos cargados.
+                Todavia no agregaste alimentos.
               </div>
             )}
             {hiddenCount ? (
@@ -3981,6 +4821,17 @@ function DesktopMealCard({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            {canEditThisMeal ? (
+              <button
+                type="button"
+                onClick={quickEditMeal}
+                disabled={saving}
+                className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-55"
+              >
+                {foods.length ? <PencilLine size={15} /> : <Plus size={15} />}
+                {foods.length ? "Editar alimentos" : "Agregar alimentos"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={openMealDetail}
@@ -4072,10 +4923,12 @@ function WeeklySelector({ days, selectedDate, onSelect, onView }) {
 function DayDetailDrawer({
   row,
   weekRows = [],
+  activePlanSource = "none",
   onClose,
   onMarkMissed,
   onToggleMeal,
   onOpenMeal,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
   onRestoreGenerated,
@@ -4100,9 +4953,11 @@ function DayDetailDrawer({
           <DayDetail
             row={row}
             weekRows={weekRows}
+            activePlanSource={activePlanSource}
             onMarkMissed={onMarkMissed}
             onToggleMeal={onToggleMeal}
             onOpenMeal={onOpenMeal}
+            onQuickEditMeal={onQuickEditMeal}
             onSaveAsSavedMeal={onSaveAsSavedMeal}
             onOpenRemaining={onOpenRemaining}
             onRestoreGenerated={onRestoreGenerated}
@@ -4120,9 +4975,11 @@ function DayDetailDrawer({
 function DayDetail({
   row,
   weekRows = [],
+  activePlanSource = "none",
   onMarkMissed,
   onToggleMeal,
   onOpenMeal,
+  onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
   onRestoreGenerated,
@@ -4134,6 +4991,7 @@ function DayDetail({
   if (!row) return null;
   const choices = menuChoices(row);
   const selectedAlternative = row?.tracking?.selectedAlternative;
+  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
 
   return (
     <section className="grid gap-4 rounded-3xl border border-white/10 bg-[#0d121a] p-4">
@@ -4191,12 +5049,414 @@ function DayDetail({
         weekRows={weekRows}
         onToggleMeal={onToggleMeal}
         onOpenMeal={onOpenMeal}
+        canQuickEditMeals={canQuickEditMeals}
+        onQuickEditMeal={onQuickEditMeal}
         onSaveAsSavedMeal={onSaveAsSavedMeal}
         onRestoreGenerated={onRestoreGenerated}
         canMarkMeals={canMarkMeals}
         saving={saving}
       />
 
+    </section>
+  );
+}
+
+function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave }) {
+  const [draftMeal, setDraftMeal] = useState(() => context.mealDraft || null);
+  const [picker, setPicker] = useState(null);
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    setDraftMeal(context.mealDraft || null);
+    setPicker(null);
+    setLocalError("");
+  }, [context.token, context.mealDraft]);
+
+  const title = draftMeal?.nombre || context.title || "Comida";
+  const items = draftMeal?.items || [];
+  const totals = sumTotals(items);
+  const titleId = "quick-meal-editor-title";
+
+  function updateItem(itemId, patch) {
+    setDraftMeal((current) => ({
+      ...(current || {}),
+      items: (current?.items || []).map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+    }));
+  }
+
+  function removeItem(itemId) {
+    setDraftMeal((current) => ({
+      ...(current || {}),
+      items: (current?.items || []).filter((item) => item.id !== itemId),
+    }));
+  }
+
+  function applyPickedFood(food, quantity, unit) {
+    const nextItem = buildQuickMenuItemFromFood(food, quantity, unit);
+    setDraftMeal((current) => {
+      const currentItems = current?.items || [];
+      if (picker?.mode === "replace") {
+        return {
+          ...(current || {}),
+          items: currentItems.map((item) => (item.id === picker.itemId ? nextItem : item)),
+        };
+      }
+      return {
+        ...(current || {}),
+        items: [...currentItems, nextItem],
+      };
+    });
+    setPicker(null);
+  }
+
+  function save() {
+    if (!draftMeal || saving) return;
+    const invalid = (draftMeal.items || []).some((item) => !(Number(item.cantidad) > 0));
+    if (invalid) {
+      setLocalError("Todas las cantidades deben ser mayores a 0.");
+      return;
+    }
+    onSave?.({
+      ...draftMeal,
+      items: (draftMeal.items || []).map(normalizeQuickMenuItem),
+    });
+  }
+
+  return (
+    <section className="fixed inset-0 z-[95] flex items-end bg-black/72 px-2 pt-8 backdrop-blur-md sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onClose} aria-label="Cerrar edicion rapida" />
+      <div className="relative mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[radial-gradient(circle_at_15%_0,rgba(45,212,191,.14),transparent_34%),radial-gradient(circle_at_100%_8%,rgba(212,175,55,.16),transparent_30%),linear-gradient(180deg,#101923,#070b10)] shadow-[0_28px_90px_rgba(0,0,0,.72)] sm:rounded-[1.7rem]">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-white/[0.025] p-4">
+          <div className="min-w-0">
+            <span className="inline-flex min-h-7 items-center gap-2 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">
+              <PencilLine size={14} />
+              Editar alimentos
+            </span>
+            <h3 id={titleId} className="mt-3 truncate text-2xl font-black leading-tight text-white">Editar {title}</h3>
+            <p className="mt-1 text-sm font-bold text-zinc-400">
+              {displayKcal(totals.kcal)} - P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.055] text-zinc-100 disabled:opacity-50" aria-label="Cerrar">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {context.loading ? (
+            <div className="flex min-h-36 items-center justify-center gap-3 rounded-3xl border border-white/10 bg-white/[0.035] text-sm font-black text-zinc-300">
+              <RefreshCw size={18} className="animate-spin text-[#FFE8A3]" />
+              Cargando menu...
+            </div>
+          ) : context.error ? (
+            <div className="rounded-3xl border border-rose-400/25 bg-rose-400/10 p-4 text-sm font-bold text-rose-100">
+              <strong className="block text-base font-black">No pudimos abrir esta comida.</strong>
+              <span className="mt-1 block">{context.error}</span>
+              <button type="button" onClick={onRetry} className="mt-3 min-h-11 rounded-2xl border border-rose-200/30 bg-rose-200/10 px-4 text-xs font-black text-rose-50">
+                Reintentar
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              <div className="rounded-3xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3 text-xs font-bold leading-relaxed text-zinc-300">
+                <strong className="block text-[#FFE8A3]">Estas editando tu dia base.</strong>
+                Los cambios se veran durante toda la semana. El cumplimiento continuara siendo independiente por fecha.
+              </div>
+
+              {items.length ? (
+                <div className="grid gap-2">
+                  {items.map((item) => {
+                    const normalized = normalizeMealFood(item);
+                    return (
+                      <article key={item.id} className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <FoodThumb food={normalized} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <strong className="block truncate text-sm font-black text-white">{item.nombreSnapshot || item.nombre || normalized.name}</strong>
+                            <span className="mt-1 block text-xs font-bold text-zinc-500">
+                              {displayKcal(item.kcal)} - P {formatNumber(item.proteina, 1)} / C {formatNumber(item.carbs, 1)} / G {formatNumber(item.grasas, 1)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                          <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                            Cantidad
+                            <span className="flex min-h-11 items-center overflow-hidden rounded-2xl border border-white/10 bg-black/24">
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={item.cantidad}
+                                onChange={(event) => {
+                                  setLocalError("");
+                                  updateItem(item.id, rescaleQuickMenuItem(item, event.target.value));
+                                }}
+                                className="min-w-0 flex-1 bg-transparent px-3 text-sm font-black text-white outline-none"
+                                aria-label={`Cantidad de ${item.nombreSnapshot || item.nombre || normalized.name}`}
+                              />
+                              <span className="shrink-0 border-l border-white/10 px-3 text-xs font-black normal-case text-[#FFE8A3]">{item.unidad || "g"}</span>
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setPicker({ mode: "replace", itemId: item.id, label: item.nombreSnapshot || item.nombre || normalized.name })}
+                            className="min-h-11 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-3 text-xs font-black text-sky-100"
+                          >
+                            Reemplazar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="min-h-11 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-4 text-sm font-bold text-zinc-400">
+                  <strong className="block text-base font-black text-white">Todavia no agregaste alimentos.</strong>
+                  <span className="mt-1 block">Agrega el primero para armar esta comida dentro de tu menu activo.</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setPicker({ mode: "add" })}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3]"
+              >
+                <Plus size={17} />
+                Agregar alimento
+              </button>
+
+              {picker ? (
+                <QuickFoodPicker
+                  mode={picker.mode}
+                  label={picker.label}
+                  mealName={title}
+                  onPick={applyPickedFood}
+                  onCancel={() => setPicker(null)}
+                />
+              ) : null}
+
+              {localError ? (
+                <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm font-bold text-rose-100" role="alert">
+                  {localError}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <footer className="grid shrink-0 gap-2 border-t border-white/10 bg-[#080d12]/96 p-4 sm:grid-cols-2">
+          <button type="button" onClick={onClose} disabled={saving} className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-zinc-200 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || context.loading || !!context.error || !draftMeal}
+            className="min-h-12 rounded-2xl bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 text-sm font-black text-[#080808] shadow-[0_14px_30px_rgba(212,175,55,.20)] disabled:opacity-60"
+          >
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </footer>
+      </div>
+    </section>
+  );
+}
+
+function QuickFoodPicker({ mode = "add", label = "", mealName = "comida", onPick, onCancel }) {
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
+  const [selectedFood, setSelectedFood] = useState(null);
+  const [quantity, setQuantity] = useState("100");
+  const [unit, setUnit] = useState("g");
+  const [servings, setServings] = useState("1");
+  const [selectionError, setSelectionError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (selectedFood) return undefined;
+    const term = debouncedSearch.trim();
+    if (term.length < 2) {
+      setResults([]);
+      setSearched(false);
+      setLoading(false);
+      setError("");
+      return undefined;
+    }
+
+    let alive = true;
+    setLoading(true);
+    setSearched(true);
+    setError("");
+
+    listAlimentos({ search: term, limit: 12 })
+      .then((data) => {
+        if (!alive) return;
+        setResults(normalizeFoodSearchResults(data).slice(0, 12));
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err?.message || "No pudimos buscar alimentos.");
+        setResults([]);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [debouncedSearch, retryKey, selectedFood]);
+
+  function selectFood(food) {
+    const nextUnit = foodDisplayUnit(food);
+    const nextQuantity = suggestedQuickFoodQuantity(food);
+    setSelectedFood(food);
+    setUnit(nextUnit);
+    setQuantity(String(nextQuantity));
+    setServings("1");
+    setSelectionError("");
+  }
+
+  function submitFood() {
+    const baseQuantity = Number(quantity);
+    const portions = Number(servings);
+    if (!selectedFood || !Number.isFinite(baseQuantity) || baseQuantity <= 0 || !Number.isFinite(portions) || portions <= 0) {
+      setSelectionError("Ingresa una cantidad y porciones validas.");
+      return;
+    }
+    const finalUnit = unit.trim();
+    if (!finalUnit) {
+      setSelectionError("La unidad no puede quedar vacia.");
+      return;
+    }
+    onPick?.(selectedFood, Math.round(baseQuantity * portions * 100) / 100, finalUnit);
+  }
+
+  if (selectedFood) {
+    const effectiveQuantity = Math.max(Number(quantity) || 0, 0) * Math.max(Number(servings) || 0, 0);
+    const preview = buildMenuItemSnapshot(selectedFood, effectiveQuantity, unit || foodDisplayUnit(selectedFood));
+    return (
+      <section className="rounded-3xl border border-emerald-300/20 bg-emerald-300/[0.055] p-3">
+        <button type="button" onClick={() => setSelectedFood(null)} className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 text-xs font-black text-zinc-100">
+          <ChevronLeft size={15} />
+          Volver a resultados
+        </button>
+        <div className="grid gap-3">
+          <div>
+            <span className="text-[11px] font-black uppercase tracking-wide text-emerald-200">{mode === "replace" ? "Reemplazo seleccionado" : "Alimento seleccionado"}</span>
+            <strong className="mt-1 block text-base font-black text-white">{foodDisplayName(selectedFood)}</strong>
+            <span className="text-xs font-bold text-zinc-500">{mealName ? `Para ${mealName}` : null}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+              Cantidad
+              <input type="number" min="0.01" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="min-h-11 rounded-2xl border border-white/10 bg-black/24 px-3 text-sm font-black text-white outline-none" />
+            </label>
+            <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+              Unidad
+              <input value={unit} onChange={(event) => setUnit(event.target.value.slice(0, 18))} className="min-h-11 rounded-2xl border border-white/10 bg-black/24 px-3 text-sm font-black text-white outline-none" />
+            </label>
+            <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+              Porciones
+              <input type="number" min="0.01" step="0.01" value={servings} onChange={(event) => setServings(event.target.value)} className="min-h-11 rounded-2xl border border-white/10 bg-black/24 px-3 text-sm font-black text-white outline-none" />
+            </label>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <strong className="block text-lg font-black text-[#FFE8A3]">{displayKcal(preview.kcal)}</strong>
+            <span className="mt-1 block text-sm font-bold text-zinc-300">
+              P {formatNumber(preview.proteina, 1)} / C {formatNumber(preview.carbs, 1)} / G {formatNumber(preview.grasas, 1)}
+            </span>
+          </div>
+          {selectionError ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm font-bold text-rose-100">{selectionError}</div> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => setSelectedFood(null)} className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-zinc-200">Cancelar</button>
+            <button type="button" onClick={submitFood} className="min-h-11 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3]">
+              {mode === "replace" ? "Reemplazar alimento" : "Agregar alimento"}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-3xl border border-white/10 bg-black/20 p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <span className="text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">{mode === "replace" ? "Buscar reemplazo" : "Buscar alimento"}</span>
+          {label ? <p className="mt-1 text-xs font-bold text-zinc-500">Reemplazando {label}</p> : null}
+        </div>
+        <button type="button" onClick={onCancel} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.045] text-zinc-200" aria-label="Cerrar buscador">
+          <X size={16} />
+        </button>
+      </div>
+      <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-[#080d12] px-3">
+        <Search size={16} className="shrink-0 text-[#FFD76B]" />
+        <input
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setError("");
+          }}
+          placeholder="Buscar alimento"
+          autoFocus
+          className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-500"
+        />
+        {loading ? <RefreshCw size={15} className="shrink-0 animate-spin text-zinc-400" /> : null}
+      </label>
+
+      {search.trim().length < 2 ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-white/10 p-3 text-sm font-bold text-zinc-500">Escribi al menos 2 caracteres para buscar.</div>
+      ) : null}
+
+      {error ? (
+        <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm font-bold text-rose-100">
+          <span>{error}</span>
+          <button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-2 min-h-9 rounded-xl border border-rose-200/30 px-3 text-xs font-black">Reintentar</button>
+        </div>
+      ) : null}
+
+      {!loading && !error && results.length ? (
+        <div className="mt-3 grid gap-2">
+          {results.map((food, index) => {
+            const id = String(food.id || food._id || food.alimentoId || foodDisplayName(food) || index);
+            const unitLabel = foodDisplayUnit(food);
+            const qty = suggestedQuickFoodQuantity(food);
+            const preview = buildMenuItemSnapshot(food, qty, unitLabel);
+            return (
+              <button key={`${id}-${index}`} type="button" onClick={() => selectFood(food)} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-left active:scale-[0.99]">
+                <span className="min-w-0">
+                  <strong className="block truncate text-sm font-black text-white">{foodDisplayName(food)}</strong>
+                  <span className="mt-1 block truncate text-xs font-bold text-zinc-500">{formatNumber(qty, 0)} {unitLabel} - {displayKcal(preview.kcal)}</span>
+                </span>
+                <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
+                  P {formatNumber(preview.proteina, 0)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!loading && !error && searched && debouncedSearch.length >= 2 && !results.length ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-white/10 p-3 text-sm font-bold text-zinc-500">No encontramos alimentos para "{debouncedSearch}".</div>
+      ) : null}
     </section>
   );
 }
@@ -4260,15 +5520,26 @@ function EmptyMenu({ row }) {
     <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-5">
       <div className="flex items-center gap-3 text-zinc-200">
         <CircleAlert size={20} className="text-[#FFE8A3]" />
-        <strong>Sin menú asignado para {row?.dayLabel}</strong>
+        <strong>Todavia no tenes menu para {row?.dayLabel}</strong>
       </div>
       <p className="mt-2 text-sm font-semibold text-zinc-400">
         Organiza tu alimentacion a tu manera: crea un menu propio, explora la biblioteca ZumaFit o registra libremente en Tracking.
       </p>
+      <div className="mx-auto mt-5 grid h-32 w-32 place-items-center rounded-full border border-[#D4AF37]/20 bg-[radial-gradient(circle,rgba(212,175,55,.18),rgba(255,255,255,.03)_58%,transparent_70%)] text-[#FFE8A3]">
+        <div className="grid place-items-center gap-1">
+          <Apple size={40} strokeWidth={1.8} />
+          <Utensils size={32} strokeWidth={1.8} />
+        </div>
+      </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <a href="/app/nutricion" className="inline-flex rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-4 py-2 text-sm font-black text-[#FFE8A3]">
+        <Link
+          to="/app/menu/nuevo"
+          state={{ from: "/app/menu" }}
+          className="inline-flex rounded-2xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 py-2 text-sm font-black text-[#080808]"
+          {...createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false })}
+        >
           Crear mi menu
-        </a>
+        </Link>
         <a href="/app/nutricion" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
           Explorar ZumaFit
         </a>
@@ -4285,6 +5556,8 @@ function MobileMealDetailDrawer({
   onToggleMeal,
   onOpenFood,
   onClose,
+  canEditOwnMenuMeal = false,
+  onQuickEditMeal,
   canMarkMeals,
   canReplaceMeals,
   canReplaceFoods,
@@ -4303,6 +5576,7 @@ function MobileMealDetailDrawer({
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
   const replacementOptions = useMemo(() => mealReplacementOptions(row, baseMeal, mealIndex), [row, baseMeal, mealIndex]);
+  const canEditThisMeal = canEditOwnMenuMeal && !manual && !generated;
 
   return (
     <section className="fixed inset-0 z-50 flex items-center bg-black/75 px-3 py-5 backdrop-blur-md" role="dialog" aria-modal="true">
@@ -4365,6 +5639,21 @@ function MobileMealDetailDrawer({
               {done ? <CheckSquare2 size={20} /> : <Square size={20} />}
             </button>
           )}
+
+          {canEditThisMeal ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onQuickEditMeal?.({ ...context, row, meal, baseMeal, mealIndex })}
+              className="mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                {foods.length ? <PencilLine size={17} className="shrink-0" /> : <Plus size={17} className="shrink-0" />}
+                <span className="truncate">{foods.length ? "Editar alimentos del menu" : "Agregar alimentos al menu"}</span>
+              </span>
+              <ChevronRight size={18} className="shrink-0" />
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -4469,7 +5758,7 @@ function MobileMealReplacementPanel({ row, meal, mealIndex, options = [], saving
                   <div className="min-w-0">
                     <strong className="block truncate text-sm font-black text-white">{mealName(option.meal, mealIndex)}</strong>
                     <span className="mt-1 block text-xs font-bold text-zinc-400">
-                      {displayKcal(option.totals.kcal)} · P {formatNumber(option.totals.proteina, 0)} g · {mealFoods(option.meal).length} alimentos
+                      {displayKcal(option.totals.kcal)} - P {formatNumber(option.totals.proteina, 0)} g - {mealFoods(option.meal).length} alimentos
                     </span>
                   </div>
                   <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-200">
@@ -4477,7 +5766,7 @@ function MobileMealReplacementPanel({ row, meal, mealIndex, options = [], saving
                   </span>
                 </div>
                 <div className="mt-2 text-[11px] font-bold text-zinc-500">
-                  Dif. {signedNumber(option.diff.kcal)} kcal · P {signedNumber(option.diff.proteina)} g
+                  Dif. {signedNumber(option.diff.kcal)} kcal - P {signedNumber(option.diff.proteina)} g
                 </div>
               </button>
             );
@@ -4600,7 +5889,7 @@ function FoodActionDrawer({ context, canReplaceFoods, saving, onApplyReplacement
             </span>
             <h3 className="mt-3 truncate text-2xl font-black text-white">{food.name || "Alimento"}</h3>
             <p className="mt-1 text-sm font-bold text-zinc-400">
-              {[food.amount, foodMacroLine(food)].filter(Boolean).join(" · ") || "Sin detalle cargado"}
+              {[food.amount, foodMacroLine(food)].filter(Boolean).join(" - ") || "Sin detalle cargado"}
             </p>
           </div>
           <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04]" aria-label="Cerrar">
@@ -4670,7 +5959,7 @@ function FoodActionDrawer({ context, canReplaceFoods, saving, onApplyReplacement
                       <div className="min-w-0">
                         <strong className="block truncate text-sm text-white">{option.nombre || option.name || "Equivalente"}</strong>
                         <span className="mt-1 block text-xs font-bold text-zinc-400">
-                          {formatNumber(option.cantidadSugerida, 1)} {option.unidadSugerida || option.unidad || "g"} · {displayKcal(option.totales?.kcal ?? option.kcal)}
+                          {formatNumber(option.cantidadSugerida, 1)} {option.unidadSugerida || option.unidad || "g"} - {displayKcal(option.totales?.kcal ?? option.kcal)}
                         </span>
                       </div>
                       <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
@@ -4699,7 +5988,7 @@ function FoodActionDrawer({ context, canReplaceFoods, saving, onApplyReplacement
                   >
                     <strong className="block truncate text-sm text-white">{option.name || "Alimento"}</strong>
                     <span className="mt-1 block text-xs font-bold text-zinc-400">
-                      {option.amount || `${formatNumber(option.cantidad, 1)} ${option.unidad || "g"}`} · {displayKcal(option.totals?.kcal)}
+                      {option.amount || `${formatNumber(option.cantidad, 1)} ${option.unidad || "g"}`} - {displayKcal(option.totals?.kcal)}
                     </span>
                   </button>
                 ))}
@@ -4721,7 +6010,7 @@ function FoodActionDrawer({ context, canReplaceFoods, saving, onApplyReplacement
                 Reemplazar {food.amount || "este alimento"} de {food.name || "alimento"} por {selected.amount || `${formatNumber(selected.cantidad, 1)} ${selected.unidad || "g"}`} de {selected.name}.
               </p>
               <p className="mt-1 text-xs font-bold text-zinc-400">
-                Dif. {signedNumber(selected.diff?.kcal)} kcal · P {signedNumber(selected.diff?.proteina, 1)} · C {signedNumber(selected.diff?.carbs, 1)} · G {signedNumber(selected.diff?.grasas, 1)}
+                Dif. {signedNumber(selected.diff?.kcal)} kcal - P {signedNumber(selected.diff?.proteina, 1)} - C {signedNumber(selected.diff?.carbs, 1)} - G {signedNumber(selected.diff?.grasas, 1)}
               </p>
             </div>
           ) : null}
@@ -5670,7 +6959,7 @@ function RemainingMealsDrawerV2({ row, weekRows = [], saving, onClose, onSave, o
                       Resultado {results[activeMeal].quality ? `/${results[activeMeal].quality}` : ""}
                     </div>
                     <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-black text-zinc-300">
-                      Meta {displayKcal(activeTarget?.totals?.kcal)} · P {formatNumber(activeTarget?.totals?.proteina, 0)} / C {formatNumber(activeTarget?.totals?.carbs, 0)} / G {formatNumber(activeTarget?.totals?.grasas, 0)}
+                      Meta {displayKcal(activeTarget?.totals?.kcal)} - P {formatNumber(activeTarget?.totals?.proteina, 0)} / C {formatNumber(activeTarget?.totals?.carbs, 0)} / G {formatNumber(activeTarget?.totals?.grasas, 0)}
                     </div>
                   </div>
                   <div className="mt-2 grid gap-1.5">
@@ -5684,7 +6973,7 @@ function RemainingMealsDrawerV2({ row, weekRows = [], saving, onClose, onSave, o
                           </span>
                           <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-0.5 text-xs font-black text-[#FFE8A3]">
                             {item.fixedQuantity ? <Lock size={11} /> : null}
-                            {formatNumber(item.quantity, 1)} {item.unit} · {displayKcal(item.kcal)}
+                            {formatNumber(item.quantity, 1)} {item.unit} - {displayKcal(item.kcal)}
                           </span>
                         </div>
                       );
@@ -5695,7 +6984,7 @@ function RemainingMealsDrawerV2({ row, weekRows = [], saving, onClose, onSave, o
                     const diff = resultDiff(results[activeMeal], activeTarget);
                     return (
                       <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-black text-zinc-300">
-                        <div>Total {displayKcal(totals.kcal)} · P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}</div>
+                        <div>Total {displayKcal(totals.kcal)} - P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}</div>
                         <div className="mt-1 text-zinc-500">Diferencia {signedMacro(diff.kcal, 0)} kcal / P {signedMacro(diff.proteina, 1)} / C {signedMacro(diff.carbs, 1)} / G {signedMacro(diff.grasas, 1)}</div>
                       </div>
                     );

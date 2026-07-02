@@ -28,6 +28,7 @@ const moduleLoaders = {
   "/app/inicio": [() => import("../entrenado/InicioEntrenado.jsx")],
   "/app/objetivos": [() => import("../entrenado/Objetivos.jsx")],
   "/app/menu": [() => import("../entrenado/MenuEj.jsx"), () => import("../entrenado/menu/MenuPlan.jsx")],
+  "/app/menu/nuevo": [() => import("../clientMenus/ClientMenuCreatePage.jsx")],
   "/app/menu/preferencias": [() => import("../entrenado/MenuEj.jsx"), () => import("../entrenado/menu/MenuPreferencias.jsx")],
   "/app/menu/favoritas": [() => import("../entrenado/MenuEj.jsx"), () => import("../entrenado/menu/MenuFavoritas.jsx")],
   "/app/perfil": [() => import("../entrenado/Perfil.jsx")],

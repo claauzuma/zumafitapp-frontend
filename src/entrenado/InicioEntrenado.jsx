@@ -1,11 +1,14 @@
 // src/entrenado/InicioEntrenado.jsx
 import React, { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Crown, ShieldCheck } from "lucide-react";
+import { Apple, CalendarDays, Dumbbell, Target, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { getCachedUser } from "../authCache.js";
 import {
+  CLIENT_ACCESS_CONTEXT_STALE_TIME,
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+  capabilitiesFromResolvedAccess,
   clientAccessContextKey,
   clientPlanCapabilitiesKey,
   clientPlanMenusUsageKey,
@@ -15,13 +18,10 @@ import {
 } from "../clientPlans/clientPlanQueries.js";
 import {
   clientPlanLabel,
-  clientPlanTone,
-  clientTypeLabel,
   ownMenusUsage,
-  planActionLabel,
   planFromCapabilities,
-  usageText,
 } from "../clientPlans/clientPlanUtils.js";
+import { createNavigationPrefetchHandlers } from "../routes/routePrefetch.js";
 
 const CSS = `
 *{ box-sizing:border-box; }
@@ -47,6 +47,15 @@ html, body, #root{
     linear-gradient(180deg,#141414,#0f0f0f);
   border-radius:16px;
   padding:14px;
+}
+
+.heroCard{
+  border-color:rgba(245,215,110,.24);
+  background:
+    radial-gradient(520px 220px at 100% 0%, rgba(245,215,110,.16), transparent 58%),
+    radial-gradient(420px 200px at 0% 0%, rgba(45,212,191,.07), transparent 58%),
+    linear-gradient(145deg,#141a20,#07090c);
+  box-shadow:0 18px 46px rgba(0,0,0,.32);
 }
 
 .h1{
@@ -75,35 +84,6 @@ html, body, #root{
   }
 }
 
-.badgeRow{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-bottom:10px;
-}
-
-.badge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  border:1px solid #2b2b2b;
-  background:#0f0f0f;
-  padding:8px 10px;
-  border-radius: 999px;
-  font-weight:900;
-  color:#f5d76e;
-  font-size: 12px;
-}
-
-.planBadge{
-  text-transform:uppercase;
-}
-.planBadge.free{ color:#d7e1ee; border-color:rgba(148,163,184,.28); background:rgba(148,163,184,.10); }
-.planBadge.pro{ color:#f5d76e; border-color:rgba(245,215,110,.32); background:rgba(245,215,110,.10); }
-.planBadge.vip{ color:#e9d5ff; border-color:rgba(168,85,247,.34); background:rgba(168,85,247,.11); }
-.planBadge.self{ color:#a7f3d0; border-color:rgba(16,185,129,.28); background:rgba(16,185,129,.10); }
-.planBadge.coach{ color:#bfdbfe; border-color:rgba(96,165,250,.28); background:rgba(96,165,250,.10); }
-
 .kicker{
   margin-top: 10px;
   color:#f5d76e;
@@ -113,46 +93,146 @@ html, body, #root{
   text-transform: uppercase;
 }
 
-.planRow{
-  margin-top:14px;
+.homeTopline{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:10px;
-  border:1px solid rgba(245,215,110,.18);
-  background:rgba(245,215,110,.065);
-  border-radius:14px;
-  padding:10px;
+  gap:12px;
+  margin-bottom:12px;
 }
 
-.planRowText{
-  min-width:0;
+.homePlanPill{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  max-width:100%;
+  border:1px solid rgba(245,215,110,.28);
+  background:rgba(245,215,110,.10);
+  color:#ffe89b;
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:11px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.heroActions,
+.homeActionsRow{
+  margin-top:14px;
   display:grid;
-  gap:3px;
+  grid-template-columns:1fr;
+  gap:9px;
 }
 
-.planRowText strong{
-  color:#fff;
-  font-size:14px;
-  line-height:1.2;
-}
-
-.planRowText span{
-  color:rgba(255,255,255,.68);
-  font-size:12px;
-  font-weight:800;
-}
-
-.planRow button{
-  flex:0 0 auto;
-  min-height:38px;
+.heroActions button,
+.cardAction{
+  min-height:42px;
   border:0;
-  border-radius:12px;
+  border-radius:13px;
   background:linear-gradient(135deg,#facc15,#f5d76e);
   color:#070707;
-  padding:0 12px;
+  padding:0 13px;
   font-weight:950;
   cursor:pointer;
+}
+
+.cardAction.secondary{
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.055);
+  color:#f7f7f7;
+}
+
+.homeCardTitle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:17px;
+}
+
+.homeCardTitle svg{
+  width:34px;
+  height:34px;
+  border-radius:13px;
+  border:1px solid rgba(245,215,110,.20);
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
+  padding:8px;
+}
+
+.objectiveHomeCard{
+  border-color:rgba(245,215,110,.24);
+  background:
+    radial-gradient(520px 220px at 100% 0%, rgba(245,215,110,.14), transparent 58%),
+    linear-gradient(145deg,#111820,#080c12);
+}
+
+.homeKcalValue{
+  margin-top:16px;
+  color:#f5d76e;
+  font-size:28px;
+  font-weight:950;
+  line-height:1;
+}
+
+.homeMacroGrid{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.homeMacro{
+  min-width:0;
+  display:grid;
+  gap:7px;
+}
+
+.homeMacro span{
+  color:rgba(255,255,255,.82);
+  font-size:12px;
+  font-weight:900;
+}
+
+.homeMacro strong{
+  color:#f8fafc;
+  font-size:13px;
+}
+
+.homeMacro i{
+  height:5px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.10);
+  position:relative;
+}
+
+.homeMacro i::after{
+  content:"";
+  position:absolute;
+  inset:0 auto 0 0;
+  width:var(--fill, 0%);
+  border-radius:inherit;
+  background:#60a5fa;
+}
+
+.homeMacro.green i::after{ background:#4ade80; }
+.homeMacro.violet i::after{ background:#a78bfa; }
+
+.homeCardMeta{
+  margin-top:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+
+.homeCardMeta span{
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.045);
+  color:rgba(255,255,255,.74);
+  border-radius:999px;
+  padding:6px 8px;
+  font-size:11px;
+  font-weight:900;
 }
 
 .planMuted{
@@ -168,19 +248,6 @@ html, body, #root{
   color:rgba(255,255,255,.70);
   font-size:12px;
   font-weight:850;
-}
-
-.homeActionBtn{
-  margin-top:12px;
-  width:100%;
-  min-height:40px;
-  border:1px solid rgba(245,215,110,.22);
-  border-radius:13px;
-  background:rgba(245,215,110,.10);
-  color:#f5d76e;
-  padding:0 12px;
-  font-weight:950;
-  cursor:pointer;
 }
 
 .trialActive{
@@ -223,19 +290,19 @@ html, body, #root{
 }
 
 @media (max-width:520px){
-  .planRow{
-    align-items:stretch;
-    flex-direction:column;
-  }
-  .planRow button{
-    width:100%;
-  }
   .trialActive{
     align-items:stretch;
     flex-direction:column;
   }
   .trialActive button{
     width:100%;
+  }
+}
+
+@media (min-width:720px){
+  .heroActions,
+  .homeActionsRow{
+    grid-template-columns:max-content max-content;
   }
 }
 `;
@@ -267,6 +334,12 @@ function numberOrNull(value) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+function barWidth(value, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || !max) return "0%";
+  return `${Math.max(6, Math.min(100, Math.round((number / max) * 100)))}%`;
+}
+
 function homeObjective(user = {}) {
   const metas = user?.metasActuales || {};
   const macros = metas?.macros || {};
@@ -282,87 +355,94 @@ function homeObjective(user = {}) {
 export default function InicioEntrenado() {
   const navigate = useNavigate();
   const user = useMemo(() => getCachedUser(), []);
-  const capabilitiesQuery = useQuery({
-    queryKey: clientPlanCapabilitiesKey,
-    queryFn: fetchClientPlanCapabilities,
-    staleTime: 2 * 60 * 1000,
-    retry: 1,
-  });
   const accessContextQuery = useQuery({
     queryKey: clientAccessContextKey,
     queryFn: fetchClientAccessContext,
-    staleTime: 2 * 60 * 1000,
+    staleTime: CLIENT_ACCESS_CONTEXT_STALE_TIME,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     retry: 1,
+  });
+  const accessCapabilities = capabilitiesFromResolvedAccess(accessContextQuery.data);
+  const capabilitiesQuery = useQuery({
+    queryKey: clientPlanCapabilitiesKey,
+    queryFn: fetchClientPlanCapabilities,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    enabled: accessContextQuery.isError,
   });
   const usageQuery = useQuery({
     queryKey: clientPlanMenusUsageKey,
     queryFn: fetchClientPlanMenusUsage,
     staleTime: 2 * 60 * 1000,
     retry: 1,
-    enabled: !!capabilitiesQuery.data,
+    enabled: !!(accessCapabilities || capabilitiesQuery.data),
   });
 
   const genero = user?.profile?.genero || user?.genero;
   const nombre = titleCaseFirstName(user?.profile?.nombre || user?.nombre || "");
   const titulo = nombre ? `${getSaludo(genero)}, ${nombre}` : getSaludo(genero);
   const summary = usageQuery.data || {};
-  const capabilities = capabilitiesQuery.data || user?.nutritionCapabilities || null;
+  const capabilities = accessCapabilities || capabilitiesQuery.data || user?.nutritionCapabilities || null;
   const rawPlan = capabilities?.plan || user?.nutritionCapabilities?.plan || user?.plan;
   const plan = rawPlan ? planFromCapabilities(user, capabilities) : "";
   const usage = ownMenusUsage(summary, capabilities);
   const usageKnown = usageQuery.isSuccess && Number.isFinite(Number(usage.used));
-  const planTone = clientPlanTone(plan || "free");
   const trial = accessContextQuery.data?.trial || null;
   const objective = homeObjective(user);
+  const accessContext = accessContextQuery.data || null;
+  const authority = accessContext?.authority || {};
+  const coachControlsNutrition =
+    ["coach", "professional", "profesional"].includes(String(authority.nutrition || authority.menu || "").toLowerCase()) ||
+    (!!accessContext?.hasCoach && String(authority.nutrition || "").toLowerCase() === "coach");
+  const menuUsed = Number(usage.used || 0);
+  const menuLimit = Number(usage.limit);
+  const menuUsageText = usageKnown
+    ? Number.isFinite(menuLimit)
+      ? `${menuUsed} / ${menuLimit} menus`
+      : `${menuUsed} menus`
+    : "Uso de menus no disponible";
+  const hasOwnMenu = usageKnown && menuUsed > 0;
 
   return (
     <div className="wrap">
       <style>{CSS}</style>
 
-      <div className="card">
-        <div className="badgeRow">
-          <span className="badge">Sesion activa</span>
-          <span className={`badge planBadge ${capabilities?.hasCoach ? "coach" : "self"}`}>
-            <ShieldCheck size={14} aria-hidden="true" />
-            {clientTypeLabel(user, capabilities)}
-          </span>
-          {rawPlan ? (
-            <span className={`badge planBadge ${planTone}`}>
-              <Crown size={14} aria-hidden="true" />
-              Plan {clientPlanLabel(plan)}
-            </span>
-          ) : null}
+      <div className="card heroCard">
+        <div className="homeTopline">
+          <span className="homePlanPill">{rawPlan ? `Plan ${clientPlanLabel(plan)}` : "Plan no disponible"}</span>
         </div>
 
         <div className="kicker">Inicio</div>
         <h1 className="h1">{titulo}</h1>
 
         <p className="p">
-          Aca vas a ver un resumen rapido y accesos a tus secciones.
+          Resumen de tu dia y accesos rapidos para organizar nutricion y entrenamiento.
         </p>
+
+        <div className="heroActions">
+          <button type="button" onClick={() => navigate("/app/planes")}>
+            Ver mi plan
+          </button>
+        </div>
 
         {capabilitiesQuery.isError && !rawPlan ? (
           <div className="planMuted">No pudimos cargar tu plan ahora. Reintenta desde Mi plan.</div>
-        ) : rawPlan ? (
-          <div className="planRow">
-            <div className="planRowText">
-              <strong>
-                Plan {clientPlanLabel(plan)} · {usageKnown ? `${usageText(usage)} menus utilizados` : "menus utilizados no disponible"}
-              </strong>
-              <span>{clientTypeLabel(user, capabilities)} · Beneficios y limites de nutricion</span>
-            </div>
-            <button type="button" onClick={() => navigate("/app/planes")}>
-              {planActionLabel(plan)}
-            </button>
-          </div>
-        ) : (
+        ) : !rawPlan ? (
           <div className="planMuted">Cargando plan y limites...</div>
+        ) : (
+          <div className="homeCardMeta">
+            <span>{coachControlsNutrition ? "Nutricion con coach" : "Autogestionado"}</span>
+            <span>{menuUsageText}</span>
+          </div>
         )}
 
         {trial?.active ? (
           <div className="trialActive">
             <div>
-              <strong>Prueba Pro activa · te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} dias</strong>
+              <strong>Prueba Pro activa - te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} dias</strong>
               <span>Finaliza el {formatHomeDate(trial.endsAt) || "dia indicado por el servidor"}</span>
             </div>
             <button type="button" onClick={() => navigate("/app/planes")}>
@@ -373,44 +453,100 @@ export default function InicioEntrenado() {
       </div>
 
       <div className="grid">
-        <div className="card">
-          <strong>Objetivos</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            {objective.kcal
-              ? `${objective.kcal} kcal · P ${objective.p ?? "-"} / C ${objective.c ?? "-"} / G ${objective.g ?? "-"}`
-              : "Completa tu objetivo diario base."}
-          </p>
-          <button type="button" className="homeActionBtn" onClick={() => navigate("/app/objetivos")}>
-            Ver objetivos
-          </button>
+        <div className="card objectiveHomeCard">
+          <strong className="homeCardTitle"><Target aria-hidden="true" /> Objetivos</strong>
+          {objective.kcal ? (
+            <>
+              <div className="homeKcalValue">{objective.kcal} kcal</div>
+              <div className="homeMacroGrid" aria-label="Macros objetivo">
+                <span className="homeMacro">
+                  <strong>P {objective.p ?? "-" } g</strong>
+                  <i style={{ "--fill": barWidth(objective.p, 260) }} />
+                </span>
+                <span className="homeMacro green">
+                  <strong>C {objective.c ?? "-" } g</strong>
+                  <i style={{ "--fill": barWidth(objective.c, 520) }} />
+                </span>
+                <span className="homeMacro violet">
+                  <strong>G {objective.g ?? "-" } g</strong>
+                  <i style={{ "--fill": barWidth(objective.g, 170) }} />
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="p" style={{ marginTop: 6 }}>Completa tu objetivo diario base.</p>
+          )}
+          <div className="homeActionsRow">
+            <button type="button" className="cardAction" onClick={() => navigate("/app/objetivos")}>
+              Ver objetivos
+            </button>
+          </div>
         </div>
 
         <div className="card">
-          <strong>Menu</strong>
+          <strong className="homeCardTitle"><Apple aria-hidden="true" /> Menu de hoy</strong>
           <p className="p" style={{ marginTop: 6 }}>
-            Genera o ajusta comidas segun tus objetivos.
+            {coachControlsNutrition
+              ? "Tu menu esta gestionado por tu coach."
+              : hasOwnMenu
+                ? "Ya tenes menus propios para planificar tus comidas."
+                : "Todavia no creaste tu menu. Podes usar tu propio plan o registrar libremente en Tracking."}
           </p>
+          <div className="homeCardMeta">
+            <span>{menuUsageText}</span>
+            {coachControlsNutrition ? <span>Coach</span> : <span>Autogestionado</span>}
+          </div>
+          <div className="homeActionsRow">
+            <button
+              type="button"
+              className="cardAction"
+              onClick={() => navigate(coachControlsNutrition || hasOwnMenu ? "/app/menu" : "/app/menu/nuevo", { state: { from: "/app/inicio" } })}
+              {...(!coachControlsNutrition && !hasOwnMenu ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
+            >
+              {coachControlsNutrition || hasOwnMenu ? "Ver menu" : "Crear mi menu"}
+            </button>
+            {!coachControlsNutrition && !hasOwnMenu ? (
+              <button type="button" className="cardAction secondary" onClick={() => navigate("/app/tracking")}>
+                Ir a Tracking
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="card">
-          <strong>Rutina</strong>
+          <strong className="homeCardTitle"><CalendarDays aria-hidden="true" /> Tracking</strong>
+          <p className="p" style={{ marginTop: 6 }}>
+            Registra lo que realmente comiste y comparalo con tus objetivos.
+          </p>
+          <div className="homeActionsRow">
+            <button type="button" className="cardAction" onClick={() => navigate("/app/tracking")}>
+              Registrar dia
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <strong className="homeCardTitle"><Dumbbell aria-hidden="true" /> Rutina</strong>
           <p className="p" style={{ marginTop: 6 }}>
             Tu entrenamiento del dia o la semana.
           </p>
+          <div className="homeActionsRow">
+            <button type="button" className="cardAction secondary" onClick={() => navigate("/app/rutinas")}>
+              Ver rutina
+            </button>
+          </div>
         </div>
 
         <div className="card">
-          <strong>Progresos</strong>
+          <strong className="homeCardTitle"><TrendingUp aria-hidden="true" /> Progreso</strong>
           <p className="p" style={{ marginTop: 6 }}>
             Medidas, fotos, rendimiento y constancia.
           </p>
-        </div>
-
-        <div className="card">
-          <strong>Perfil / Ajustes</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            Preferencias, metas y datos personales.
-          </p>
+          <div className="homeActionsRow">
+            <button type="button" className="cardAction secondary" onClick={() => navigate("/app/progresos")}>
+              Ver progreso
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import AppToast from "./ui/AppToast.jsx";
 import { dismissCoachAssignmentNotice } from "./clientCoachApi.js";
 import {
   acceptCoachInvitation,
+  blockCoachInvitation,
   declineCoachInvitation,
   getPendingCoachInvitations,
 } from "./clientInvitationsApi.js";
@@ -19,8 +20,11 @@ import PendingCoachInvitationModal, { ClientInvitationBanner } from "./PendingCo
 import BrandLogo from "./ui/BrandLogo.jsx";
 import { clientPlanLabel, planFromCapabilities } from "./clientPlans/clientPlanUtils.js";
 import {
+  CLIENT_ACCESS_CONTEXT_STALE_TIME,
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
   acknowledgeClientTrialExpiryNotice,
   acknowledgeClientTrialOnboardingOffer,
+  capabilitiesFromResolvedAccess,
   clientAccessContextKey,
   clientPlanCapabilitiesKey,
   createClientPlanChangeRequest,
@@ -742,8 +746,9 @@ export default function ClientShell() {
   const meQuery = useAuthMe({
     enabled: true,
     initialFromCache: true,
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
     refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
   const user = meQuery.data || cachedUser;
   const [open, setOpen] = useState(false);
@@ -767,22 +772,27 @@ export default function ClientShell() {
     queryKey: invitationQueryKey,
     queryFn: getPendingCoachInvitations,
     enabled: isClientUser && !isImpersonating(),
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 30 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const accessContextQuery = useQuery({
     queryKey: clientAccessContextKey,
     queryFn: fetchClientAccessContext,
     enabled: isClientUser && !isImpersonating(),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CLIENT_ACCESS_CONTEXT_STALE_TIME,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const planSummaryQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
-    enabled: isClientUser && !isImpersonating(),
-    staleTime: 2 * 60 * 1000,
+    enabled: isClientUser && !isImpersonating() && accessContextQuery.isError,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const pendingInvitations = Array.isArray(pendingInvitationsQuery.data?.invitations)
@@ -984,6 +994,43 @@ export default function ClientShell() {
     }
   }
 
+  async function handleBlockInvitation(invitation, options = {}) {
+    if (!invitation?.id || invitationBusy) return;
+    if (!options?.confirmed) {
+      const ok = window.confirm(
+        `Bloquear a ${invitation.coachName || "este coach"}? No va a poder volver a enviarte invitaciones mientras este bloqueado.`
+      );
+      if (!ok) return;
+    }
+
+    setInvitationBusy("block");
+    setInvitationError("");
+    try {
+      const data = await blockCoachInvitation(invitation.id, options);
+      if (data?.user) {
+        cacheAcceptedUser(data.user);
+        setAuthUserQueryData(data.user);
+      }
+      await refreshInvitations();
+      setInvitationSnoozed(false);
+      try {
+        sessionStorage.removeItem(invitationSessionKey);
+      } catch {
+        // sessionStorage puede no estar disponible en algunos entornos.
+      }
+      setToast({
+        type: "success",
+        message: "Coach bloqueado. Descartamos sus invitaciones pendientes.",
+      });
+    } catch (error) {
+      const message = error?.message || "No se pudo bloquear al coach. Intenta nuevamente.";
+      setInvitationError(message);
+      setToast({ type: "error", message });
+    } finally {
+      setInvitationBusy("");
+    }
+  }
+
   function handleSnoozeInvitation() {
     setInvitationSnoozed(true);
     setInvitationError("");
@@ -997,7 +1044,9 @@ export default function ClientShell() {
   const fullName = user?.profile?.nombre || user?.nombre || "";
   const nombre = firstName(fullName);
   const sub = nombre ? `Hola, ${nombre}` : "Tu espacio";
-  const shellCapabilities = planSummaryQuery.data || user?.nutritionCapabilities || null;
+  const shellAccessContext = accessContextQuery.data || null;
+  const shellAccessCapabilities = capabilitiesFromResolvedAccess(shellAccessContext);
+  const shellCapabilities = shellAccessCapabilities || planSummaryQuery.data || user?.nutritionCapabilities || null;
   const rawShellPlan = shellCapabilities?.plan || user?.nutritionCapabilities?.plan || user?.plan;
   const shellPlan = rawShellPlan ? planFromCapabilities(user, shellCapabilities) : "";
   const planDrawerItem = {
@@ -1011,7 +1060,6 @@ export default function ClientShell() {
     icon: <Crown size={19} aria-hidden="true" />,
     enabled: true,
   };
-  const shellAccessContext = accessContextQuery.data || null;
   const isOnboardingRoute = loc.pathname.startsWith("/app/onboarding");
   const showTrialWelcomeModal = Boolean(
     isClientUser &&
@@ -1032,6 +1080,7 @@ export default function ClientShell() {
     return scheduleIdleRoutePrefetch([
       "/app/objetivos",
       "/app/menu",
+      "/app/menu/nuevo",
       "/app/nutricion",
       "/app/tracking",
       "/app/planes",
@@ -1084,6 +1133,7 @@ export default function ClientShell() {
           error={invitationError}
           onAccept={handleAcceptInvitation}
           onDecline={handleDeclineInvitation}
+          onBlock={handleBlockInvitation}
           onSnooze={handleSnoozeInvitation}
         />
       ) : null}
@@ -1268,6 +1318,7 @@ export default function ClientShell() {
             busy={invitationBusy}
             onAccept={handleAcceptInvitation}
             onDecline={handleDeclineInvitation}
+            onBlock={handleBlockInvitation}
           />
         ) : null}
         <Outlet />

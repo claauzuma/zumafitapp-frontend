@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Clock3,
   Dumbbell,
+  ShieldAlert,
   ShieldCheck,
   UserRound,
   Utensils,
@@ -26,9 +27,13 @@ export default function PendingCoachInvitationModal({
   error = "",
   onAccept,
   onDecline,
+  onBlock,
   onSnooze,
 }) {
   const [selectedId, setSelectedId] = useState(() => invitations[0]?.id || "");
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [reportSpam, setReportSpam] = useState(false);
+  const [reportReason, setReportReason] = useState("no_conozco");
   const selected = useMemo(
     () => invitations.find((item) => item.id === selectedId) || invitations[0] || null,
     [invitations, selectedId]
@@ -93,10 +98,21 @@ export default function PendingCoachInvitationModal({
 
         <div className="pci-actions">
           {waitingActivation ? (
-            <div className="pci-waiting">
-              <Clock3 size={17} />
-              <span>Esperando activacion del profesional</span>
-            </div>
+            <>
+              <div className="pci-waiting">
+                <Clock3 size={17} />
+                <span>Esperando activacion del profesional</span>
+              </div>
+              <button
+                type="button"
+                className="pci-btn danger"
+                disabled={!!busy}
+                onClick={() => setBlockOpen((value) => !value)}
+              >
+                <ShieldAlert size={16} />
+                Bloquear coach
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -116,6 +132,15 @@ export default function PendingCoachInvitationModal({
               >
                 {busy === "decline" ? "Rechazando..." : "Rechazar"}
               </button>
+              <button
+                type="button"
+                className="pci-btn danger"
+                disabled={!!busy}
+                onClick={() => setBlockOpen((value) => !value)}
+              >
+                <ShieldAlert size={16} />
+                Bloquear coach
+              </button>
             </>
           )}
           <button type="button" className="pci-btn subtle" disabled={!!busy} onClick={onSnooze}>
@@ -123,12 +148,54 @@ export default function PendingCoachInvitationModal({
             Decidir despues
           </button>
         </div>
+
+        {blockOpen ? (
+          <div className="pci-blockBox">
+            <strong>Bloquear a este coach</strong>
+            <p>
+              No podra volver a enviarte invitaciones mientras permanezca bloqueado. Las invitaciones pendientes se van a descartar.
+            </p>
+            <label className="pci-check">
+              <input
+                type="checkbox"
+                checked={reportSpam}
+                onChange={(event) => setReportSpam(event.target.checked)}
+              />
+              Tambien reportar como spam
+            </label>
+            {reportSpam ? (
+              <select
+                className="pci-select"
+                value={reportReason}
+                onChange={(event) => setReportReason(event.target.value)}
+              >
+                <option value="invitaciones_repetidas">Invitaciones repetidas</option>
+                <option value="no_conozco">No conozco a este coach</option>
+                <option value="contenido_inapropiado">Contenido inapropiado</option>
+                <option value="otro">Otro</option>
+              </select>
+            ) : null}
+            <div className="pci-blockActions">
+              <button type="button" className="pci-btn compact" disabled={!!busy} onClick={() => setBlockOpen(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="pci-btn compact danger solid"
+                disabled={!!busy}
+                onClick={() => onBlock?.(selected, { confirmed: true, reportedAsSpam: reportSpam, reportReason })}
+              >
+                {busy === "block" ? "Bloqueando..." : "Bloquear coach"}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
 }
 
-export function ClientInvitationBanner({ invitation, busy = "", onAccept, onDecline }) {
+export function ClientInvitationBanner({ invitation, busy = "", onAccept, onDecline, onBlock }) {
   if (!invitation) return null;
   const waitingActivation = invitation.status === "accepted_pending_activation";
 
@@ -150,6 +217,9 @@ export function ClientInvitationBanner({ invitation, busy = "", onAccept, onDecl
             </button>
             <button type="button" className="pci-btn compact" disabled={!!busy} onClick={() => onDecline(invitation)}>
               Rechazar
+            </button>
+            <button type="button" className="pci-btn compact danger" disabled={!!busy} onClick={() => onBlock?.(invitation)}>
+              Bloquear
             </button>
           </>
         )}

@@ -44,6 +44,7 @@ export function useAuthMe(options = {}) {
     silent401 = true,
     initialFromCache = false,
     refetchOnMount,
+    refetchOnWindowFocus,
     staleTime = STALE_TIMES.authMe,
   } = options;
 
@@ -54,6 +55,7 @@ export function useAuthMe(options = {}) {
     staleTime,
     retry: false,
     refetchOnMount,
+    refetchOnWindowFocus,
     initialData: initialFromCache && getCachedStatus() === "logged" ? getCachedUser() || undefined : undefined,
   });
 }

@@ -59,19 +59,19 @@ export const PLAN_MARKETING_COPY = {
   free: {
     eyebrow: "Plan inicial",
     title: "Estas en Free",
-    summary: "Tracking diario, menus propios limitados y biblioteca basica para organizar tu nutricion sin coach.",
+    summary: "Tracking diario, un menu propio y biblioteca basica para empezar sin depender de un coach.",
     library: "Biblioteca basica",
   },
   pro: {
     eyebrow: "Mas autonomia",
     title: "Plan Pro",
-    summary: "Mas cupos, planificacion semanal y biblioteca global. AutoCoach queda preparado como mejora futura.",
+    summary: "Mas cupos, planificacion semanal y biblioteca global. AutoCoach nutricional y rutinas automaticas quedan como proximamente.",
     library: "Biblioteca global",
   },
   vip: {
     eyebrow: "Experiencia completa",
     title: "Plan VIP",
-    summary: "Biblioteca premium, limites altos y funciones avanzadas preparadas. AutoCoach adaptativo figura como proximo paso.",
+    summary: "Biblioteca premium, limites altos y futuras funciones adaptativas preparadas sin activar automatismos inexistentes.",
     library: "Biblioteca premium",
   },
 };
@@ -82,9 +82,10 @@ export const PLAN_DETAIL_COPY = {
     description: "Free sirve para registrar, aprender el flujo y crear una base simple. Las metas y ajustes quedan en modo manual.",
     bullets: [
       "Tracking diario incluido",
-      "Menus y comidas propias con limite bajo",
+      "1 menu propio de 1 dia",
+      "5 comidas guardadas y 3 favoritos",
       "Biblioteca basica ZumaFit",
-      "Sin AutoCoach ni ajustes adaptativos",
+      "Sin AutoCoach nutricional ni rutinas automaticas",
     ],
   },
   pro: {
@@ -92,8 +93,9 @@ export const PLAN_DETAIL_COPY = {
     description: "Pro suma margen para planificar, usar biblioteca global y administrar metas sin cooldown manual.",
     bullets: [
       "Biblioteca global ZumaFit",
-      "Menus semanales y mas comidas propias",
-      "Rutinas automaticas y AutoCoach marcados como proximamente",
+      "10 menus propios de hasta 7 dias",
+      "100 comidas guardadas y 20 favoritos",
+      "AutoCoach nutricional y rutinas automaticas marcados como proximamente",
       "Ideal para usuarios autogestionados constantes",
     ],
   },
@@ -101,10 +103,10 @@ export const PLAN_DETAIL_COPY = {
     title: "Biblioteca premium y limites altos",
     description: "VIP es el nivel pensado para mayor personalizacion y futuras revisiones adaptativas, sin presentar IA como activa todavia.",
     bullets: [
-      "AutoCoach Nutricional marcado como proximamente",
-      "AutoCoach de Entrenamiento marcado como proximamente",
+      "50 menus propios y 500 comidas guardadas",
+      "100 favoritos",
       "Biblioteca premium ZumaFit",
-      "Limites altos para menus y comidas propias",
+      "AutoCoach Nutricional y de Entrenamiento marcados como proximamente",
     ],
   },
 };

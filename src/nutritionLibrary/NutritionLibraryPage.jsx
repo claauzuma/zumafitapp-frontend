@@ -11,6 +11,7 @@ import {
   Utensils,
   X,
 } from "lucide-react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthMe } from "../authQueries.js";
 import { addSavedMealToTracking } from "../savedMeals/savedMealsApi.js";
@@ -102,7 +103,10 @@ function defaultTabs(mode, user) {
 
 export default function NutritionLibraryPage({ mode = "client" }) {
   const professionalMode = mode === "professional";
-  const authQuery = useAuthMe({ initialFromCache: true });
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const legacyCreateRedirect = !professionalMode && searchParams.get("tab") === "mineMenus" && searchParams.get("create") === "1";
+  const authQuery = useAuthMe({ initialFromCache: true, enabled: !legacyCreateRedirect });
   const user = useMemo(() => authQuery.data || {}, [authQuery.data]);
   const tabs = useMemo(() => defaultTabs(professionalMode ? "professional" : "client", user), [professionalMode, user]);
   const [activeTabId, setActiveTabId] = useState("mineMeals");
@@ -118,7 +122,6 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   const [assignItem, setAssignItem] = useState(null);
   const [clients, setClients] = useState([]);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
-  const [createMenuSignal, setCreateMenuSignal] = useState(0);
   const [editMenuRequest, setEditMenuRequest] = useState(null);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0] || TABS.client[0];
@@ -129,6 +132,13 @@ export default function NutritionLibraryPage({ mode = "client" }) {
       setActiveTabId(tabs[0]?.id || "mineMeals");
     }
   }, [activeTabId, tabs]);
+
+  useEffect(() => {
+    if (professionalMode) return;
+    if (legacyCreateRedirect) return;
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "mineMenus") setActiveTabId("mineMenus");
+  }, [legacyCreateRedirect, professionalMode, searchParams]);
 
   useEffect(() => {
     if (!professionalMode) return undefined;
@@ -146,6 +156,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   }, [professionalMode]);
 
   useEffect(() => {
+    if (legacyCreateRedirect) return undefined;
     if (clientOwnMenusTab) {
       setMeals([]);
       setMenus([]);
@@ -184,7 +195,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [activeTab.scope, activeTab.kinds, search, type, clientOwnMenusTab]);
+  }, [activeTab.scope, activeTab.kinds, search, type, clientOwnMenusTab, legacyCreateRedirect]);
 
   async function refreshCurrent() {
     setLoading(true);
@@ -274,8 +285,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   }
 
   function openCreateMenu() {
-    setActiveTabId("mineMenus");
-    setCreateMenuSignal((value) => value + 1);
+    navigate("/app/menu/nuevo", { state: { from: "/app/nutricion" } });
   }
 
   function openEditMenu(menuId) {
@@ -289,6 +299,10 @@ export default function NutritionLibraryPage({ mode = "client" }) {
 
   function openLibraryTab() {
     setActiveTabId("admin");
+  }
+
+  if (legacyCreateRedirect) {
+    return <Navigate to="/app/menu/nuevo" replace state={{ from: "/app/nutricion" }} />;
   }
 
   return (
@@ -364,8 +378,8 @@ export default function NutritionLibraryPage({ mode = "client" }) {
             <Suspense fallback={<div className="nl-state"><Loader2 className="nl-spin" size={18} /> Cargando constructor de menus...</div>}>
               <ClientMenusPanel
                 onToast={setToast}
-                createSignal={createMenuSignal}
                 editMenuRequest={editMenuRequest}
+                user={user}
               />
             </Suspense>
           </RouteChunkErrorBoundary>

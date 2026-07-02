@@ -13,6 +13,8 @@ import {
 export const clientAccessContextKey = ["client", "access-context"];
 export const clientPlanCapabilitiesKey = ["client", "nutritionCapabilities"];
 export const clientPlanMenusUsageKey = ["client", "planMenusUsage"];
+export const CLIENT_ACCESS_CONTEXT_STALE_TIME = 30 * 1000;
+export const CLIENT_PLAN_CAPABILITIES_STALE_TIME = 2 * 60 * 1000;
 
 export function logClientPlanQueryError(request, error) {
   if (!import.meta.env?.DEV) return;
@@ -57,12 +59,21 @@ export async function fetchClientAccessContext() {
 }
 
 export async function fetchClientPlanCapabilities() {
-  try {
-    const accessContext = await queryClient.fetchQuery({
-      queryKey: clientAccessContextKey,
-      queryFn: fetchClientAccessContext,
-      staleTime: 2 * 60 * 1000,
+  const cachedAccessContext = queryClient.getQueryData(clientAccessContextKey);
+  const cachedCapabilities = capabilitiesFromResolvedAccess(cachedAccessContext);
+  if (cachedCapabilities) {
+    debugClientPlanRequest("capabilities from access-context cache", {
+      source: "access-context-cache",
+      plan: cachedCapabilities.plan,
+      hasCapabilities: true,
+      limits: cachedCapabilities.limits,
     });
+    return cachedCapabilities;
+  }
+
+  try {
+    const accessContext = await fetchClientAccessContext();
+    queryClient.setQueryData(clientAccessContextKey, accessContext);
     const capabilities = capabilitiesFromResolvedAccess(accessContext);
     if (capabilities) {
       debugClientPlanRequest("capabilities from access-context cache", {

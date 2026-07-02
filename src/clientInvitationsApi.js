@@ -24,3 +24,29 @@ export async function declineCoachInvitation(invitationId) {
     timeoutMs: 12000,
   });
 }
+
+export async function blockCoachInvitation(invitationId, payload = {}) {
+  return await apiFetch(`/api/usuarios/me/invitations/${invitationId}/block`, {
+    method: "POST",
+    body: payload,
+    timeoutMs: 12000,
+  });
+}
+
+export async function getBlockedCoaches() {
+  const data = await apiFetch("/api/usuarios/me/blocked-coaches", {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+
+  return {
+    blockedCoaches: Array.isArray(data?.blockedCoaches) ? data.blockedCoaches : [],
+  };
+}
+
+export async function unblockCoach(coachId) {
+  return await apiFetch(`/api/usuarios/me/coaches/${coachId}/block`, {
+    method: "DELETE",
+    timeoutMs: 12000,
+  });
+}

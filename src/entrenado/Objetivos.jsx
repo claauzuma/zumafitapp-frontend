@@ -394,27 +394,8 @@ function getPlan(data = {}) {
   return normalizeClientPlan(planFromCapabilities(user, capabilities));
 }
 
-function Metric({ label, value, accent = false }) {
-  return (
-    <div className={`og-metric ${accent ? "accent" : ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function Notice({ type = "info", children }) {
   return <div className={`og-notice ${type}`} role={type === "error" ? "alert" : "status"}>{children}</div>;
-}
-
-function SummaryRow({ icon, label, value, tone = "yellow" }) {
-  return (
-    <div className="og-summaryRow">
-      <span className={`og-summaryIcon ${tone}`}>{React.createElement(icon, { size: 19 })}</span>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
 }
 
 function ObjectiveStat({ label, value, width, tone = "yellow" }) {
@@ -787,49 +768,18 @@ export default function Objetivos() {
     <div className="og-page">
       <section className={`og-hero ${plan}`}>
         <div>
-          <span className="og-kicker"><Target size={16} /> Tus objetivos</span>
-          <h1>Tus objetivos</h1>
+          <span className="og-kicker"><Target size={16} /> Objetivos</span>
+          <h1>Objetivos</h1>
           <p>
-            Centraliza nutricion y entrenamiento sin mezclar la meta con la ejecucion diaria.
+            Defini tus metas de nutricion y entrenamiento sin mezclar la meta con la ejecucion diaria.
           </p>
           <div className="og-badges">
             <span>Plan {clientPlanLabel(plan)}</span>
-            <span>{accessContext?.hasCoach ? "Cliente con coach" : "Autogestionado"}</span>
-            <span>{nutritionLockedByCoach || trainingLockedByCoach ? "Scopes profesionales activos" : "Editable por vos"}</span>
+            {nutritionLockedByCoach || trainingLockedByCoach ? <span>Gestionado por coach</span> : null}
+            {freeChangesBlocked ? <span>Sin cambios disponibles</span> : null}
           </div>
         </div>
       </section>
-
-      {activeTab === "nutrition" ? (
-        <section className="og-targetCard">
-          <div className="og-targetCardTop">
-            <div>
-              <span>Objetivo diario base</span>
-              <strong>{formatNumber(target.kcal, " kcal")}</strong>
-              <p>
-                P {formatNumber(target.macros.p, " g")} / C {formatNumber(target.macros.c, " g")} / G {formatNumber(target.macros.g, " g")}
-              </p>
-            </div>
-            <button
-              ref={editButtonRef}
-              type="button"
-              className={`og-editTarget ${nutritionLockedByCoach || freeChangesBlocked ? "locked" : ""}`}
-              aria-label="Editar objetivo nutricional"
-              title="Editar objetivo"
-              onClick={openNutritionEditor}
-              disabled={mutation.isPending}
-            >
-              {nutritionLockedByCoach || freeChangesBlocked ? <Lock size={21} /> : <Pencil size={21} />}
-            </button>
-          </div>
-          <div className="og-targetStats">
-            <ObjectiveStat label="Proteina" value={formatNumber(target.macros.p, " g")} width={progressWidth(target.macros.p, 260)} tone="blue" />
-            <ObjectiveStat label="Carbohidratos" value={formatNumber(target.macros.c, " g")} width={progressWidth(target.macros.c, 520)} tone="green" />
-            <ObjectiveStat label="Grasas" value={formatNumber(target.macros.g, " g")} width={progressWidth(target.macros.g, 170)} tone="violet" />
-            <ObjectiveStat label="Calorias" value={formatNumber(target.kcal, " kcal")} width={progressWidth(target.kcal, 4200)} tone="yellow" />
-          </div>
-        </section>
-      ) : null}
 
       <div className="og-tabs" role="tablist" aria-label="Objetivos">
         <button
@@ -861,6 +811,35 @@ export default function Objetivos() {
 
       {activeTab === "nutrition" ? (
         <section className="og-panel og-summaryPanel">
+          <section className="og-targetCard">
+            <div className="og-targetCardTop">
+              <div>
+                <span>Objetivo diario base</span>
+                <strong>{formatNumber(target.kcal, " kcal")}</strong>
+                <p>
+                  P {formatNumber(target.macros.p, " g")} / C {formatNumber(target.macros.c, " g")} / G {formatNumber(target.macros.g, " g")}
+                </p>
+              </div>
+              <button
+                ref={editButtonRef}
+                type="button"
+                className={`og-editTarget ${nutritionLockedByCoach || freeChangesBlocked ? "locked" : ""}`}
+                aria-label="Editar objetivo nutricional"
+                title="Editar objetivo"
+                onClick={openNutritionEditor}
+                disabled={mutation.isPending}
+              >
+                {nutritionLockedByCoach || freeChangesBlocked ? <Lock size={21} /> : <Pencil size={21} />}
+              </button>
+            </div>
+            <div className="og-targetStats">
+              <ObjectiveStat label="Proteina" value={formatNumber(target.macros.p, " g")} width={progressWidth(target.macros.p, 260)} tone="blue" />
+              <ObjectiveStat label="Carbohidratos" value={formatNumber(target.macros.c, " g")} width={progressWidth(target.macros.c, 520)} tone="green" />
+              <ObjectiveStat label="Grasas" value={formatNumber(target.macros.g, " g")} width={progressWidth(target.macros.g, 170)} tone="violet" />
+              <ObjectiveStat label="Calorias" value={formatNumber(target.kcal, " kcal")} width={progressWidth(target.kcal, 4200)} tone="yellow" />
+            </div>
+          </section>
+
           {target.status === "missing" ? (
             <Notice type="warn">
               No encontramos una meta valida. Completa tus objetivos para evitar que Menu o Tracking muestren valores vacios.
@@ -878,14 +857,6 @@ export default function Objetivos() {
               Tu objetivo nutricional esta gestionado por tu coach. Podes verlo, pero no editarlo desde esta pantalla.
             </Notice>
           ) : null}
-
-          <div className="og-summaryList">
-            <span className="og-sectionLabel">Resumen nutricional</span>
-            <SummaryRow icon={Flame} label="Calorias" value={formatNumber(target.kcal, " kcal")} tone="yellow" />
-            <SummaryRow icon={Dumbbell} label="Proteina" value={formatNumber(target.macros.p, " g")} tone="blue" />
-            <SummaryRow icon={Wheat} label="Carbohidratos" value={formatNumber(target.macros.c, " g")} tone="green" />
-            <SummaryRow icon={Droplets} label="Grasas" value={formatNumber(target.macros.g, " g")} tone="violet" />
-          </div>
 
           <section className={`og-weekly ${canUseWeeklyTargets && !isFree ? "" : "locked"}`}>
             <div className="og-weeklyTop">
@@ -978,27 +949,28 @@ export default function Objetivos() {
         </section>
       ) : (
         <section className="og-panel">
-          <div className="og-panelTop">
-            <div>
-              <span className="og-kicker">Objetivo de entrenamiento</span>
-              <h2>{goalLabel(user?.goal?.type)}</h2>
-              <p>Objetivos describe que queres conseguir. Ejercicios, series y repeticiones siguen en Rutina.</p>
+          <section className="og-targetCard og-trainingTargetCard">
+            <div className="og-targetCardTop">
+              <div>
+                <span>Objetivo de entrenamiento</span>
+                <strong>{goalLabel(user?.goal?.type)}</strong>
+                <p>{trainingLevelLabel(user?.profile?.basics?.experienciaPesas)} / {trainingFrequencyLabel(user?.profile?.basics?.frecuenciaEjercicio)}</p>
+              </div>
+              <span className={`og-pill ${trainingLockedByCoach ? "coach" : "ok"}`}>
+                {trainingLockedByCoach ? "Coach" : "Editable"}
+              </span>
             </div>
-            <span className={`og-pill ${trainingLockedByCoach ? "coach" : "ok"}`}>
-              {trainingLockedByCoach ? "Coach" : "Editable"}
-            </span>
-          </div>
+            <div className="og-targetStats">
+              <ObjectiveStat label="Nivel" value={trainingLevelLabel(user?.profile?.basics?.experienciaPesas)} width="70%" tone="blue" />
+              <ObjectiveStat label="Disponibilidad" value={trainingFrequencyLabel(user?.profile?.basics?.frecuenciaEjercicio)} width="65%" tone="green" />
+              <ObjectiveStat label="Equipamiento" value={user?.routine?.structure?.equipment || user?.program?.equipment || "Sin definir"} width="55%" tone="violet" />
+              <ObjectiveStat label="Estado" value={trainingLockedByCoach ? "Coach" : "Editable"} width={trainingLockedByCoach ? "45%" : "80%"} tone="yellow" />
+            </div>
+          </section>
 
           {trainingLockedByCoach ? (
             <Notice type="info">Tu objetivo de entrenamiento esta gestionado por tu coach.</Notice>
           ) : null}
-
-          <div className="og-metricGrid">
-            <Metric label="Objetivo" value={goalLabel(user?.goal?.type)} accent />
-            <Metric label="Nivel" value={trainingLevelLabel(user?.profile?.basics?.experienciaPesas)} />
-            <Metric label="Disponibilidad" value={trainingFrequencyLabel(user?.profile?.basics?.frecuenciaEjercicio)} />
-            <Metric label="Equipamiento" value={user?.routine?.structure?.equipment || user?.program?.equipment || "Sin definir"} />
-          </div>
 
           <div className="og-editor compact">
             <div className="og-formGrid two">

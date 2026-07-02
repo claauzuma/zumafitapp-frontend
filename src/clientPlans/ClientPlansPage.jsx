@@ -1,17 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BriefcaseBusiness,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Crown,
   Gift,
   LockKeyhole,
-  ShieldCheck,
   Sparkles,
   UserRoundCheck,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -21,19 +20,17 @@ import {
   clientPlanLabel,
   clientPlanTone,
   clientTypeLabel,
-  libraryAccessLabel,
   menusUsageFromResponse,
   normalizeClientPlan,
   PLAN_ORDER,
   PLAN_PRESETS,
   planCopy,
   planDetails,
-  planFeatureRows,
   planFromCapabilities,
-  planUpgradeHighlights,
   usageText,
 } from "./clientPlanUtils.js";
 import {
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
   capabilitiesFromResolvedAccess,
   clientAccessContextKey,
   clientPlanCapabilitiesKey,
@@ -48,17 +45,6 @@ import "./clientPlans.css";
 
 function PlanBadge({ children, tone = "free" }) {
   return <span className={`cp-badge ${tone}`}>{children}</span>;
-}
-
-function UsageBar({ used = 0, limit = null }) {
-  const percent = Number.isFinite(Number(limit)) && Number(limit) > 0
-    ? Math.min(100, Math.round((Number(used) / Number(limit)) * 100))
-    : 0;
-  return (
-    <div className="cp-usage-track" aria-hidden="true">
-      <span style={{ width: `${percent}%` }} />
-    </div>
-  );
 }
 
 function Skeleton() {
@@ -82,24 +68,140 @@ function formatPlanDate(value) {
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function formatLimit(value, singular, plural = `${singular}s`) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return `Sin limite de ${plural}`;
+  return `${amount} ${amount === 1 ? singular : plural}`;
+}
+
+function libraryBenefit(capabilities = {}) {
+  if (capabilities.canUsePremiumLibrary) return "Biblioteca premium";
+  if (capabilities.canUseGlobalLibrary) return "Biblioteca global";
+  if (capabilities.canUseBasicLibrary) return "Biblioteca basica";
+  return "Biblioteca no disponible";
+}
+
+function primaryPlanBenefits(planId = "free", capabilities = {}) {
+  const limits = capabilities?.limits || {};
+  if (planId === "vip") {
+    return [
+      `Hasta ${formatLimit(limits.ownMenus, "menu", "menus")}`,
+      `Hasta ${formatLimit(limits.ownMeals, "comida guardada", "comidas guardadas")}`,
+      `Hasta ${formatLimit(limits.favorites, "favorito", "favoritos")}`,
+      libraryBenefit(capabilities),
+    ];
+  }
+  if (planId === "pro") {
+    return [
+      `Hasta ${formatLimit(limits.ownMenus, "menu", "menus")}`,
+      `Hasta ${formatLimit(limits.menuDays, "dia", "dias")} por menu`,
+      `Hasta ${formatLimit(limits.ownMeals, "comida guardada", "comidas guardadas")}`,
+      libraryBenefit(capabilities),
+    ];
+  }
+  return [
+    "Tracking diario",
+    `Hasta ${formatLimit(limits.ownMenus, "menu propio", "menus propios")}`,
+    `Hasta ${formatLimit(limits.ownMeals, "comida guardada", "comidas guardadas")}`,
+    libraryBenefit(capabilities),
+  ];
+}
+
+function comingSoonCopy(planId = "free", capabilities = {}) {
+  const comingSoon = [
+    capabilities.automaticMenusStatus === "coming_soon" ? "menus automaticos" : "",
+    capabilities.automaticRoutineStatus === "coming_soon" ? "rutinas automaticas" : "",
+    capabilities.autoCoachNutrition === "coming_soon" ? "AutoCoach nutricional" : "",
+    capabilities.autoCoachTraining === "coming_soon" ? "AutoCoach entrenamiento" : "",
+  ].filter(Boolean);
+  if (!comingSoon.length) return "";
+  if (planId === "vip") return "AutoCoach avanzado y automatizaciones supervisadas";
+  return "AutoCoach y automatizaciones";
+}
+
+function buildPlanDetailGroups(planId = "free", capabilities = {}) {
+  const limits = capabilities?.limits || {};
+  const ownMenus = Number(limits.ownMenus);
+  const ownMeals = Number(limits.ownMeals);
+  const favorites = Number(limits.favorites);
+  const menuDays = Number(limits.menuDays);
+  const automaticMenuSoon = capabilities.automaticMenusStatus === "coming_soon";
+  const automaticRoutineSoon = capabilities.automaticRoutineStatus === "coming_soon";
+  const autoCoachNutritionSoon = capabilities.autoCoachNutrition === "coming_soon";
+  const autoCoachTrainingSoon = capabilities.autoCoachTraining === "coming_soon";
+
+  return [
+    {
+      title: "Nutricion",
+      items: [
+        { text: "Tracking diario", state: capabilities.canTrack ? "included" : "blocked" },
+        { text: Number.isFinite(ownMenus) ? formatLimit(ownMenus, "menu propio", "menus propios") : "Menus propios", state: ownMenus > 0 ? "included" : "blocked" },
+        { text: Number.isFinite(menuDays) ? `${formatLimit(menuDays, "dia", "dias")} por menu` : "Menu semanal", state: menuDays > 0 ? "included" : "blocked" },
+        { text: Number.isFinite(ownMeals) ? formatLimit(ownMeals, "comida guardada", "comidas guardadas") : "Comidas guardadas", state: ownMeals > 0 ? "included" : "blocked" },
+      ],
+    },
+    {
+      title: "Biblioteca",
+      items: [
+        { text: "Biblioteca basica", state: capabilities.canUseBasicLibrary ? "included" : "blocked" },
+        { text: "Biblioteca global", state: capabilities.canUseGlobalLibrary ? "included" : "blocked" },
+        { text: "Biblioteca premium", state: capabilities.canUsePremiumLibrary ? "included" : "blocked" },
+        { text: Number.isFinite(favorites) ? formatLimit(favorites, "favorito", "favoritos") : "Favoritos", state: favorites > 0 ? "included" : "blocked" },
+      ],
+    },
+    {
+      title: "Entrenamiento",
+      items: [
+        { text: "Registro manual de rutinas", state: "included" },
+        { text: "Rutinas automaticas", state: automaticRoutineSoon ? "soon" : capabilities.canGenerateAutomaticRoutine ? "included" : "blocked" },
+      ],
+    },
+    {
+      title: "Progreso",
+      items: [
+        { text: limits.trackingHistoryDays ? `${limits.trackingHistoryDays} dias de historial` : "Historial completo", state: "included" },
+        { text: "Medidas y fotos de progreso", state: "included" },
+      ],
+    },
+    {
+      title: "Proximamente",
+      items: [
+        { text: "Menus automaticos", state: automaticMenuSoon ? "soon" : capabilities.canGenerateAutomaticMenu ? "included" : "blocked" },
+        { text: "AutoCoach nutricional", state: autoCoachNutritionSoon ? "soon" : capabilities.autoCoachNutrition !== "manual" ? "included" : "blocked" },
+        { text: planId === "vip" ? "AutoCoach entrenamiento avanzado" : "AutoCoach entrenamiento", state: autoCoachTrainingSoon ? "soon" : capabilities.autoCoachTraining !== "manual" ? "included" : "blocked" },
+      ],
+    },
+  ];
+}
+
+function DetailIcon({ state }) {
+  if (state === "included") return <CheckCircle2 size={15} aria-hidden="true" />;
+  if (state === "soon") return <Sparkles size={15} aria-hidden="true" />;
+  return <LockKeyhole size={15} aria-hidden="true" />;
+}
+
 export default function ClientPlansPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [requestedPlan, setRequestedPlan] = useState("");
-  const [expandedPlanId, setExpandedPlanId] = useState("");
+  const [selectedComparisonPlan, setSelectedComparisonPlan] = useState("");
+  const [detailsPlanId, setDetailsPlanId] = useState("");
+  const detailsDialogRef = useRef(null);
+  const detailsTriggerRef = useRef(null);
   const cachedUser = useMemo(() => getCachedUser(), []);
   const meQuery = useAuthMe({
     enabled: true,
     initialFromCache: true,
     staleTime: 60 * 1000,
     refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
   const user = meQuery.data || cachedUser || {};
   const accessContextQuery = useClientAccessContext();
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
-    staleTime: 2 * 60 * 1000,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
     retry: 1,
     enabled: accessContextQuery.isError,
   });
@@ -130,6 +232,54 @@ export default function ClientPlansPage() {
       queryClient.invalidateQueries({ queryKey: clientPlanCapabilitiesKey });
     },
   });
+
+  const closePlanDetails = () => {
+    setDetailsPlanId("");
+    window.setTimeout(() => detailsTriggerRef.current?.focus?.(), 0);
+  };
+
+  const openPlanDetails = (planId, event) => {
+    detailsTriggerRef.current = event?.currentTarget || null;
+    setDetailsPlanId(planId);
+  };
+
+  useEffect(() => {
+    if (!detailsPlanId) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const timer = window.setTimeout(() => {
+      detailsDialogRef.current?.querySelector("button")?.focus?.();
+    }, 0);
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setDetailsPlanId("");
+        window.setTimeout(() => detailsTriggerRef.current?.focus?.(), 0);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      window.clearTimeout(timer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [detailsPlanId]);
+
+  const handleDetailsKeyDown = (event) => {
+    if (event.key !== "Tab") return;
+    const focusable = detailsDialogRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const waitingForAccessFallback =
     accessContextQuery.isLoading ||
@@ -210,6 +360,64 @@ export default function ClientPlansPage() {
   const personalCatalog = accessContext?.catalogs?.personalPlans || {};
   const serviceCatalog = accessContext?.catalogs?.professionalServices || {};
   const isAccessFallback = !accessContext && !!capabilitiesQuery.data;
+  const planPresets = PLAN_ORDER.reduce((acc, planId) => {
+    acc[planId] = {
+      ...PLAN_PRESETS[planId],
+      ...(personalCatalog[planId]
+        ? {
+            limits: {
+              ...PLAN_PRESETS[planId].limits,
+              ...personalCatalog[planId].limits,
+            },
+          }
+        : {}),
+    };
+    return acc;
+  }, {});
+  const defaultComparisonPlan = hasPlan ? (plan === "free" ? "pro" : plan === "pro" ? "vip" : "vip") : "pro";
+  const activeComparisonPlan = PLAN_ORDER.includes(selectedComparisonPlan)
+    ? selectedComparisonPlan
+    : defaultComparisonPlan;
+  const detailsPlan = PLAN_ORDER.includes(detailsPlanId) ? detailsPlanId : "";
+  const detailsPreset = detailsPlan ? planPresets[detailsPlan] : null;
+  const detailsCopy = detailsPlan ? planDetails(detailsPlan) : null;
+  const detailsGroups = detailsPreset ? buildPlanDetailGroups(detailsPlan, detailsPreset) : [];
+
+  const renderPlanAction = (planId) => {
+    const planIndex = PLAN_ORDER.indexOf(planId);
+    const isCurrent = hasPlan && planId === plan;
+    const isUpgrade = hasPlan && planIndex > currentPlanIndex;
+    if (isCurrent) return <span className="cp-current-label">Estas usando este plan</span>;
+    if (trial?.active && planId === "pro") return <span className="cp-current-label pending">Prueba Pro activa</span>;
+    if (canStartTrial && planId === "pro") {
+      return (
+        <button
+          type="button"
+          className="cp-upgrade-action"
+          onClick={() => startTrialMutation.mutate()}
+          disabled={startTrialMutation.isPending}
+        >
+          {startTrialMutation.isPending ? "Activando prueba..." : "Activar prueba Pro"}
+        </button>
+      );
+    }
+    if (pendingProRequest && planId === "pro") {
+      return <span className="cp-current-label pending">Solicitud Pro pendiente</span>;
+    }
+    if (isUpgrade) {
+      return (
+        <button
+          type="button"
+          className="cp-upgrade-action"
+          onClick={() => planRequestMutation.mutate(planId)}
+          disabled={planRequestMutation.isPending}
+        >
+          {planRequestMutation.isPending ? "Enviando solicitud..." : `Solicitar ${clientPlanLabel(planId)}`}
+        </button>
+      );
+    }
+    return <span className="cp-disabled-action">Cambio no disponible desde la app</span>;
+  };
 
   return (
     <section className="cp-page">
@@ -222,42 +430,42 @@ export default function ClientPlansPage() {
         <div>
           <span className="cp-kicker">
             <Crown size={16} />
-            {currentCopy?.eyebrow || "Tu plan actual"}
+            Tu plan actual
           </span>
-          <h1>{hasPlan ? currentCopy.title : "Plan no disponible"}</h1>
+          <h1>{hasPlan ? clientPlanLabel(plan) : "Plan no disponible"}</h1>
           <p>
             {hasPlan
               ? currentCopy.summary
               : "Conoce que incluye tu plan y que funciones podes desbloquear cuando el flujo de mejora este disponible."}
           </p>
           <div className="cp-badge-row">
-            <PlanBadge tone={capabilities?.hasCoach ? "coach" : "self"}>{clientTypeLabel(user, capabilities)}</PlanBadge>
-            {isCoachAccess ? (
-              <PlanBadge tone="coach">Acceso principal {effectiveAccess?.label || "Coach Pro"}</PlanBadge>
-            ) : hasPlan ? (
-              <PlanBadge tone={tone}>Plan efectivo {clientPlanLabel(plan)}</PlanBadge>
-            ) : (
-              <PlanBadge>Plan desconocido</PlanBadge>
-            )}
-            {hasPlan ? <PlanBadge tone={clientPlanTone(personalPlan)}>Plan personal {clientPlanLabel(personalPlan)}</PlanBadge> : null}
+            {hasPlan ? <PlanBadge tone={tone}>En uso</PlanBadge> : <PlanBadge>Plan desconocido</PlanBadge>}
+            {capabilities?.hasCoach ? <PlanBadge tone="coach">{clientTypeLabel(user, capabilities)}</PlanBadge> : null}
+            {isCoachAccess ? <PlanBadge tone="coach">Acceso principal {effectiveAccess?.label || "Coach Pro"}</PlanBadge> : null}
+            {isCoachAccess && hasPlan ? <PlanBadge tone={clientPlanTone(personalPlan)}>Plan personal {clientPlanLabel(personalPlan)}</PlanBadge> : null}
             {trial?.active ? <PlanBadge tone="pro">Prueba Pro: {trial.daysRemaining ?? trial.daysLeft} dias</PlanBadge> : null}
           </div>
           {hasPlan ? (
             <div className="cp-current-stats" aria-label="Resumen rapido del plan actual">
               <article>
-                <strong>{currentPreset?.limits?.ownMenus ?? "-"}</strong>
-                <span>menus propios</span>
+                <span>Menus</span>
+                <strong>{usageKnown ? usageText(usage) : usageLoading ? "..." : "No disp."}</strong>
               </article>
               <article>
-                <strong>{currentPreset?.limits?.ownMeals ?? "-"}</strong>
-                <span>comidas propias</span>
+                <span>Comidas</span>
+                <strong>{Number.isFinite(Number(currentPreset?.limits?.ownMeals)) ? `Hasta ${currentPreset.limits.ownMeals}` : "-"}</strong>
               </article>
               <article>
-                <strong>{libraryAccessLabel(currentPreset)}</strong>
-                <span>biblioteca</span>
+                <span>Favoritos</span>
+                <strong>{Number.isFinite(Number(currentPreset?.limits?.favorites)) ? `Hasta ${currentPreset.limits.favorites}` : "-"}</strong>
+              </article>
+              <article>
+                <span>Historial</span>
+                <strong>{currentPreset?.limits?.trackingHistoryDays ? `${currentPreset.limits.trackingHistoryDays} dias` : "Completo"}</strong>
               </article>
             </div>
           ) : null}
+          {hasPlan ? <span className="cp-current-status">Estas usando este plan</span> : null}
         </div>
         <div className={`cp-plan-orb ${tone}`} aria-hidden="true">
           <span>{isCoachAccess ? "Servicio activo" : trial?.active ? "Prueba activa" : "Plan actual"}</span>
@@ -289,8 +497,8 @@ export default function ClientPlansPage() {
       {isAccessFallback ? (
         <section className="cp-partial-error" role="status">
           <div>
-            <strong>Usando fallback de capabilities.</strong>
-            <p>El backend todavia no devolvio access-context en esta sesion. La pantalla queda operativa con datos reducidos.</p>
+            <strong>Informacion de contexto limitada.</strong>
+            <p>Podemos mostrar tu plan, pero faltan algunos datos secundarios de esta sesion.</p>
           </div>
           <button type="button" onClick={() => accessContextQuery.refetch()}>
             Reintentar contexto
@@ -328,7 +536,7 @@ export default function ClientPlansPage() {
             >
               {startTrialMutation.isPending ? "Activando..." : "Activar prueba Pro"}
             </button>
-            <button type="button" className="ghost" onClick={() => setExpandedPlanId("pro")}>
+            <button type="button" className="ghost" onClick={(event) => openPlanDetails("pro", event)}>
               Ver beneficios Pro
             </button>
           </div>
@@ -343,73 +551,23 @@ export default function ClientPlansPage() {
             <h2>Te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} dias</h2>
             <p>Finaliza el {formatPlanDate(trial.endsAt) || "dia indicado por el servidor"}.</p>
           </div>
-          <button type="button" onClick={() => setExpandedPlanId("pro")}>
+          <button type="button" onClick={(event) => openPlanDetails("pro", event)}>
             Ver funciones Pro
           </button>
         </section>
       ) : null}
 
-      <section className="cp-usage-card" aria-label="Uso actual del plan">
-        <div className="cp-section-head">
+      {usageQuery.isError ? (
+        <section className="cp-partial-error" role="status">
           <div>
-            <span className="cp-kicker">
-              <ShieldCheck size={15} />
-              Uso actual
-            </span>
-            <h2>Tus limites reales</h2>
+            <strong>El plan cargo, pero no el conteo de menus.</strong>
+            <p>Menus utilizados: no disponible. Status: {usageQuery.error?.status ?? "desconocido"}.</p>
           </div>
-          <span className="cp-soft-pill">{libraryAccessLabel(currentPreset)} biblioteca</span>
-        </div>
-        <div className="cp-usage-grid">
-          <article>
-            <span>Menus propios</span>
-            <strong>{usageKnown ? usageText(usage) : usageLoading ? "Cargando..." : "No disponible"}</strong>
-            {usageKnown ? (
-              <UsageBar used={usage.used} limit={usage.limit} />
-            ) : (
-              <small>{usageLoading ? "Calculando tus menus guardados." : "No pudimos calcular el contador."}</small>
-            )}
-          </article>
-          {Number.isFinite(Number(currentPreset?.limits?.ownMeals)) ? (
-            <article>
-              <span>Comidas propias</span>
-              <strong>Hasta {currentPreset.limits.ownMeals}</strong>
-              <small>Limite disponible por capabilities</small>
-            </article>
-          ) : null}
-          {Number.isFinite(Number(currentPreset?.limits?.favorites)) ? (
-            <article>
-              <span>Favoritos</span>
-              <strong>Hasta {currentPreset.limits.favorites}</strong>
-              <small>Comidas y menus destacados</small>
-            </article>
-          ) : null}
-          <article>
-            <span>Biblioteca</span>
-            <strong>{libraryAccessLabel(currentPreset)}</strong>
-            <small>{currentPreset.canUsePremiumLibrary ? "Incluye premium" : currentPreset.canUseGlobalLibrary ? "Incluye global" : "Acceso basico"}</small>
-          </article>
-          <article>
-            <span>Historial tracking</span>
-            <strong>{currentPreset?.limits?.trackingHistoryDays ? `${currentPreset.limits.trackingHistoryDays} dias` : "Completo"}</strong>
-            <small>{currentPreset.canTrack ? "Registro diario incluido" : "Tracking no disponible"}</small>
-          </article>
-        </div>
-        {usageQuery.isError ? (
-          <div className="cp-partial-error" role="status">
-            <div>
-              <strong>El plan cargo, pero no el conteo de menus.</strong>
-              <p>
-                Request secundaria: GET /api/clientes/me/menus?includeComidas=false&amp;limit=1.
-                Status: {usageQuery.error?.status ?? "desconocido"}.
-              </p>
-            </div>
-            <button type="button" onClick={() => usageQuery.refetch()}>
-              Reintentar conteo
-            </button>
-          </div>
-        ) : null}
-      </section>
+          <button type="button" onClick={() => usageQuery.refetch()}>
+            Reintentar conteo
+          </button>
+        </section>
+      ) : null}
 
       <section className="cp-upgrade-note">
         <Sparkles size={18} aria-hidden="true" />
@@ -461,126 +619,129 @@ export default function ClientPlansPage() {
       <section className="cp-section">
         <div className="cp-section-head">
           <div>
-            <span className="cp-kicker">Comparacion</span>
-            <h2>Planes ZumaFit</h2>
-            <p className="cp-section-subtitle">Los planes superiores resaltan solo funciones o limites extra frente a tu plan actual.</p>
+            <span className="cp-kicker">Mejora tu plan</span>
+            <h2>Compara Free, Pro y VIP</h2>
+            <p className="cp-section-subtitle">Elegis un plan para leerlo comodo en mobile. En desktop ves la comparacion completa.</p>
           </div>
         </div>
 
-        <div className="cp-grid">
+        <div className="cp-plan-tabs" role="tablist" aria-label="Seleccionar plan para comparar">
+          {PLAN_ORDER.map((planId) => (
+            <button
+              key={planId}
+              type="button"
+              role="tab"
+              aria-selected={activeComparisonPlan === planId}
+              aria-controls={`plan-card-${planId}`}
+              className={activeComparisonPlan === planId ? "active" : ""}
+              onClick={() => setSelectedComparisonPlan(planId)}
+            >
+              {clientPlanLabel(planId)}
+            </button>
+          ))}
+        </div>
+
+        <div className="cp-grid cp-plan-grid">
           {PLAN_ORDER.map((planId) => {
-            const preset = {
-              ...PLAN_PRESETS[planId],
-              ...(personalCatalog[planId]
-                ? {
-                    limits: {
-                      ...PLAN_PRESETS[planId].limits,
-                      ...personalCatalog[planId].limits,
-                    },
-                  }
-                : {}),
-            };
+            const preset = planPresets[planId];
             const copy = planCopy(planId);
             const isCurrent = hasPlan && planId === plan;
             const isRecommended = planId === "pro";
-            const planIndex = PLAN_ORDER.indexOf(planId);
-            const isUpgrade = hasPlan && planIndex > currentPlanIndex;
-            const highlights = isCurrent ? ["Tu plan actual"] : planUpgradeHighlights(planId, plan || "free");
-            const details = planDetails(planId);
-            const isExpanded = expandedPlanId === planId;
+            const primaryBenefits = primaryPlanBenefits(planId, preset);
+            const soonText = comingSoonCopy(planId, preset);
             return (
               <article
                 key={planId}
-                className={`cp-plan-card ${clientPlanTone(planId)} ${isCurrent ? "current" : ""}`}
+                id={`plan-card-${planId}`}
+                className={`cp-plan-card ${clientPlanTone(planId)} ${isCurrent ? "current" : ""} ${activeComparisonPlan === planId ? "selected" : ""}`}
                 aria-current={isCurrent ? "true" : undefined}
               >
                 <div className="cp-plan-card-head">
                   <div>
                     <h3>{clientPlanLabel(planId)}</h3>
-                    <p>{copy.library}</p>
+                    <p>{copy.summary}</p>
                   </div>
                   <div className="cp-card-badges">
-                    {isCurrent ? <PlanBadge tone={clientPlanTone(planId)}>Plan actual</PlanBadge> : null}
+                    {isCurrent ? <PlanBadge tone={clientPlanTone(planId)}>Actual</PlanBadge> : null}
                     {isRecommended && !isCurrent ? <PlanBadge tone="pro">Recomendado</PlanBadge> : null}
                   </div>
                 </div>
 
-                {highlights.length ? (
-                  <div className={`cp-plan-highlights ${isCurrent ? "current" : ""}`}>
-                    {highlights.map((highlight) => (
-                      <span key={highlight}>{highlight}</span>
-                    ))}
-                  </div>
-                ) : null}
-
                 <ul className="cp-feature-list">
-                  {planFeatureRows(preset).map((feature) => (
-                    <li key={feature.key} className={!feature.included || feature.muted ? "muted" : ""}>
-                      {feature.included ? (
-                        <CheckCircle2 size={16} aria-hidden="true" />
-                      ) : (
-                        <LockKeyhole size={16} aria-hidden="true" />
-                      )}
-                      <span>{feature.label}</span>
-                      <strong>{feature.value}</strong>
+                  {primaryBenefits.map((benefit) => (
+                    <li key={benefit}>
+                      <CheckCircle2 size={16} aria-hidden="true" />
+                      <span>{benefit}</span>
                     </li>
                   ))}
                 </ul>
 
-                <button
-                  type="button"
-                  className="cp-details-toggle"
-                  aria-expanded={isExpanded}
-                  onClick={() => setExpandedPlanId(isExpanded ? "" : planId)}
-                >
-                  <span>Ver mas detalles</span>
-                  {isExpanded ? <ChevronUp size={17} aria-hidden="true" /> : <ChevronDown size={17} aria-hidden="true" />}
-                </button>
-
-                {isExpanded ? (
-                  <div className="cp-plan-details">
-                    <strong>{details.title}</strong>
-                    <p>{details.description}</p>
-                    <ul>
-                      {details.bullets.map((bullet) => (
-                        <li key={bullet}>{bullet}</li>
-                      ))}
-                    </ul>
+                {soonText ? (
+                  <div className="cp-coming-soon">
+                    <span>Proximamente</span>
+                    <strong>{soonText}</strong>
                   </div>
                 ) : null}
 
-                <div className="cp-plan-card-foot">
-                  {isCurrent ? (
-                    <span className="cp-current-label">Estas usando {clientPlanLabel(planId)}</span>
-                  ) : canStartTrial && planId === "pro" ? (
-                    <button
-                      type="button"
-                      className="cp-upgrade-action"
-                      onClick={() => startTrialMutation.mutate()}
-                      disabled={startTrialMutation.isPending}
-                    >
-                      {startTrialMutation.isPending ? "Activando prueba..." : "Activar prueba Pro"}
-                    </button>
-                  ) : pendingProRequest && planId === "pro" ? (
-                    <span className="cp-current-label pending">Solicitud Pro pendiente</span>
-                  ) : isUpgrade ? (
-                    <button
-                      type="button"
-                      className="cp-upgrade-action"
-                      onClick={() => planRequestMutation.mutate(planId)}
-                      disabled={planRequestMutation.isPending}
-                    >
-                      {planRequestMutation.isPending ? "Enviando solicitud..." : `Solicitar plan ${clientPlanLabel(planId)}`}
-                    </button>
-                  ) : (
-                    <span className="cp-disabled-action">Cambio no disponible desde la app</span>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  className="cp-details-toggle"
+                  onClick={(event) => openPlanDetails(planId, event)}
+                >
+                  <span>Ver todos los beneficios</span>
+                  <ChevronDown size={17} aria-hidden="true" />
+                </button>
+
+                <div className="cp-plan-card-foot">{renderPlanAction(planId)}</div>
               </article>
             );
           })}
         </div>
       </section>
+
+      {detailsPlan ? (
+        <div className="cp-details-backdrop" role="presentation" onMouseDown={closePlanDetails}>
+          <section
+            ref={detailsDialogRef}
+            className="cp-details-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cp-details-title"
+            onKeyDown={handleDetailsKeyDown}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="cp-details-dialog-head">
+              <div>
+                <span className="cp-kicker">Todo lo que incluye</span>
+                <h2 id="cp-details-title">{clientPlanLabel(detailsPlan)}</h2>
+                <p>{detailsCopy?.description}</p>
+              </div>
+              <button type="button" className="cp-details-close" onClick={closePlanDetails} aria-label="Cerrar detalles">
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="cp-details-group-list">
+              {detailsGroups.map((group) => (
+                <article key={group.title} className="cp-details-group">
+                  <h3>{group.title}</h3>
+                  <ul>
+                    {group.items.map((item) => (
+                      <li key={`${group.title}-${item.text}`} className={item.state}>
+                        <DetailIcon state={item.state} />
+                        <span>{item.text}</span>
+                        {item.state === "soon" ? <strong>Proximamente</strong> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+
+            <footer className="cp-details-dialog-foot">{renderPlanAction(detailsPlan)}</footer>
+          </section>
+        </div>
+      ) : null}
 
       <section className="cp-section">
         <div className="cp-section-head">

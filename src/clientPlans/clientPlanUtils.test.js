@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  capabilitiesFromAccessContext,
   extractCapabilities,
   menusUsageFromResponse,
   normalizeCapabilities,
@@ -45,6 +46,23 @@ test("normalizeCapabilities normaliza premium y premium2 sin asumir Free si falt
   assert.equal(normalizeCapabilities({ ...validCapabilities, plan: "premium" }).capabilities.plan, "pro");
   assert.equal(normalizeCapabilities({ ...validCapabilities, plan: "premium2" }).capabilities.plan, "vip");
   assert.equal(normalizeCapabilities({ ...validCapabilities, plan: "" }).validation.valid, false);
+});
+
+test("capabilitiesFromAccessContext respeta autogestionado despues de finalizar coach", () => {
+  const capabilities = capabilitiesFromAccessContext({
+    personalPlan: "free",
+    effectivePersonalPlan: "free",
+    hasCoach: false,
+    clientType: "self_managed",
+    primaryAccess: { type: "personal", id: "free" },
+    capabilities: validCapabilities,
+  });
+
+  assert.equal(capabilities.plan, "free");
+  assert.equal(capabilities.personalPlan, "free");
+  assert.equal(capabilities.effectivePersonalPlan, "free");
+  assert.equal(capabilities.hasCoach, false);
+  assert.equal(capabilities.clientType, "self_managed");
 });
 
 test("resolveEffectiveClientNutritionCapabilities usa endpoint directo 200", async () => {

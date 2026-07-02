@@ -104,14 +104,20 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (!res.ok) {
-      const serverMessage =
+      let serverMessage =
         data?.error ||
         data?.errors ||
         data?.message ||
         data?.code ||
         `Error HTTP ${res.status}`;
+      if (res.status === 413) {
+        serverMessage = data?.error || "La solicitud es demasiado grande. Probá con menos días o un menú más liviano.";
+      } else if (typeof serverMessage === "string" && /^\s*</.test(serverMessage)) {
+        serverMessage = `Error HTTP ${res.status}`;
+      }
       const err = new Error(serverMessage);
       if (data && typeof data === "object") Object.assign(err, data);
+      err.message = serverMessage;
       err.error = serverMessage;
       err.status = res.status;
       throw err;

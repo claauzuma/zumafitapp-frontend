@@ -1605,6 +1605,37 @@
   font-weight:800;
 }
 
+.nf-assignMultiBar{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  align-items:center;
+  gap:8px 12px;
+  border:1px solid rgba(245,215,110,.16);
+  background:
+    radial-gradient(circle at left, rgba(245,215,110,.10), transparent 36%),
+    rgba(255,255,255,.035);
+  border-radius:15px;
+  padding:10px 12px;
+}
+
+.nf-assignMultiBar strong{
+  color:#fff1ae;
+  font-size:13px;
+  font-weight:1000;
+  white-space:nowrap;
+}
+
+.nf-assignMultiBar span{
+  min-width:0;
+  color:#aeb9c7;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:850;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 .nf-assignDayGrid{
   display:grid;
   grid-template-columns:repeat(3, minmax(0,1fr));
@@ -1630,10 +1661,22 @@
   background:
     radial-gradient(circle at top right, rgba(245,215,110,.14), transparent 38%),
     linear-gradient(180deg, rgba(24,34,45,.98), rgba(9,15,22,.98));
+  box-shadow:0 0 0 1px rgba(245,215,110,.08), 0 14px 34px rgba(0,0,0,.24);
 }
 
 .nf-assignDayCard.hasMenu{
   border-color:rgba(90,220,160,.25);
+}
+
+.nf-assignDayCard.notCompatible{
+  border-color:rgba(255,170,100,.22);
+}
+
+.nf-assignDayCard.notCompatible.selected{
+  border-color:rgba(255,170,100,.48);
+  background:
+    radial-gradient(circle at top right, rgba(255,170,100,.15), transparent 38%),
+    linear-gradient(180deg, rgba(28,24,18,.98), rgba(12,13,16,.98));
 }
 
 .nf-assignDayTop{
@@ -1790,6 +1833,18 @@
   font-size:12px;
   line-height:1.4;
   font-weight:850;
+}
+
+.nf-assignWarning span{
+  display:block;
+}
+
+.nf-assignWarning span + span{
+  margin-top:4px;
+}
+
+.nf-assignWarning strong{
+  color:#fff1ae;
 }
 
 .nf-assignHint{
@@ -4667,6 +4722,16 @@ button.ne-quantityStateBadge.manual:focus-visible{
   .nf-assignSectionHead {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .nf-assignMultiBar {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .nf-assignMultiBar strong,
+  .nf-assignMultiBar span {
+    white-space: normal;
   }
 
   .nf-assignDayGrid,

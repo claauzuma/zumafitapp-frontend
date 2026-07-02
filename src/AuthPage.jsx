@@ -1,6 +1,11 @@
-// src/AuthPage.jsx
+﻿// src/AuthPage.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  User,
+} from "lucide-react";
 import { apiFetch } from "./Api.js";
 import { API_BASE } from "./apiCredentials";
 import { fetchAuthMeQuery } from "./authQueries.js";
@@ -9,11 +14,12 @@ import {
   setAuthLogged,
   clearAuthCache,
   getCachedStatus,
-  getCachedToken, // ✅ fallback token
+  getCachedToken, // fallback token
 } from "./authCache.js";
 import BrandLogo from "./ui/BrandLogo.jsx";
+import fondoZumaFit from "./assets/fondozumafit.png";
 
-// Importante para Google: volver acá para que corra /me y redirija por rol.
+// Importante para Google: volver aca para que corra /me y redirija por rol.
 const AUTH_RETURN_PATH = "/auth";
 
 // ---------------- helpers ----------------
@@ -46,7 +52,7 @@ function isProblemBrowser() {
   try {
     const ua = navigator.userAgent || "";
 
-    // Safari “real” (no Chrome/Edge/Opera, etc.)
+    // Safari real (no Chrome/Edge/Opera, etc.)
     const isSafari =
       /Safari/i.test(ua) &&
       !/Chrome|CriOS|Chromium|Edg|EdgiOS|OPR|Opera/i.test(ua);
@@ -97,13 +103,15 @@ export default function AuthPage({ defaultMode = "login" }) {
   const debugIdRef = useRef(Math.random().toString(16).slice(2));
   const problemBrowserRef = useRef(isProblemBrowser());
 
-  // ✅ booting: evita “flash” del form en Safari/WebView cuando hay token/fallback/OAuth
+  // booting: evita flash del form en Safari/WebView cuando hay token/fallback/OAuth
   const [booting, setBooting] = useState(() => {
     if (hasOAuthTokenInUrl()) return true;
     return isProblemBrowser() && !!getCachedToken();
   });
 
-  const [mode, setMode] = useState(defaultMode === "register" ? "register" : "login");
+  const initialMode = defaultMode === "select" ? "select" : defaultMode === "register" ? "register" : "login";
+  const [mode, setMode] = useState(initialMode);
+  const [accountType, setAccountType] = useState("cliente");
 
   const [name, setName] = useState("");
   const [apellido, setApellido] = useState("");
@@ -111,16 +119,17 @@ export default function AuthPage({ defaultMode = "login" }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [peek, setPeek] = useState(false);
   const [remember, setRemember] = useState(true);
   const [tos, setTos] = useState(false);
 
-  // ✅ Verificación por código
+  // Verificacion por codigo
   const [step, setStep] = useState("form"); // "form" | "verify" | "forgot" | "reset"
   const [verifyCode, setVerifyCode] = useState("");
 
-  // ✅ Forgot password states
+  // Forgot password states
   const [fpEmail, setFpEmail] = useState("");
   const [fpCode, setFpCode] = useState("");
   const [fpNewPass, setFpNewPass] = useState("");
@@ -137,7 +146,7 @@ export default function AuthPage({ defaultMode = "login" }) {
   // overlay grande para requests internos
   const [loading, setLoading] = useState(false);
 
-  // ✅ loader chiquito SOLO para click en Google (no overlay)
+  // Loader chiquito SOLO para click en Google (no overlay)
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const [error, setError] = useState(null);
@@ -147,9 +156,35 @@ export default function AuthPage({ defaultMode = "login" }) {
   const oauthHandlingRef = useRef(false);
   const isVerifyLocked = useMemo(() => attemptsLeft <= 0, [attemptsLeft]);
 
+  useEffect(() => {
+    const nextMode = defaultMode === "select" ? "select" : defaultMode === "register" ? "register" : "login";
+    setMode(nextMode);
+  }, [defaultMode, location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === "/forgot-password") {
+      setMode("login");
+      setStep("forgot");
+      setError(null);
+      setSuccess(null);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const invitedEmail = readQueryParam("email");
+    const inviteToken = readQueryParam("invite");
+    if (!invitedEmail && !inviteToken) return;
+
+    if (invitedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(invitedEmail || "").trim())) {
+      setEmail(invitedEmail.trim().toLowerCase());
+    }
+    setMode("register");
+    setSuccess("Tenes una invitacion de coach. Crea tu cuenta con este email y despues vas a poder aceptar o rechazar la invitacion desde ZumaFit.");
+  }, []);
+
   // ---- logs ----
   useEffect(() => {
-    console.log(`🧩 [AuthPage ${debugIdRef.current}] mount`, {
+    console.log(`[AuthPage ${debugIdRef.current}] mount`, {
       API_BASE,
       href: window.location.href,
       pathname: location.pathname,
@@ -163,7 +198,7 @@ export default function AuthPage({ defaultMode = "login" }) {
   }, []);
 
   useEffect(() => {
-    console.log(`🧭 [AuthPage ${debugIdRef.current}] route change`, {
+    console.log(`[AuthPage ${debugIdRef.current}] route change`, {
       pathname: location.pathname,
       search: location.search,
       key: location.key,
@@ -194,10 +229,11 @@ export default function AuthPage({ defaultMode = "login" }) {
     setFpCode("");
     setFpNewPass("");
     setFpNewPass2("");
+    setConfirmPassword("");
 
     setGoogleLoading(false);
 
-    // ✅ si cambias de modo manualmente, dejá booting en false (salvo que problem browser + token fallback)
+    // Si cambias de modo manualmente, deja booting en false salvo fallback/OAuth.
     setBooting(hasOAuthTokenInUrl() || (problemBrowserRef.current && !!getCachedToken()));
   }, [mode]);
 
@@ -207,16 +243,16 @@ export default function AuthPage({ defaultMode = "login" }) {
     return () => clearInterval(t);
   }, [cooldown]);
 
-  // ✅ 1) Retorno OAuth por query: si viene token, lo guardamos y hacemos /me SIN mostrar form
+  // Retorno OAuth por query: si viene token, lo guardamos y hacemos /me sin mostrar form.
   useEffect(() => {
     const oauthError = readQueryParam("error");
     const oauthToken = readQueryParam("token");
     const oauthFlag = readQueryParam("oauth"); // debug
 
-    if (oauthFlag) console.log(`🟣 [OAuth ${debugIdRef.current}] flag oauth=`, oauthFlag);
+    if (oauthFlag) console.log(`[OAuth ${debugIdRef.current}] flag oauth=`, oauthFlag);
 
     if (oauthError) {
-      console.log(`🔴 [OAuth ${debugIdRef.current}] error query:`, oauthError);
+      console.log(`[OAuth ${debugIdRef.current}] error query:`, oauthError);
       oauthHandlingRef.current = false;
       setError(decodeURIComponent(oauthError));
       removeQueryParams(["error", "token", "oauth"]);
@@ -225,32 +261,32 @@ export default function AuthPage({ defaultMode = "login" }) {
     }
 
     if (oauthToken || oauthFlag) {
-      console.log(`🟡 [OAuth ${debugIdRef.current}] token por query -> guardando fallback y resolviendo /me sin flash`);
-      // ✅ bloqueá UI (evita ver el form)
+      console.log(`[OAuth ${debugIdRef.current}] token por query -> guardando fallback y resolviendo /me sin flash`);
+      // Bloquea UI para evitar ver el form.
       oauthHandlingRef.current = true;
       setBooting(true);
 
-      // ✅ guarda token fallback
+      // Guarda token fallback.
       clearPrivateQueryCache();
       if (oauthToken) setAuthLogged(null, oauthToken);
 
-      // ✅ limpiá la URL (no dejes token en la barra)
+      // Limpia la URL para no dejar token en la barra.
       removeQueryParams(["token", "error", "oauth"]);
 
-      // ✅ ahora resolvemos /me y redirigimos (sin recargar)
+      // Ahora resolvemos /me y redirigimos sin recargar.
       (async () => {
         try {
           const user = await fetchAuthMeQuery({ timeoutMs: 8000 });
           if (!user) throw new Error("No se pudo validar la sesion de Google");
           const role = normalizeRole(user?.role || user?.rol);
 
-          console.log(`🟢 [OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
+          console.log(`[OAuth ${debugIdRef.current}] /me OK luego de token query`, { role, user });
 
           setAuthLogged(user);
           setAuthUserQueryData(user);
          navigate(getHomeByUser(user), { replace: true });
         } catch (err) {
-          console.log(`🔴 [OAuth ${debugIdRef.current}] /me FAIL luego de token query`, {
+          console.log(`[OAuth ${debugIdRef.current}] /me FAIL luego de token query`, {
             status: err?.status,
             message: err?.message,
             err,
@@ -258,8 +294,8 @@ export default function AuthPage({ defaultMode = "login" }) {
           clearAuthCache();
           clearPrivateQueryCache();
           oauthHandlingRef.current = false;
-          setError("No se pudo completar el login con Google. Probá de nuevo.");
-          // Si falla, dejá que el usuario vea el form
+          setError("No se pudo completar el login con Google. Proba de nuevo.");
+          // Si falla, deja que el usuario vea el form.
           setBooting(false);
         }
       })();
@@ -269,7 +305,7 @@ export default function AuthPage({ defaultMode = "login" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
-  // ✅ 2) Auto-login: si ya hay cookie o token fallback, probamos /me
+  // Auto-login: si ya hay cookie o token fallback, probamos /me.
   useEffect(() => {
     if (step !== "form") return;
 
@@ -289,10 +325,10 @@ export default function AuthPage({ defaultMode = "login" }) {
           return;
         }
 
-        // ✅ si es Safari/WebView y hay token fallback, evita el form hasta resolver
+        // Si es Safari/WebView y hay token fallback, evita el form hasta resolver.
         if (isPB && hasFallbackToken) setBooting(true);
 
-        console.log(`🟡 [AuthPage ${debugIdRef.current}] probando /api/usuarios/auth/me ...`, {
+        console.log(`[AuthPage ${debugIdRef.current}] probando /api/usuarios/auth/me ...`, {
           step,
           mode,
           href: window.location.href,
@@ -307,12 +343,12 @@ export default function AuthPage({ defaultMode = "login" }) {
 
         const role = normalizeRole(user?.role || user?.rol);
 
-        console.log(`🟢 [AuthPage ${debugIdRef.current}] /me OK`, { role, user });
+        console.log(`[AuthPage ${debugIdRef.current}] /me OK`, { role, user });
 
         setAuthLogged(user);
         setAuthUserQueryData(user);
 
-// ✅ una vez que tenemos /me, ya no hay “flash”
+// Una vez que tenemos /me, ya no hay flash.
 setBooting(false);
 
 navigate(getHomeByUser(user), { replace: true });
@@ -320,7 +356,7 @@ navigate(getHomeByUser(user), { replace: true });
       } catch (err) {
         if (cancelled) return;
 
-        console.log(`🔴 [AuthPage ${debugIdRef.current}] /me FAIL`, {
+        console.log(`[AuthPage ${debugIdRef.current}] /me FAIL`, {
           status: err?.status,
           message: err?.message,
           err,
@@ -334,7 +370,7 @@ navigate(getHomeByUser(user), { replace: true });
           clearPrivateQueryCache();
         }
 
-        // ✅ si falló y estamos en booting, dejá ver el form (pero sin flash previo)
+        // Si fallo y estamos en booting, deja ver el form sin flash previo.
         setBooting(false);
       }
     })();
@@ -344,11 +380,11 @@ navigate(getHomeByUser(user), { replace: true });
     };
   }, [navigate, step, mode, location.key]);
 
-  // ✅ Google: feedback inmediato, sin overlay, sin “flash” en Safari porque booting cubrirá el retorno
+  // Google: feedback inmediato, sin overlay; booting cubre el retorno.
   function loginWithGoogle() {
     if (googleLoading || loading) return;
 
-    // ✅ podés limpiar estado/user/role (no rompe Chrome)
+    // Podemos limpiar estado/user/role sin romper Chrome.
     clearAuthCache();
     clearPrivateQueryCache();
 
@@ -389,13 +425,14 @@ navigate(getHomeByUser(user), { replace: true });
     setSuccess(null);
 
     if (mode === "register") {
-      if (name.trim().length < 2) return setError("Ingresá tu nombre (2+ caracteres)");
-      if (apellido.trim().length < 2) return setError("Ingresá tu apellido (2+ caracteres)");
-      if (!birthDate) return setError("Ingresá tu fecha de nacimiento");
-      if (!tos) return setError("Aceptá los Términos para continuar");
+      if (name.trim().length < 2) return setError("Ingresa tu nombre (2+ caracteres)");
+      if (apellido.trim().length < 2) return setError("Ingresa tu apellido (2+ caracteres)");
+      if (!birthDate) return setError("Ingresa tu fecha de nacimiento");
+      if (!tos) return setError("Acepta los terminos para continuar");
+      if (password !== confirmPassword) return setError("Las contraseñas no coinciden");
     }
 
-    if (!isEmailValid(email)) return setError("Email inválido");
+    if (!isEmailValid(email)) return setError("Email invalido");
     if (password.length < 6) return setError("La contraseña debe tener 6+ caracteres");
 
     setLoading(true);
@@ -403,7 +440,7 @@ navigate(getHomeByUser(user), { replace: true });
     try {
       if (mode === "login") {
         try {
-          console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/login`, { email, remember });
+          console.log(`[AuthPage ${debugIdRef.current}] POST /auth/login`, { email, remember });
 
           // 1) Login
           const r = await apiFetch("/api/usuarios/auth/login", {
@@ -419,7 +456,7 @@ navigate(getHomeByUser(user), { replace: true });
           const user = await fetchAuthMeQuery({ timeoutMs: 8000 });
           const role = normalizeRole(user?.role || user?.rol);
 
-          console.log(`🟢 [AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
+          console.log(`[AuthPage ${debugIdRef.current}] login OK ->`, { role, user });
 
           setAuthLogged(user);
           setAuthUserQueryData(user);
@@ -429,7 +466,7 @@ navigate(getHomeByUser(user), { replace: true });
 return;
 
         } catch (err) {
-          console.log(`🔴 [AuthPage ${debugIdRef.current}] login FAIL`, {
+          console.log(`[AuthPage ${debugIdRef.current}] login FAIL`, {
             status: err?.status,
             message: err?.message,
             pending: err?.pending,
@@ -438,7 +475,7 @@ return;
 
           const pending =
             err?.pending === true ||
-            String(err?.message || "").toLowerCase().includes("verificación pendiente") ||
+            String(err?.message || "").toLowerCase().includes("verificacion pendiente") ||
             String(err?.message || "").toLowerCase().includes("verificacion pendiente");
 
           if (pending) {
@@ -449,7 +486,7 @@ return;
             setPassword("");
             setPeek(false);
             setError(null);
-            setSuccess("Tenés una verificación pendiente. Ingresá el código o reenviá uno nuevo ✅");
+            setSuccess("Tenes una verificacion pendiente. Ingresa el codigo o reenvia uno nuevo.");
             return;
           }
 
@@ -458,7 +495,7 @@ return;
         }
       }
 
-      console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/register`, { email });
+      console.log(`[AuthPage ${debugIdRef.current}] POST /auth/register`, { email });
 
       await apiFetch("/api/usuarios/auth/register", {
         method: "POST",
@@ -482,9 +519,9 @@ return;
       setCooldown(60);
       setVerifiedBanner(false);
 
-      setSuccess("Te enviamos un código de 6 dígitos por email. Ingresalo para verificar tu cuenta ✅");
+      setSuccess("Te enviamos un codigo de 6 digitos por email. Ingresalo para verificar tu cuenta.");
     } catch (err) {
-      console.log(`🔴 [AuthPage ${debugIdRef.current}] register FAIL`, {
+      console.log(`[AuthPage ${debugIdRef.current}] register FAIL`, {
         status: err?.status,
         message: err?.message,
         pending: err?.pending,
@@ -493,17 +530,17 @@ return;
 
       const msg = String(err?.message || "");
       if (
-        msg.toLowerCase().includes("verificación pendiente") ||
         msg.toLowerCase().includes("verificacion pendiente") ||
-        msg.toLowerCase().includes("ya hay una verificación pendiente") ||
+        msg.toLowerCase().includes("verificacion pendiente") ||
+        msg.toLowerCase().includes("ya hay una verificacion pendiente") ||
         err?.pending === true
       ) {
         setStep("verify");
         setCooldown(0);
         setAttemptsLeft(MAX_ATTEMPTS);
-        setSuccess("Ya tenés una verificación pendiente. Ingresá el código o reenviá uno nuevo ✅");
+        setSuccess("Ya tenes una verificacion pendiente. Ingresa el codigo o reenvia uno nuevo.");
       } else {
-        setError(err?.message || "Ocurrió un error");
+        setError(err?.message || "Ocurrio un error");
       }
     } finally {
       setLoading(false);
@@ -518,17 +555,17 @@ return;
     setSuccess(null);
 
     const code = String(verifyCode || "").trim();
-    if (!email) return setError("Ingresá el email con el que te registraste");
-    if (!/^\d{6}$/.test(code)) return setError("Ingresá el código de 6 dígitos");
+    if (!email) return setError("Ingresa el email con el que te registraste");
+    if (!/^\d{6}$/.test(code)) return setError("Ingresa el codigo de 6 digitos");
 
     if (isVerifyLocked) {
-      setError("Alcanzaste el máximo de intentos. Reenviá el código para continuar.");
+      setError("Alcanzaste el maximo de intentos. Reenvia el codigo para continuar.");
       return;
     }
 
     setLoading(true);
     try {
-      console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/verify-email`, { email });
+      console.log(`[AuthPage ${debugIdRef.current}] POST /auth/verify-email`, { email });
 
       await apiFetch("/api/usuarios/auth/verify-email", {
         method: "POST",
@@ -536,7 +573,7 @@ return;
       });
 
       setVerifiedBanner(true);
-      setSuccess("✅ Email verificado correctamente. Tu cuenta ya está activa.");
+      setSuccess("Email verificado correctamente. Tu cuenta ya esta activa.");
 
       setTimeout(() => {
         skipClearOnModeChangeRef.current = true;
@@ -546,10 +583,10 @@ return;
         setAttemptsLeft(MAX_ATTEMPTS);
         setCooldown(0);
         setVerifiedBanner(false);
-        setSuccess("Cuenta creada exitosamente ✅ Ahora iniciá sesión");
+        setSuccess("Cuenta creada exitosamente. Ahora inicia sesion");
       }, 900);
     } catch (err) {
-      console.log(`🔴 [AuthPage ${debugIdRef.current}] verify FAIL`, {
+      console.log(`[AuthPage ${debugIdRef.current}] verify FAIL`, {
         status: err?.status,
         message: err?.message,
         err,
@@ -557,24 +594,24 @@ return;
 
       const msg = String(err?.message || "");
 
-      if (msg.toLowerCase().includes("máximo de intentos") || msg.toLowerCase().includes("demasiados intentos")) {
+      if (msg.toLowerCase().includes("maximo de intentos") || msg.toLowerCase().includes("demasiados intentos")) {
         setAttemptsLeft(0);
-        setError("Dígitos incorrectos. Alcanzaste el máximo de intentos. Reenviá el código.");
+        setError("Digitos incorrectos. Alcanzaste el maximo de intentos. Reenvia el codigo.");
         return;
       }
-      if (msg.toLowerCase().includes("expiró") || msg.toLowerCase().includes("expiro")) {
-        setError("El código expiró. Reenviá el código para continuar.");
+      if (msg.toLowerCase().includes("expiro") || msg.toLowerCase().includes("expirado")) {
+        setError("El codigo expiro. Reenvia el codigo para continuar.");
         return;
       }
       if (
-        msg.toLowerCase().includes("no hay verificación pendiente") ||
+        msg.toLowerCase().includes("no hay verificacion pendiente") ||
         msg.toLowerCase().includes("no hay verificacion pendiente")
       ) {
-        setError("No hay una verificación pendiente para ese email. Volvé y registrate de nuevo.");
+        setError("No hay una verificacion pendiente para ese email. Volve y registrate de nuevo.");
         return;
       }
       if (
-        msg.toLowerCase().includes("ya está registrado") ||
+        msg.toLowerCase().includes("ya esta registrado") ||
         msg.toLowerCase().includes("ya esta registrado") ||
         msg.toLowerCase().includes("ya registrado")
       ) {
@@ -582,14 +619,14 @@ return;
         setMode("login");
         setStep("form");
         setError(null);
-        setSuccess("Ese email ya está registrado ✅ Iniciá sesión.");
+        setSuccess("Ese email ya esta registrado. Inicia sesion.");
         return;
       }
 
       setAttemptsLeft((prev) => {
         const next = Math.max(0, prev - 1);
-        if (next <= 0) setError("Dígitos incorrectos. Alcanzaste el máximo de intentos. Reenviá el código.");
-        else setError("Dígitos incorrectos, volver a intentar.");
+        if (next <= 0) setError("Digitos incorrectos. Alcanzaste el maximo de intentos. Reenvia el codigo.");
+        else setError("Digitos incorrectos, volve a intentar.");
         return next;
       });
     } finally {
@@ -604,13 +641,13 @@ return;
     setSuccess(null);
 
     if (!email) {
-      setError("Ingresá tu email para reenviar el código");
+      setError("Ingresa tu email para reenviar el codigo");
       return;
     }
 
     setResendLoading(true);
     try {
-      console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/resend-code`, { email });
+      console.log(`[AuthPage ${debugIdRef.current}] POST /auth/resend-code`, { email });
 
       await apiFetch("/api/usuarios/auth/resend-code", {
         method: "POST",
@@ -618,13 +655,13 @@ return;
         timeoutMs: 60000,
       });
 
-      setSuccess("Listo ✅ Te reenviamos un nuevo código");
+      setSuccess("Listo. Te reenviamos un nuevo codigo");
       setCooldown(60);
       setAttemptsLeft(MAX_ATTEMPTS);
       setVerifyCode("");
       setVerifiedBanner(false);
     } catch (err) {
-      console.log(`🔴 [AuthPage ${debugIdRef.current}] resend FAIL`, {
+      console.log(`[AuthPage ${debugIdRef.current}] resend FAIL`, {
         status: err?.status,
         message: err?.message,
         err,
@@ -633,12 +670,12 @@ return;
       const msg = String(err?.message || "");
       if (
         msg.toLowerCase().includes("1 minuto") ||
-        msg.toLowerCase().includes("esperá") ||
+        msg.toLowerCase().includes("espera") ||
         msg.toLowerCase().includes("espera")
       ) {
         setCooldown((c) => (c > 0 ? c : 60));
       }
-      setError(err?.message || "No se pudo reenviar el código");
+      setError(err?.message || "No se pudo reenviar el codigo");
     } finally {
       setResendLoading(false);
     }
@@ -652,11 +689,11 @@ return;
     setSuccess(null);
 
     const mail = String(fpEmail || "").trim();
-    if (!isEmailValid(mail)) return setError("Email inválido");
+    if (!isEmailValid(mail)) return setError("Email invalido");
 
     setLoading(true);
     try {
-      console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/forgot-password`, { mail });
+      console.log(`[AuthPage ${debugIdRef.current}] POST /auth/forgot-password`, { mail });
 
       await apiFetch("/api/usuarios/auth/forgot-password", {
         method: "POST",
@@ -664,18 +701,18 @@ return;
         timeoutMs: 60000,
       });
 
-      setSuccess("Si el email existe, te enviamos un código ✅");
+      setSuccess("Si el email existe, te enviamos un codigo.");
       setStep("reset");
       setFpCode("");
       setFpNewPass("");
       setFpNewPass2("");
     } catch (err) {
-      console.log(`🔴 [AuthPage ${debugIdRef.current}] forgot FAIL`, {
+      console.log(`[AuthPage ${debugIdRef.current}] forgot FAIL`, {
         status: err?.status,
         message: err?.message,
         err,
       });
-      setError(err?.message || "No se pudo enviar el código");
+      setError(err?.message || "No se pudo enviar el codigo");
     } finally {
       setLoading(false);
     }
@@ -691,14 +728,14 @@ return;
     const mail = String(fpEmail || "").trim();
     const code = String(fpCode || "").trim();
 
-    if (!isEmailValid(mail)) return setError("Email inválido");
-    if (!/^\d{6}$/.test(code)) return setError("Ingresá el código de 6 dígitos");
+    if (!isEmailValid(mail)) return setError("Email invalido");
+    if (!/^\d{6}$/.test(code)) return setError("Ingresa el codigo de 6 digitos");
     if ((fpNewPass || "").length < 6) return setError("La contraseña debe tener 6+ caracteres");
     if (fpNewPass !== fpNewPass2) return setError("Las contraseñas no coinciden");
 
     setLoading(true);
     try {
-      console.log(`🟡 [AuthPage ${debugIdRef.current}] POST /auth/reset-password`, { mail });
+      console.log(`[AuthPage ${debugIdRef.current}] POST /auth/reset-password`, { mail });
 
       await apiFetch("/api/usuarios/auth/reset-password", {
         method: "POST",
@@ -710,14 +747,14 @@ return;
       setStep("form");
       setPassword("");
       setPeek(false);
-      setSuccess("Contraseña actualizada ✅ Ahora iniciá sesión");
+      setSuccess("Contraseña actualizada. Ahora inicia sesion");
     } catch (err) {
-      console.log(`🔴 [AuthPage ${debugIdRef.current}] reset FAIL`, {
+      console.log(`[AuthPage ${debugIdRef.current}] reset FAIL`, {
         status: err?.status,
         message: err?.message,
         err,
       });
-      setError(err?.message || "Código inválido o expirado");
+      setError(err?.message || "Codigo invalido o expirado");
     } finally {
       setLoading(false);
     }
@@ -726,32 +763,64 @@ return;
   const loadingText =
     mode === "login"
       ? step === "forgot"
-        ? "Enviando código…"
+        ? "Enviando codigo..."
         : step === "reset"
-        ? "Actualizando contraseña…"
-        : "Iniciando sesión…"
+        ? "Actualizando contraseña..."
+        : "Iniciando sesion..."
       : step === "verify"
-      ? "Verificando código…"
-      : "Creando tu cuenta…";
+      ? "Verificando codigo..."
+      : "Creando tu cuenta...";
 
   const loadingSub =
     mode === "login"
       ? step === "forgot"
-        ? "Si el email existe, te llegará un código."
+        ? "Si el email existe, te llegara un codigo."
         : step === "reset"
         ? "Actualizando tu contraseña de forma segura."
         : "Verificando credenciales y preparando tu panel."
       : step === "verify"
-      ? "Validando el código y activando tu cuenta."
+      ? "Validando el codigo y activando tu cuenta."
       : "Guardando tu cuenta y dejando todo listo.";
 
   const verifyHint = useMemo(() => {
-    if (verifiedBanner) return "¡Perfecto! Ya está verificado.";
-    if (isVerifyLocked) return "Bloqueado por intentos. Reenviá el código para seguir.";
+    if (verifiedBanner) return "Perfecto. Ya esta verificado.";
+    if (isVerifyLocked) return "Bloqueado por intentos. Reenvia el codigo para seguir.";
     return `Te quedan ${attemptsLeft} intento${attemptsLeft === 1 ? "" : "s"}.`;
   }, [attemptsLeft, isVerifyLocked, verifiedBanner]);
 
-  // ✅ Si estamos “booting”, no mostramos el form (evita el flash en Safari/WebView)
+  function goLogin() {
+    setMode("login");
+    setPeek(false);
+    setStep("form");
+    navigate("/auth/login");
+  }
+
+  function goRegisterChoice() {
+    setMode("select");
+    setPeek(false);
+    setStep("form");
+    navigate("/auth/register");
+  }
+
+  function goClientRegister() {
+    setAccountType("cliente");
+    setMode("register");
+    setPeek(false);
+    setStep("form");
+    navigate("/auth/register/client");
+  }
+
+  function goCoachRegister() {
+    setAccountType("coach");
+    navigate("/auth/register/coach");
+  }
+
+  function continueSelectedAccount() {
+    if (accountType === "coach") goCoachRegister();
+    else goClientRegister();
+  }
+
+  // Si estamos booting, no mostramos el form para evitar flash en Safari/WebView.
   if (booting) {
     return (
       <div className="auth-page">
@@ -762,7 +831,7 @@ return;
             <div className="ap-overlay-row">
               <div className="ap-spinner" />
               <div>
-                <p className="ap-oload-title">Cargando sesión…</p>
+                <p className="ap-oload-title">Cargando sesion...</p>
                 <p className="ap-oload-sub">Estamos verificando tu acceso.</p>
               </div>
             </div>
@@ -774,7 +843,7 @@ return;
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" style={{ "--auth-hero-bg": `url(${fondoZumaFit})` }}>
       <style>{AUTH_CSS}</style>
 
       {loading && (
@@ -798,10 +867,13 @@ return;
           <button className="ap-brand" onClick={() => navigate("/")} type="button" disabled={loading || googleLoading}>
             <BrandLogo className="ap-brandLogo" size="client" priority />
           </button>
-
-
         </div>
       </header>
+
+      <section className="ap-hero" aria-label="ZumaFit">
+        <BrandLogo className="ap-heroLogo" size="client" priority />
+        <p>Tu plan, tus macros, <strong>tu progreso.</strong></p>
+      </section>
 
       <div className="ap-tabs-wrap">
         <div className="ap-tabs" role="tablist" aria-label="Tipo de acceso">
@@ -809,11 +881,7 @@ return;
             role="tab"
             aria-selected={mode === "login"}
             className={`ap-tab ${mode === "login" ? "active" : ""}`}
-            onClick={() => {
-              setMode("login");
-              setPeek(false);
-              setStep("form");
-            }}
+            onClick={goLogin}
             type="button"
             disabled={loading || googleLoading}
           >
@@ -821,13 +889,9 @@ return;
           </button>
           <button
             role="tab"
-            aria-selected={mode === "register"}
-            className={`ap-tab ${mode === "register" ? "active" : ""}`}
-            onClick={() => {
-              setMode("register");
-              setPeek(false);
-              setStep("form");
-            }}
+            aria-selected={mode === "select" || mode === "register"}
+            className={`ap-tab ${mode === "select" || mode === "register" ? "active" : ""}`}
+            onClick={goRegisterChoice}
             type="button"
             disabled={loading || googleLoading}
           >
@@ -839,7 +903,9 @@ return;
       <main className="ap-main">
         <section className="ap-card" aria-labelledby="auth-title">
           <h1 id="auth-title" className="ap-title">
-            {mode === "login"
+            {mode === "select"
+              ? "Elegí cómo querés usar ZumaFit"
+              : mode === "login"
               ? step === "forgot"
                 ? "Recuperá tu cuenta"
                 : step === "reset"
@@ -847,10 +913,12 @@ return;
                 : "Bienvenido de nuevo"
               : step === "verify"
               ? "Verificá tu email"
-              : "Empezá gratis"}
+              : "Creá tu cuenta y empezá tu transformación"}
           </h1>
           <p className="ap-sub">
-            {mode === "login"
+            {mode === "select"
+              ? "Así podemos personalizar tu experiencia desde el primer día."
+              : mode === "login"
               ? step === "forgot"
                 ? "Te vamos a mandar un código si el email existe."
                 : step === "reset"
@@ -861,7 +929,88 @@ return;
               : "Registrate con tu email o con Google."}
           </p>
 
-          {step === "form" && (
+          {mode === "select" && step === "form" ? (
+            <div className="ap-account-select">
+              <div className="ap-register-steps" aria-label="Pasos de registro">
+                <span className="active">1</span>
+                <strong>Elegí tu cuenta</strong>
+                <span>2</span>
+                <strong>Completá tus datos</strong>
+              </div>
+
+              <fieldset className="ap-choice-fieldset">
+                <legend className="sr-only">Tipo de cuenta</legend>
+                <label className={`ap-choice-card ${accountType === "cliente" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="accountType"
+                    value="cliente"
+                    checked={accountType === "cliente"}
+                    onChange={() => setAccountType("cliente")}
+                  />
+                  <span className="ap-choice-icon"><User size={34} /></span>
+                  <span className="ap-choice-copy">
+                    <strong>Quiero ser cliente</strong>
+                    <small>Nutrición, menús, Tracking, rutina y progreso personal.</small>
+                  </span>
+                  <span className="ap-choice-radio" aria-hidden="true" />
+                </label>
+
+                <label className={`ap-choice-card ${accountType === "coach" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="accountType"
+                    value="coach"
+                    checked={accountType === "coach"}
+                    onChange={() => setAccountType("coach")}
+                  />
+                  <span className="ap-choice-icon"><BriefcaseBusiness size={34} /></span>
+                  <span className="ap-choice-copy">
+                    <strong>Quiero ser coach</strong>
+                    <small>Gestioná clientes, acompañamiento y seguimiento profesional.</small>
+                  </span>
+                  <span className="ap-choice-radio" aria-hidden="true" />
+                </label>
+              </fieldset>
+
+              {accountType === "cliente" ? (
+                <button
+                  className={`ap-social-btn ${googleLoading ? "is-loading" : ""}`}
+                  type="button"
+                  onClick={loginWithGoogle}
+                  disabled={loading || googleLoading}
+                >
+                  <span className="ap-google-g" aria-hidden="true">
+                    <span className="g1">G</span>
+                    <span className="g2">o</span>
+                    <span className="g3">o</span>
+                    <span className="g4">g</span>
+                    <span className="g5">l</span>
+                    <span className="g6">e</span>
+                  </span>
+                  <span>Continuar con Google</span>
+                  {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
+                </button>
+              ) : (
+                <div className="ap-coach-note">
+                  El registro coach se completa como solicitud profesional y queda pendiente de revisión administrativa.
+                </div>
+              )}
+
+              <button className="btn submit ap-cta-arrow" type="button" onClick={continueSelectedAccount}>
+                Continuar <ArrowRight size={22} />
+              </button>
+
+              <p className="ap-muted ap-small ap-centered">
+                Ya tengo cuenta ·{" "}
+                <button type="button" className="ap-link-btn" onClick={goLogin}>
+                  Iniciar sesión
+                </button>
+              </p>
+            </div>
+          ) : null}
+
+          {mode !== "select" && step === "form" && (
             <div className="ap-social">
               <button
                 className={`ap-social-btn ${googleLoading ? "is-loading" : ""}`}
@@ -878,18 +1027,20 @@ return;
                   <span className="g5">l</span>
                   <span className="g6">e</span>
                 </span>
-                <span>Continuar con Google</span>
+                <span>{mode === "register" ? "Crear cuenta con Google" : "Continuar con Google"}</span>
                 {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
               </button>
             </div>
           )}
 
+          {mode !== "select" ? (
           <div className="ap-divider">
             <span>con email</span>
           </div>
+          ) : null}
 
           {/* FORM LOGIN/REGISTER */}
-          {step === "form" && (
+          {mode !== "select" && step === "form" && (
             <form className="ap-form" onSubmit={handleSubmit} noValidate>
               {mode === "register" && (
                 <>
@@ -967,6 +1118,24 @@ return;
                 </div>
               </label>
 
+              {mode === "register" ? (
+                <label className="ap-field">
+                  <span>Confirmar contraseña</span>
+                  <div className="ap-pass-row">
+                    <input
+                      type={peek ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      disabled={loading || googleLoading}
+                    />
+                    <span className="ap-pass-spacer" aria-hidden="true" />
+                  </div>
+                </label>
+              ) : null}
+
               {mode === "login" ? (
                 <div className="ap-row-between">
                   <label className="ap-check">
@@ -987,6 +1156,7 @@ return;
                       setError(null);
                       setSuccess(null);
                       setFpEmail(email || "");
+                      navigate("/forgot-password");
                     }}
                     disabled={loading || googleLoading}
                   >
@@ -1023,7 +1193,7 @@ return;
               )}
 
               <button className="btn submit" type="submit" disabled={loading || googleLoading}>
-                {loading ? "Procesando…" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+                {loading ? "Procesando..." : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
               </button>
 
               {mode === "login" ? (
@@ -1032,11 +1202,7 @@ return;
                   <button
                     type="button"
                     className="ap-link-btn"
-                    onClick={() => {
-                      setMode("register");
-                      setPeek(false);
-                      setStep("form");
-                    }}
+                    onClick={goRegisterChoice}
                     disabled={loading || googleLoading}
                   >
                     Registrate
@@ -1048,11 +1214,7 @@ return;
                   <button
                     type="button"
                     className="ap-link-btn"
-                    onClick={() => {
-                      setMode("login");
-                      setPeek(false);
-                      setStep("form");
-                    }}
+                    onClick={goLogin}
                     disabled={loading || googleLoading}
                   >
                     Iniciá sesión
@@ -1066,7 +1228,7 @@ return;
                   <button
                     type="button"
                     className="ap-link-btn"
-                    onClick={() => navigate("/registro-profesional")}
+                    onClick={goCoachRegister}
                     disabled={loading || googleLoading}
                   >
                     Registrate como profesional
@@ -1129,7 +1291,7 @@ return;
               )}
 
               <button className="btn submit" type="submit" disabled={loading || verifiedBanner || isVerifyLocked}>
-                {isVerifyLocked ? "Verificación bloqueada" : loading ? "Verificando…" : "Verificar"}
+                {isVerifyLocked ? "Verificación bloqueada" : loading ? "Verificando..." : "Verificar"}
               </button>
 
               <div className="ap-verify-actions">
@@ -1140,10 +1302,10 @@ return;
                   disabled={loading || resendLoading || cooldown > 0}
                   title={cooldown > 0 ? `Esperá ${cooldown}s` : "Reenviar código"}
                 >
-                  {resendLoading ? "Reenviando…" : cooldown > 0 ? `Reenviar en ${cooldown}s` : "Reenviar código"}
+                  {resendLoading ? "Reenviando..." : cooldown > 0 ? `Reenviar en ${cooldown}s` : "Reenviar código"}
                 </button>
 
-                <span className="ap-muted ap-small">•</span>
+                <span className="ap-muted ap-small">·</span>
 
                 <button
                   type="button"
@@ -1179,7 +1341,7 @@ return;
               {error && <div className="ap-error" role="alert">{error}</div>}
 
               <button className="btn submit" type="submit" disabled={loading}>
-                {loading ? "Enviando…" : "Enviar código"}
+                {loading ? "Enviando..." : "Enviar código"}
               </button>
 
               <div className="ap-verify-actions">
@@ -1256,7 +1418,7 @@ return;
               {error && <div className="ap-error" role="alert">{error}</div>}
 
               <button className="btn submit" type="submit" disabled={loading}>
-                {loading ? "Actualizando…" : "Cambiar contraseña"}
+                {loading ? "Actualizando..." : "Cambiar contraseña"}
               </button>
 
               <div className="ap-verify-actions">
@@ -1279,7 +1441,7 @@ return;
       </main>
 
       <footer className="ap-foot">
-        <p className="ap-muted">© {new Date().getFullYear()} ZumaFit • Privacidad • Términos</p>
+        <p className="ap-muted">© {new Date().getFullYear()} ZumaFit · Privacidad · Términos</p>
       </footer>
     </div>
   );
@@ -1291,280 +1453,461 @@ return;
 
 const AUTH_CSS = `
 :root{
-  --bg:#090909;
-  --fg:#eaeaea;
-  --card:linear-gradient(180deg,rgba(18,18,18,.98),rgba(10,10,10,.98));
-  --panel:#101010;
-  --line:rgba(255,255,255,.08);
-  --muted:#b9c0ca;
-  --accent:#f5d76e;
+  --auth-bg:#020507;
+  --auth-surface:rgba(9,14,20,.92);
+  --auth-surface-soft:rgba(18,24,31,.82);
+  --auth-border:rgba(255,211,83,.24);
+  --auth-gold:#f4c542;
+  --auth-gold-soft:#ffe178;
+  --auth-text:#f7f7f7;
+  --auth-muted:#a7adb5;
 }
-* { box-sizing: border-box; }
-html, body { margin:0; padding:0; background: var(--bg); color: var(--fg); }
+*{ box-sizing:border-box; }
+html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-text); }
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .auth-page{
   min-height:100dvh;
+  color:var(--auth-text);
   background:
-    radial-gradient(760px 340px at 50% -120px, rgba(245,215,110,.10), transparent 64%),
-    var(--bg);
-  color:var(--fg);
+    radial-gradient(circle at 50% -12%, rgba(244,197,66,.16), transparent 34%),
+    linear-gradient(180deg,#020507,#05070a 55%,#020507);
   display:flex;
   flex-direction:column;
 }
 .ap-nav{
-  position:sticky;
-  top:0;
-  z-index:40;
-  border-bottom:1px solid var(--line);
-  background:rgba(9,9,9,.90);
-  backdrop-filter:saturate(145%) blur(14px);
+  position:absolute;
+  inset:0 0 auto 0;
+  z-index:4;
+  pointer-events:none;
 }
-.ap-nav-inner{ max-width:1120px; margin:0 auto; padding:12px 18px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-.ap-brand{ display:flex; align-items:center; gap:11px; text-decoration:none; color:#f5d98a; font-weight:900; letter-spacing:.2px; background:transparent; border:none; cursor:pointer; padding:0; min-width:0; }
-.ap-brand-mark{
-  width:38px;
-  height:38px;
-  border-radius:14px;
-  border:1px solid rgba(245,215,110,.22);
-  background:linear-gradient(180deg, rgba(245,215,110,.12), rgba(255,255,255,.03));
-  color:#f5d98a;
+.ap-nav-inner{
+  width:min(960px,100%);
+  margin:0 auto;
+  padding:16px clamp(14px,4vw,28px);
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+}
+.ap-brand{
+  pointer-events:auto;
+  border:0;
+  background:transparent;
+  padding:0;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+}
+.ap-brandLogo .brand-logo-img{ height:clamp(42px,8vw,60px); max-width:min(230px,60vw); }
+.ap-hero{
+  min-height:240px;
+  padding:86px 18px 52px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  background:
+    linear-gradient(180deg, rgba(2,5,8,.20) 0%, rgba(2,5,8,.34) 42%, rgba(2,5,8,.94) 100%),
+    radial-gradient(circle at 50% 38%, rgba(244,197,66,.12), transparent 38%),
+    var(--auth-hero-bg);
+  background-size:cover;
+  background-position:center 24%;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+.ap-heroLogo .brand-logo-img{ height:clamp(58px,12vw,96px); max-width:min(420px,82vw); }
+.ap-hero p{
+  margin:18px 0 0;
+  color:rgba(247,247,247,.78);
+  font-size:clamp(14px,3vw,22px);
+  font-weight:800;
+  letter-spacing:.20em;
+  text-transform:uppercase;
+}
+.ap-hero strong{ color:var(--auth-gold-soft); }
+.ap-tabs-wrap{
+  width:min(900px,100%);
+  margin:-34px auto 0;
+  padding:0 14px;
+  position:relative;
+  z-index:5;
+}
+.ap-tabs{
+  display:flex;
+  gap:0;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:24px;
+  background:rgba(10,15,20,.82);
+  padding:6px;
+  box-shadow:0 20px 60px rgba(0,0,0,.40);
+  backdrop-filter:blur(18px);
+}
+.ap-tab{
+  flex:1 1 0;
+  min-height:62px;
+  border-radius:19px;
+  border:1px solid transparent;
+  background:transparent;
+  color:rgba(247,247,247,.72);
+  font-size:clamp(15px,3vw,22px);
+  font-weight:1000;
+  cursor:pointer;
+}
+.ap-tab.active{
+  color:var(--auth-gold-soft);
+  border-color:rgba(255,211,83,.50);
+  background:linear-gradient(135deg, rgba(244,197,66,.18), rgba(255,255,255,.04));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+}
+.ap-tab:focus-visible,.ap-link-btn:focus-visible,.ap-social-btn:focus-visible,.btn.submit:focus-visible,.ap-peek:focus-visible,.ap-choice-card:focus-within{
+  outline:none;
+  box-shadow:0 0 0 4px rgba(244,197,66,.16);
+}
+.ap-tab:disabled{ opacity:.6; cursor:not-allowed; }
+.ap-main{
+  width:min(900px,100%);
+  margin:0 auto;
+  padding:0 14px 28px;
+}
+.ap-card{
+  width:100%;
+  border:1px solid var(--auth-border);
+  border-radius:0 0 30px 30px;
+  background:
+    radial-gradient(circle at 16% 0, rgba(244,197,66,.10), transparent 34%),
+    linear-gradient(145deg, rgba(18,24,31,.92), rgba(4,8,13,.96));
+  box-shadow:0 26px 80px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.05);
+  padding:clamp(26px,6vw,56px);
+  backdrop-filter:blur(14px);
+}
+.ap-title{
+  margin:0;
+  font-size:clamp(34px,7vw,54px);
+  line-height:1.05;
+  letter-spacing:-.035em;
+  font-weight:1000;
+}
+.ap-sub{
+  max-width:640px;
+  margin:14px 0 24px;
+  color:rgba(247,247,247,.66);
+  font-size:clamp(18px,3.2vw,26px);
+  line-height:1.36;
+  font-weight:700;
+}
+.ap-social{ display:grid; gap:10px; margin:0 0 6px; }
+.ap-social-btn{
+  width:100%;
+  min-height:62px;
   display:flex;
   align-items:center;
   justify-content:center;
+  gap:14px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:18px;
+  background:linear-gradient(145deg, rgba(9,20,32,.80), rgba(8,12,18,.86));
+  color:var(--auth-text);
+  cursor:pointer;
+  font-size:clamp(15px,3vw,22px);
   font-weight:1000;
-  flex:0 0 auto;
+  transition:transform .12s ease, border-color .18s ease, filter .18s ease;
 }
-.ap-brand-copy{ display:grid; gap:2px; min-width:0; text-align:left; }
-.ap-brand-copy span{ color:#f5d98a; line-height:1; }
-.ap-brand-copy small{ color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-.ap-brandLogo .brand-logo-img{ height:52px; max-width:225px; }
-.ap-nav-links .ap-link{ background:#0f0f0f; color:#eaeaea; border:1px solid #2b2b2b; border-radius:12px; padding:8px 12px; cursor:pointer; }
-.ap-nav-links .ap-link:disabled, .ap-brand:disabled{ opacity:.7; cursor:not-allowed; }
-.ap-tabs-wrap{ padding:14px 16px 0; }
-.ap-tabs{ max-width:720px; margin:0 auto; display:flex; gap:6px; background:rgba(255,255,255,.035); border:1px solid var(--line); border-radius:16px; padding:6px; }
-.ap-tab{ flex:1 1 0; border:1px solid transparent; background:transparent; color:#ddd; padding:10px 14px; border-radius:12px; font-weight:900; cursor:pointer; }
-.ap-tab.active{ background: rgba(245,215,110,.11); color:#f5d98a; border-color:rgba(245,215,110,.26); }
-.ap-tab:disabled{ opacity:.6; cursor:not-allowed; }
-.ap-main{ padding:18px 16px 26px; }
-.ap-card{
-  max-width:720px;
-  margin:0 auto;
-  border:1px solid rgba(245,215,110,.12);
-  background:var(--card);
-  border-radius:22px;
-  padding:20px;
-  position:relative;
-  box-shadow:0 22px 60px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.03);
-}
-.ap-title{ margin:0 0 6px; font-size:28px; letter-spacing:0; }
-.ap-sub{ margin:0 0 12px; color:#cfcfcf; line-height:1.45; }
-.ap-social{ display:grid; gap:10px; margin:10px 0 2px; }
-
-/* Botón Google */
-.ap-social-btn{
-  width:100%;
-  display:flex; align-items:center; justify-content:center; gap:10px;
-  background:#0d0f12; color:#eaeaea; border:1px solid rgba(255,255,255,.10);
-  border-radius:14px; padding:12px 14px; cursor:pointer; font-weight:900;
-  position:relative;
-  overflow:hidden;
-  transition: transform .08s ease, box-shadow .18s ease, border-color .18s ease, filter .18s ease;
-  will-change: transform;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-.ap-social-btn:active{ transform: translateY(1px) scale(0.99); }
-.ap-social-btn:focus-visible{
-  outline:none;
-  box-shadow: 0 0 0 3px rgba(245,217,138,.14);
-  border-color: rgba(245,217,138,.45);
-}
-.ap-social-btn::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width: 10px;
-  height: 10px;
-  transform: translate(-50%,-50%) scale(0);
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(245,215,110,.35), transparent 60%);
-  opacity:0;
-  pointer-events:none;
-}
-.ap-social-btn:active::after{
-  opacity:1;
-  transform: translate(-50%,-50%) scale(18);
-  transition: transform .45s ease, opacity .55s ease;
-}
-.ap-social-btn.is-loading{
-  border-color: rgba(245,215,110,.55);
-  box-shadow: 0 0 0 3px rgba(245,215,110,.12), 0 10px 40px rgba(0,0,0,.35);
-  filter: brightness(1.05);
-}
+.ap-social-btn:active{ transform:scale(.99); }
+.ap-social-btn.is-loading{ border-color:rgba(244,197,66,.48); filter:brightness(1.06); }
 .ap-social-btn:disabled{ opacity:.7; cursor:not-allowed; }
-
 .ap-mini-spin{
   width:16px; height:16px; border-radius:999px;
   border:2px solid rgba(245,215,110,.25);
-  border-top-color: rgba(245,215,110,.95);
+  border-top-color:rgba(245,215,110,.95);
   display:inline-block;
-  margin-left:10px;
-  animation: apSpin .8s linear infinite;
-  box-shadow: 0 0 10px rgba(245,215,110,.18);
+  animation:apSpin .8s linear infinite;
 }
-
-.ap-google-g{ display:inline-flex; align-items:baseline; gap:0; font-weight:900; letter-spacing:-.2px; line-height:1; font-size:16px; user-select:none; }
-.ap-google-g span{ font-weight:900; }
-.ap-google-g .g1{ color:#4285F4; }
-.ap-google-g .g2{ color:#EA4335; }
-.ap-google-g .g3{ color:#FBBC05; }
-.ap-google-g .g4{ color:#4285F4; }
-.ap-google-g .g5{ color:#34A853; }
-.ap-google-g .g6{ color:#EA4335; }
-
-.ap-divider{ display:flex; align-items:center; gap:8px; color:#a7a7a7; font-size:12px; margin:14px 0; }
-.ap-divider::before, .ap-divider::after{ content:""; flex:1; height:1px; background:rgba(255,255,255,.10); }
-.ap-form{ display:grid; gap:12px; }
-.ap-field{ display:grid; gap:6px; }
+.ap-google-g{ display:inline-flex; align-items:baseline; gap:0; font-weight:1000; letter-spacing:-.2px; line-height:1; font-size:22px; user-select:none; }
+.ap-google-g span{ font-weight:1000; }
+.ap-google-g .g1{ color:#4285F4; }.ap-google-g .g2{ color:#EA4335; }.ap-google-g .g3{ color:#FBBC05; }.ap-google-g .g4{ color:#4285F4; }.ap-google-g .g5{ color:#34A853; }.ap-google-g .g6{ color:#EA4335; }
+.ap-divider{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin:26px 0;
+  color:rgba(247,247,247,.50);
+  font-size:clamp(14px,2.6vw,18px);
+  font-weight:700;
+}
+.ap-divider::before,.ap-divider::after{ content:""; flex:1; height:1px; background:rgba(255,255,255,.14); }
+.ap-form{ display:grid; gap:18px; }
+.ap-field{ display:grid; gap:9px; color:rgba(247,247,247,.92); font-size:clamp(15px,3vw,20px); font-weight:850; }
 .ap-field input{
   width:100%;
-  background:#0b0f15;
-  color:#fff;
-  border:1px solid rgba(255,255,255,.11);
-  border-radius:14px;
-  padding:12px 14px;
+  min-height:58px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:17px;
+  background:rgba(3,10,16,.76);
+  color:var(--auth-text);
+  padding:0 18px;
+  font:inherit;
+  font-weight:800;
   outline:none;
 }
-.ap-field input:focus{ border-color:#f5d98a; box-shadow:0 0 0 3px rgba(245,217,138,.12); }
-.ap-field input:disabled{ opacity:.7; }
-.ap-pass-row{ display:flex; align-items:stretch; gap:10px; }
-.ap-pass-row input{ flex:1; min-width:0; }
-.ap-peek{
-  position:static;
-  height:44px;
-  padding:0 12px;
-  width:48px;
-  border:1px solid rgba(255,255,255,.11);
-  background:#11151b;
-  color:#eaeaea;
-  border-radius:14px;
+.ap-field input::placeholder{ color:rgba(247,247,247,.34); }
+.ap-field input:focus{ border-color:rgba(255,211,83,.58); box-shadow:0 0 0 4px rgba(244,197,66,.12); }
+.ap-field input:disabled{ opacity:.68; }
+.ap-pass-row{ display:grid; grid-template-columns:minmax(0,1fr) 54px; gap:10px; align-items:stretch; }
+.ap-peek,.ap-pass-spacer{
+  width:54px;
+  min-height:58px;
+  border-radius:17px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(3,10,16,.76);
+  color:var(--auth-gold-soft);
+  display:grid;
+  place-items:center;
+}
+.ap-peek{ cursor:pointer; }
+.ap-peek:disabled{ opacity:.6; cursor:not-allowed; }
+.ap-row-between{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.ap-check{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:rgba(247,247,247,.78);
+  font-size:clamp(14px,2.8vw,18px);
+  font-weight:700;
+}
+.ap-check input{ width:20px; height:20px; accent-color:var(--auth-gold); }
+.ap-link,.ap-link-btn{ color:var(--auth-gold-soft); text-decoration:underline; text-underline-offset:3px; background:transparent; border:0; cursor:pointer; font:inherit; font-weight:850; }
+.ap-link-btn:disabled{ opacity:.55; cursor:not-allowed; text-decoration:none; }
+.ap-error,.ap-success{
+  border-radius:16px;
+  padding:12px 14px;
+  font-size:14px;
   font-weight:800;
+  line-height:1.35;
+}
+.ap-error{ border:1px solid rgba(255,107,107,.34); background:rgba(80,13,20,.38); color:#ffd1d1; }
+.ap-success{ border:1px solid rgba(52,211,153,.28); background:rgba(5,56,38,.34); color:#c8f7df; }
+.btn.submit{
+  width:100%;
+  min-height:66px;
+  border:0;
+  border-radius:18px;
+  background:linear-gradient(135deg,#ffc414,#ffe47a 58%,#f1b915);
+  color:#080807;
+  font-size:clamp(18px,3.6vw,27px);
+  font-weight:1000;
   cursor:pointer;
+  box-shadow:0 18px 44px rgba(244,197,66,.20);
   display:inline-flex;
   align-items:center;
   justify-content:center;
+  gap:12px;
 }
-.ap-peek:disabled{ opacity:.6; cursor:not-allowed; }
-.ap-row-between{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.ap-check{ display:flex; align-items:center; gap:8px; color:#dcdcdc; }
-.ap-link, .ap-link-btn{ color:#d9c374; text-decoration:underline; background:transparent; border:none; cursor:pointer; }
-.ap-link-btn:disabled{ opacity:.6; cursor:not-allowed; text-decoration:none; }
-.ap-error{ border:1px solid #6b3c00; background:#281a00; color:#ffd9a1; padding:10px 12px; border-radius:12px; }
-.ap-success{ border:1px solid #0f4d2d; background:#062214; color:#bff7d0; padding:10px 12px; border-radius:12px; }
-.btn.submit{
-  width:100%;
-  background: linear-gradient(135deg, #f5d98a, #ffe89d);
-  color:#0a0a0a; border:none; border-radius:14px; padding:13px 14px; font-weight:1000;
+.btn.submit:disabled{ opacity:.68; cursor:not-allowed; }
+.ap-muted{ color:rgba(247,247,247,.58); }
+.ap-small{ font-size:clamp(14px,2.8vw,18px); text-align:center; }
+.ap-centered{ text-align:center; }
+.ap-account-select{ display:grid; gap:24px; }
+.ap-register-steps{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  color:rgba(247,247,247,.58);
+  flex-wrap:wrap;
+}
+.ap-register-steps span{
+  width:36px;
+  height:36px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:rgba(255,255,255,.08);
+  color:rgba(247,247,247,.70);
+  font-weight:1000;
+}
+.ap-register-steps span.active{ background:linear-gradient(135deg,#ffc414,#ffe47a); color:#080807; }
+.ap-register-steps strong{ font-size:14px; }
+.ap-choice-fieldset{ border:0; padding:0; margin:0; display:grid; gap:14px; }
+.ap-choice-card{
+  min-height:124px;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:18px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:20px;
+  background:rgba(255,255,255,.035);
+  padding:18px;
   cursor:pointer;
-  box-shadow:0 10px 30px rgba(245,215,110,.10);
 }
-.btn.submit:disabled{ opacity:.7; cursor:not-allowed; }
-.ap-muted{ color:#b8b8b8; }
-.ap-small{ font-size:12px; }
-.ap-verify-actions{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:4px; }
+.ap-choice-card input{ position:absolute; opacity:0; pointer-events:none; }
+.ap-choice-card.selected{
+  border-color:rgba(255,211,83,.64);
+  background:linear-gradient(135deg,rgba(244,197,66,.14),rgba(255,255,255,.04));
+}
+.ap-choice-icon{
+  width:70px;
+  height:70px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  color:var(--auth-gold-soft);
+  border:1px solid rgba(255,211,83,.20);
+  background:rgba(244,197,66,.08);
+}
+.ap-choice-copy strong{ display:block; font-size:clamp(20px,4vw,27px); font-weight:1000; }
+.ap-choice-copy small{ display:block; margin-top:7px; color:rgba(247,247,247,.62); font-size:clamp(14px,3vw,20px); line-height:1.45; font-weight:700; }
+.ap-choice-radio{
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:2px solid rgba(247,247,247,.52);
+  position:relative;
+}
+.ap-choice-card.selected .ap-choice-radio{ border-color:var(--auth-gold-soft); }
+.ap-choice-card.selected .ap-choice-radio::after{
+  content:"";
+  position:absolute;
+  inset:6px;
+  border-radius:999px;
+  background:var(--auth-gold-soft);
+}
+.ap-coach-note{
+  border:1px solid rgba(255,211,83,.20);
+  border-radius:16px;
+  background:rgba(244,197,66,.07);
+  color:rgba(247,247,247,.72);
+  padding:12px 14px;
+  font-size:14px;
+  font-weight:800;
+  line-height:1.35;
+}
+.ap-cta-arrow{ margin-top:2px; }
+.ap-verify-actions{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:4px; flex-wrap:wrap; }
 .ap-verify-hint{
   text-align:center;
-  font-size:12px;
-  color:#b8b8b8;
-  border:1px dashed #2b2b2b;
-  padding:8px 10px;
-  border-radius:12px;
-  background:#0f0f0f;
+  font-size:13px;
+  color:rgba(247,247,247,.62);
+  border:1px dashed rgba(255,255,255,.14);
+  padding:10px 12px;
+  border-radius:14px;
+  background:rgba(255,255,255,.035);
 }
-.ap-verify-hint.locked{
-  border-color:#6b3c00;
-  background:#281a00;
-  color:#ffd9a1;
-}
+.ap-verify-hint.locked{ border-color:rgba(255,107,107,.34); background:rgba(80,13,20,.30); color:#ffd1d1; }
 .ap-verified-banner{
   display:flex;
   align-items:center;
   gap:12px;
-  border:1px solid #0f4d2d;
-  background: radial-gradient(520px 120px at 20% 0%, rgba(191,247,208,.18), transparent 55%),
-              linear-gradient(180deg,#061f13,#05160e);
-  color:#bff7d0;
-  padding:12px 12px;
-  border-radius:14px;
+  border:1px solid rgba(52,211,153,.28);
+  background:rgba(5,56,38,.34);
+  color:#c8f7df;
+  padding:12px;
+  border-radius:16px;
 }
 .ap-verified-ic{
-  width:36px; height:36px;
-  border-radius:12px;
+  width:38px; height:38px;
+  border-radius:13px;
   display:flex; align-items:center; justify-content:center;
-  background: rgba(191,247,208,.12);
-  border:1px solid rgba(191,247,208,.22);
-  font-weight:900;
+  background:rgba(52,211,153,.12);
+  border:1px solid rgba(52,211,153,.22);
+  font-weight:1000;
   flex:0 0 auto;
 }
-.ap-verified-title{ margin:0; font-weight:900; color:#bff7d0; }
-.ap-verified-sub{ margin:4px 0 0; font-size:12px; color:#cfeedd; }
-.ap-foot{ border-top:1px solid var(--line); padding:16px; text-align:center; }
+.ap-verified-title{ margin:0; font-weight:1000; color:#c8f7df; }
+.ap-verified-sub{ margin:4px 0 0; font-size:12px; color:#d9f8e8; }
+.ap-foot{ padding:16px; text-align:center; border-top:1px solid rgba(255,255,255,.08); }
 .ap-overlay{
   position:fixed; inset:0;
-  background: rgba(11,11,11,.55);
-  backdrop-filter: blur(6px) saturate(140%);
+  background:rgba(2,5,8,.74);
+  backdrop-filter:blur(8px) saturate(140%);
   display:flex; align-items:center; justify-content:center;
-  z-index:9999; padding: 18px;
+  z-index:9999; padding:18px;
 }
 .ap-overlay-card{
-  width:min(520px, 100%);
-  border:1px solid #232323;
-  background: linear-gradient(180deg,#121212,#0b0b0b);
-  border-radius:18px; padding:18px 16px;
-  position:relative; overflow:hidden;
-  box-shadow: 0 18px 70px rgba(0,0,0,.65);
+  width:min(520px,100%);
+  border:1px solid rgba(255,211,83,.22);
+  background:linear-gradient(180deg,#121923,#070b10);
+  border-radius:22px;
+  padding:18px 16px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 22px 80px rgba(0,0,0,.70);
 }
 .ap-overlay-glow{
   position:absolute; inset:-2px;
-  background: radial-gradient(600px 200px at 20% 0%, rgba(245,215,110,.22), transparent 60%),
-              radial-gradient(520px 220px at 80% 100%, rgba(250,204,21,.10), transparent 60%);
+  background:radial-gradient(600px 200px at 20% 0%, rgba(245,215,110,.18), transparent 60%);
   pointer-events:none;
 }
 .ap-overlay-row{ display:flex; align-items:center; gap:12px; position:relative; }
 .ap-spinner{
   width:44px; height:44px; border-radius:50%;
   border:3px solid rgba(245,215,110,.18);
-  border-top-color: rgba(245,215,110,.95);
-  box-shadow: 0 0 18px rgba(245,215,110,.18);
-  animation: apSpin .9s linear infinite;
+  border-top-color:rgba(245,215,110,.95);
+  animation:apSpin .9s linear infinite;
   flex:0 0 auto;
 }
-@keyframes apSpin { to { transform: rotate(360deg); } }
-.ap-oload-title{ font-weight:900; margin:0; color:#f5d76e; font-size:16px; }
-.ap-oload-sub{ margin:4px 0 0; color:#cfcfcf; font-size:13px; line-height:1.4; }
+@keyframes apSpin{ to{ transform:rotate(360deg); } }
+.ap-oload-title{ font-weight:1000; margin:0; color:var(--auth-gold-soft); font-size:16px; }
+.ap-oload-sub{ margin:4px 0 0; color:rgba(247,247,247,.74); font-size:13px; line-height:1.4; }
 .ap-shimmer{
   margin-top:14px; height:10px; border-radius:999px;
-  background: #101010; border:1px solid #1f1f1f;
+  background:rgba(255,255,255,.06);
   overflow:hidden; position:relative;
 }
 .ap-shimmer::after{
   content:""; position:absolute; inset:0;
-  transform: translateX(-60%);
-  background: linear-gradient(90deg, transparent, rgba(245,215,110,.35), transparent);
-  animation: apShimmer 1.2s ease-in-out infinite;
+  transform:translateX(-60%);
+  background:linear-gradient(90deg,transparent,rgba(245,215,110,.35),transparent);
+  animation:apShimmer 1.2s ease-in-out infinite;
 }
-@keyframes apShimmer { 0% { transform: translateX(-60%); } 100% { transform: translateX(160%); } }
-.ap-eye{ display:block; color:#f5d98a; }
-@media (max-width: 640px){
-  .ap-nav-inner{ padding:10px 12px; }
-  .ap-brand-mark{ width:36px; height:36px; border-radius:13px; }
-  .ap-brand-copy small{ display:none; }
-  .ap-brandLogo .brand-logo-img{ height:46px; max-width:188px; }
-  .ap-tabs-wrap{ padding:12px 12px 0; }
-  .ap-main{ padding:14px 12px 22px; }
-  .ap-card{ padding:16px; border-radius:20px; }
-  .ap-title{ font-size:24px; }
+@keyframes apShimmer{ 0%{ transform:translateX(-60%); } 100%{ transform:translateX(160%); } }
+.ap-eye{ display:block; color:var(--auth-gold-soft); }
+@media (min-width:1024px){
+  .auth-page{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(440px,520px);
+    align-items:stretch;
+  }
+  .ap-nav{ grid-column:1; }
+  .ap-hero{
+    grid-column:1;
+    min-height:100dvh;
+    align-content:center;
+    border-right:1px solid rgba(255,255,255,.08);
+    border-bottom:0;
+    padding:120px 42px;
+  }
+  .ap-tabs-wrap{
+    grid-column:2;
+    width:100%;
+    margin:0;
+    padding:34px 28px 0;
+    align-self:end;
+  }
+  .ap-main{
+    grid-column:2;
+    width:100%;
+    padding:0 28px 28px;
+    align-self:start;
+  }
+  .ap-card{ border-radius:0 0 28px 28px; padding:34px; }
+  .ap-foot{ display:none; }
+}
+@media (max-width:640px){
+  .ap-nav-inner{ padding:12px 14px; }
+  .ap-brandLogo .brand-logo-img{ height:40px; max-width:170px; }
+  .ap-hero{
+    min-height:220px;
+    padding:78px 14px 48px;
+    background-position:58% top;
+  }
+  .ap-tabs-wrap{ margin-top:-28px; padding-inline:10px; }
+  .ap-tabs{ border-radius:18px; padding:5px; }
+  .ap-tab{ min-height:54px; border-radius:14px; }
+  .ap-main{ padding-inline:10px; }
+  .ap-card{ padding:22px 18px; border-radius:0 0 24px 24px; }
   .ap-row-between{ align-items:flex-start; flex-direction:column; }
+  .ap-choice-card{ grid-template-columns:1fr auto; min-height:auto; }
+  .ap-choice-icon{ width:54px; height:54px; grid-column:1; }
+  .ap-choice-copy{ grid-column:1 / 2; }
+  .ap-choice-radio{ grid-column:2; grid-row:1 / span 2; }
 }
 `;
 
@@ -1617,3 +1960,5 @@ function EyeClosedIcon() {
     </svg>
   );
 }
+
+

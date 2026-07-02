@@ -4,6 +4,7 @@ import { ArrowLeft, BriefcaseBusiness, CheckCircle2, ShieldCheck } from "lucide-
 
 import { registerProfessionalApplication } from "../professionalAccessApi.js";
 import BrandLogo from "../ui/BrandLogo.jsx";
+import fondoZumaFit from "../assets/fondozumafit.png";
 
 const INITIAL = {
   email: "",
@@ -104,7 +105,7 @@ export default function RegistroProfesional() {
 
   if (success) {
     return (
-      <main className="rp-page">
+      <main className="rp-page" style={{ "--rp-bg": `url(${fondoZumaFit})` }}>
         <section className="rp-shell">
           <BrandLogo size="client" priority />
           <article className="rp-card center">
@@ -124,7 +125,7 @@ export default function RegistroProfesional() {
   }
 
   return (
-    <main className="rp-page">
+    <main className="rp-page" style={{ "--rp-bg": `url(${fondoZumaFit})` }}>
       <section className="rp-shell">
         <header className="rp-head">
           <BrandLogo size="client" priority />
@@ -274,11 +275,21 @@ function Check({ label, checked, onChange }) {
 }
 
 const styles = `
-.rp-page{min-height:100dvh;background:#08090b;color:#f5f7fa;padding:18px}
+.rp-page{
+  min-height:100dvh;
+  color:#f5f7fa;
+  padding:18px;
+  background:
+    linear-gradient(180deg, rgba(2,5,8,.30), rgba(2,5,8,.72) 38%, #020507 100%),
+    linear-gradient(90deg, rgba(2,5,8,.94), rgba(2,5,8,.58)),
+    var(--rp-bg);
+  background-size:cover;
+  background-position:center top;
+}
 .rp-shell{width:min(980px,100%);margin:0 auto}
 .rp-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}
 .rp-back,.rp-secondary{border:1px solid rgba(255,255,255,.12);background:#111821;color:#eef2f6;border-radius:16px;min-height:44px;padding:0 14px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:900}
-.rp-card{border:1px solid rgba(255,255,255,.10);border-radius:26px;background:radial-gradient(circle at top right,rgba(245,215,110,.12),transparent 32%),linear-gradient(145deg,#111820,#080c12);box-shadow:0 24px 60px rgba(0,0,0,.34);padding:22px}
+.rp-card{border:1px solid rgba(245,215,110,.20);border-radius:28px;background:radial-gradient(circle at top right,rgba(245,215,110,.14),transparent 32%),linear-gradient(145deg,rgba(17,24,32,.94),rgba(8,12,18,.96));box-shadow:0 28px 80px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.05);padding:22px;backdrop-filter:blur(14px)}
 .rp-card.center{display:grid;place-items:start;gap:12px;max-width:620px;margin:36px auto}
 .rp-titleRow{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
 .rp-icon{width:48px;height:48px;border-radius:16px;border:1px solid rgba(245,215,110,.22);background:rgba(245,215,110,.10);color:#f5d76e;display:grid;place-items:center}

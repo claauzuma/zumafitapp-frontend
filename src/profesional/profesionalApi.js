@@ -35,6 +35,14 @@ export async function getProfessionalClientDetail(clientId) {
   };
 }
 
+export async function endProfessionalClientService(clientId, payload = {}) {
+  return await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/end-service`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+}
+
 export async function updateProfessionalClientNutrition(clientId, payload) {
   const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/nutrition`, {
     method: "PATCH",
@@ -113,6 +121,10 @@ export async function createProfessionalClientInvitation(payload) {
   return {
     invitation: data?.invitation || null,
     capacity: data?.capacity || null,
+    alreadyExists: !!data?.alreadyExists,
+    code: data?.code || "",
+    deliveryStatus: data?.deliveryStatus || "",
+    inviteLink: data?.inviteLink || "",
   };
 }
 

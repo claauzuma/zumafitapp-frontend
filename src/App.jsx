@@ -25,6 +25,7 @@ const Progresos = lazy(() => import("./entrenado/Progresos.jsx"));
 const Ajustes = lazy(() => import("./entrenado/Ajustes.jsx"));
 const TrackingDiario = lazy(() => import("./entrenado/TrackingDiario.jsx"));
 const NutritionLibraryPage = lazy(() => import("./nutritionLibrary/NutritionLibraryPage.jsx"));
+const ClientMenuCreatePage = lazy(() => import("./clientMenus/ClientMenuCreatePage.jsx"));
 const ClientPlansPage = lazy(() => import("./clientPlans/ClientPlansPage.jsx"));
 
 const AdminLayout = lazy(() => import("./admin/AdminLayout.jsx"));
@@ -86,6 +87,17 @@ export default function App() {
       />
 
       <Route
+        path="/auth/login"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando acceso...">
+              <AuthPage defaultMode="login" />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
         path="/auth"
         element={
           <PublicOnlyRoute>
@@ -97,11 +109,55 @@ export default function App() {
       />
 
       <Route
-        path="/register"
+        path="/auth/register"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando registro...">
+              <AuthPage defaultMode="select" />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
+        path="/auth/register/client"
         element={
           <PublicOnlyRoute>
             <LazyRoute label="Cargando registro...">
               <AuthPage defaultMode="register" />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
+        path="/auth/register/coach"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando registro profesional...">
+              <RegistroProfesional />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
+        path="/forgot-password"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando recuperacion...">
+              <AuthPage defaultMode="login" />
+            </LazyRoute>
+          </PublicOnlyRoute>
+        }
+      />
+
+      <Route
+        path="/register"
+        element={
+          <PublicOnlyRoute>
+            <LazyRoute label="Cargando registro...">
+              <AuthPage defaultMode="select" />
             </LazyRoute>
           </PublicOnlyRoute>
         }
@@ -185,6 +241,7 @@ export default function App() {
         <Route index element={<Navigate to="inicio" replace />} />
         <Route path="inicio" element={<LazyRoute label="Cargando inicio..."><InicioEntrenado /></LazyRoute>} />
         <Route path="objetivos" element={<LazyRoute label="Cargando objetivos..."><Objetivos /></LazyRoute>} />
+        <Route path="menu/nuevo" element={<LazyRoute label="Cargando creador..."><ClientMenuCreatePage /></LazyRoute>} />
 
         <Route path="menu" element={<LazyRoute label="Cargando menu..."><MenuEj /></LazyRoute>}>
           <Route index element={<LazyRoute label="Cargando menu del dia..."><MenuPlan /></LazyRoute>} />

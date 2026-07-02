@@ -21,7 +21,7 @@
 }
 
 .og-hero{
-  padding:18px;
+  padding:16px;
   display:grid;
   gap:16px;
   overflow:hidden;
@@ -45,7 +45,7 @@
 .og-hero h1,
 .og-panel h2{
   margin:8px 0 0;
-  font-size:34px;
+  font-size:30px;
   line-height:1.02;
   letter-spacing:0;
 }
@@ -136,6 +136,11 @@
   font-size:42px;
   line-height:.95;
   letter-spacing:0;
+}
+
+.og-trainingTargetCard .og-targetCardTop strong{
+  font-size:28px;
+  line-height:1.05;
 }
 
 .og-targetCardTop p{
@@ -904,9 +909,9 @@
 
 @media (min-width:720px){
   .og-hero{
-    padding:24px;
+    padding:20px;
   }
-  .og-hero h1{ font-size:52px; }
+  .og-hero h1{ font-size:44px; }
   .og-panel h2{ font-size:40px; }
   .og-metricGrid{
     grid-template-columns:repeat(4, minmax(0, 1fr));

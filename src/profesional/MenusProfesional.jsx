@@ -98,7 +98,7 @@ function MenusWorkspace({ me }) {
   const [mealEditor, setMealEditor] = useState(null);
   const [assignMenu, setAssignMenu] = useState(null);
   const [assignClientId, setAssignClientId] = useState("");
-  const [assignDayKey, setAssignDayKey] = useState("");
+  const [assignDayKeys, setAssignDayKeys] = useState([]);
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useState(null);
 
@@ -314,32 +314,48 @@ function MenusWorkspace({ me }) {
   function openAssign(menu) {
     setAssignMenu(menu);
     setAssignClientId(clientsQuery.data?.clients?.[0]?.id || clientsQuery.data?.clients?.[0]?._id || "");
-    setAssignDayKey("");
+    setAssignDayKeys([]);
   }
 
   function changeAssignClient(clientId) {
     setAssignClientId(clientId);
-    setAssignDayKey("");
+    setAssignDayKeys([]);
+  }
+
+  function toggleAssignDay(dayKey) {
+    setAssignDayKeys((prev) => (
+      prev.includes(dayKey)
+        ? prev.filter((key) => key !== dayKey)
+        : [...prev, dayKey]
+    ));
   }
 
   async function confirmAssign() {
     const selectedClient = (clientsQuery.data?.clients || []).find((client) => String(client.id || client._id) === String(assignClientId));
-    const dayRow = selectedClient && assignDayKey ? buildAssignDayRows(selectedClient, assignMenu).find((row) => row.day.key === assignDayKey) : null;
-    const compatibility = dayRow ? getAssignCompatibility(assignMenu, dayRow.target) : null;
+    const dayRows = selectedClient ? buildAssignDayRows(selectedClient, assignMenu) : [];
+    const selectedRows = dayRows.filter((row) => assignDayKeys.includes(row.day.key));
+    const invalidRow = selectedRows.find((row) => {
+      const compatibility = getAssignCompatibility(assignMenu, row.target);
+      return !row.hasValidTarget || !compatibility?.canAssign;
+    });
 
-    if (!assignMenu || !assignClientId || !assignDayKey) {
-      setToast({ type: "warning", message: "Elegí cliente y día para asignar el menú." });
+    if (!assignMenu || !assignClientId || !assignDayKeys.length) {
+      setToast({ type: "warning", message: "Elegí cliente y al menos un día para asignar el menú." });
       return;
     }
-    if (!selectedClient || !dayRow?.hasValidTarget || !compatibility?.canAssign) {
-      setToast({ type: "warning", message: compatibility?.reason || "El menú no coincide con la meta del día." });
+    if (!selectedClient || invalidRow) {
+      const compatibility = invalidRow ? getAssignCompatibility(assignMenu, invalidRow.target) : null;
+      setToast({
+        type: "warning",
+        message: compatibility?.reason || `El menú no coincide con la meta de ${invalidRow?.day?.label || "un día seleccionado"}.`,
+      });
       return;
     }
 
     try {
       setBusy("assign");
       const base = assignMenu.demo ? await createMenuBaseFromDisplay(assignMenu) : assignMenu;
-      const nextAssignments = buildNextWeeklyAssignments(selectedClient, assignDayKey, base);
+      const nextAssignments = buildNextWeeklyAssignments(selectedClient, assignDayKeys, base);
       const data = await updateProfessionalClientMenu(assignClientId, {
         menu: {
           mode: {
@@ -359,10 +375,17 @@ function MenusWorkspace({ me }) {
         invalidateProfessionalClient(assignClientId, data?.client),
         clientsQuery.refetch(),
       ]);
-      setToast({ type: "success", message: dayRow.assignment ? "Menú reemplazado en el día." : "Menú asignado al día." });
+      const replaceCount = selectedRows.filter((row) => row.assignment).length;
+      const dayCount = selectedRows.length;
+      setToast({
+        type: "success",
+        message: replaceCount
+          ? `Menú asignado a ${dayCount} ${dayCount === 1 ? "día" : "días"}. ${replaceCount} ${replaceCount === 1 ? "día fue reemplazado" : "días fueron reemplazados"}.`
+          : `Menú asignado a ${dayCount} ${dayCount === 1 ? "día" : "días"}.`,
+      });
       setAssignMenu(null);
       setAssignClientId("");
-      setAssignDayKey("");
+      setAssignDayKeys([]);
     } catch (error) {
       setToast({ type: "error", message: error?.message || "No se pudo asignar el menú." });
     } finally {
@@ -567,9 +590,9 @@ function MenusWorkspace({ me }) {
             menu={assignMenu}
             clients={clientsQuery.data?.clients || []}
             clientId={assignClientId}
-            dayKey={assignDayKey}
+            dayKeys={assignDayKeys}
             onClientChange={changeAssignClient}
-            onDayChange={setAssignDayKey}
+            onDayToggle={toggleAssignDay}
             onClose={() => setAssignMenu(null)}
             onConfirm={confirmAssign}
             saving={busy === "assign"}
@@ -1096,13 +1119,24 @@ function SkeletonGrid() {
   );
 }
 
-function AssignModal({ menu, clients, clientId, dayKey, onClientChange, onDayChange, onClose, onConfirm, saving }) {
+function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, onDayToggle, onClose, onConfirm, saving }) {
   const selectedClient = clients.find((client) => String(client.id || client._id) === String(clientId)) || null;
   const dayRows = useMemo(() => (selectedClient ? buildAssignDayRows(selectedClient, menu) : []), [menu, selectedClient]);
-  const selectedRow = dayRows.find((row) => row.day.key === dayKey) || null;
-  const compatibility = selectedRow ? getAssignCompatibility(menu, selectedRow.target) : null;
-  const canAssign = Boolean(clientId && dayKey && selectedRow?.hasValidTarget && compatibility?.canAssign);
-  const actionLabel = selectedRow?.assignment ? "Reemplazar menú del día" : "Asignar menú al día";
+  const selectedRows = dayRows.filter((row) => dayKeys.includes(row.day.key));
+  const compatibilityRows = selectedRows.map((row) => ({
+    ...row,
+    compatibility: getAssignCompatibility(menu, row.target),
+  }));
+  const validRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.canAssign);
+  const invalidRows = compatibilityRows.filter((row) => !row.hasValidTarget || !row.compatibility?.canAssign);
+  const replacingRows = compatibilityRows.filter((row) => row.assignment);
+  const canAssign = Boolean(clientId && selectedRows.length && invalidRows.length === 0);
+  const selectedNames = selectedRows.map((row) => row.day.label).join(", ");
+  const actionLabel = selectedRows.length > 1
+    ? `Asignar menú a ${selectedRows.length} días`
+    : selectedRows[0]?.assignment
+      ? "Reemplazar menú del día"
+      : "Asignar menú al día";
 
   return (
     <div className="nf-modalBackdrop">
@@ -1143,18 +1177,24 @@ function AssignModal({ menu, clients, clientId, dayKey, onClientChange, onDayCha
         {selectedClient ? (
           <section className="nf-assignSection">
             <div className="nf-assignSectionHead">
-              <span><CalendarDays size={14} /> Día de asignación</span>
-              <small>Elegí el día según la meta nutricional del cliente.</small>
+              <span><CalendarDays size={14} /> Días de asignación</span>
+              <small>Elegí uno o varios días. Se asignará una copia editable del menú en cada día seleccionado.</small>
+            </div>
+            <div className="nf-assignMultiBar">
+              <strong>{selectedRows.length ? `${selectedRows.length} ${selectedRows.length === 1 ? "día seleccionado" : "días seleccionados"}` : "Ningún día seleccionado"}</strong>
+              <span>{selectedNames || "Tocá las tarjetas para seleccionar días."}</span>
             </div>
             <div className="nf-assignDayGrid">
               {dayRows.map((row) => {
-                const selected = row.day.key === dayKey;
+                const selected = dayKeys.includes(row.day.key);
+                const rowCompatibility = getAssignCompatibility(menu, row.target);
                 return (
                   <button
                     key={row.day.key}
                     type="button"
-                    className={`nf-assignDayCard ${selected ? "selected" : ""} ${row.assignment ? "hasMenu" : ""}`}
-                    onClick={() => onDayChange(row.day.key)}
+                    aria-pressed={selected}
+                    className={`nf-assignDayCard ${selected ? "selected" : ""} ${row.assignment ? "hasMenu" : ""} ${!rowCompatibility?.canAssign ? "notCompatible" : ""}`}
+                    onClick={() => onDayToggle(row.day.key)}
                   >
                     <div className="nf-assignDayTop">
                       <strong>{row.day.label}</strong>
@@ -1172,7 +1212,7 @@ function AssignModal({ menu, clients, clientId, dayKey, onClientChange, onDayCha
                     )}
                     <span className="nf-assignExisting">
                       {row.assignment ? row.assignment.name : "Sin menú"}
-                      {row.menuCount ? ` · ${row.menuCount} menú(s)` : ""}
+                      {row.menuCount ? ` · ${row.menuCount} ${row.menuCount === 1 ? "menú" : "menús"}` : ""}
                     </span>
                   </button>
                 );
@@ -1181,18 +1221,18 @@ function AssignModal({ menu, clients, clientId, dayKey, onClientChange, onDayCha
           </section>
         ) : null}
 
-        {selectedRow ? (
-          <section className={`nf-compatCard ${compatibility?.tone || "empty"}`}>
+        {selectedRows.length ? (
+          <section className={`nf-compatCard ${invalidRows.length ? "warning" : "good"}`}>
             <div className="nf-compatTitle">
-              {compatibility?.canAssign ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-              <strong>Compatibilidad con el día</strong>
-              <span>{compatibility?.label || "Sin evaluar"}</span>
+              {invalidRows.length ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
+              <strong>Compatibilidad con {selectedRows.length === 1 ? "el día" : "los días"}</strong>
+              <span>{validRows.length}/{selectedRows.length} compatibles</span>
             </div>
             <div className="nf-compatGrid">
               <div>
-                <span>Meta del día</span>
-                <strong>{formatNumber(selectedRow.target.kcal)} kcal</strong>
-                <small>P {formatNumber(selectedRow.target.p)} / C {formatNumber(selectedRow.target.c)} / G {formatNumber(selectedRow.target.g)}</small>
+                <span>Días seleccionados</span>
+                <strong>{selectedRows.length}</strong>
+                <small>{selectedNames}</small>
               </div>
               <div>
                 <span>Menú</span>
@@ -1200,22 +1240,30 @@ function AssignModal({ menu, clients, clientId, dayKey, onClientChange, onDayCha
                 <small>P {formatNumber(menu.protein)} / C {formatNumber(menu.carbs)} / G {formatNumber(menu.fat)}</small>
               </div>
               <div>
-                <span>Diferencia</span>
-                <strong>{formatSignedNumber(compatibility?.kcalDiff, " kcal")}</strong>
-                <small>P {formatSignedNumber(compatibility?.proteinDiff, " g")}</small>
+                <span>Reemplazos</span>
+                <strong>{replacingRows.length}</strong>
+                <small>{replacingRows.length ? "Se reemplazará el menú actual en esos días." : "No se reemplazan menús existentes."}</small>
               </div>
             </div>
-            {selectedRow.assignment ? (
+            {replacingRows.length ? (
               <div className="nf-assignWarning">
-                Este día ya tiene un menú asignado: <strong>{selectedRow.assignment.name}</strong>. Si continuás, se reemplazará.
+                {replacingRows.length === 1
+                  ? <>Un día ya tiene menú asignado: <strong>{replacingRows[0].assignment.name}</strong>. Si continuás, se reemplazará.</>
+                  : <>{replacingRows.length} días ya tienen menú asignado. Si continuás, se reemplazarán.</>}
               </div>
             ) : null}
-            {!compatibility?.canAssign ? (
-              <div className="nf-assignWarning">{compatibility?.reason || "Este menú no coincide con la meta del día."}</div>
+            {invalidRows.length ? (
+              <div className="nf-assignWarning">
+                {invalidRows.slice(0, 3).map((row) => (
+                  <span key={row.day.key}>
+                    <strong>{row.day.label}:</strong> {row.compatibility?.reason || "Este menú no coincide con la meta del día."}
+                  </span>
+                ))}
+              </div>
             ) : null}
           </section>
         ) : selectedClient ? (
-          <div className="nf-assignHint">Elegí un día para ver la compatibilidad antes de asignar.</div>
+          <div className="nf-assignHint">Elegí uno o varios días para ver la compatibilidad antes de asignar.</div>
         ) : null}
 
         <div className="nf-cardActions">
@@ -1332,27 +1380,34 @@ function getWeeklyAssignmentForDay(client = {}, dayKey = "") {
   };
 }
 
-function buildNextWeeklyAssignments(client = {}, dayKey = "", menu = {}) {
-  const currentAssignments = client?.menu?.weeklyPlan?.assignedMenusByDay || {};
-  const currentEntry = currentAssignments?.[dayKey] || {};
+function buildNextWeeklyAssignments(client = {}, dayKeys = [], menu = {}) {
+  const currentAssignments = compactWeeklyAssignmentsForPayload(client?.menu?.weeklyPlan?.assignedMenusByDay || {});
   const snapshot = snapshotFromAssignableMenu(menu);
-  const primaryMenu = {
-    menuId: snapshot.baseId || snapshot.id || menu.baseId || menu.id || "",
-    menuSnapshot: snapshot,
-    source: "template",
-    assignedAt: new Date().toISOString(),
-  };
-  const alternatives = Array.isArray(currentEntry?.alternatives)
-    ? currentEntry.alternatives.filter((alternative) => !sameAssignedSnapshot(alternative, primaryMenu))
-    : [];
-  return {
+  const assignedAt = new Date().toISOString();
+  const keys = Array.isArray(dayKeys) ? dayKeys : [dayKeys].filter(Boolean);
+
+  return keys.reduce((nextAssignments, dayKey) => {
+    const currentEntry = nextAssignments?.[dayKey] || {};
+    const primaryMenu = {
+      menuId: snapshot.baseId || snapshot.id || menu.baseId || menu.id || "",
+      menuSnapshot: snapshot,
+      source: "template",
+      assignedAt,
+    };
+    const alternatives = Array.isArray(currentEntry?.alternatives)
+      ? currentEntry.alternatives.filter((alternative) => !sameAssignedSnapshot(alternative, primaryMenu))
+      : [];
+
+    return {
+      ...nextAssignments,
+      [dayKey]: {
+        primaryMenu,
+        alternatives: alternatives.slice(0, 10),
+      },
+    };
+  }, {
     ...currentAssignments,
-    [dayKey]: {
-      ...primaryMenu,
-      primaryMenu,
-      alternatives: alternatives.slice(0, 10),
-    },
-  };
+  });
 }
 
 function snapshotFromAssignableMenu(menu = {}) {
@@ -1377,7 +1432,45 @@ function snapshotFromAssignableMenu(menu = {}) {
     mealsCount,
     cantidadComidas: mealsCount,
     meals,
-    comidas: meals.map(assignMealToSnapshotPayload),
+  };
+}
+
+function compactWeeklyAssignmentsForPayload(assignments = {}) {
+  if (!assignments || typeof assignments !== "object") return {};
+  return NUTRITION_WEEK_DAYS.reduce((acc, day) => {
+    const entry = assignments[day.key];
+    const compact = compactAssignedEntryForPayload(entry);
+    if (compact) acc[day.key] = compact;
+    return acc;
+  }, {});
+}
+
+function compactAssignedEntryForPayload(entry = {}) {
+  if (!entry || typeof entry !== "object") return null;
+  const primarySource = entry.primaryMenu && typeof entry.primaryMenu === "object" ? entry.primaryMenu : entry;
+  const primaryMenu = compactAssignedMenuForPayload(primarySource, "template");
+  if (!primaryMenu) return null;
+  const alternatives = Array.isArray(entry.alternatives)
+    ? entry.alternatives
+        .map((alternative) => compactAssignedMenuForPayload(alternative, "alternative"))
+        .filter(Boolean)
+        .filter((alternative) => !sameAssignedSnapshot(alternative, primaryMenu))
+        .slice(0, 10)
+    : [];
+  return { primaryMenu, alternatives };
+}
+
+function compactAssignedMenuForPayload(entry = {}, fallbackSource = "template") {
+  if (!entry || typeof entry !== "object") return null;
+  const snapshotSource = entry.menuSnapshot || entry.snapshot || entry;
+  const snapshot = snapshotFromAssignableMenu(snapshotSource);
+  const menuId = String(entry.menuId || entry.menuBaseId || snapshot.baseId || snapshot.id || "").trim();
+  if (!menuId && !snapshot.name) return null;
+  return {
+    menuId,
+    menuSnapshot: snapshot,
+    source: entry.source || fallbackSource,
+    assignedAt: entry.assignedAt || new Date().toISOString(),
   };
 }
 
@@ -1479,32 +1572,6 @@ function assignMenuTotals(menu = {}, meals = []) {
   return meals.reduce((acc, meal) => assignAddTotals(acc, meal), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
-function assignMealToSnapshotPayload(meal = {}, index = 0) {
-  return {
-    id: meal.id || `meal-${index + 1}`,
-    nombre: meal.name || `Comida ${index + 1}`,
-    tipoComida: meal.type || "otro",
-    orden: meal.order || index + 1,
-    totales: {
-      kcal: assignNumber(meal.kcal, 0),
-      proteina: assignNumber(meal.protein, 0),
-      carbs: assignNumber(meal.carbs, 0),
-      grasas: assignNumber(meal.fat, 0),
-    },
-    items: (meal.foods || []).map((food, foodIndex) => ({
-      id: food.id || `item-${index + 1}-${foodIndex + 1}`,
-      alimentoId: food.alimentoId || null,
-      nombreSnapshot: food.name || `Alimento ${foodIndex + 1}`,
-      cantidad: assignNumber(food.cantidad, 0),
-      unidad: food.unidad || "g",
-      kcal: assignNumber(food.kcal, 0),
-      proteina: assignNumber(food.protein, 0),
-      carbs: assignNumber(food.carbs, 0),
-      grasas: assignNumber(food.fat, 0),
-    })),
-  };
-}
-
 function sameAssignedSnapshot(a = {}, b = {}) {
   const left = String(a.menuId || a.menuSnapshot?.baseId || a.menuSnapshot?.id || a.menuSnapshot?.name || "").toLowerCase();
   const right = String(b.menuId || b.menuSnapshot?.baseId || b.menuSnapshot?.id || b.menuSnapshot?.name || "").toLowerCase();
@@ -1520,12 +1587,6 @@ function preferredMenuModeForClient(client = {}, permissions = {}) {
   if (permissions.canUseSemiautomaticMode) return "semiautomatic";
   if (permissions.canUseAutomaticMode) return "automatic";
   return current || "manual";
-}
-
-function formatSignedNumber(value, suffix = "") {
-  const number = Number(value || 0);
-  if (!Number.isFinite(number) || number === 0) return `0${suffix}`;
-  return `${number > 0 ? "+" : ""}${formatNumber(number)}${suffix}`;
 }
 
 function rangesFromMenus(menus = []) {

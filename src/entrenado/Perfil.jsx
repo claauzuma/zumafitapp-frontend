@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api";
 import { setAuthLogged } from "../authCache.js";
+import { getBlockedCoaches, unblockCoach } from "../clientInvitationsApi.js";
 import { leaveCurrentCoach, requestCoachChange } from "../clientCoachApi.js";
 import { setAuthUserQueryData } from "../queryClient.js";
 import "./Perfil.css";
@@ -150,6 +151,9 @@ export default function Perfil() {
   const [clientCoachNotice, setClientCoachNotice] = useState(null);
   const [coachChangeRequest, setCoachChangeRequest] = useState(null);
   const [coachActionBusy, setCoachActionBusy] = useState("");
+  const [blockedCoaches, setBlockedCoaches] = useState([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedBusy, setBlockedBusy] = useState("");
 
   const [snapPersonal, setSnapPersonal] = useState(null);
   const [snapBasics, setSnapBasics] = useState(null);
@@ -342,6 +346,8 @@ export default function Perfil() {
       }
     })();
 
+    loadBlockedCoaches();
+
     return () => {
       mountedRef.current = false;
     };
@@ -511,6 +517,21 @@ export default function Perfil() {
     }
   }
 
+  async function loadBlockedCoaches() {
+    setBlockedLoading(true);
+    try {
+      const data = await getBlockedCoaches();
+      if (!mountedRef.current) return;
+      setBlockedCoaches(Array.isArray(data?.blockedCoaches) ? data.blockedCoaches : []);
+    } catch (e) {
+      if (mountedRef.current) {
+        setMsg({ type: "warn", text: e?.message || "No pude cargar coaches bloqueados." });
+      }
+    } finally {
+      if (mountedRef.current) setBlockedLoading(false);
+    }
+  }
+
   function syncFreshUser(user) {
     if (!user) return;
     commitProfileData(user);
@@ -548,6 +569,26 @@ export default function Perfil() {
       setMsg({ type: "warn", text: e?.message || "No pude enviar la solicitud." });
     } finally {
       setCoachActionBusy("");
+    }
+  }
+
+  async function handleUnblockCoach(coachId, coachName) {
+    if (!coachId || blockedBusy) return;
+    const ok = window.confirm(
+      `Desbloquear a ${coachName || "este coach"}? Esto no restaura invitaciones anteriores, solo permite recibir nuevas.`
+    );
+    if (!ok) return;
+
+    setBlockedBusy(coachId);
+    setMsg(null);
+    try {
+      const data = await unblockCoach(coachId);
+      setBlockedCoaches(Array.isArray(data?.blockedCoaches) ? data.blockedCoaches : []);
+      setMsg({ type: "ok", text: "Coach desbloqueado. Vas a poder recibir futuras invitaciones." });
+    } catch (e) {
+      setMsg({ type: "warn", text: e?.message || "No pude desbloquear este coach." });
+    } finally {
+      setBlockedBusy("");
     }
   }
 
@@ -661,6 +702,54 @@ export default function Perfil() {
                 </>
               )}
             </div>
+          </div>
+
+          <div className="card blockedCoachesCard">
+            <div className="cardTop">
+              <h2>Coaches bloqueados</h2>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={loadBlockedCoaches}
+                disabled={blockedLoading || !!blockedBusy}
+              >
+                {blockedLoading ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
+
+            {blockedLoading ? (
+              <p className="tip">Cargando bloqueos...</p>
+            ) : blockedCoaches.length ? (
+              <div className="blockedCoachList">
+                {blockedCoaches.map((item) => {
+                  const coachId = item.coachId || item.id;
+                  const name = item.coachName || item.coachEmail || "Coach bloqueado";
+                  return (
+                    <div className="blockedCoachItem" key={coachId}>
+                      <div>
+                        <strong>{name}</strong>
+                        <span>{item.coachEmail || "Sin email visible"}</span>
+                        <small>
+                          Bloqueado: {item.blockedAt ? new Date(item.blockedAt).toLocaleDateString("es-AR") : "sin fecha"}
+                        </small>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={blockedBusy === coachId}
+                        onClick={() => handleUnblockCoach(coachId, name)}
+                      >
+                        {blockedBusy === coachId ? "Desbloqueando..." : "Desbloquear"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="tip">
+                No tenes coaches bloqueados. Si bloqueas una invitacion, vas a poder revertirlo desde aca.
+              </p>
+            )}
           </div>
 
           <div className="card">

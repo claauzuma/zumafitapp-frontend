@@ -234,6 +234,61 @@
   margin:0;
 }
 
+.blockedCoachList{
+  display:grid;
+  gap:10px;
+}
+
+.blockedCoachItem{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(5,10,16,.58);
+  border-radius:15px;
+  padding:11px;
+}
+
+.blockedCoachItem strong,
+.blockedCoachItem span,
+.blockedCoachItem small{
+  display:block;
+}
+
+.blockedCoachItem strong{
+  color:#fff;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.blockedCoachItem span{
+  margin-top:2px;
+  color:#cbd5e1;
+  font-size:12px;
+  font-weight:800;
+  word-break:break-word;
+}
+
+.blockedCoachItem small{
+  margin-top:4px;
+  color:#9ca3af;
+  font-size:11px;
+  font-weight:850;
+}
+
+@media (max-width: 640px){
+  .blockedCoachItem{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .blockedCoachItem .btn{
+    width:100%;
+    justify-content:center;
+  }
+}
+
 .kpiRow{
   display:grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
