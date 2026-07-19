@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { formatNumber } from "../nutricion/nutricionUtils.js";
 import PlanLimitNotice from "../clientPlans/PlanLimitNotice.jsx";
 import { clientPlanLabel as getClientPlanLabel } from "../clientPlans/clientPlanUtils.js";
+import { menuContentSummary } from "../clientNutrition/nutritionState.js";
 import {
   activateClientMenu,
   deactivateClientMenu,
@@ -62,6 +63,25 @@ function daysCount(menu = {}) {
 
 function mealsCount(menu = {}) {
   return Number(menu.cantidadComidas || menu.comidas?.length || 0);
+}
+
+function menuContentCopy(menu = {}) {
+  const summary = menuContentSummary(menu);
+  const blocks = summary.totalMealBlocks || mealsCount(menu);
+  const days = daysCount(menu) || 1;
+  if (!summary.hasFood) {
+    return {
+      empty: true,
+      headline: `${days} dia base - menu creado sin alimentos`,
+      detail: blocks ? `${blocks} bloque${blocks === 1 ? "" : "s"} para completar` : "Sin comidas cargadas todavia",
+    };
+  }
+  const kcal = summary.totals.kcal || menuTotals(menu).kcal;
+  return {
+    empty: false,
+    headline: `${days} dia${days === 1 ? "" : "s"} - ${formatNumber(kcal, 0)} kcal`,
+    detail: `${summary.mealsWithFoodCount || blocks} comida${(summary.mealsWithFoodCount || blocks) === 1 ? "" : "s"} con alimentos`,
+  };
 }
 
 function updatedLabel(menu = {}) {
@@ -125,6 +145,28 @@ export default function ClientNutritionHome({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
+  const coachNoticeKey = useMemo(() => {
+    const userId = idOf(user) || user?.email || "cliente";
+    const noticeDate = user?.clientCoachNotice?.createdAt || user?.clientCoachNotice?.updatedAt || "actual";
+    return `zumafit:coach-unlinked-notice:${userId}:${noticeDate}`;
+  }, [user]);
+  const [coachNoticeDismissed, setCoachNoticeDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(coachNoticeKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setCoachNoticeDismissed(window.localStorage.getItem(coachNoticeKey) === "1");
+    } catch {
+      setCoachNoticeDismissed(false);
+    }
+  }, [coachNoticeKey]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +202,10 @@ export default function ClientNutritionHome({
   );
   const rawPlan = capabilities?.plan || user?.nutritionCapabilities?.plan || user?.plan;
   const plan = rawPlan ? getClientPlanLabel(rawPlan) : "Plan";
+  const showCoachTransitionNotice =
+    user?.clientCoachNotice?.type === "coach_unlinked" &&
+    user?.clientCoachNotice?.status === "unread" &&
+    !coachNoticeDismissed;
 
   async function runAction(fn, message) {
     if (busy) return;
@@ -228,16 +274,31 @@ export default function ClientNutritionHome({
     <section className="nutrition-home" aria-label="Inicio de nutricion">
       <div className="nh-plan-strip">
         <span>Plan {plan}</span>
-        <span>{usedMenus} de {Number.isFinite(ownMenusLimit) ? ownMenusLimit : "sin limite"} menus propios</span>
+        <span>{usedMenus} / {Number.isFinite(ownMenusLimit) ? ownMenusLimit : "sin limite"} menus propios</span>
         <span>{libraryLabel(capabilities)}</span>
         <button type="button" onClick={() => navigate("/app/planes")}>Ver beneficios</button>
       </div>
 
-      {user?.clientCoachNotice?.type === "coach_unlinked" && user?.clientCoachNotice?.status === "unread" ? (
+      {showCoachTransitionNotice ? (
         <div className="nh-transition-note">
-          <span className="nh-kicker"><Sparkles size={15} /> Autogestionado</span>
-          <strong>Ahora gestionas tu nutricion de forma independiente.</strong>
-          <p>El menu profesional anterior ya no esta disponible. Tus menus propios, comidas y Tracking siguen guardados.</p>
+          <div>
+            <span className="nh-kicker"><Sparkles size={15} /> Autogestionado</span>
+            <strong>Ahora gestionas tu nutricion de forma independiente.</strong>
+            <p>El menu profesional anterior ya no esta disponible. Tus menus propios, comidas y Tracking siguen guardados.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.localStorage.setItem(coachNoticeKey, "1");
+              } catch {
+                // localStorage puede no estar disponible; igual cerramos en memoria.
+              }
+              setCoachNoticeDismissed(true);
+            }}
+          >
+            Entendido
+          </button>
         </div>
       ) : null}
 
@@ -387,20 +448,28 @@ function SelfEmptyState({
 }
 
 function OwnActiveState({ menu, busy, onMenuDay, onTracking, onEdit, onChange, onDeactivate }) {
-  const totals = menuTotals(menu);
+  const content = menuContentCopy(menu);
   return (
     <article className="nh-feature-card own">
       <div className="nh-feature-main">
         <span className="nh-kicker"><CheckCircle2 size={15} /> Tu menu activo</span>
         <h2>{menu?.nombre || "Menu propio"}</h2>
-        <p>
-          {daysCount(menu) || 7} dias - {mealsCount(menu)} comidas - {formatNumber(totals.kcal, 0)} kcal promedio
-        </p>
+        <p>{content.headline}</p>
+        <small>{content.detail}</small>
         <small>Ultima modificacion: {updatedLabel(menu)}</small>
       </div>
       <div className="nh-feature-actions">
-        <ActionButton variant="primary" onClick={onMenuDay}>Ver menu del dia</ActionButton>
-        <ActionButton onClick={onEdit}><Pencil size={15} /> Editar menu</ActionButton>
+        {content.empty ? (
+          <>
+            <ActionButton variant="primary" onClick={onEdit}><Pencil size={15} /> Completar menu</ActionButton>
+            <ActionButton onClick={onMenuDay}>Ver menu del dia</ActionButton>
+          </>
+        ) : (
+          <>
+            <ActionButton variant="primary" onClick={onMenuDay}>Ver menu del dia</ActionButton>
+            <ActionButton onClick={onEdit}><Pencil size={15} /> Editar menu</ActionButton>
+          </>
+        )}
         <ActionButton onClick={onChange}>Cambiar menu</ActionButton>
         <button type="button" className="nh-link-action" onClick={onDeactivate} disabled={busy}>
           {busy ? <Loader2 size={15} className="nl-spin" /> : <Power size={15} />}
@@ -514,11 +583,12 @@ function RecentMenusState({ menus, busy, onOpenMyMenus, onCreate, onTracking, on
 
 function RecentMenuCard({ menu, busy, onActivate, onOpen }) {
   const totals = menuTotals(menu);
+  const content = menuContentCopy(menu);
   return (
     <article className="nh-recent-card">
       <h3>{menu.nombre || "Menu propio"}</h3>
-      <p>{daysCount(menu) || 7} dias - {mealsCount(menu)} comidas</p>
-      <strong>{formatNumber(totals.kcal, 0)} kcal promedio</strong>
+      <p>{content.detail}</p>
+      <strong>{content.empty ? "Menu pendiente" : `${formatNumber(totals.kcal || menuContentSummary(menu).totals.kcal, 0)} kcal`}</strong>
       <small>Actualizado: {updatedLabel(menu)}</small>
       <div>
         <button type="button" onClick={onOpen}>Ver</button>

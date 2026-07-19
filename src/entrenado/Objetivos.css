@@ -678,6 +678,7 @@
     linear-gradient(145deg, rgba(15,23,30,.98), rgba(5,8,12,.99));
   box-shadow:0 30px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
   padding:20px;
+  overscroll-behavior:contain;
 }
 
 .og-sheetHandle{
@@ -861,6 +862,7 @@
 .og-dialogFooter{
   position:sticky;
   bottom:-20px;
+  z-index:2;
   margin:0 -20px -20px;
   padding:13px 20px 20px;
   display:grid;
@@ -999,7 +1001,7 @@
   .og-dialogFooter{
     bottom:-16px;
     margin:0 -16px -16px;
-    padding:12px 16px 18px;
+    padding:12px 16px calc(18px + env(safe-area-inset-bottom));
     grid-template-columns:1fr;
   }
   .og-dialogFooter .og-save{

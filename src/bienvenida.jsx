@@ -211,6 +211,75 @@ body{ background:#020507; }
 }
 .lw-trust span{ display:block; margin-top:4px; color:rgba(247,247,247,.62); font-size:clamp(13px,2.7vw,18px); }
 .lw-trust svg{ color:var(--auth-gold-soft); flex:0 0 auto; }
+@media (min-width: 900px){
+  .lw-hero{
+    align-items:center;
+    padding:24px;
+    background:
+      radial-gradient(circle at 18% 18%, rgba(255,198,49,.12), transparent 28%),
+      linear-gradient(180deg, rgba(2,5,8,.04) 0%, rgba(2,5,8,.26) 42%, rgba(2,5,8,.84) 100%),
+      linear-gradient(90deg, rgba(2,5,8,.97) 0%, rgba(2,5,8,.72) 48%, rgba(2,5,8,.20) 100%),
+      var(--landing-bg);
+    background-size:cover;
+    background-position:center 34%;
+  }
+  .lw-shell{
+    width:min(1180px,100%);
+    min-height:min(852px,calc(100dvh - 48px));
+    grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);
+    grid-template-areas:
+      "brand brand"
+      "copy value"
+      "copy actions"
+      "benefits benefits"
+      "trust trust";
+    align-content:center;
+    gap:22px 34px;
+    padding:36px;
+  }
+  .lw-brand{ grid-area:brand; }
+  .lw-copy{ grid-area:copy; align-self:center; max-width:620px; }
+  .lw-value{ grid-area:value; align-self:end; }
+  .lw-actions{ grid-area:actions; align-self:start; }
+  .lw-benefits{ grid-area:benefits; gap:10px; }
+  .lw-trust{ grid-area:trust; justify-content:flex-start; }
+  .lw-brand .brand-logo-img{ height:58px; max-width:260px; }
+  .lw-kicker{ min-height:36px; padding:0 15px; font-size:12px; }
+  .lw-title{
+    margin-top:20px;
+    font-size:clamp(58px,6vw,82px);
+    letter-spacing:-.035em;
+  }
+  .lw-sub{
+    max-width:540px;
+    margin-top:18px;
+    font-size:20px;
+  }
+  .lw-benefit{
+    min-height:118px;
+    border-radius:16px;
+    padding:14px 10px;
+  }
+  .lw-benefit strong{ font-size:16px; }
+  .lw-benefit span{ font-size:12px; }
+  .lw-benefit svg{ width:32px; height:32px; }
+  .lw-value{
+    gap:16px;
+    padding:18px;
+    border-radius:20px;
+  }
+  .lw-valueIcon{ width:68px; height:68px; }
+  .lw-valueIcon svg{ width:31px; height:31px; }
+  .lw-value h2{ font-size:26px; }
+  .lw-value p{ font-size:17px; }
+  .lw-btn{
+    min-height:60px;
+    border-radius:17px;
+    font-size:22px;
+  }
+  .lw-trust strong{ font-size:14px; }
+  .lw-trust span{ font-size:13px; }
+}
 @media (max-width: 840px){
   .lw-benefits{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .lw-benefit:last-child{ grid-column:1/-1; }

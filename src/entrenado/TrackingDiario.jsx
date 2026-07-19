@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bookmark,
@@ -28,6 +29,11 @@ import {
 import { listAlimentos } from "../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, formatNumber, getFoodImageUrl } from "../nutricion/nutricionUtils.js";
 import AppToast from "../ui/AppToast.jsx";
+import {
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+  clientPlanCapabilitiesKey,
+  fetchClientPlanCapabilities,
+} from "../clientPlans/clientPlanQueries.js";
 import {
   useAddFoodLog,
   useDeleteFoodLog,
@@ -78,6 +84,13 @@ export default function TrackingDiario() {
   const deleteMutation = useDeleteFoodLog();
   const updateMealsMutation = useUpdateTrackingMealsConfig();
   const deleteMealMutation = useDeleteTrackingMeal();
+  const capabilitiesQuery = useQuery({
+    queryKey: clientPlanCapabilitiesKey,
+    queryFn: fetchClientPlanCapabilities,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 
   const isSaving =
     addMutation.isPending ||
@@ -99,6 +112,13 @@ export default function TrackingDiario() {
   const objective = tracking.objetivo || null;
   const remaining = remainingTotals(objective, totals);
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
+  const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
+  const historyOldestDate = useMemo(
+    () => Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
+      ? addDays(todayLocalString(), -(trackingHistoryDays - 1))
+      : "",
+    [trackingHistoryDays]
+  );
 
   const searchReady = debouncedSearch.trim().length >= 2;
   const selectedPreview = useMemo(() => {
@@ -188,7 +208,15 @@ export default function TrackingDiario() {
   function shiftDate(days) {
     const next = new Date(`${date}T12:00:00`);
     next.setDate(next.getDate() + days);
-    setDate(toDateInputValue(next));
+    const nextDate = toDateInputValue(next);
+    if (historyOldestDate && nextDate < historyOldestDate) {
+      setToast({
+        type: "info",
+        message: `Tu plan permite consultar los ultimos ${trackingHistoryDays} dias de Tracking.`,
+      });
+      return;
+    }
+    setDate(nextDate);
   }
 
   function addFood() {
@@ -457,8 +485,8 @@ export default function TrackingDiario() {
         >
           <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
           <span>
-            <strong>Calcular restante</strong>
-            <small>Distribuir lo que falta entre las comidas pendientes</small>
+            <strong>Distribuir restante</strong>
+            <small>Repartir la meta restante entre comidas pendientes</small>
           </span>
         </button>
 
@@ -508,7 +536,6 @@ export default function TrackingDiario() {
                           onSaveMeal={() => mealMenuFeedback("Guardar como comida")}
                           onFavorite={() => mealMenuFeedback("Guardar como favorita")}
                           onUseSaved={() => mealMenuFeedback("Usar comida guardada")}
-                          onGenerate={() => mealMenuFeedback("Generar comida segun objetivo")}
                           hasTarget={mealHasTarget}
                           onSetGoal={() => openMealGoal(meal)}
                           onRemoveGoal={() => removeMealGoal(meal.id)}
@@ -766,7 +793,6 @@ function MealOptionsMenu({
   onSaveMeal,
   onFavorite,
   onUseSaved,
-  onGenerate,
   onSetGoal,
   onRemoveGoal,
   onClear,
@@ -785,10 +811,6 @@ function MealOptionsMenu({
       <button type="button" onClick={onUseSaved} role="menuitem">
         <ClipboardList size={20} strokeWidth={2.2} aria-hidden="true" />
         <span>Usar comida guardada</span>
-      </button>
-      <button type="button" onClick={onGenerate} role="menuitem">
-        <Crosshair size={20} strokeWidth={2.2} aria-hidden="true" />
-        <span>Generar comida segun objetivo</span>
       </button>
       <button type="button" onClick={onSetGoal} role="menuitem">
         <Flag size={20} strokeWidth={2.2} aria-hidden="true" />
@@ -1613,6 +1635,12 @@ function mondayOfWeek(date) {
   const day = parsed.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   parsed.setDate(parsed.getDate() + diff);
+  return toDateInputValue(parsed);
+}
+
+function addDays(date, days) {
+  const parsed = new Date(`${date}T12:00:00`);
+  parsed.setDate(parsed.getDate() + days);
   return toDateInputValue(parsed);
 }
 

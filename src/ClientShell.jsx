@@ -1,5 +1,5 @@
 // src/ClientShell.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Crown, Target } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -447,12 +447,15 @@ const CSS = `
   display:flex;
   align-items:center;
   gap:10px;
+  width:calc(100% - 20px);
   padding: 12px 12px;
   border-radius: 14px;
   border:1px solid transparent;
   text-decoration:none;
   color: var(--txt);
   font-weight: 800;
+  font:inherit;
+  text-align:left;
   transition: background .15s ease, border-color .15s ease, transform .08s ease;
   margin: 4px 10px;
 }
@@ -511,7 +514,7 @@ const CSS = `
   background:#0f0f0f;
   border-color:#1e1e1e;
   opacity: .78;
-  cursor: not-allowed;
+  cursor: pointer;
 }
 .cs-item-disabled:hover{ transform:none; }
 .cs-badge{
@@ -742,6 +745,7 @@ const NAV_SECTIONS = [
 export default function ClientShell() {
   const nav = useNavigate();
   const loc = useLocation();
+  const menuButtonRef = useRef(null);
   const cachedUser = useMemo(() => getCachedUser(), []);
   const meQuery = useAuthMe({
     enabled: true,
@@ -871,23 +875,41 @@ export default function ClientShell() {
     },
   });
 
+  const closeDrawer = useCallback(({ restoreFocus = false } = {}) => {
+    setOpen(false);
+    if (restoreFocus) {
+      window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+    }
+  }, []);
+
   // ✅ cierra drawer cuando cambia la ruta
   useEffect(() => {
     setOpen(false);
   }, [loc.pathname]);
 
+  // ✅ bloquea scroll de fondo y libera la capa al cerrar
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, closeDrawer]);
+
   // ✅ ESC para cerrar
   useEffect(() => {
     function onKey(e) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeDrawer({ restoreFocus: true });
     }
     if (open) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, closeDrawer]);
 
   async function logout() {
     if (isImpersonating()) return;
     if (loading) return;
+    closeDrawer();
     setLoading(true);
     setToast(null);
     try {
@@ -1093,14 +1115,21 @@ export default function ClientShell() {
   function renderItem(it) {
     if (!it.enabled) {
       return (
-        <div key={it.to} className="cs-item-disabled" title={`${it.label} (Próximamente)`}>
+        <button
+          key={it.to}
+          type="button"
+          className="cs-item-disabled"
+          title={`${it.label} (Próximamente)`}
+          aria-disabled="true"
+          onClick={() => closeDrawer({ restoreFocus: true })}
+        >
           <span className="cs-ic">{it.icon}</span>
           <span className="cs-desc">
             <span>{it.label}</span>
             <small className="cs-subline">{it.sub}</small>
           </span>
           <span className="cs-badge">Próximamente</span>
-        </div>
+        </button>
       );
     }
 
@@ -1110,6 +1139,7 @@ export default function ClientShell() {
         to={it.to}
         className={({ isActive }) => `cs-item ${isActive ? "active" : ""}`}
         title={it.label}
+        onClick={() => closeDrawer()}
         {...createNavigationPrefetchHandlers(it.to)}
       >
         <span className="cs-ic">{it.icon}</span>
@@ -1229,11 +1259,21 @@ export default function ClientShell() {
           </div>
 
           <div className="cs-actions">
-            <button className="cs-btn" onClick={() => setOpen(true)} aria-label="Abrir menú" title="Menú">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="cs-btn"
+              onClick={() => setOpen(true)}
+              aria-label="Abrir menú"
+              title="Menú"
+              aria-expanded={open}
+              aria-controls="client-main-menu"
+            >
               ☰
             </button>
 
             <button
+              type="button"
               className={`cs-btn ${loading ? "is-loading" : ""}`}
               onClick={logout}
               disabled={loading || isImpersonating()}
@@ -1247,9 +1287,15 @@ export default function ClientShell() {
       </header>
 
       {/* overlay */}
-      {open && <div className="cs-ov" onClick={() => setOpen(false)} aria-hidden="true" />}
+      {open && <div className="cs-ov" onClick={() => closeDrawer({ restoreFocus: true })} aria-hidden="true" />}
 
-      <aside className={`cs-drawer ${open ? "open" : ""}`} role="dialog" aria-modal="true" aria-label="Menú principal">
+      <aside
+        id="client-main-menu"
+        className={`cs-drawer ${open ? "open" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menú principal"
+      >
         <div className="cs-d-head">
           <div className="cs-prof">
             <div className="cs-avatar" aria-label="Avatar">
@@ -1260,13 +1306,13 @@ export default function ClientShell() {
               <div className="cs-prof-name">{fullName ? fullName : "Mi cuenta"}</div>
               <div className="cs-prof-sub">{sub}</div>
 
-              <NavLink className="cs-prof-link" to="/app/perfil">
+              <NavLink className="cs-prof-link" to="/app/perfil" onClick={() => closeDrawer()}>
                 Ver mi perfil →
               </NavLink>
             </div>
           </div>
 
-          <button className="cs-btn" onClick={() => setOpen(false)} aria-label="Cerrar menú" title="Cerrar">
+          <button type="button" className="cs-btn" onClick={() => closeDrawer({ restoreFocus: true })} aria-label="Cerrar menú" title="Cerrar">
             ✕
           </button>
         </div>
@@ -1292,6 +1338,7 @@ export default function ClientShell() {
         <div className="cs-d-foot">
           {/* Salir (último de todo) */}
           <button
+            type="button"
             className="cs-btn cs-foot-item"
             onClick={logout}
             disabled={loading || isImpersonating()}

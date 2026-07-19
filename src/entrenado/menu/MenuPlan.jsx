@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Apple,
   Calculator,
+  CalendarDays,
   CheckSquare2,
   CheckCircle2,
   ChevronDown,
@@ -14,12 +15,14 @@ import {
   ClipboardCheck,
   Eye,
   Lock,
+  Minus,
   MoreHorizontal,
   MoonStar,
   PencilLine,
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Square,
   Sun,
   Sunrise,
@@ -31,6 +34,22 @@ import {
 
 import { apiFetch } from "../../Api.js";
 import { getFoodEquivalents } from "../../menus/menusApi.js";
+import {
+  assignmentFlexibleCalories,
+  assignmentMacroPending,
+  getMenuDayCompatibility,
+} from "../../menus/menuAssignmentCompatibility.js";
+import {
+  FLEXIBLE_MARGIN_LABEL,
+  FLEXIBLE_MARGIN_SLOT_TYPE,
+  FLEXIBLE_MARGIN_SOURCE,
+  flexibleMarginEntries,
+  flexibleMarginMacroRemaining,
+  flexibleMarginRemaining,
+  flexibleMarginTotals,
+  isFlexibleMarginCompleted,
+  replaceFlexibleMarginEntries,
+} from "../../menus/flexibleMarginTracking.js";
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
 import { getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
@@ -57,6 +76,25 @@ function uid(prefix = "id") {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateKeyFromSearch(search = "") {
+  try {
+    const value = new URLSearchParams(search).get("date") || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function canUseFlexibleMarginCalculation(permissions = {}) {
+  // Strict capability: canAutoCompleteRemainingMeals is a different flow and must not unlock flexible-margin quantities.
+  return permissions?.canUseFlexibleMarginRecommendations === true;
+}
+
+function canUseRemainingMealCalculation(permissions = {}) {
+  // Strict capability: missing data must not unlock automatic remaining-meal generation.
+  return permissions?.canAutoCompleteRemainingMeals === true;
 }
 
 function getMenuWeekCacheEntry(start) {
@@ -144,6 +182,45 @@ function displayKcal(value) {
   return `${formatNumber(macro(value))} kcal`;
 }
 
+const FLEXIBLE_MARGIN_COMPLETE_TOLERANCE_KCAL = 50;
+const FLEXIBLE_MARGIN_AUTO_COMPLETE_TOLERANCE_KCAL = 40;
+
+function flexibleMarginCompletionState(plan = {}, rowOrEntries = {}) {
+  const target = macro(plan?.flexibleCalories);
+  const totals = flexibleMarginTotals(rowOrEntries);
+  const remaining = target - totals.kcal;
+  const missing = Math.max(0, remaining);
+  const over = Math.max(0, -remaining);
+  const hasEntries = totals.kcal > 0.5;
+  const isOver = remaining < -0.5;
+  const canComplete =
+    target > 0 &&
+    hasEntries &&
+    !isOver &&
+    missing <= FLEXIBLE_MARGIN_COMPLETE_TOLERANCE_KCAL;
+  const autoComplete =
+    canComplete &&
+    missing <= FLEXIBLE_MARGIN_AUTO_COMPLETE_TOLERANCE_KCAL;
+  return {
+    target,
+    totals,
+    remaining,
+    missing,
+    over,
+    hasEntries,
+    isOver,
+    canComplete,
+    autoComplete,
+    kcalToComplete: Math.max(0, missing - FLEXIBLE_MARGIN_COMPLETE_TOLERANCE_KCAL),
+  };
+}
+
+function flexibleMarginCompletionBlockMessage(state = {}) {
+  if (!state.hasEntries) return "Agrega al menos un alimento para marcar el margen como hecho.";
+  if (state.isOver) return `Te pasaste por ${displayKcal(state.over)}. Baja la cantidad para marcarlo como hecho.`;
+  return `Para marcarlo como hecho te tienen que quedar ${displayKcal(FLEXIBLE_MARGIN_COMPLETE_TOLERANCE_KCAL)} o menos. Todavia faltan ${displayKcal(state.kcalToComplete)}.`;
+}
+
 function displayMacros(target = {}) {
   const safeTarget = target && typeof target === "object" ? target : {};
   return `P ${formatNumber(macro(safeTarget.p ?? safeTarget.proteina), 1)} g / C ${formatNumber(macro(safeTarget.c ?? safeTarget.carbs), 1)} g / G ${formatNumber(macro(safeTarget.g ?? safeTarget.grasas), 1)} g`;
@@ -173,15 +250,16 @@ function statusMeta(row) {
 function menuState(row) {
   const hasMenu = Boolean(row?.assignment?.primaryMenu);
   if (!hasMenu) return { label: "Sin menú", tone: "slate" };
-  const targetKcal = macro(row?.target?.kcal);
-  const menuKcal = choiceTotals(menuChoices(row)[0]).kcal;
-  const proteinDiff = macro(row?.compatibility?.proteinDiff);
-  const diff = menuKcal - targetKcal;
-  if (targetKcal && Math.abs(diff) <= targetKcal * 0.08 && proteinDiff >= -8) return { label: "Cerca de la meta", tone: "green" };
-  if (targetKcal && diff > targetKcal * 0.1) return { label: "Excede kcal", tone: "red" };
-  if (targetKcal && diff < -targetKcal * 0.12) return { label: "Bajo en kcal", tone: "amber" };
-  if (proteinDiff < -10) return { label: "Bajo en proteína", tone: "amber" };
-  return { label: "Revisar", tone: "amber" };
+  const hasTarget = hasConfiguredTarget(row);
+  if (!hasTarget) return { label: "Meta pendiente", tone: "amber" };
+  const compatibility = getMenuDayCompatibility(choiceTotals(menuChoices(row)[0]), targetTotals(row));
+  if (compatibility.flexibleCalories > 0 && compatibility.canAssign) return { label: "Margen flexible", tone: "green" };
+  if (compatibility.key === "compatible") return { label: "Cerca de la meta", tone: "green" };
+  if (compatibility.key === "surplus_blocked") return { label: "Excede kcal", tone: "red" };
+  if (compatibility.key === "deficit_excessive") return { label: "Bajo en kcal", tone: "amber" };
+  if (compatibility.proteinLow) return { label: "Proteina baja", tone: "amber" };
+  if (compatibility.key === "surplus_warning") return { label: "Exceso leve", tone: "amber" };
+  return { label: compatibility.canAssign ? "Compatible" : "Revisar", tone: compatibility.canAssign ? "green" : "amber" };
 }
 
 function toneClass(tone) {
@@ -210,6 +288,7 @@ function menuChoices(row) {
       label: "Menu principal",
       snapshot: primary.menuSnapshot,
       totals: row?.menuTotals || primary.menuSnapshot.totals || primary.menuSnapshot,
+      assignment: primary,
     });
   }
   const alternatives = Array.isArray(row?.assignment?.alternatives) ? row.assignment.alternatives : [];
@@ -222,6 +301,7 @@ function menuChoices(row) {
       index,
       label: `Alternativa ${index + 1}`,
       snapshot,
+      assignment: alternative,
       totals: snapshot.totals || {
         kcal: snapshot.kcal,
         proteina: snapshot.protein,
@@ -268,11 +348,30 @@ function choiceStatus(row = {}, choice = {}) {
   const target = targetTotals(row);
   const totals = choiceTotals(choice);
   if (!choice?.snapshot) return { label: "Sin menú", tone: "slate" };
-  const diff = totals.kcal - target.kcal;
-  if (target.kcal && Math.abs(diff) <= target.kcal * 0.08) return { label: "Cerca de la meta", tone: "green" };
-  if (target.kcal && diff > target.kcal * 0.1) return { label: "Excede kcal", tone: "red" };
-  if (target.kcal && diff < -target.kcal * 0.12) return { label: "Bajo en kcal", tone: "amber" };
-  return { label: "Revisar", tone: "amber" };
+  if (!hasTotalValue(target)) return { label: "Meta pendiente", tone: "amber" };
+  const compatibility = getMenuDayCompatibility(totals, target);
+  if (compatibility.flexibleCalories > 0 && compatibility.canAssign) return { label: "Margen flexible", tone: "green" };
+  if (compatibility.key === "compatible") return { label: "Cerca de la meta", tone: "green" };
+  if (compatibility.key === "surplus_blocked") return { label: "Excede kcal", tone: "red" };
+  if (compatibility.key === "deficit_excessive") return { label: "Bajo en kcal", tone: "amber" };
+  if (compatibility.proteinLow) return { label: "Proteina baja", tone: "amber" };
+  if (compatibility.key === "surplus_warning") return { label: "Exceso leve", tone: "amber" };
+  return { label: compatibility.canAssign ? "Compatible" : "Revisar", tone: compatibility.canAssign ? "green" : "amber" };
+}
+
+function flexiblePlanForChoice(row = {}, choice = {}, activePlanSource = "none") {
+  if (menuSourceMeta(activePlanSource).key !== "coach" || !choice?.snapshot) return null;
+  const totals = choiceTotals(choice);
+  const target = targetTotals(row);
+  const assignment = choice.assignment || row?.assignment?.primaryMenu || {};
+  const flexibleCalories = assignmentFlexibleCalories(assignment, target, totals);
+  if (flexibleCalories <= 0) return null;
+  return {
+    flexibleCalories,
+    target,
+    planned: totals,
+    macroPending: assignmentMacroPending(assignment, target, totals),
+  };
 }
 
 function menuCountTitle(row) {
@@ -357,9 +456,15 @@ function activeMenuSummaryParts(choice = {}, source = "none") {
   const meals = choiceMeals(choice);
   const sourceKey = menuSourceMeta(source).key;
   const dayLabel = sourceKey === "own" ? "Dia base" : sourceKey === "coach" ? "Asignado" : "Dia";
-  const mealsLabel = `${meals.length} comida${meals.length === 1 ? "" : "s"}`;
+  const contentCount = meals.filter(mealHasContent).length;
+  const blocksLabel = `${meals.length || 0} bloque${meals.length === 1 ? "" : "s"}`;
+  const mealsLabel = contentCount
+    ? `${contentCount}/${meals.length || contentCount} con alimentos`
+    : meals.length
+      ? `${blocksLabel} - sin alimentos`
+      : "sin comidas cargadas";
   return {
-    primary: `${dayLabel} · ${displayKcal(totals.kcal)}`,
+    primary: hasTotalValue(totals) ? `${dayLabel} - ${displayKcal(totals.kcal)}` : `${dayLabel} - menu vacio`,
     secondary: mealsLabel,
   };
 }
@@ -524,12 +629,21 @@ function localConsumedTotals(row = {}) {
 }
 
 function targetTotals(row = {}) {
+  const proteina = macro(row?.target?.p ?? row?.target?.proteina);
+  const carbs = macro(row?.target?.c ?? row?.target?.carbs);
+  const grasas = macro(row?.target?.g ?? row?.target?.grasas);
+  const explicitKcal = macro(row?.target?.kcal);
+  const derivedKcal = hasTotalValue({ proteina, carbs, grasas }) ? (proteina * 4) + (carbs * 4) + (grasas * 9) : 0;
   return {
-    kcal: macro(row?.target?.kcal),
-    proteina: macro(row?.target?.p ?? row?.target?.proteina),
-    carbs: macro(row?.target?.c ?? row?.target?.carbs),
-    grasas: macro(row?.target?.g ?? row?.target?.grasas),
+    kcal: explicitKcal || derivedKcal,
+    proteina,
+    carbs,
+    grasas,
   };
+}
+
+function hasConfiguredTarget(row = {}) {
+  return hasTotalValue(targetTotals(row));
 }
 
 function consumedTotals(row = {}) {
@@ -629,6 +743,10 @@ function mealFoods(meal = {}) {
             ? meal.ingredients
             : [];
   return items.map(normalizeMealFood);
+}
+
+function mealHasContent(meal = {}) {
+  return mealFoods(meal).length > 0 || hasTotalValue(mealTotals(meal));
 }
 
 function normalizeMealFood(item = {}, index = 0) {
@@ -1341,6 +1459,7 @@ function trackingPayloadBase(row = {}, overrides = {}) {
     mealReplacements: Array.isArray(tracking.mealReplacements) ? tracking.mealReplacements : [],
     foodReplacements: Array.isArray(tracking.foodReplacements) ? tracking.foodReplacements : [],
     selectedAlternative: tracking.selectedAlternative || null,
+    flexibleMarginCompleted: isFlexibleMarginCompleted(row),
     ...overrides,
   };
 }
@@ -1395,6 +1514,180 @@ function trackingIdPart(value = "") {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 32) || "item";
+}
+
+function roundMacro(value, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(macro(value) * factor) / factor;
+}
+
+function flexibleChoiceAssignment(row = {}, choice = {}) {
+  return choice?.assignment || row?.assignment?.primaryMenu || {};
+}
+
+function flexibleChoiceMenuId(row = {}, choice = {}) {
+  const assignment = flexibleChoiceAssignment(row, choice);
+  const snapshot = choice?.snapshot || assignment?.menuSnapshot || {};
+  return String(
+    assignment.menuId ||
+      assignment.menu_id ||
+      snapshot.baseId ||
+      snapshot.id ||
+      snapshot._id ||
+      choice?.key ||
+      ""
+  );
+}
+
+function flexibleAssignmentId(row = {}, choice = {}) {
+  const assignment = flexibleChoiceAssignment(row, choice);
+  return String(
+    assignment.assignmentId ||
+      assignment.assignment_id ||
+      assignment.id ||
+      assignment._id ||
+      row?.assignment?.id ||
+      row?.assignment?._id ||
+      ""
+  );
+}
+
+function flexibleMarginEntryFood(entry = {}) {
+  const foods = Array.isArray(entry.foods) ? entry.foods : Array.isArray(entry.items) ? entry.items : [];
+  return foods[0] || entry;
+}
+
+function flexiblePerUnitFromFood(food = {}) {
+  const explicit = {
+    kcal: macro(food.kcalPerUnitOrGram ?? food.kcalPerUnit ?? food.caloriesPerUnit ?? food.raw?.kcalPerUnitOrGram),
+    proteina: macro(food.proteinPerUnitOrGram ?? food.proteinaPerUnitOrGram ?? food.proteinPerUnit ?? food.raw?.proteinPerUnitOrGram),
+    carbs: macro(food.carbsPerUnitOrGram ?? food.carbsPerUnit ?? food.raw?.carbsPerUnitOrGram),
+    grasas: macro(food.fatPerUnitOrGram ?? food.grasasPerUnitOrGram ?? food.fatPerUnit ?? food.raw?.fatPerUnitOrGram),
+  };
+  if (hasTotalValue(explicit)) return explicit;
+
+  const sourceQuantity = macro(food.quantity ?? food.cantidad ?? food.gramos ?? food.grams);
+  const directTotals = totalFromLike(food.totals || food);
+  const source = String(food.source || "").toLowerCase();
+  const isGeneratedOrFlexible = food.flexibleMargin === true ||
+    food.fixedQuantity !== undefined ||
+    ["fixed", "manual_fixed", "auto_calculated", FLEXIBLE_MARGIN_SOURCE].includes(source);
+  if (sourceQuantity > 0 && hasTotalValue(directTotals) && isGeneratedOrFlexible) {
+    return {
+      kcal: directTotals.kcal / sourceQuantity,
+      proteina: directTotals.proteina / sourceQuantity,
+      carbs: directTotals.carbs / sourceQuantity,
+      grasas: directTotals.grasas / sourceQuantity,
+    };
+  }
+
+  return {
+    kcal: foodPerUnit(food, "kcal"),
+    proteina: foodPerUnit(food, "proteina"),
+    carbs: foodPerUnit(food, "carbs"),
+    grasas: foodPerUnit(food, "grasas"),
+  };
+}
+
+function flexibleTotalsFromFood(food = {}, quantity = 0) {
+  const amount = macro(quantity);
+  const perUnit = flexiblePerUnitFromFood(food, amount);
+  return {
+    perUnit,
+    totals: {
+      kcal: roundMacro(perUnit.kcal * amount, 1),
+      proteina: roundMacro(perUnit.proteina * amount, 1),
+      carbs: roundMacro(perUnit.carbs * amount, 1),
+      grasas: roundMacro(perUnit.grasas * amount, 1),
+    },
+  };
+}
+
+function flexibleMarginEntryFromFood(row = {}, plan = {}, food = {}, quantityValue, unitValue, choice = {}, options = {}) {
+  const quantity = Math.max(0, roundMacro(quantityValue ?? food.quantity ?? food.cantidad ?? suggestedQuickFoodQuantity(food), 2));
+  const unit = unitValue || food.unit || food.unidad || foodDisplayUnit(food);
+  const name = food.name || food.nombre || food.nombreSnapshot || food.foodName || "Alimento";
+  const foodId = String(food.foodId || food.alimentoId || food.id || food._id || name);
+  const { perUnit, totals } = flexibleTotalsFromFood(food, quantity);
+  const now = new Date().toISOString();
+  const item = {
+    id: foodId,
+    alimentoId: foodId,
+    foodId,
+    name,
+    nombre: name,
+    quantity,
+    cantidad: quantity,
+    unit,
+    unidad: unit,
+    amount: foodAmount(quantity, unit),
+    kcal: totals.kcal,
+    proteina: totals.proteina,
+    protein: totals.proteina,
+    carbs: totals.carbs,
+    grasas: totals.grasas,
+    fat: totals.grasas,
+    totals,
+    kcalPerUnitOrGram: perUnit.kcal,
+    proteinPerUnitOrGram: perUnit.proteina,
+    carbsPerUnitOrGram: perUnit.carbs,
+    fatPerUnitOrGram: perUnit.grasas,
+    category: food.category || food.categoria || food.categoriaSnapshot || "",
+    imagen: food.imagen || null,
+    imageUrl: food.imagenUrl || food.imageUrl || getFoodImageUrl(food),
+    source: options.itemSource || food.source || "manual",
+    flexibleMargin: true,
+  };
+  return {
+    id: options.id || `flexible-margin-${row?.date || "day"}-${trackingIdPart(foodId || name)}-${Date.now()}`,
+    date: row?.date || "",
+    dayKey: row?.dayKey || "",
+    source: FLEXIBLE_MARGIN_SOURCE,
+    mode: options.mode || "manual",
+    scope: "day",
+    activeFromDate: row?.date || "",
+    activeUntilDate: row?.date || "",
+    mealSlotType: FLEXIBLE_MARGIN_SLOT_TYPE,
+    label: FLEXIBLE_MARGIN_LABEL,
+    name,
+    foodId,
+    foodName: name,
+    assignmentId: flexibleAssignmentId(row, choice),
+    menuId: flexibleChoiceMenuId(row, choice),
+    targetCalories: plan?.target?.kcal || 0,
+    plannedCalories: plan?.planned?.kcal || 0,
+    flexibleCalories: plan?.flexibleCalories || 0,
+    macroPending: plan?.macroPending || {},
+    quantity,
+    cantidad: quantity,
+    unit,
+    unidad: unit,
+    kcal: totals.kcal,
+    proteina: totals.proteina,
+    protein: totals.proteina,
+    carbs: totals.carbs,
+    grasas: totals.grasas,
+    fat: totals.grasas,
+    totals,
+    foods: [item],
+    items: [item],
+    countsAsMenuMeal: false,
+    createdAt: options.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+function rescaleFlexibleMarginEntry(entry = {}, row = {}, plan = {}, quantityValue, unitValue, choice = {}) {
+  const food = flexibleMarginEntryFood(entry);
+  return flexibleMarginEntryFromFood(
+    row,
+    plan,
+    { ...food, flexibleMargin: true, source: FLEXIBLE_MARGIN_SOURCE },
+    quantityValue,
+    unitValue || food.unit || food.unidad || entry.unit || entry.unidad,
+    choice,
+    { id: entry.id, createdAt: entry.createdAt, mode: entry.mode || "manual", itemSource: food.source || "manual" }
+  );
 }
 
 function mealReplacementPrefix(row = {}, mealIndex = 0) {
@@ -1659,19 +1952,23 @@ async function saveMenuTrackingDay(payload) {
 
 export default function MenuPlan() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedDate = useMemo(() => dateKeyFromSearch(location.search), [location.search]);
+  const initialSelectedDate = requestedDate || todayIso();
   const initialWeek = useMemo(() => {
-    const start = mondayOfWeek();
+    const start = mondayOfWeek(initialSelectedDate);
     return { start, data: getCachedMenuWeek(start) };
-  }, []);
+  }, [initialSelectedDate]);
   const [weekStart, setWeekStart] = useState(initialWeek.start);
   const [weekData, setWeekData] = useState(initialWeek.data);
   const [loading, setLoading] = useState(() => !initialWeek.data);
   const [error, setError] = useState("");
-  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [selectedDate, setSelectedDate] = useState(initialSelectedDate);
   const [mobileView, setMobileView] = useState("overview");
   const [mobileDetailChoiceKey, setMobileDetailChoiceKey] = useState("");
   const [detailRow, setDetailRow] = useState(null);
   const [remainingDraft, setRemainingDraft] = useState(null);
+  const [flexibleMarginEditor, setFlexibleMarginEditor] = useState(null);
   const [mealDrawer, setMealDrawer] = useState(null);
   const [foodDrawer, setFoodDrawer] = useState(null);
   const [quickMealEditor, setQuickMealEditor] = useState(null);
@@ -1742,6 +2039,14 @@ export default function MenuPlan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
 
+  useEffect(() => {
+    if (!requestedDate) return;
+    const nextWeek = mondayOfWeek(requestedDate);
+    if (nextWeek !== weekStart) setWeekStart(nextWeek);
+    if (selectedDate !== requestedDate) setSelectedDate(requestedDate);
+    setMobileView("overview");
+  }, [requestedDate, selectedDate, weekStart]);
+
   const days = Array.isArray(weekData?.days) ? weekData.days : EMPTY_DAYS;
   const todayRow = useMemo(
     () => days.find((day) => day.date === todayIso()) || days[0] || null,
@@ -1760,9 +2065,10 @@ export default function MenuPlan() {
   const activePlanSource = activePlan?.source || "none";
   const canQuickEditActiveMenu = menuSourceMeta(activePlanSource).key === "own";
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
-  const canAutoCompleteRemaining = permissions.canAutoCompleteRemainingMeals !== false;
+  const canAutoCompleteRemaining = canUseRemainingMealCalculation(permissions);
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canTrackFoods = permissions.canTrackFoods !== false;
+  const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
 
   function openActiveMenuEditor(row = selectedRow, options = {}) {
     if (menuSourceMeta(activePlanSource).key !== "own") return;
@@ -2107,6 +2413,104 @@ export default function MenuPlan() {
     }
   }
 
+  function openFlexibleMargin(row, mode = "manual") {
+    const baseRow = row?.date ? (days.find((day) => day.date === row.date) || row) : selectedRow;
+    const displayRow = rowWithActiveGeneratedMeals(baseRow, days);
+    const choice = trackingChoice(displayRow);
+    const plan = flexiblePlanForChoice(displayRow, choice, activePlanSource);
+    if (!plan) {
+      setToast("Este dia no tiene margen flexible.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    if (mode === "calculate" && isFlexibleMarginCompleted(displayRow)) {
+      setToast("Este margen ya esta marcado como completado.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    if (mode === "calculate" && !canUseFlexibleRecommendations) {
+      setToast("Calcular cantidades esta disponible en Pro.");
+      window.setTimeout(() => setToast(""), 2600);
+      return;
+    }
+    setFlexibleMarginEditor({
+      row: displayRow,
+      mode,
+      token: `${displayRow.date}-${mode}-${Date.now()}`,
+    });
+  }
+
+  async function saveFlexibleMarginEntries(row, entries, completed, successMessage = "") {
+    if (!row?.date) return;
+    const currentRow = days.find((day) => day.date === row.date) || row;
+    const plan = flexiblePlanForChoice(currentRow, trackingChoice(currentRow), activePlanSource);
+    const completionState = plan ? flexibleMarginCompletionState(plan, entries) : null;
+    if (completed && completionState && !completionState.canComplete) {
+      setToast(flexibleMarginCompletionBlockMessage(completionState));
+      window.setTimeout(() => setToast(""), 3200);
+      return;
+    }
+    const nextManualEntries = replaceFlexibleMarginEntries(currentRow, entries, completed);
+    const optimisticRow = rowWithTracking(currentRow, {
+      manualEntries: nextManualEntries,
+      flexibleMarginCompleted: completed === true,
+    });
+    const remaining = plan ? flexibleMarginRemaining(plan, nextManualEntries) : 0;
+    const message = successMessage ||
+      (completed
+        ? "Margen flexible marcado como hecho."
+        : remaining < -5
+          ? `Calorias libres guardadas. Te pasaste por ${displayKcal(Math.abs(remaining))}.`
+          : remaining > 5
+            ? `Calorias libres guardadas. Quedan ${displayKcal(remaining)} disponibles.`
+            : "Calorias libres guardadas.");
+
+    setWeekData((currentData) => currentData ? {
+      ...currentData,
+      days: (currentData.days || []).map((day) => day.date === optimisticRow.date ? optimisticRow : day),
+    } : currentData);
+    setDetailRow((currentRow) => currentRow?.date === optimisticRow.date ? optimisticRow : currentRow);
+    setRemainingDraft((current) => current?.date === optimisticRow.date ? optimisticRow : current);
+    setMealDrawer((current) => current?.row?.date === optimisticRow.date ? { ...current, row: optimisticRow } : current);
+    setFlexibleMarginEditor(null);
+    setSaving(true);
+    try {
+      await saveMenuTrackingDay(trackingPayloadBase(optimisticRow, {
+        manualEntries: nextManualEntries,
+        flexibleMarginCompleted: completed === true,
+      }));
+      await loadWeek(weekStart, { silent: true });
+      setToast(message);
+      window.setTimeout(() => setToast(""), 2600);
+    } catch (err) {
+      setToast(err?.message || "No se pudo guardar el margen flexible.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleFlexibleMarginCompleted(row) {
+    if (!row?.date || saving) return;
+    const currentRow = days.find((day) => day.date === row.date) || row;
+    const nextCompleted = !isFlexibleMarginCompleted(currentRow);
+    if (nextCompleted) {
+      const displayRow = rowWithActiveGeneratedMeals(currentRow, days);
+      const plan = flexiblePlanForChoice(displayRow, trackingChoice(displayRow), activePlanSource);
+      const completionState = plan ? flexibleMarginCompletionState(plan, currentRow) : null;
+      if (!completionState?.canComplete) {
+        setToast(flexibleMarginCompletionBlockMessage(completionState || {}));
+        window.setTimeout(() => setToast(""), 3200);
+        return;
+      }
+    }
+    saveFlexibleMarginEntries(
+      currentRow,
+      flexibleMarginEntries(currentRow),
+      nextCompleted,
+      nextCompleted ? "Margen flexible marcado como hecho." : "Margen flexible reabierto."
+    );
+  }
+
   function deleteManualEntry(row, manualEntry = {}) {
     const manualId = String(manualEntry?.id || "");
     const current = Array.isArray(row?.tracking?.manualEntries) ? row.tracking.manualEntries : [];
@@ -2293,6 +2697,8 @@ export default function MenuPlan() {
                 onNext={() => moveSelectedDay(1)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
+                onOpenFlexibleMargin={openFlexibleMargin}
+                onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
@@ -2301,6 +2707,7 @@ export default function MenuPlan() {
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
+                canUseFlexibleRecommendations={canUseFlexibleRecommendations}
                 saving={saving}
               />
             ) : mobileView === "alternatives" ? (
@@ -2325,6 +2732,8 @@ export default function MenuPlan() {
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedRow, options)}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
+                onOpenFlexibleMargin={openFlexibleMargin}
+                onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
                 onQuickEditMeal={openQuickMealEditor}
@@ -2334,6 +2743,7 @@ export default function MenuPlan() {
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
+                canUseFlexibleRecommendations={canUseFlexibleRecommendations}
                 saving={saving}
               />
             )
@@ -2354,9 +2764,12 @@ export default function MenuPlan() {
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
+                onOpenFlexibleMargin={openFlexibleMargin}
+                onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
                 canAutoCompleteRemaining={canAutoCompleteRemaining}
+                canUseFlexibleRecommendations={canUseFlexibleRecommendations}
                 saving={saving}
               />
 
@@ -2381,11 +2794,14 @@ export default function MenuPlan() {
                     onQuickEditMeal={openQuickMealEditor}
                     onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                     onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
+                    onOpenFlexibleMargin={openFlexibleMargin}
+                    onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                     onRestoreGenerated={restoreGeneratedRemaining}
                     onRestoreManual={restoreManualEntries}
                     onDeleteManual={deleteManualEntry}
                     canMarkMeals={canMarkMeals}
                     canAutoCompleteRemaining={canAutoCompleteRemaining}
+                    canUseFlexibleRecommendations={canUseFlexibleRecommendations}
                     onUseAlternative={useAlternative}
                     saving={saving}
                   />
@@ -2407,11 +2823,14 @@ export default function MenuPlan() {
           onQuickEditMeal={openQuickMealEditor}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onOpenRemaining={() => setRemainingDraft(rowWithActiveGeneratedMeals(detailRow, days))}
+          onOpenFlexibleMargin={openFlexibleMargin}
+          onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
           onRestoreGenerated={restoreGeneratedRemaining}
           onRestoreManual={restoreManualEntries}
           onDeleteManual={deleteManualEntry}
           canMarkMeals={canMarkMeals}
           canAutoCompleteRemaining={canAutoCompleteRemaining}
+          canUseFlexibleRecommendations={canUseFlexibleRecommendations}
           onUseAlternative={useAlternative}
           weekRows={days}
           saving={saving}
@@ -2426,6 +2845,19 @@ export default function MenuPlan() {
           onClose={() => setRemainingDraft(null)}
           onSave={(generatedMeals) => saveGeneratedRemaining(remainingDraft, generatedMeals)}
           onSaveManual={(manualEntries) => saveManualRemaining(remainingDraft, manualEntries)}
+        />
+      ) : null}
+
+      {flexibleMarginEditor ? (
+        <FlexibleMarginEditor
+          key={flexibleMarginEditor.token}
+          row={flexibleMarginEditor.row}
+          activePlanSource={activePlanSource}
+          initialMode={flexibleMarginEditor.mode}
+          canRecommend={canUseFlexibleRecommendations}
+          saving={saving}
+          onClose={() => setFlexibleMarginEditor(null)}
+          onSave={(entries, completed, successMessage) => saveFlexibleMarginEntries(flexibleMarginEditor.row, entries, completed, successMessage)}
         />
       ) : null}
 
@@ -2694,50 +3126,72 @@ function ErrorState({ message, onRetry }) {
 
 function MobileTopBar({ title, onBack }) {
   return (
-    <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
-      <button
-        type="button"
-        onClick={onBack}
-        disabled={!onBack}
-        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-100 disabled:opacity-70"
-        aria-label={onBack ? "Volver" : "Menú"}
-      >
-        {onBack ? <ChevronLeft size={20} /> : <MoreHorizontal size={20} />}
-      </button>
-      <h1 className="truncate text-center text-lg font-black text-white">{title}</h1>
-      <span className="h-11 w-11" aria-hidden="true" />
+    <div className="flex items-center justify-between gap-3 px-0.5">
+      <div className="flex min-w-0 items-center gap-2">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-zinc-100"
+            aria-label="Volver"
+          >
+            <ChevronLeft size={18} />
+          </button>
+        ) : (
+          <span className="grid h-8 w-8 shrink-0 place-items-center text-zinc-100" aria-hidden="true">
+            <Utensils size={18} strokeWidth={2.2} />
+          </span>
+        )}
+        <h1 className="truncate text-base font-black text-white">{title}</h1>
+      </div>
+      {onBack ? (
+        <span className="h-9 w-9 shrink-0" aria-hidden="true" />
+      ) : (
+        <button
+          type="button"
+          disabled
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.035] text-zinc-300 disabled:opacity-80"
+          aria-label="Opciones"
+          title="Opciones"
+        >
+          <MoreHorizontal size={18} />
+        </button>
+      )}
     </div>
   );
 }
 
 function MobileDayPicker({ row, onPrevious, onNext }) {
   return (
-    <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 rounded-[1.2rem] border border-white/10 bg-[#101824] p-2">
+    <div className="mt-2 grid grid-cols-[38px_minmax(0,1fr)_38px] items-center gap-1.5 rounded-[1rem] border border-white/10 bg-[#101824] p-1.5 shadow-[0_10px_26px_rgba(0,0,0,.22)]">
       <button
         type="button"
         onClick={onPrevious}
-        className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-black/20 text-zinc-100"
+        className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-100"
         aria-label="Día anterior"
       >
-        <ChevronLeft size={19} />
+        <ChevronLeft size={18} />
       </button>
       <div className="min-w-0 text-center">
-        <div className="truncate text-base font-black text-white">{compactDayLabel(row)}</div>
-        <div className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-zinc-500">{formatDate(row?.date)}</div>
+        <div className="flex min-w-0 items-center justify-center gap-1.5">
+          <CalendarDays size={13} className="shrink-0 text-zinc-400" />
+          <span className="truncate text-sm font-black text-white">{compactDayLabel(row)}</span>
+        </div>
+        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">{formatDate(row?.date)}</div>
       </div>
       <button
         type="button"
         onClick={onNext}
-        className="grid h-10 w-10 place-items-center rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"
+        className="grid h-9 w-9 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"
         aria-label="Día siguiente"
       >
-        <ChevronRight size={19} />
+        <ChevronRight size={18} />
       </button>
     </div>
   );
 }
 
-function MobileCalculateButton({ onClick, disabled = false }) {
+function MobileCalculateButton({ onClick, disabled = false, locked = false }) {
   return (
     <button
       type="button"
@@ -2746,11 +3200,355 @@ function MobileCalculateButton({ onClick, disabled = false }) {
       className="flex min-h-12 w-full items-center justify-between gap-3 rounded-[1.05rem] border border-[#D4AF37]/45 bg-[linear-gradient(135deg,rgba(245,215,110,.14),rgba(255,255,255,.045))] px-4 text-left text-[#FFE8A3] shadow-[0_12px_28px_rgba(0,0,0,.32)] transition active:scale-[0.99] disabled:opacity-45"
     >
       <span className="flex min-w-0 items-center gap-3">
-        <Calculator size={20} className="shrink-0" />
-        <span className="min-w-0 truncate text-sm font-black">Calcular lo que falta</span>
+        {locked ? <Lock size={20} className="shrink-0" /> : <Calculator size={20} className="shrink-0" />}
+        <span className="grid min-w-0 leading-tight">
+          <span className="min-w-0 truncate text-sm font-black">Calcular lo que falta</span>
+          {locked ? <span className="truncate text-[10px] font-black text-[#FFE8A3]/70">Disponible en Pro</span> : null}
+        </span>
       </span>
       <ChevronRight size={20} className="shrink-0" />
     </button>
+  );
+}
+
+function FlexibleMarginSlotCard({
+  row,
+  plan,
+  saving = false,
+  canRecommend = false,
+  onEdit,
+  onCalculate,
+  onToggleCompleted,
+  compact = false,
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!plan?.flexibleCalories) return null;
+  const entries = flexibleMarginEntries(row);
+  const totals = flexibleMarginTotals(row);
+  const remaining = flexibleMarginRemaining(plan, row);
+  const macroRemaining = flexibleMarginMacroRemaining(plan, row);
+  const completed = isFlexibleMarginCompleted(row);
+  const hasEntries = entries.length > 0;
+  const exceeded = remaining < -5;
+  const completionState = flexibleMarginCompletionState(plan, row);
+  const canMarkComplete = completionState.canComplete;
+  const autoReady = !completed && completionState.autoComplete;
+  const canCalculate = !completed && canRecommend && remaining > 5;
+  const toggleLabel = expanded ? "Ocultar detalle" : "Ver detalle";
+  const badgeLabel = completed ? "Hecho" : autoReady ? "Listo" : canMarkComplete ? "Cerca" : "Flexible";
+  const macroReferenceParts = [
+    macroRemaining.proteina > 0 ? `P ${formatNumber(macroRemaining.proteina, 0)}g` : "",
+    macroRemaining.carbs > 0 ? `C ${formatNumber(macroRemaining.carbs, 0)}g` : "",
+    macroRemaining.grasas > 0 ? `G ${formatNumber(macroRemaining.grasas, 0)}g` : "",
+  ].filter(Boolean);
+  const macroReference = macroReferenceParts.length ? macroReferenceParts.join(" - ") : "Sin referencia";
+  const registeredLine = `${formatNumber(totals.kcal, 0)} / ${displayKcal(plan.flexibleCalories)} registradas`;
+  const Icon = completed || autoReady ? CheckCircle2 : exceeded ? CircleAlert : Apple;
+  const mainLine = completed && !hasEntries
+    ? `${displayKcal(plan.flexibleCalories)} cerradas`
+    : hasEntries
+      ? registeredLine
+      : `${displayKcal(plan.flexibleCalories)} libres`;
+  const progressLine = completed
+    ? "Margen flexible completado"
+    : autoReady
+      ? "Se marcara como hecho al guardar"
+      : canMarkComplete
+        ? "Listo para marcar como hecho"
+        : exceeded
+          ? `Te pasaste por ${displayKcal(Math.abs(remaining))}`
+          : hasEntries
+            ? `Restan ${displayKcal(Math.max(0, remaining))}`
+            : `0 / ${displayKcal(plan.flexibleCalories)} registradas`;
+  const remainingLine = completed
+    ? ""
+    : exceeded
+      ? ""
+      : hasEntries
+        ? ""
+        : `Restan ${displayKcal(Math.max(0, remaining))}`;
+  const previewNames = entries
+    .slice(0, 2)
+    .map((entry) => {
+      const food = flexibleMarginEntryFood(entry);
+      return food.name || food.nombre || entry.foodName || entry.name || "";
+    })
+    .filter(Boolean);
+  const foodsPreview = previewNames.length
+    ? `${previewNames.join(", ")}${entries.length > 2 ? ` +${entries.length - 2}` : ""}`
+    : "";
+  const palette = completed
+    ? {
+      shell: "border-emerald-300/30 bg-[radial-gradient(circle_at_8%_0,rgba(34,197,94,.18),transparent_34%),linear-gradient(145deg,rgba(8,28,19,.97),rgba(7,13,11,.97))]",
+      icon: "border-emerald-300/35 bg-emerald-300/10 text-emerald-100",
+      badge: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+      value: "text-emerald-300",
+      status: "text-emerald-100",
+      primary: "border-emerald-300/35 bg-emerald-300/10 text-emerald-100",
+    }
+    : autoReady
+      ? {
+        shell: "border-emerald-300/28 bg-[radial-gradient(circle_at_8%_0,rgba(16,185,129,.20),transparent_34%),radial-gradient(circle_at_100%_0,rgba(56,189,248,.13),transparent_36%),linear-gradient(145deg,rgba(7,27,22,.98),rgba(6,14,17,.98))]",
+        icon: "border-emerald-300/40 bg-emerald-300/12 text-emerald-100",
+        badge: "border-emerald-300/35 bg-emerald-300/12 text-emerald-100",
+        value: "text-emerald-300",
+        status: "text-emerald-100",
+        primary: "border-emerald-300/35 bg-emerald-300/12 text-emerald-100",
+      }
+    : exceeded
+      ? {
+        shell: "border-orange-400/30 bg-[radial-gradient(circle_at_8%_0,rgba(249,115,22,.17),transparent_34%),linear-gradient(145deg,rgba(34,17,13,.97),rgba(13,10,9,.97))]",
+        icon: "border-orange-300/35 bg-orange-300/10 text-orange-100",
+        badge: "border-orange-300/25 bg-orange-300/10 text-orange-100",
+        value: "text-orange-300",
+        status: "text-orange-200",
+        primary: "border-orange-300/35 bg-orange-300/10 text-orange-100",
+      }
+      : hasEntries
+        ? {
+          shell: "border-emerald-300/24 bg-[radial-gradient(circle_at_8%_0,rgba(45,212,191,.15),transparent_34%),linear-gradient(145deg,rgba(8,26,23,.97),rgba(7,13,17,.97))]",
+          icon: "border-teal-300/35 bg-teal-300/10 text-teal-100",
+          badge: "border-teal-300/28 bg-teal-300/10 text-teal-100",
+          value: "text-teal-300",
+          status: "text-zinc-200",
+          primary: "border-teal-300/35 bg-teal-300/10 text-teal-100",
+        }
+        : {
+          shell: "border-sky-300/24 bg-[radial-gradient(circle_at_8%_0,rgba(14,165,233,.16),transparent_34%),radial-gradient(circle_at_100%_0,rgba(212,175,55,.10),transparent_35%),linear-gradient(145deg,rgba(8,19,30,.98),rgba(7,11,17,.98))]",
+          icon: "border-sky-300/30 bg-sky-300/10 text-sky-100",
+          badge: "border-sky-300/28 bg-sky-300/10 text-sky-100",
+          value: "text-[#FFD76B]",
+          status: "text-zinc-100",
+          primary: "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]",
+        };
+  const completionTitle = completed
+    ? "Margen cerrado"
+    : autoReady
+      ? "Listo automatico"
+      : canMarkComplete
+        ? "Ya podes cerrarlo"
+        : exceeded
+          ? "Primero baja el exceso"
+          : "Todavia falta margen";
+  const completionText = completed
+    ? "Este margen flexible ya quedo marcado como hecho."
+    : autoReady
+      ? `Quedan ${displayKcal(completionState.missing)}. Al guardar se va a marcar como hecho.`
+      : canMarkComplete
+        ? `Quedan ${displayKcal(completionState.missing)}. Estas dentro del margen de ${displayKcal(FLEXIBLE_MARGIN_COMPLETE_TOLERANCE_KCAL)}.`
+        : exceeded
+          ? `Te pasaste por ${displayKcal(completionState.over)}. Baja la cantidad antes de cerrarlo.`
+          : `Te faltan ${displayKcal(completionState.kcalToComplete)} para poder marcarlo como hecho.`;
+  const completionPanelClass = completed || canMarkComplete
+    ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+    : exceeded
+      ? "border-orange-300/25 bg-orange-300/10 text-orange-100"
+      : "border-white/10 bg-white/[0.035] text-zinc-300";
+  const completeActionLabel = completed
+    ? "Reabrir"
+    : canMarkComplete
+      ? "Marcar hecho"
+      : "Aun falta";
+
+  const handleCardClick = (event) => {
+    if (event.target?.closest?.("button,a,input,select,textarea")) return;
+    setExpanded((current) => !current);
+  };
+
+  return (
+    <section
+      className={`mt-2 cursor-pointer overflow-hidden rounded-[1.05rem] border shadow-[0_10px_26px_rgba(0,0,0,.24)] ${palette.shell} ${compact ? "p-2" : "p-2.5"}`}
+      onClick={handleCardClick}
+    >
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border ${palette.icon}`}>
+          <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+        </span>
+
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h4 className="truncate text-[15px] font-black leading-tight text-white">Calorias libres</h4>
+            <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide ${palette.badge}`}>
+              {badgeLabel}
+            </span>
+          </div>
+          <p className={`mt-0.5 text-[16px] font-black leading-tight ${palette.value}`}>{mainLine}</p>
+          <p className={`mt-0.5 text-[11px] font-black leading-snug ${palette.status}`}>
+            {progressLine}
+          </p>
+          {remainingLine ? (
+            <p className="mt-0.5 text-[11px] font-bold leading-snug text-zinc-400">{remainingLine}</p>
+          ) : null}
+          {foodsPreview ? (
+            <p className="mt-0.5 truncate text-[11px] font-bold text-zinc-400">{foodsPreview}</p>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-zinc-200"
+          aria-expanded={expanded}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+        >
+          {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+      </div>
+
+      {completed ? (
+        <div className="mt-1.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className={`inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-black ${palette.primary}`}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Ocultar detalle" : "Ver detalle"}
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={saving}
+            className={`inline-flex min-h-8 flex-1 items-center justify-center gap-2 rounded-full border px-3 text-xs font-black disabled:opacity-50 sm:flex-none ${palette.primary}`}
+          >
+            {hasEntries ? <PencilLine size={14} /> : <Plus size={14} />}
+            {hasEntries ? "Editar alimentos" : "Agregar alimentos"}
+          </button>
+          {canMarkComplete ? (
+            <button
+              type="button"
+              onClick={onToggleCompleted}
+              disabled={saving}
+              className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-50"
+              aria-label="Marcar calorias libres como hecho"
+            >
+              <CheckCircle2 size={14} />
+              Hecho
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-black text-zinc-300"
+            aria-expanded={expanded}
+          >
+            {expanded ? "Ocultar" : "Detalle"}
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      )}
+
+      {expanded ? (
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <p className="text-xs font-bold leading-relaxed text-zinc-300">
+            Tu coach dejo este margen para completar durante el dia. Podes registrarlo en Tracking o consumirlo fuera del menu.
+          </p>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 rounded-[1rem] border border-white/10 bg-black/20 p-2.5 text-[12px] font-bold text-zinc-200">
+            <div>
+              <span className="block text-[10px] font-black uppercase tracking-wide text-zinc-500">Registrado</span>
+              <strong className="mt-0.5 block text-white">{displayKcal(totals.kcal)}</strong>
+            </div>
+            <div>
+              <span className="block text-[10px] font-black uppercase tracking-wide text-zinc-500">{exceeded ? "Excedido" : "Restante"}</span>
+              <strong className={`mt-0.5 block ${exceeded ? "text-amber-100" : "text-sky-100"}`}>{displayKcal(Math.abs(remaining))}</strong>
+            </div>
+            <div>
+              <span className="block text-[10px] font-black uppercase tracking-wide text-zinc-500">Referencia</span>
+              <strong className="mt-0.5 block text-sky-100">{macroReference}</strong>
+            </div>
+          </div>
+
+          <div className={`mt-3 rounded-[1rem] border p-3 ${completionPanelClass}`}>
+            <div className="flex items-start gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-current/25 bg-black/15">
+                {completed || canMarkComplete ? <CheckCircle2 size={16} /> : <CircleAlert size={16} />}
+              </span>
+              <span className="min-w-0">
+                <strong className="block text-sm font-black leading-tight">{completionTitle}</strong>
+                <span className="mt-1 block text-xs font-bold leading-relaxed opacity-80">{completionText}</span>
+              </span>
+            </div>
+          </div>
+
+          {hasEntries ? (
+            <div className="mt-3 grid gap-1.5">
+              {entries.map((entry, index) => {
+                const food = flexibleMarginEntryFood(entry);
+                const entryTotals = totalFromLike(entry.totals || food);
+                const quantity = macro(food.quantity ?? food.cantidad ?? entry.quantity ?? entry.cantidad);
+                const unit = food.unit || food.unidad || entry.unit || entry.unidad || "g";
+                return (
+                  <div key={entry.id || `${food.name}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate font-bold text-zinc-100">{food.name || food.nombre || entry.foodName || entry.name}</span>
+                    <span className="shrink-0 text-xs font-black text-[#FFE8A3]">
+                      {formatNumber(quantity, quantity % 1 ? 1 : 0)} {unit} - {displayKcal(entryTotals.kcal)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-sm font-bold text-zinc-500">
+              Todavia no registraste alimentos para este margen.
+            </p>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={saving}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-50"
+            >
+              {hasEntries ? <PencilLine size={15} /> : <Plus size={15} />}
+              {hasEntries ? "Editar alimentos" : "Agregar alimentos"}
+            </button>
+            <button
+              type="button"
+              onClick={onCalculate}
+              disabled={saving || !canCalculate}
+              className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black disabled:opacity-45 ${
+                canRecommend
+                  ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+                  : "border-white/10 bg-white/[0.035] text-zinc-400"
+              }`}
+            >
+              {canRecommend ? <Calculator size={15} /> : <Lock size={15} />}
+              {canRecommend ? "Calcular" : "Disponible en Pro"}
+            </button>
+            <Link
+              to="/app/tracking"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-sky-300/25 bg-sky-300/10 px-3 text-xs font-black text-sky-100"
+            >
+              Tracking
+              <ChevronRight size={15} />
+            </Link>
+            <button
+              type="button"
+              onClick={onToggleCompleted}
+              disabled={saving || (!completed && !canMarkComplete)}
+              className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black disabled:opacity-50 ${
+                completed
+                  ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+                  : canMarkComplete
+                    ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+                    : "border-white/10 bg-white/[0.045] text-zinc-400"
+              }`}
+              aria-pressed={completed}
+            >
+              {completed || canMarkComplete ? <CheckCircle2 size={15} /> : <Square size={15} />}
+              {completeActionLabel}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -2764,6 +3562,8 @@ function MobileDayMenu({
   onOpenMenuOptions,
   onEditActiveMenu,
   onOpenRemaining,
+  onOpenFlexibleMargin,
+  onToggleFlexibleMarginCompleted,
   onToggleMeal,
   onOpenMeal,
   onQuickEditMeal,
@@ -2773,6 +3573,7 @@ function MobileDayMenu({
   onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
+  canUseFlexibleRecommendations,
   saving,
 }) {
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
@@ -2789,12 +3590,15 @@ function MobileDayMenu({
   const countableMeals = countableMealEntries(effectiveMeals);
   const completedCount = completedCountableMeals(effectiveMeals);
   const target = targetTotals(displayRow);
+  const hasTarget = hasConfiguredTarget(displayRow);
   const consumed = consumedTotals(displayRow);
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
   const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
-  const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
+  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
+  const emptyCopy = emptyMenuCopy(activePlanSource);
+  const flexiblePlan = flexiblePlanForChoice(displayRow, activeChoice, activePlanSource);
 
   return (
     <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -2818,6 +3622,7 @@ function MobileDayMenu({
         consumed={consumed}
         remaining={remaining}
         percent={percent}
+        hasTarget={hasTarget}
         activeMenuStatus={activeMenuStatus}
         trackingTone={statusMeta(row).tone}
         trackingLabelText={trackingLabel(row)}
@@ -2848,15 +3653,24 @@ function MobileDayMenu({
 
       {!primary?.snapshot ? (
         <div className="mt-4">
-          <MobileEmptyCard
-            title="Todavía no tenés menú para este día."
-            text="Cuando tu coach lo asigne, lo vas a ver acá."
-          />
+          <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
         </div>
       ) : null}
 
       {activeChoice?.snapshot ? (
-        <section className="mt-4 grid gap-2.5">
+        <FlexibleMarginSlotCard
+          row={displayRow}
+          plan={flexiblePlan}
+          saving={saving}
+          canRecommend={canUseFlexibleRecommendations}
+          onEdit={() => onOpenFlexibleMargin?.(displayRow, "manual")}
+          onCalculate={() => onOpenFlexibleMargin?.(displayRow, "calculate")}
+          onToggleCompleted={() => onToggleFlexibleMarginCompleted?.(displayRow)}
+        />
+      ) : null}
+
+      {activeChoice?.snapshot ? (
+        <section className="mt-3 grid gap-2.5">
           <div className="flex items-center justify-between gap-3 px-1">
             <h3 className="text-base font-black text-white">Comidas del dia</h3>
             <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
@@ -2903,7 +3717,7 @@ function MobileDayMenu({
       ) : null}
 
       <div className="mt-4">
-        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} />
+        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} locked={!canAutoCompleteRemaining} />
       </div>
     </section>
   );
@@ -2916,6 +3730,7 @@ function MobileGoalAccordion({
   consumed = {},
   remaining = {},
   percent = 0,
+  hasTarget = true,
   activeMenuStatus = {},
   trackingTone = "slate",
   trackingLabelText = "Pendiente",
@@ -2927,34 +3742,54 @@ function MobileGoalAccordion({
   const ChevronIcon = expanded ? ChevronUp : ChevronDown;
   const macroSummary = `P${formatNumber(target.proteina, 0)} / C${formatNumber(target.carbs, 0)} / G${formatNumber(target.grasas, 0)}`;
 
+  if (!hasTarget) {
+    return (
+      <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),linear-gradient(145deg,#101923,#080d13)] p-2.5 shadow-[0_10px_26px_rgba(0,0,0,.26)]">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]">
+            <Target size={17} strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <span className="block text-sm font-black text-white">Meta diaria pendiente</span>
+            <p className="mt-1 text-xs font-bold leading-snug text-zinc-400">
+              Todavia no configuraste kcal/macros. No mostramos 0 kcal como meta real.
+            </p>
+            <Link
+              to="/app/objetivos"
+              className="mt-2 inline-flex min-h-8 items-center justify-center rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]"
+            >
+              Configurar objetivos
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section className="mt-2 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_14px_34px_rgba(0,0,0,.30)]">
+    <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
       <button
         type="button"
-        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 text-left"
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5 py-2.5 text-left"
         aria-expanded={expanded}
         aria-controls={detailId}
         onClick={onToggle}
       >
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
-          <Target size={18} strokeWidth={2.2} aria-hidden="true" />
+          <Target size={17} strokeWidth={2.2} aria-hidden="true" />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-black text-white">Meta del día</span>
-          <span className="mt-0.5 block text-base font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
-          <span className="mt-0.5 block truncate text-[11px] font-black text-sky-200">{macroSummary}</span>
+          <span className="mt-0.5 block text-[17px] font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
+          <span className="mt-0.5 block truncate text-[10.5px] font-black text-sky-200">{macroSummary}</span>
         </span>
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="grid h-[54px] w-[54px] place-items-center rounded-full p-[4px]" style={{ background: `conic-gradient(#D4AF37 ${safePercent * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}>
-            <span className="grid h-full w-full place-items-center rounded-full bg-[#0b1119] text-center shadow-inner">
-              <span>
-                <strong className="block text-sm font-black text-white">{safePercent}%</strong>
-                <span className="block text-[8px] font-bold leading-none text-zinc-500">cumplimiento</span>
-              </span>
-            </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <span className="min-w-[42px] text-right leading-tight">
+            <strong className="block text-sm font-black text-emerald-300">{safePercent}%</strong>
+            <span className="block text-[8.5px] font-bold text-zinc-500">cumplido</span>
           </span>
-          <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300">
-            <ChevronIcon size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span className="grid h-7 w-7 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300">
+            <ChevronIcon size={15} strokeWidth={2.4} aria-hidden="true" />
           </span>
         </span>
       </button>
@@ -3025,25 +3860,25 @@ function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activ
   const isOwn = sourceMeta.key === "own";
   const isCoach = sourceMeta.key === "coach";
   return (
-    <section className="mt-2 overflow-hidden rounded-[1.15rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.12),transparent_34%),linear-gradient(145deg,#101923,#090f16)] p-3 shadow-[0_12px_28px_rgba(0,0,0,.24)]">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[10px] font-black uppercase tracking-wide ${sourceMeta.pillClass}`}>
+    <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.10),transparent_34%),linear-gradient(145deg,#101923,#090f16)] p-2.5 shadow-[0_10px_26px_rgba(0,0,0,.22)]">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className={`inline-flex min-h-5 items-center rounded-full border px-2 text-[9px] font-black uppercase tracking-wide ${sourceMeta.pillClass}`}>
           {sourceMeta.label}
         </span>
         {isCoach ? (
-          <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 text-[10px] font-black text-zinc-300">
-            <Lock size={12} />
+          <span className="inline-flex min-h-5 items-center gap-1 rounded-full border border-white/10 bg-white/[0.045] px-2 text-[9px] font-black text-zinc-300">
+            <Lock size={11} />
             Solo lectura
           </span>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
         <div className="min-w-0">
-          <h2 className="line-clamp-2 text-lg font-black leading-tight text-white" title={menuName}>
+          <h2 className="line-clamp-2 text-[17px] font-black leading-tight text-white" title={menuName}>
             {menuName}
           </h2>
-          <p className="mt-1 text-[12px] font-bold leading-snug text-zinc-400" title={summary}>
+          <p className="mt-0.5 text-[11.5px] font-bold leading-snug text-zinc-400" title={summary}>
             <span className="block sm:inline">{summaryParts.primary}</span>
             <span className="hidden sm:inline"> · </span>
             <span className="block sm:inline">{summaryParts.secondary}</span>
@@ -3055,21 +3890,21 @@ function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activ
             <button
               type="button"
               onClick={() => onEditMenu?.()}
-              className="grid h-11 w-11 place-items-center rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3] shadow-[0_8px_20px_rgba(0,0,0,.20)] active:scale-[0.98]"
+              className="grid h-9 w-9 place-items-center rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3] shadow-[0_8px_20px_rgba(0,0,0,.18)] active:scale-[0.98]"
               aria-label={`Editar menu ${menuName}`}
               title="Editar menu"
             >
-              <PencilLine size={18} />
+              <PencilLine size={16} />
             </button>
           ) : null}
           <button
             type="button"
             onClick={onOpenOptions}
-            className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-black/25 text-zinc-200 shadow-[0_8px_20px_rgba(0,0,0,.18)] active:scale-[0.98]"
+            className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/25 text-zinc-200 shadow-[0_8px_20px_rgba(0,0,0,.16)] active:scale-[0.98]"
             aria-label={choicesCount > 1 ? "Cambiar menu u opciones" : "Ver opciones de menu"}
             title="Opciones"
           >
-            <MoreHorizontal size={20} />
+            <MoreHorizontal size={18} />
           </button>
         </div>
       </div>
@@ -3421,6 +4256,8 @@ function MobileDayDetailView({
   onNext,
   onToggleMeal,
   onOpenRemaining,
+  onOpenFlexibleMargin,
+  onToggleFlexibleMarginCompleted,
   onOpenMeal,
   onQuickEditMeal,
   onSaveAsSavedMeal,
@@ -3429,6 +4266,7 @@ function MobileDayDetailView({
   onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
+  canUseFlexibleRecommendations,
   saving,
 }) {
   if (!row) return null;
@@ -3443,11 +4281,14 @@ function MobileDayDetailView({
   const manualEntries = effectiveMeals.filter((entry) => entry.manual);
   const detailStatus = detailChoice ? choiceStatus(row, detailChoice) : menuState(row);
   const target = targetTotals(displayRow);
+  const hasTarget = hasConfiguredTarget(displayRow);
   const consumed = consumedTotals(displayRow);
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
-  const canCalculateRemaining = positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
+  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
+  const emptyCopy = emptyMenuCopy(activePlanSource);
+  const flexiblePlan = flexiblePlanForChoice(displayRow, detailChoice, activePlanSource);
 
   return (
     <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
@@ -3455,12 +4296,22 @@ function MobileDayDetailView({
       <MobileDayPicker row={row} onPrevious={onPrevious} onNext={onNext} />
 
       <header className="mt-3 overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_50%_0,rgba(59,130,246,.16),transparent_34%),linear-gradient(180deg,#101824,#07101a)] p-3 shadow-[0_14px_34px_rgba(0,0,0,.28)]">
-        <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 text-center text-sm font-bold text-zinc-300">
-          <span>Meta <strong className="text-[#FFD76B]">{displayKcal(target.kcal)}</strong></span>
-          <span>P <strong className="text-[#FFD76B]">{formatNumber(target.proteina, 0)} g</strong></span>
-          <span>C <strong className="text-[#FFD76B]">{formatNumber(target.carbs, 0)} g</strong></span>
-          <span>G <strong className="text-[#FFD76B]">{formatNumber(target.grasas, 0)} g</strong></span>
-        </div>
+        {hasTarget ? (
+          <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 text-center text-sm font-bold text-zinc-300">
+            <span>Meta <strong className="text-[#FFD76B]">{displayKcal(target.kcal)}</strong></span>
+            <span>P <strong className="text-[#FFD76B]">{formatNumber(target.proteina, 0)} g</strong></span>
+            <span>C <strong className="text-[#FFD76B]">{formatNumber(target.carbs, 0)} g</strong></span>
+            <span>G <strong className="text-[#FFD76B]">{formatNumber(target.grasas, 0)} g</strong></span>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/10 p-3 text-center">
+            <strong className="block text-sm font-black text-[#FFE8A3]">Meta diaria pendiente</strong>
+            <p className="mt-1 text-xs font-bold text-zinc-400">Configura tus objetivos para comparar menu, consumo y faltante.</p>
+            <Link to="/app/objetivos" className="mt-3 inline-flex min-h-9 items-center rounded-2xl border border-[#D4AF37]/30 px-3 text-xs font-black text-[#FFE8A3]">
+              Ir a Objetivos
+            </Link>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-black ${toneClass(detailStatus.tone)}`}>
@@ -3472,30 +4323,39 @@ function MobileDayDetailView({
           </span>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <MobileMetric
-            label="Consumido"
-            value={displayKcal(consumed.kcal)}
-            detail={`P ${formatNumber(consumed.proteina, 0)} / C ${formatNumber(consumed.carbs, 0)} / G ${formatNumber(consumed.grasas, 0)}`}
-            tone="green"
-            progress={target.kcal ? (consumed.kcal / target.kcal) * 100 : 0}
-          />
-          <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
-          <MobileMetric label="Cumplimiento" value={`${percent}%`} detail="del día" tone="gold" />
-        </div>
+        {hasTarget ? (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <MobileMetric
+              label="Consumido"
+              value={displayKcal(consumed.kcal)}
+              detail={`P ${formatNumber(consumed.proteina, 0)} / C ${formatNumber(consumed.carbs, 0)} / G ${formatNumber(consumed.grasas, 0)}`}
+              tone="green"
+              progress={target.kcal ? (consumed.kcal / target.kcal) * 100 : 0}
+            />
+            <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
+            <MobileMetric label="Cumplimiento" value={`${percent}%`} detail="del dia" tone="gold" />
+          </div>
+        ) : null}
       </header>
+
+      <FlexibleMarginSlotCard
+        row={displayRow}
+        plan={flexiblePlan}
+        saving={saving}
+        canRecommend={canUseFlexibleRecommendations}
+        onEdit={() => onOpenFlexibleMargin?.(displayRow, "manual")}
+        onCalculate={() => onOpenFlexibleMargin?.(displayRow, "calculate")}
+        onToggleCompleted={() => onToggleFlexibleMarginCompleted?.(displayRow)}
+      />
 
       <div className="mt-4 grid gap-3">
         <h3 className="px-1 text-lg font-black text-white">Comidas del dia</h3>
         {!snapshot ? (
-          <MobileEmptyCard
-            title="Todavía no tenés menú para este día."
-            text="Cuando tu coach lo asigne, lo vas a ver acá."
-          />
+          <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
         ) : !effectiveMeals.length ? (
           <MobileEmptyCard
-            title="Este menú no tiene comidas cargadas."
-            text="Podés revisar otros días o avisarle a tu coach."
+            title="Este menu no tiene comidas cargadas."
+            text={canQuickEditMeals ? "Agrega alimentos desde Editar menu." : emptyCopy.emptyMealsText}
           />
         ) : (
           effectiveMeals.map((entry) => (
@@ -3531,7 +4391,7 @@ function MobileDayDetailView({
       </div>
 
       <div className="mt-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} />
+        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} locked={!canAutoCompleteRemaining} />
       </div>
     </section>
   );
@@ -4360,9 +5220,12 @@ function TodayHero({
   onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
+  onOpenFlexibleMargin,
+  onToggleFlexibleMarginCompleted,
   onDeleteManual,
   canMarkMeals,
   canAutoCompleteRemaining,
+  canUseFlexibleRecommendations,
   saving,
 }) {
   if (!row) return null;
@@ -4376,17 +5239,19 @@ function TodayHero({
   const effectiveMeals = effectiveMealEntriesForDay(row, baseMeals, weekRows);
   const countableMeals = countableMealEntries(effectiveMeals);
   const completedCount = completedCountableMeals(effectiveMeals);
-  const targetKcal = macro(row?.target?.kcal);
+  const targetKcal = targetTotals(row).kcal;
+  const hasTarget = hasConfiguredTarget(row);
   const consumed = consumedTotals(row);
   const remaining = remainingTotals(row);
   const menuKcal = activeTotals.kcal;
-  const pct = targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
-  const canCalculateRemaining = positiveTotals(remaining).kcal > 40;
+  const pct = hasTarget && targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
+  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40;
   const sourceMeta = menuSourceMeta(activePlanSource);
   const menuName = activeChoice ? activeMenuDisplayName(activeChoice, activePlan, activePlanSource) : "Menu del dia";
   const menuSummary = activeChoice ? activeMenuSummary(activeChoice, activePlanSource) : "";
   const isOwnMenu = sourceMeta.key === "own";
   const isCoachMenu = sourceMeta.key === "coach";
+  const flexiblePlan = flexiblePlanForChoice(row, activeChoice, activePlanSource);
 
   return (
     <section className="overflow-hidden rounded-[1.6rem] border border-[#D4AF37]/25 bg-gradient-to-br from-[#141a23] via-[#0c1118] to-[#090b0f] p-3 shadow-[0_14px_45px_rgba(0,0,0,0.38)] sm:rounded-[2rem] sm:p-5">
@@ -4475,17 +5340,26 @@ function TodayHero({
       </section>
 
       <div className="mt-3 grid gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-3">
-        <div className="grid grid-cols-3 gap-2">
-          <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
-          <TrackingMiniPanel label="Consumido" totals={consumed} tone="green" />
-          <TrackingMiniPanel label="Faltante" totals={remaining} tone={remaining.kcal < -20 ? "red" : "blue"} />
-        </div>
-        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/10">
-          <span className={`block h-full rounded-full bg-gradient-to-r ${progressTone(row)}`} style={{ width: `${Math.min(100, pct)}%` }} />
-        </div>
-        <div className="mt-2 text-xs font-bold text-zinc-400">
-          Consumido: {displayKcal(consumed.kcal)} / faltan {signed(remaining.kcal, " kcal")} / comidas {completedCount}/{countableMeals.length || 0}
-        </div>
+        {hasTarget ? (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
+              <TrackingMiniPanel label="Consumido" totals={consumed} tone="green" />
+              <TrackingMiniPanel label="Faltante" totals={remaining} tone={remaining.kcal < -20 ? "red" : "blue"} />
+            </div>
+            <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/10">
+              <span className={`block h-full rounded-full bg-gradient-to-r ${progressTone(row)}`} style={{ width: `${Math.min(100, pct)}%` }} />
+            </div>
+            <div className="mt-2 text-xs font-bold text-zinc-400">
+              Consumido: {displayKcal(consumed.kcal)} / faltan {signed(remaining.kcal, " kcal")} / comidas {completedCount}/{countableMeals.length || 0}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/10 p-3 text-sm font-bold text-[#FFE8A3]">
+            Meta diaria pendiente. Configura tus objetivos para comparar este menu contra kcal y macros reales.
+            <Link to="/app/objetivos" className="ml-2 underline underline-offset-4">Ir a Objetivos</Link>
+          </div>
+        )}
       </div>
 
       {snapshot ? (
@@ -4496,6 +5370,16 @@ function TodayHero({
               {completedMealsLabel(completedCount, countableMeals.length || 0)}
             </span>
           </div>
+          <FlexibleMarginSlotCard
+            row={row}
+            plan={flexiblePlan}
+            saving={saving}
+            canRecommend={canUseFlexibleRecommendations}
+            onEdit={() => onOpenFlexibleMargin?.(row, "manual")}
+            onCalculate={() => onOpenFlexibleMargin?.(row, "calculate")}
+            onToggleCompleted={() => onToggleFlexibleMarginCompleted?.(row)}
+            compact
+          />
           <DesktopMealsGrid
             row={row}
             effectiveMeals={effectiveMeals}
@@ -4522,7 +5406,10 @@ function TodayHero({
           disabled={!canCalculateRemaining || !canAutoCompleteRemaining || saving}
           className="rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-3 text-xs font-black text-[#FFE8A3] disabled:opacity-45"
         >
-          Calcular lo que falta
+          <span className="grid leading-tight">
+            <span>Calcular lo que falta</span>
+            {!canAutoCompleteRemaining ? <span className="text-[10px] text-[#FFE8A3]/70">Disponible en Pro</span> : null}
+          </span>
         </button>
       </div>
     </section>
@@ -4865,9 +5752,10 @@ function WeeklySelector({ days, selectedDate, onSelect, onView }) {
         const selected = row.date === selectedDate;
         const state = statusMeta(row);
         const menu = menuState(row);
-        const targetKcal = macro(row?.target?.kcal);
+        const targetKcal = targetTotals(row).kcal;
+        const hasTarget = hasConfiguredTarget(row);
         const menuKcal = choiceTotals(menuChoices(row)[0]).kcal;
-        const pct = targetKcal ? Math.min(135, Math.round((menuKcal / targetKcal) * 100)) : 0;
+        const pct = hasTarget && targetKcal ? Math.min(135, Math.round((menuKcal / targetKcal) * 100)) : 0;
         const alternatives = row?.assignment?.alternatives?.length || 0;
         const title = menuCountTitle(row);
         return (
@@ -4884,7 +5772,7 @@ function WeeklySelector({ days, selectedDate, onSelect, onView }) {
               </div>
               <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${toneClass(state.tone)}`}>{state.label}</span>
             </div>
-            <div className="mt-3 text-sm font-black text-[#FFE8A3]">{displayKcal(row?.target?.kcal)}</div>
+            <div className="mt-3 text-sm font-black text-[#FFE8A3]">{hasTarget ? displayKcal(targetTotals(row).kcal) : "Meta pendiente"}</div>
             <div className="mt-1 truncate text-sm font-bold text-zinc-300">
               {title}
             </div>
@@ -4931,9 +5819,12 @@ function DayDetailDrawer({
   onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
+  onOpenFlexibleMargin,
+  onToggleFlexibleMarginCompleted,
   onRestoreGenerated,
   canMarkMeals,
   canAutoCompleteRemaining,
+  canUseFlexibleRecommendations,
   onUseAlternative,
   saving,
 }) {
@@ -4960,9 +5851,12 @@ function DayDetailDrawer({
             onQuickEditMeal={onQuickEditMeal}
             onSaveAsSavedMeal={onSaveAsSavedMeal}
             onOpenRemaining={onOpenRemaining}
+            onOpenFlexibleMargin={onOpenFlexibleMargin}
+            onToggleFlexibleMarginCompleted={onToggleFlexibleMarginCompleted}
             onRestoreGenerated={onRestoreGenerated}
             canMarkMeals={canMarkMeals}
             canAutoCompleteRemaining={canAutoCompleteRemaining}
+            canUseFlexibleRecommendations={canUseFlexibleRecommendations}
             onUseAlternative={onUseAlternative}
             saving={saving}
           />
@@ -4982,9 +5876,12 @@ function DayDetail({
   onQuickEditMeal,
   onSaveAsSavedMeal,
   onOpenRemaining,
+  onOpenFlexibleMargin,
+  onToggleFlexibleMarginCompleted,
   onRestoreGenerated,
   canMarkMeals,
   canAutoCompleteRemaining,
+  canUseFlexibleRecommendations,
   onUseAlternative,
   saving,
 }) {
@@ -4992,6 +5889,9 @@ function DayDetail({
   const choices = menuChoices(row);
   const selectedAlternative = row?.tracking?.selectedAlternative;
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
+  const hasTarget = hasConfiguredTarget(row);
+  const activeChoice = trackingChoice(row) || choices[0] || null;
+  const flexiblePlan = flexiblePlanForChoice(row, activeChoice, activePlanSource);
 
   return (
     <section className="grid gap-4 rounded-3xl border border-white/10 bg-[#0d121a] p-4">
@@ -5003,17 +5903,20 @@ function DayDetail({
           </div>
           <h3 className="mt-3 text-2xl font-black text-white">{row.dayLabel}</h3>
           <p className="mt-1 text-sm font-bold text-zinc-400">
-            Meta {displayKcal(row?.target?.kcal)} / {displayMacros(row?.target)}
+            {hasTarget ? `Meta ${displayKcal(targetTotals(row).kcal)} / ${displayMacros(targetTotals(row))}` : "Meta diaria pendiente"}
           </p>
         </div>
         <div className="grid gap-2">
           <button
             type="button"
             onClick={onOpenRemaining}
-            disabled={!canAutoCompleteRemaining}
+            disabled={!hasTarget || !canAutoCompleteRemaining}
             className="rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-2 text-xs font-black text-[#FFE8A3] disabled:opacity-45"
           >
-            Calcular lo que falta
+            <span className="grid leading-tight">
+              <span>Calcular lo que falta</span>
+              {!canAutoCompleteRemaining ? <span className="text-[10px] text-[#FFE8A3]/70">Disponible en Pro</span> : null}
+            </span>
           </button>
           <button
             type="button"
@@ -5026,11 +5929,18 @@ function DayDetail({
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-3xl border border-white/10 bg-black/20 p-3 sm:grid-cols-3">
-        <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
-        <TrackingMiniPanel label="Consumido" totals={consumedTotals(row)} tone="green" />
-        <TrackingMiniPanel label="Faltante" totals={remainingTotals(row)} tone={remainingTotals(row).kcal < -20 ? "red" : "blue"} />
-      </div>
+      {hasTarget ? (
+        <div className="grid gap-2 rounded-3xl border border-white/10 bg-black/20 p-3 sm:grid-cols-3">
+          <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
+          <TrackingMiniPanel label="Consumido" totals={consumedTotals(row)} tone="green" />
+          <TrackingMiniPanel label="Faltante" totals={remainingTotals(row)} tone={remainingTotals(row).kcal < -20 ? "red" : "blue"} />
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-[#D4AF37]/20 bg-[#D4AF37]/10 p-4 text-sm font-bold text-[#FFE8A3]">
+          Todavia no configuraste una meta diaria.
+          <Link to="/app/objetivos" className="ml-2 underline underline-offset-4">Configurar objetivos</Link>
+        </div>
+      )}
 
       {selectedAlternative ? (
         <div className="rounded-3xl border border-sky-400/25 bg-sky-400/10 p-4 text-sm font-bold text-sky-100">
@@ -5043,6 +5953,16 @@ function DayDetail({
       ) : (
         <EmptyMenu row={row} />
       )}
+
+      <FlexibleMarginSlotCard
+        row={row}
+        plan={flexiblePlan}
+        saving={saving}
+        canRecommend={canUseFlexibleRecommendations}
+        onEdit={() => onOpenFlexibleMargin?.(row, "manual")}
+        onCalculate={() => onOpenFlexibleMargin?.(row, "calculate")}
+        onToggleCompleted={() => onToggleFlexibleMarginCompleted?.(row)}
+      />
 
       <DesktopMealsSection
         row={row}
@@ -5057,6 +5977,946 @@ function DayDetail({
         saving={saving}
       />
 
+    </section>
+  );
+}
+
+function FlexibleMarginEditor({
+  row,
+  activePlanSource = "none",
+  initialMode = "manual",
+  canRecommend = false,
+  saving = false,
+  onClose,
+  onSave,
+}) {
+  const choice = trackingChoice(row);
+  const plan = flexiblePlanForChoice(row, choice, activePlanSource);
+  const [mode, setMode] = useState(canRecommend && initialMode === "calculate" ? "calculate" : "manual");
+  const [draftEntries, setDraftEntries] = useState(() => flexibleMarginEntries(row));
+  const [completed, setCompleted] = useState(() => isFlexibleMarginCompleted(row));
+  const [search, setSearch] = useState("");
+  const [foods, setFoods] = useState([]);
+  const [foodsLoading, setFoodsLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [error, setError] = useState("");
+  const [foodPicker, setFoodPicker] = useState(null);
+  const [calcFoods, setCalcFoods] = useState([]);
+  const [calcResult, setCalcResult] = useState(null);
+  const [calculating, setCalculating] = useState(false);
+  const titleId = "flexible-margin-editor-title";
+
+  useEffect(() => {
+    if (!canRecommend && mode === "calculate") {
+      setMode("manual");
+      setCalcFoods([]);
+      setCalcResult(null);
+    }
+  }, [canRecommend, mode]);
+
+  const totals = useMemo(() => flexibleMarginTotals(draftEntries), [draftEntries]);
+  const remaining = plan ? flexibleMarginRemaining(plan, draftEntries) : 0;
+  const macroRemaining = plan ? flexibleMarginMacroRemaining(plan, draftEntries) : emptyTotals();
+  const exceeded = remaining < -5;
+  const completionState = plan ? flexibleMarginCompletionState(plan, draftEntries) : flexibleMarginCompletionState({}, draftEntries);
+  const completionChecked = completed || completionState.autoComplete;
+  const showNoFoodResults = searched && search.trim().length >= 2 && !foodsLoading && !foods.length;
+
+  useEffect(() => {
+    function handleKey(event) {
+      if (event.key === "Escape" && !saving) onClose?.();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose, saving]);
+
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) {
+      setFoods([]);
+      setFoodsLoading(false);
+      setSearched(false);
+      return undefined;
+    }
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      setFoodsLoading(true);
+      setSearched(true);
+      listAlimentos({ search: term, limit: 12 })
+        .then((data) => {
+          if (!alive) return;
+          setFoods(normalizeFoodSearchResults(data).slice(0, 12));
+        })
+        .catch((err) => {
+          if (alive) {
+            setError(err?.message || "No pudimos buscar alimentos.");
+            setFoods([]);
+          }
+        })
+        .finally(() => {
+          if (alive) setFoodsLoading(false);
+        });
+    }, 260);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [search]);
+
+  function parseQuantity(value) {
+    const number = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function quantityStep(unit = "g") {
+    const normalized = String(unit || "").toLowerCase();
+    return normalized === "g" || normalized === "gr" || normalized === "gramos" ? 10 : 1;
+  }
+
+  function clampQuantity(value) {
+    return Math.max(0.01, roundMacro(parseQuantity(value), 2));
+  }
+
+  function clearSearch() {
+    setSearch("");
+    setFoods([]);
+    setSearched(false);
+    setFoodPicker(null);
+  }
+
+  function openFoodPicker(food = {}) {
+    const quantity = suggestedQuickFoodQuantity(food) || 100;
+    setFoodPicker({
+      food,
+      quantity: String(quantity),
+      useMode: canRecommend && mode === "calculate" ? "calculate" : "manual",
+    });
+    setError("");
+  }
+
+  function updateFoodPicker(patch = {}) {
+    setFoodPicker((current) => current ? { ...current, ...patch } : current);
+  }
+
+  function adjustFoodPickerQuantity(delta = 0) {
+    setError("");
+    setFoodPicker((current) => {
+      if (!current) return current;
+      return { ...current, quantity: String(clampQuantity(parseQuantity(current.quantity) + delta)) };
+    });
+  }
+
+  function normalizeCalcFood(food = {}) {
+    const id = String(food.id || food._id || food.alimentoId || food.foodId || foodDisplayName(food));
+    return {
+      ...food,
+      id,
+      name: food.name || food.nombre || foodDisplayName(food),
+      manualQuantity: food.manualQuantity ?? "",
+    };
+  }
+
+  function addManualFood(food = {}, quantityValue = suggestedQuickFoodQuantity(food)) {
+    if (!plan) return;
+    const unit = foodDisplayUnit(food);
+    const quantity = clampQuantity(quantityValue);
+    if (!(quantity > 0)) {
+      setError("La cantidad debe ser mayor a 0.");
+      return;
+    }
+    const entry = flexibleMarginEntryFromFood(row, plan, food, quantity, unit, choice, { mode: "manual", itemSource: "manual" });
+    const nextEntries = [...draftEntries, entry];
+    if (!validateFlexibleLimit(nextEntries, "Ese alimento supera el margen flexible")) return;
+    setDraftEntries(nextEntries);
+    setError("");
+    clearSearch();
+  }
+
+  function addCalcFood(food = {}, quantityValue = "") {
+    if (!canRecommend) {
+      setError("Las recomendaciones automaticas no estan disponibles para este acceso.");
+      return;
+    }
+    const quantity = parseQuantity(quantityValue);
+    const normalized = {
+      ...normalizeCalcFood(food),
+      manualQuantity: quantity > 0 ? String(roundMacro(quantity, 2)) : "",
+    };
+    setCalcFoods((current) =>
+      current.some((item) => item.id === normalized.id)
+        ? current.map((item) => item.id === normalized.id ? normalized : item)
+        : [...current, normalized]
+    );
+    setMode("calculate");
+    setCalcResult(null);
+    setError("");
+    clearSearch();
+  }
+
+  function commitFoodPicker() {
+    if (!foodPicker?.food) return;
+    const quantity = clampQuantity(foodPicker.quantity);
+    if (!(quantity > 0)) {
+      setError("La cantidad debe ser mayor a 0.");
+      return;
+    }
+    if (foodPicker.useMode === "calculate") {
+      if (!canRecommend) {
+        setError("Las recomendaciones automaticas no estan disponibles para este acceso.");
+        return;
+      }
+      addCalcFood(foodPicker.food, quantity);
+      return;
+    }
+    addManualFood(foodPicker.food, quantity);
+  }
+
+  function updateEntryQuantity(entryId, value) {
+    const quantity = parseQuantity(value);
+    const nextEntries = draftEntries.map((entry) =>
+      entry.id === entryId ? rescaleFlexibleMarginEntry(entry, row, plan, quantity, undefined, choice) : entry
+    );
+    setDraftEntries(nextEntries);
+    setError("");
+  }
+
+  function validateFlexibleLimit(nextEntries = [], title = "Ese cambio supera el margen flexible") {
+    const limit = macro(plan?.flexibleCalories);
+    if (!limit) return true;
+    const currentKcal = totals.kcal;
+    const nextKcal = flexibleMarginTotals(nextEntries).kcal;
+    const excess = nextKcal - limit;
+    const isReducingExistingExcess = currentKcal > limit + 0.5 && nextKcal < currentKcal - 0.5;
+    if (excess > 0.5 && !isReducingExistingExcess) {
+      setError(`${title}: te pasarias por ${displayKcal(excess)}. Baja la cantidad o elegi otro alimento.`);
+      return false;
+    }
+    return true;
+  }
+
+  function adjustEntryQuantity(entryId, currentValue, unit, direction = 1) {
+    const next = clampQuantity(parseQuantity(currentValue) + (quantityStep(unit) * direction));
+    updateEntryQuantity(entryId, next);
+  }
+
+  function removeEntry(entryId) {
+    setDraftEntries((current) => current.filter((entry) => entry.id !== entryId));
+  }
+
+  function updateCompleted(nextCompleted) {
+    if (nextCompleted && !completionState.canComplete) {
+      setError(flexibleMarginCompletionBlockMessage(completionState));
+      return;
+    }
+    setCompleted(nextCompleted);
+    setError("");
+  }
+
+  function updateCalcFoodQuantity(foodId, value) {
+    setCalcFoods((current) => current.map((food) => food.id === foodId ? { ...food, manualQuantity: value } : food));
+    setCalcResult(null);
+  }
+
+  function removeCalcFood(foodId) {
+    setCalcFoods((current) => current.filter((food) => food.id !== foodId));
+    setCalcResult(null);
+  }
+
+  function calcManualQuantity(food = {}) {
+    return parseQuantity(food.manualQuantity);
+  }
+
+  function hasCalcManualQuantity(food = {}) {
+    return calcManualQuantity(food) > 0;
+  }
+
+  function fixedFoodPayload(food = {}) {
+    const quantity = calcManualQuantity(food);
+    const totalsFromFood = flexibleTotalsFromFood(food, quantity).totals;
+    return {
+      foodId: food.id,
+      name: food.name || food.nombre,
+      unit: food.unidad || food.unit || "g",
+      quantity,
+      kcal: totalsFromFood.kcal,
+      protein: totalsFromFood.proteina,
+      proteina: totalsFromFood.proteina,
+      carbs: totalsFromFood.carbs,
+      fat: totalsFromFood.grasas,
+      grasas: totalsFromFood.grasas,
+      source: "manual",
+    };
+  }
+
+  function pendingFoodPayload(food = {}) {
+    return {
+      foodId: food.id,
+      name: food.name || food.nombre,
+      unit: food.unidad || food.unit || "g",
+      source: "pending",
+      kcalPerUnitOrGram: foodPerUnit(food, "kcal"),
+      proteinPerUnitOrGram: foodPerUnit(food, "proteina"),
+      carbsPerUnitOrGram: foodPerUnit(food, "carbs"),
+      fatPerUnitOrGram: foodPerUnit(food, "grasas"),
+    };
+  }
+
+  function manualOnlyResult(selected = []) {
+    const foodsFromManual = selected.map((food) => {
+      const fixed = fixedFoodPayload(food);
+      return {
+        foodId: fixed.foodId,
+        name: fixed.name,
+        nombre: fixed.name,
+        quantity: fixed.quantity,
+        cantidad: fixed.quantity,
+        unit: fixed.unit,
+        unidad: fixed.unit,
+        source: "fixed",
+        kcal: fixed.kcal,
+        proteina: fixed.proteina,
+        protein: fixed.proteina,
+        carbs: fixed.carbs,
+        grasas: fixed.grasas,
+        fat: fixed.grasas,
+        fixedQuantity: true,
+      };
+    });
+    const resultTotals = sumTotals(foodsFromManual.map(normalizeGeneratedFood));
+    return {
+      status: "ok",
+      quality: "manual",
+      message: "Totales calculados con cantidades manuales.",
+      foods: foodsFromManual,
+      totals: resultTotals,
+      target: macroRemaining,
+      diff: subtractTotals(resultTotals, macroRemaining),
+    };
+  }
+
+  async function calculateSuggestions() {
+    if (!canRecommend) {
+      setError("Las recomendaciones automaticas no estan disponibles para este acceso.");
+      return;
+    }
+    if (completed) {
+      setError("Este margen ya esta marcado como completado.");
+      return;
+    }
+    if (macroRemaining.kcal <= 5) {
+      setError("No quedan calorias suficientes para calcular cantidades.");
+      return;
+    }
+    if (!calcFoods.length) {
+      setError("Elegi alimentos para calcular cantidades.");
+      return;
+    }
+    try {
+      setError("");
+      setCalculating(true);
+      const fixedFoods = calcFoods.filter(hasCalcManualQuantity).map(fixedFoodPayload);
+      const pendingFoods = calcFoods.filter((food) => !hasCalcManualQuantity(food)).map(pendingFoodPayload);
+      if (!pendingFoods.length) {
+        setCalcResult(manualOnlyResult(calcFoods));
+        return;
+      }
+      const payload = {
+        target: {
+          kcal: macroRemaining.kcal,
+          proteina: macroRemaining.proteina,
+          carbs: macroRemaining.carbs,
+          grasas: macroRemaining.grasas,
+        },
+        mode: macroRemaining.carbs || macroRemaining.grasas ? "full" : "kcalProteina",
+        generationType: "selectedOnly",
+        fixedFoods,
+        pendingFoods,
+        options: {
+          redondear: true,
+          usarMinMax: true,
+        },
+      };
+      const response = await generateMealQuantities(payload);
+      if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
+        throw new Error(response?.message || "No se pudo calcular una combinacion razonable.");
+      }
+      setCalcResult(response);
+    } catch (err) {
+      setError(err?.message || "No se pudieron generar cantidades.");
+    } finally {
+      setCalculating(false);
+    }
+  }
+
+  function suggestionTotals(result = {}) {
+    if (result.totals) return totalFromLike(result.totals);
+    return sumTotals((result.foods || []).map(normalizeGeneratedFood));
+  }
+
+  function suggestionWarning(result = {}) {
+    const high = (result.foods || [])
+      .map(normalizeGeneratedFood)
+      .find((food) => {
+        const unit = String(food.unit || "").toLowerCase();
+        return (unit === "g" || unit === "gr" || unit === "gramos") ? food.quantity > 350 : food.quantity > 5;
+      });
+    return high ? "La cantidad sugerida es alta. Elegi otro alimento o combina varios." : "";
+  }
+
+  function applySuggestion() {
+    if (!calcResult?.foods?.length || !plan) {
+      setError("Genera una sugerencia antes de agregarla al margen.");
+      return;
+    }
+    const generatedEntries = calcResult.foods.map((food) => {
+      const normalized = normalizeGeneratedFood(food);
+      return flexibleMarginEntryFromFood(
+        row,
+        plan,
+        { ...normalized, source: normalized.fixedQuantity ? "manual_fixed" : "auto_calculated", flexibleMargin: true },
+        normalized.quantity,
+        normalized.unit,
+        choice,
+        { mode: "auto_calculated", itemSource: normalized.fixedQuantity ? "manual_fixed" : "auto_calculated" }
+      );
+    });
+    setDraftEntries((current) => [...current, ...generatedEntries]);
+    setCalcFoods([]);
+    setCalcResult(null);
+    setMode("manual");
+    setError("");
+  }
+
+  function save() {
+    const invalid = draftEntries.some((entry) => {
+      const food = flexibleMarginEntryFood(entry);
+      return !(parseQuantity(food.quantity ?? food.cantidad ?? entry.quantity ?? entry.cantidad) > 0);
+    });
+    if (invalid) {
+      setError("Todas las cantidades deben ser mayores a 0.");
+      return;
+    }
+    if (exceeded) {
+      setError(`Este margen flexible era de ${displayKcal(plan.flexibleCalories)}. Estas registrando ${displayKcal(totals.kcal)} y te pasas por ${displayKcal(Math.abs(remaining))}. Baja la cantidad para guardar.`);
+      return;
+    }
+    if (completed && !completionState.canComplete) {
+      setError(flexibleMarginCompletionBlockMessage(completionState));
+      return;
+    }
+    const finalCompleted = completed || completionState.autoComplete;
+    const successMessage = finalCompleted && !completed
+      ? "Calorias libres guardadas y marcadas como hecho."
+      : "";
+    onSave?.(draftEntries, finalCompleted, successMessage);
+  }
+
+  if (!plan) return null;
+
+  const remainingAmount = Math.max(0, remaining);
+  const overAmount = Math.abs(remaining);
+  const progressPercent = completed
+    ? 100
+    : Math.max(0, Math.min(100, plan.flexibleCalories ? Math.round((totals.kcal / plan.flexibleCalories) * 100) : 0));
+  const registeredSummary = `${displayKcal(totals.kcal)} / ${displayKcal(plan.flexibleCalories)} registradas`;
+  const headerSummary = `${registeredSummary} - ${exceeded ? `exceso ${displayKcal(overAmount)}` : `restan ${displayKcal(remainingAmount)}`}`;
+  const summaryVisual = completed
+    ? {
+      border: "border-emerald-300/35",
+      card: "bg-emerald-300/[0.07]",
+      dot: "border-emerald-200 bg-emerald-300",
+      value: "text-emerald-200",
+      fill: "from-emerald-300 to-emerald-500",
+    }
+    : exceeded
+      ? {
+        border: "border-orange-300/40",
+        card: "bg-orange-300/[0.075]",
+        dot: "border-orange-200 bg-orange-300",
+        value: "text-orange-200",
+        fill: "from-orange-300 to-rose-400",
+      }
+      : {
+        border: "border-[#D4AF37]/35",
+        card: "bg-[#D4AF37]/[0.065]",
+        dot: "border-sky-200 bg-sky-300/30",
+        value: "text-[#FFD76B]",
+        fill: "from-[#D4AF37] to-sky-300",
+      };
+  const compactSummaryLine = completed
+    ? `${displayKcal(plan.flexibleCalories)} cerradas`
+    : exceeded
+      ? `Exceso ${displayKcal(overAmount)}`
+      : `Restan ${displayKcal(remainingAmount)}`;
+  const searchModeIsCalculate = mode === "calculate";
+  const searchHeading = searchModeIsCalculate ? "Elegir alimentos para calcular" : "Buscar alimento";
+  const searchHelp = searchModeIsCalculate
+    ? "Selecciona alimentos para que el sistema sugiera cantidades."
+    : "Agrega alimentos al margen flexible y ajusta sus cantidades.";
+  const calculateActionText = completed
+    ? "Margen marcado como hecho."
+    : canRecommend
+      ? macroRemaining.kcal > 5
+        ? calcFoods.length
+          ? `${calcFoods.length} alimento${calcFoods.length === 1 ? "" : "s"} seleccionado${calcFoods.length === 1 ? "" : "s"} para calcular.`
+          : `Ajustar cantidades para completar las ${displayKcal(macroRemaining.kcal)} restantes.`
+            : "No quedan calorias suficientes para calcular."
+      : "Disponible en Pro. Podes ajustar la cantidad manualmente.";
+  const completionActionText = completed
+    ? "Ya esta marcado como hecho. Podes reabrirlo si necesitas corregir cantidades."
+    : completionState.autoComplete
+      ? `Quedan ${displayKcal(completionState.missing)}. Al guardar se marcara como hecho automaticamente.`
+      : completionState.canComplete
+        ? `Quedan ${displayKcal(completionState.missing)}. Ya podes marcarlo como hecho.`
+        : flexibleMarginCompletionBlockMessage(completionState);
+  const pickerFood = foodPicker?.food || null;
+  const pickerUnit = pickerFood ? foodDisplayUnit(pickerFood) : "g";
+  const pickerQuantity = parseQuantity(foodPicker?.quantity);
+  const pickerTotals = pickerFood && pickerQuantity > 0 ? flexibleTotalsFromFood(pickerFood, pickerQuantity).totals : emptyTotals();
+  const pickerStep = quantityStep(pickerUnit);
+
+  return (
+    <section className="fixed inset-0 z-[95] flex items-end bg-black/80 px-0 pt-5 backdrop-blur-md sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onClose} aria-label="Cerrar calorias libres" />
+      <div className="relative mx-auto flex max-h-[96dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,#101821_0%,#07111b_48%,#05080d_100%)] shadow-[0_30px_110px_rgba(0,0,0,.78)] sm:max-h-[92dvh] sm:rounded-[1.8rem]" style={{ maxWidth: "896px" }}>
+        <div className="mx-auto mt-3 h-1.5 w-20 shrink-0 rounded-full bg-white/20" aria-hidden="true" />
+        <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-5 sm:px-6 sm:pb-4 sm:pt-6">
+          <div className="min-w-0 flex-1">
+            <span className="inline-flex min-h-8 items-center gap-2 rounded-full border border-sky-300/30 bg-sky-300/10 px-3 text-[11px] font-black uppercase tracking-[0.16em] text-sky-200 shadow-[inset_0_0_18px_rgba(56,189,248,.08)]">
+              <Apple size={16} />
+              Tracking flexible
+            </span>
+            <h3 id={titleId} className="mt-4 text-[2rem] font-black leading-[1.05] text-white sm:text-4xl">Editar calorias libres</h3>
+            <p className="mt-2 text-sm font-bold leading-snug text-slate-400 sm:text-base">{headerSummary}</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#D4AF37]/30 bg-white/[0.055] text-white shadow-[inset_0_0_22px_rgba(212,175,55,.06)] disabled:opacity-50 sm:h-14 sm:w-14" aria-label="Cerrar">
+            <X size={24} strokeWidth={2.4} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
+          <div className="grid gap-4 sm:gap-5">
+            <section className={`rounded-[1.05rem] border p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.06)] ${summaryVisual.border} ${summaryVisual.card}`}>
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <strong className={`block truncate text-lg font-black leading-tight sm:text-xl ${summaryVisual.value}`}>{registeredSummary}</strong>
+                  <p className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-xs font-black leading-tight text-slate-300 sm:text-sm">
+                    <span className={`h-2 w-2 shrink-0 rounded-full border ${summaryVisual.dot}`} />
+                    {compactSummaryLine}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-right text-sm font-black text-slate-200">{progressPercent}%</span>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full border border-white/10 bg-sky-200/10">
+                  <span className={`block h-full rounded-full bg-gradient-to-r ${summaryVisual.fill}`} style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[1.15rem] border border-white/10 bg-black/20 p-3 sm:p-4">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h4 className="text-xl font-black text-white">{searchHeading}</h4>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{searchHelp}</p>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${searchModeIsCalculate ? "border-sky-300/25 bg-sky-300/10 text-sky-200" : "border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}>
+                  {searchModeIsCalculate ? "Modo calcular" : "Agregar al margen"}
+                </span>
+              </div>
+              <label className="mt-3 flex min-h-13 items-center gap-3 rounded-2xl border border-white/10 bg-[#050a0f] px-3">
+                <Search size={22} className="shrink-0 text-slate-500" strokeWidth={1.8} />
+                <input
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setFoodPicker(null);
+                    setError("");
+                  }}
+                  placeholder="Buscar alimento"
+                  className="min-w-0 flex-1 bg-transparent text-base font-black text-white outline-none placeholder:text-slate-600"
+                />
+              </label>
+              {pickerFood ? (
+                <div className="mt-3 rounded-[1.05rem] border border-[#D4AF37]/25 bg-[#D4AF37]/[0.07] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.06)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <FoodThumb food={{ ...pickerFood, name: foodDisplayName(pickerFood) }} size="sm" />
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-[#FFE8A3]">Agregar alimento al margen</span>
+                        <strong className="mt-0.5 block truncate text-sm font-black text-white">{foodDisplayName(pickerFood)}</strong>
+                        <span className="mt-0.5 block truncate text-[11px] font-bold text-slate-400">
+                          {foodLibraryMacroLine(pickerFood)}
+                        </span>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setFoodPicker(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-slate-300" aria-label="Cancelar seleccion">
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+                    <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      Cantidad
+                      <span className="grid h-10 grid-cols-[38px_minmax(0,1fr)_38px] overflow-hidden rounded-xl border border-white/10 bg-[#050a0f]">
+                        <button type="button" onClick={() => adjustFoodPickerQuantity(-pickerStep)} className="grid place-items-center border-r border-white/10 text-slate-300" aria-label="Restar cantidad">
+                          <Minus size={15} />
+                        </button>
+                        <span className="flex min-w-0 items-center">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={foodPicker.quantity}
+                            onChange={(event) => {
+                              updateFoodPicker({ quantity: event.target.value });
+                              setError("");
+                            }}
+                            className="min-w-0 flex-1 bg-transparent px-2 text-center text-sm font-black text-white outline-none"
+                            aria-label={`Cantidad para ${foodDisplayName(pickerFood)}`}
+                          />
+                          <span className="shrink-0 pr-2 text-xs font-black text-[#FFE8A3]">{pickerUnit}</span>
+                        </span>
+                        <button type="button" onClick={() => adjustFoodPickerQuantity(pickerStep)} className="grid place-items-center border-l border-white/10 text-slate-300" aria-label="Sumar cantidad">
+                          <Plus size={15} />
+                        </button>
+                      </span>
+                    </label>
+                    <span className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-black text-slate-300">
+                      {pickerQuantity > 0 ? `${formatNumber(pickerQuantity, 1)} ${pickerUnit} - ${displayKcal(pickerTotals.kcal)}` : "Defini una cantidad"}
+                    </span>
+                  </div>
+
+                  {canRecommend ? (
+                    <fieldset className="mt-3 grid gap-2" aria-label="Modo de uso del alimento">
+                      <label className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-xl border px-3 text-xs font-black ${foodPicker.useMode === "manual" ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-black/15 text-slate-300"}`}>
+                        <input
+                          type="radio"
+                          name="flexible-food-use-mode"
+                          checked={foodPicker.useMode === "manual"}
+                          onChange={() => updateFoodPicker({ useMode: "manual" })}
+                          className="h-4 w-4 accent-[#D4AF37]"
+                        />
+                        Agregar y trackear manualmente
+                      </label>
+                      <label className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-xl border px-3 text-xs font-black ${foodPicker.useMode === "calculate" ? "border-sky-300/35 bg-sky-300/10 text-sky-100" : "border-white/10 bg-black/15 text-slate-300"}`}>
+                        <input
+                          type="radio"
+                          name="flexible-food-use-mode"
+                          checked={foodPicker.useMode === "calculate"}
+                          onChange={() => updateFoodPicker({ useMode: "calculate" })}
+                          className="h-4 w-4 accent-sky-300"
+                        />
+                        Usarlo para calcular cantidades despues
+                      </label>
+                    </fieldset>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2 text-xs font-bold leading-relaxed text-slate-500">
+                      Podes ajustar la cantidad manualmente. El calculo automatico esta disponible en Pro.
+                    </p>
+                  )}
+
+                  {error ? (
+                    <div className="mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-rose-100" role="alert">
+                      {error}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setFoodPicker(null)} className="min-h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-black text-slate-300">
+                      Cancelar
+                    </button>
+                    <button type="button" onClick={commitFoodPicker} className="min-h-10 rounded-xl bg-[#D4AF37] px-3 text-xs font-black text-black">
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {foods.length && !foodPicker ? (
+                <div className="mt-3 grid gap-2">
+                  {foods.map((food, index) => {
+                    const id = String(food.id || food._id || food.alimentoId || foodDisplayName(food) || index);
+                    return (
+                      <button
+                        key={`${id}-${index}`}
+                        type="button"
+                        onClick={() => openFoodPicker(food)}
+                        className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 text-left text-sm font-bold text-zinc-100 transition hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <FoodThumb food={{ ...food, name: foodDisplayName(food) }} size="sm" />
+                          <span className="min-w-0">
+                            <span className="block truncate">{foodDisplayName(food)}</span>
+                            <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">{foodLibraryMacroLine(food)}</span>
+                          </span>
+                        </span>
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]">
+                          <Plus size={16} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {search.trim().length > 0 && search.trim().length < 2 ? (
+                <div className="mt-2 rounded-2xl border border-dashed border-white/10 p-3 text-sm font-bold text-zinc-500">Escribi al menos 2 caracteres para buscar.</div>
+              ) : null}
+              {showNoFoodResults ? (
+                <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-sm font-bold text-zinc-500">
+                  No encontramos alimentos para esa busqueda.
+                </div>
+              ) : null}
+              {foodsLoading ? <RefreshCw size={16} className="mt-3 animate-spin text-slate-400" /> : null}
+            </section>
+
+            <section>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <h4 className="text-xl font-black text-white">Alimentos registrados</h4>
+                <span className="text-sm font-black text-sky-200">
+                  {draftEntries.length} alimento{draftEntries.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                {draftEntries.map((entry) => {
+                  const food = flexibleMarginEntryFood(entry);
+                  const entryTotals = totalFromLike(entry.totals || food);
+                  const quantity = food.quantity ?? food.cantidad ?? entry.quantity ?? entry.cantidad ?? "";
+                  const unit = food.unit || food.unidad || entry.unit || entry.unidad || "g";
+                  const name = food.name || food.nombre || entry.foodName || entry.name || "Alimento";
+                  return (
+                    <article key={entry.id} className="rounded-[0.95rem] border border-white/10 bg-white/[0.035] p-2">
+                      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5">
+                        <FoodThumb food={{ ...food, name }} size="sm" />
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center justify-between gap-2">
+                            <strong className="truncate text-sm font-black text-white">{name}</strong>
+                            <span className="shrink-0 text-xs font-black text-[#FFE8A3]">{displayKcal(entryTotals.kcal)}</span>
+                          </div>
+                          <span className="mt-0.5 block truncate text-[11px] font-bold text-slate-500">
+                            {formatNumber(quantity, 1)} {unit} - P {formatNumber(entryTotals.proteina, 1)} / C {formatNumber(entryTotals.carbs, 1)} / G {formatNumber(entryTotals.grasas, 1)}
+                          </span>
+                        </div>
+                        <button type="button" onClick={() => removeEntry(entry.id)} disabled={saving} className="grid h-8 w-8 place-items-center rounded-lg border border-rose-300/25 bg-rose-400/10 text-rose-100 disabled:opacity-50" aria-label={`Eliminar ${name}`}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className="grid h-8 min-w-0 flex-1 grid-cols-[32px_minmax(0,1fr)_32px] overflow-hidden rounded-lg border border-white/10 bg-[#060b10]">
+                          <button type="button" onClick={() => adjustEntryQuantity(entry.id, quantity, unit, -1)} disabled={saving} className="grid place-items-center border-r border-white/10 text-slate-300 disabled:opacity-50" aria-label={`Restar cantidad de ${name}`}>
+                            <Minus size={15} />
+                          </button>
+                          <span className="flex min-w-0 items-center justify-center">
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={quantity}
+                              onChange={(event) => updateEntryQuantity(entry.id, event.target.value)}
+                              className="min-w-0 flex-1 bg-transparent px-2 text-center text-xs font-black text-white outline-none"
+                              aria-label={`Cantidad de ${name}`}
+                            />
+                            <span className="shrink-0 pr-2 text-[11px] font-black text-[#FFE8A3]">{unit}</span>
+                          </span>
+                          <button type="button" onClick={() => adjustEntryQuantity(entry.id, quantity, unit, 1)} disabled={saving} className="grid place-items-center border-l border-white/10 text-slate-300 disabled:opacity-50" aria-label={`Sumar cantidad de ${name}`}>
+                            <Plus size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!draftEntries.length ? (
+                  <div className="rounded-[1.05rem] border border-dashed border-white/15 bg-white/[0.02] p-4 text-sm font-bold text-slate-500">
+                    Todavia no agregaste alimentos a este margen.
+                  </div>
+                ) : null}
+              </div>
+              <p className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold leading-relaxed text-slate-500">
+                Se guardara como Tracking del margen flexible del dia seleccionado.
+              </p>
+            </section>
+
+            <section className="rounded-[1.05rem] border border-white/10 bg-white/[0.03] p-3 sm:p-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div>
+                  <h4 className="text-base font-black text-white">Acciones secundarias</h4>
+                  <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">{calculateActionText}</p>
+                  <p className={`mt-2 rounded-xl border px-3 py-2 text-xs font-black leading-relaxed ${
+                    completionChecked
+                      ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+                      : completionState.canComplete
+                        ? "border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"
+                        : "border-white/10 bg-black/15 text-slate-500"
+                  }`}>
+                    {completionActionText}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={completed || !canRecommend}
+                    onClick={() => {
+                      if (!completed && canRecommend) {
+                        setMode((current) => current === "calculate" ? "manual" : "calculate");
+                        setError("");
+                        clearSearch();
+                      }
+                    }}
+                    className={`inline-flex min-h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-black transition disabled:opacity-50 ${mode === "calculate" ? "border-sky-300/35 bg-sky-300/12 text-sky-100" : "border-white/10 bg-black/20 text-slate-300 hover:border-sky-300/25"}`}
+                  >
+                    {canRecommend ? <Calculator size={15} /> : <Lock size={15} />}
+                    <span className="grid text-left leading-tight">
+                      <span>Calcular cantidades</span>
+                      {!canRecommend ? <span className="text-[10px] font-black text-slate-500">Disponible en Pro</span> : null}
+                    </span>
+                  </button>
+                  <label className={`inline-flex min-h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-black transition ${
+                    completionChecked
+                      ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+                      : completionState.canComplete
+                        ? "cursor-pointer border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3] hover:border-[#D4AF37]/45"
+                        : "border-white/10 bg-black/20 text-slate-500"
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={completionChecked}
+                      disabled={!completed && (completionState.autoComplete || !completionState.canComplete)}
+                      onChange={(event) => updateCompleted(event.target.checked)}
+                      className="h-4 w-4 accent-emerald-300 disabled:opacity-60"
+                    />
+                    {completionChecked ? "Hecho" : "Marcar como hecho"}
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            {mode === "calculate" && canRecommend ? (
+              <section className="rounded-[1.15rem] border border-sky-300/20 bg-sky-300/[0.055] p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wide text-sky-200">Sugerencia automatica</span>
+                    <h4 className="mt-1 text-lg font-black text-white">Restante del margen: {displayKcal(macroRemaining.kcal)}</h4>
+                    <p className="mt-1 text-sm font-bold text-slate-400">
+                      P {formatNumber(macroRemaining.proteina, 1)} / C {formatNumber(macroRemaining.carbs, 1)} / G {formatNumber(macroRemaining.grasas, 1)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={calculateSuggestions}
+                    disabled={!canRecommend || completed || calculating || macroRemaining.kcal <= 5}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-sky-300/30 bg-sky-300/10 px-4 text-xs font-black text-sky-100 disabled:opacity-50"
+                  >
+                    {calculating ? <RefreshCw size={14} className="animate-spin" /> : <Calculator size={14} />}
+                    Calcular cantidades
+                  </button>
+                </div>
+
+                {!canRecommend ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-sm font-bold text-zinc-400">
+                    Recomendaciones automaticas disponibles en Pro.
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-2">
+                  {calcFoods.map((food) => (
+                    <div key={food.id} className="grid gap-3 rounded-2xl border border-sky-300/20 bg-black/20 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FoodThumb food={food} size="sm" />
+                        <span className="min-w-0">
+                          <strong className="block truncate text-sm font-black text-white">{food.name || food.nombre}</strong>
+                          <span className="mt-1 block truncate text-xs font-bold text-sky-100/70">{foodLibraryMacroLine(food)}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="flex h-10 min-w-0 flex-1 items-center gap-1 rounded-xl border border-white/10 bg-black/20 px-2 sm:w-28 sm:flex-none">
+                          <input
+                            value={food.manualQuantity ?? ""}
+                            onChange={(event) => updateCalcFoodQuantity(food.id, event.target.value)}
+                            inputMode="decimal"
+                            placeholder="auto"
+                            className="min-w-0 flex-1 bg-transparent text-right text-sm font-black text-white outline-none placeholder:text-[#FFE8A3]"
+                            aria-label={`Cantidad fija de ${food.name || food.nombre}`}
+                          />
+                          <span className="shrink-0 text-xs font-black text-zinc-500">g</span>
+                        </label>
+                        <button type="button" onClick={() => removeCalcFood(food.id)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/15 bg-black/20 text-zinc-300" aria-label={`Quitar ${food.name || food.nombre}`}>
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {!calcFoods.length ? (
+                    <div className="rounded-2xl border border-dashed border-white/15 p-4 text-sm font-bold text-slate-500">
+                      Agrega uno o mas alimentos desde el buscador para calcular cantidades.
+                    </div>
+                  ) : null}
+                </div>
+
+                {calcResult ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-black uppercase tracking-wide text-emerald-100">Resultado</span>
+                      <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-black text-zinc-300">
+                        Total {displayKcal(suggestionTotals(calcResult).kcal)}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid gap-1.5">
+                      {calcResult.foods.map((food, index) => {
+                        const item = normalizeGeneratedFood(food);
+                        return (
+                          <div key={item.id || index} className="grid gap-1 rounded-xl bg-black/15 px-2.5 py-2 text-sm font-bold text-zinc-100 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                            <span className="min-w-0">
+                              <span className="block truncate">{item.name}</span>
+                              <span className="mt-0.5 block text-[11px] font-bold text-zinc-500">
+                                P {formatNumber(item.proteina, 1)} / C {formatNumber(item.carbs, 1)} / G {formatNumber(item.grasas, 1)}
+                              </span>
+                            </span>
+                            <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-0.5 text-xs font-black text-[#FFE8A3]">
+                              {formatNumber(item.quantity, 1)} {item.unit} - {displayKcal(item.kcal)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {suggestionWarning(calcResult) ? (
+                      <div className="mt-2 rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 p-2 text-xs font-black text-[#FFE8A3]">
+                        {suggestionWarning(calcResult)}
+                      </div>
+                    ) : null}
+                    <button type="button" onClick={applySuggestion} className="mt-3 min-h-11 w-full rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-sm font-black text-emerald-100">
+                      Usar cantidades sugeridas
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {error && !pickerFood ? (
+              <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm font-bold text-rose-100" role="alert">
+                {error}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <footer className="shrink-0 border-t border-white/10 bg-[#070b10]/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6">
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={onClose} disabled={saving} className="min-h-[52px] rounded-[1.1rem] border border-white/20 bg-white/[0.045] px-4 text-sm font-black text-slate-400 disabled:opacity-50">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => save(false)}
+              disabled={saving}
+              className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-[1.1rem] bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 text-sm font-black text-[#080808] shadow-[0_16px_36px_rgba(212,175,55,.22)] disabled:opacity-60"
+            >
+              {!saving ? <Sparkles size={17} fill="currentColor" strokeWidth={1.8} /> : null}
+              {saving ? "Guardando..." : completionState.autoComplete && !completed ? "Guardar y marcar hecho" : "Guardar asi"}
+            </button>
+          </div>
+        </footer>
+      </div>
     </section>
   );
 }

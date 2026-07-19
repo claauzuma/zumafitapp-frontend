@@ -40,6 +40,11 @@ import {
 import { useMenusBase } from "../menus/menusQueries.js";
 import { normalizeDemoMenu } from "../menus/menusUtils.js";
 import {
+  MAX_FLEXIBLE_CALORIES,
+  buildFlexibleAssignmentMetadata,
+  getMenuDayCompatibility,
+} from "../menus/menuAssignmentCompatibility.js";
+import {
   createDailyTargetsDraft,
   NUTRITION_WEEK_DAYS,
   resolveNutritionWeek,
@@ -1129,14 +1134,27 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
   }));
   const validRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.canAssign);
   const invalidRows = compatibilityRows.filter((row) => !row.hasValidTarget || !row.compatibility?.canAssign);
+  const flexibleRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.flexibleCalories > 0 && row.compatibility?.canAssign);
+  const proteinWarningRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.proteinLow && row.compatibility?.canAssign);
+  const surplusWarningRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.key === "surplus_warning");
   const replacingRows = compatibilityRows.filter((row) => row.assignment);
   const canAssign = Boolean(clientId && selectedRows.length && invalidRows.length === 0);
   const selectedNames = selectedRows.map((row) => row.day.label).join(", ");
-  const actionLabel = selectedRows.length > 1
+  const compatibilitySummary = flexibleRows.length
+    ? `${validRows.length}/${selectedRows.length} compatible${validRows.length === 1 ? "" : "s"} con margen flexible`
+    : `${validRows.length}/${selectedRows.length} compatibles`;
+  const singleFlexibleCalories = selectedRows.length === 1 ? flexibleRows[0]?.compatibility?.flexibleCalories || 0 : 0;
+  const baseActionLabel = selectedRows.length > 1
     ? `Asignar menú a ${selectedRows.length} días`
     : selectedRows[0]?.assignment
       ? "Reemplazar menú del día"
       : "Asignar menú al día";
+
+  const actionLabel = singleFlexibleCalories
+    ? `Asignar con ${formatNumber(singleFlexibleCalories)} kcal libres`
+    : flexibleRows.length
+      ? "Asignar con margen flexible"
+      : baseActionLabel;
 
   return (
     <div className="nf-modalBackdrop">
@@ -1226,7 +1244,7 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
             <div className="nf-compatTitle">
               {invalidRows.length ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
               <strong>Compatibilidad con {selectedRows.length === 1 ? "el día" : "los días"}</strong>
-              <span>{validRows.length}/{selectedRows.length} compatibles</span>
+              <span>{compatibilitySummary}</span>
             </div>
             <div className="nf-compatGrid">
               <div>
@@ -1250,6 +1268,30 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
                 {replacingRows.length === 1
                   ? <>Un día ya tiene menú asignado: <strong>{replacingRows[0].assignment.name}</strong>. Si continuás, se reemplazará.</>
                   : <>{replacingRows.length} días ya tienen menú asignado. Si continuás, se reemplazarán.</>}
+              </div>
+            ) : null}
+            {flexibleRows.length ? (
+              <div className="nf-assignWarning">
+                {flexibleRows.map((row) => (
+                  <span key={`flex-${row.day.key}`}>
+                    <strong>{row.day.label}:</strong> Este menu queda {formatNumber(row.compatibility.flexibleCalories)} kcal por debajo de la meta. Podes asignarlo dejando ese faltante como calorias libres.
+                    <small>Meta: {formatNumber(row.compatibility.target.kcal)} kcal - Menu: {formatNumber(row.compatibility.menu.kcal)} kcal - Libre: {formatNumber(row.compatibility.flexibleCalories)} kcal</small>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {proteinWarningRows.length || surplusWarningRows.length ? (
+              <div className="nf-assignWarning">
+                {proteinWarningRows.map((row) => (
+                  <span key={`protein-${row.day.key}`}>
+                    <strong>{row.day.label}:</strong> Este menu deja mucha proteina pendiente. Revisa si el margen flexible alcanza para completar el objetivo.
+                  </span>
+                ))}
+                {surplusWarningRows.map((row) => (
+                  <span key={`surplus-${row.day.key}`}>
+                    <strong>{row.day.label}:</strong> Este menu supera la meta por +{formatNumber(row.compatibility.surplusCalories)} kcal. Revisalo antes de asignar.
+                  </span>
+                ))}
               </div>
             ) : null}
             {invalidRows.length ? (
@@ -1309,6 +1351,14 @@ function nutritionDraftFromClient(client = {}) {
 }
 
 function getAssignCompatibility(menu = {}, target = {}) {
+  const compatibility = getMenuDayCompatibility(menu, target);
+  if (compatibility) {
+    return {
+      ...compatibility,
+      reason: assignCompatibilityReason(compatibility),
+    };
+  }
+
   const targetKcal = Number(target?.kcal || 0);
   const targetProtein = Number(target?.p || 0);
   const menuKcal = Number(menu?.kcal || 0);
@@ -1366,6 +1416,28 @@ function getAssignCompatibility(menu = {}, target = {}) {
   };
 }
 
+function assignCompatibilityReason(compatibility = {}) {
+  if (compatibility.key === "missing_target") {
+    return "Este cliente no tiene macros configurados para ese dia. Configura nutricion primero.";
+  }
+  if (compatibility.key === "deficit_excessive") {
+    return `Este menu queda ${formatNumber(compatibility.flexibleCalories)} kcal por debajo de la meta del dia. Ajusta el menu o elegi otro dia. El margen flexible maximo permitido es ${MAX_FLEXIBLE_CALORIES} kcal.`;
+  }
+  if (compatibility.key === "surplus_blocked") {
+    return `Este menu excede la meta del dia por +${formatNumber(compatibility.surplusCalories)} kcal. Ajusta el menu o elegi otro dia.`;
+  }
+  if (compatibility.key === "surplus_warning") {
+    return `Este menu supera la meta del dia por +${formatNumber(compatibility.surplusCalories)} kcal. Revisalo antes de asignar.`;
+  }
+  if (compatibility.flexibleCalories > 0) {
+    return `Este menu queda ${formatNumber(compatibility.flexibleCalories)} kcal por debajo de la meta. Podes asignarlo dejando ese faltante como calorias libres.`;
+  }
+  if (compatibility.proteinLow) {
+    return "Este menu deja mucha proteina pendiente. Revisa si el margen flexible alcanza para completar el objetivo.";
+  }
+  return "";
+}
+
 function getWeeklyAssignmentForDay(client = {}, dayKey = "") {
   const entry = client?.menu?.weeklyPlan?.assignedMenusByDay?.[dayKey];
   if (!entry || typeof entry !== "object") return null;
@@ -1385,13 +1457,15 @@ function buildNextWeeklyAssignments(client = {}, dayKeys = [], menu = {}) {
   const snapshot = snapshotFromAssignableMenu(menu);
   const assignedAt = new Date().toISOString();
   const keys = Array.isArray(dayKeys) ? dayKeys : [dayKeys].filter(Boolean);
+  const nutritionWeek = resolveNutritionWeek(nutritionDraftFromClient(client));
 
   return keys.reduce((nextAssignments, dayKey) => {
     const currentEntry = nextAssignments?.[dayKey] || {};
+    const target = nutritionWeek.targets?.[dayKey] || {};
     const primaryMenu = {
       menuId: snapshot.baseId || snapshot.id || menu.baseId || menu.id || "",
       menuSnapshot: snapshot,
-      source: "template",
+      ...buildFlexibleAssignmentMetadata(snapshot, target, { dayKey }),
       assignedAt,
     };
     const alternatives = Array.isArray(currentEntry?.alternatives)
@@ -1466,12 +1540,33 @@ function compactAssignedMenuForPayload(entry = {}, fallbackSource = "template") 
   const snapshot = snapshotFromAssignableMenu(snapshotSource);
   const menuId = String(entry.menuId || entry.menuBaseId || snapshot.baseId || snapshot.id || "").trim();
   if (!menuId && !snapshot.name) return null;
+  const planningMeta = compactAssignmentPlanningMeta(entry);
   return {
     menuId,
     menuSnapshot: snapshot,
     source: entry.source || fallbackSource,
+    ...planningMeta,
     assignedAt: entry.assignedAt || new Date().toISOString(),
   };
+}
+
+function compactAssignmentPlanningMeta(entry = {}) {
+  const meta = {};
+  [
+    "assignmentType",
+    "dayKey",
+    "targetCalories",
+    "plannedCalories",
+    "flexibleCalories",
+    "flexibleMode",
+    "flexibleLabel",
+    "macroPending",
+    "proteinWarning",
+    "compatibility",
+  ].forEach((key) => {
+    if (entry[key] !== undefined) meta[key] = entry[key];
+  });
+  return meta;
 }
 
 function assignNumber(value, fallback = 0) {

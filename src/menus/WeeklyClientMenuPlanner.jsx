@@ -34,6 +34,13 @@ import {
 } from "../queryClient.js";
 import { createMenuBase } from "./menusApi.js";
 import { useMenusBase } from "./menusQueries.js";
+import {
+  MAX_FLEXIBLE_CALORIES,
+  assignmentFlexibleCalories,
+  assignmentMacroPending,
+  buildFlexibleAssignmentMetadata,
+  getMenuDayCompatibility,
+} from "./menuAssignmentCompatibility.js";
 import "./weeklyClientMenus.css";
 
 const DAY_KEYS = NUTRITION_WEEK_DAYS.map((day) => day.key);
@@ -217,12 +224,33 @@ function normalizeAssignmentEntry(entry = {}, source = "base") {
   );
   if (!hasSnapshotData) return null;
   const snapshot = normalizeSnapshot(snapshotSource);
+  const planningMeta = assignmentPlanningMeta(entry);
   return {
     menuId: entry.menuId || entry.menuBaseId || snapshot.baseId || snapshot.id || "",
     menuSnapshot: snapshot,
     source: entry.source || source,
+    ...planningMeta,
     assignedAt: entry.assignedAt || new Date().toISOString(),
   };
+}
+
+function assignmentPlanningMeta(entry = {}) {
+  const meta = {};
+  [
+    "assignmentType",
+    "dayKey",
+    "targetCalories",
+    "plannedCalories",
+    "flexibleCalories",
+    "flexibleMode",
+    "flexibleLabel",
+    "macroPending",
+    "proteinWarning",
+    "compatibility",
+  ].forEach((key) => {
+    if (entry[key] !== undefined) meta[key] = entry[key];
+  });
+  return meta;
 }
 
 function normalizeAlternativeEntry(entry = {}) {
@@ -299,12 +327,16 @@ function snapshotToEditorMenu(snapshot = {}) {
   };
 }
 
-function menuToAssignment(menu = {}, source = "base") {
+function menuToAssignment(menu = {}, source = "coach", options = {}) {
   const snapshot = snapshotFromMenu(menu);
+  const planningMeta = options.target
+    ? buildFlexibleAssignmentMetadata(snapshot, options.target, { dayKey: options.dayKey, source })
+    : {};
   return {
     menuId: snapshot.baseId || snapshot.id || "",
     menuSnapshot: snapshot,
     source,
+    ...planningMeta,
     assignedAt: new Date().toISOString(),
   };
 }
@@ -437,6 +469,8 @@ function getCompatibility(menu = {}, target = {}) {
       proteinDiff: -targetMacroValue(target, "protein"),
     };
   }
+  const compatibility = getMenuDayCompatibility(menuTotals(menu), target);
+  if (compatibility) return compatibility;
   const totals = menuTotals(menu);
   const targetKcal = toNumber(target?.kcal, 0);
   const targetProtein = targetMacroValue(target, "protein");
@@ -457,6 +491,17 @@ function getCompatibility(menu = {}, target = {}) {
     return { key: "protein", label: "Bajo en proteína", tone: "review", kcalDiff, proteinDiff };
   }
   return { key: "review", label: "Revisar", tone: "review", kcalDiff, proteinDiff };
+}
+
+function compatibilityReason(compatibility = {}) {
+  if (compatibility.key === "missing_target") return "Configura kcal y proteina para este dia antes de asignar.";
+  if (compatibility.key === "deficit_excessive") {
+    return `Este menu queda ${formatNumber(compatibility.flexibleCalories)} kcal por debajo de la meta. El margen flexible maximo permitido es ${MAX_FLEXIBLE_CALORIES} kcal.`;
+  }
+  if (compatibility.key === "surplus_blocked") {
+    return `Este menu excede la meta por +${formatNumber(compatibility.surplusCalories)} kcal. Ajusta el menu o elegi otro dia.`;
+  }
+  return "Este menu no es compatible con la meta del dia.";
 }
 
 function sortByCompatibility(menus = [], target = {}) {
@@ -518,7 +563,9 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
         const totals = snapshot ? menuTotals(snapshot) : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
         const compatibility = getCompatibility(snapshot, target);
         const alternatives = Array.isArray(assignment?.alternatives) ? assignment.alternatives : [];
-        return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility };
+        const flexibleCalories = primary ? assignmentFlexibleCalories(primary, target, totals) : 0;
+        const macroPending = primary ? assignmentMacroPending(primary, target, totals) : { protein: 0, carbs: 0, fat: 0 };
+        return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility, flexibleCalories, macroPending };
       }),
     [hydratedAssignments, nutritionWeek]
   );
@@ -549,7 +596,14 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   }
 
   async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
-    const primaryMenu = menuToAssignment(menu);
+    const row = weekRows.find((item) => item.day.key === dayKey);
+    const compatibility = getCompatibility(menu, row?.target);
+    if (!compatibility.canAssign) {
+      onToast?.({ type: "warning", message: compatibilityReason(compatibility) });
+      setPicker(null);
+      return;
+    }
+    const primaryMenu = menuToAssignment(menu, "coach", { target: row?.target, dayKey });
     const current = hydratedAssignments[dayKey] || assignments[dayKey] || {};
     const alternatives = Array.isArray(current.alternatives)
       ? current.alternatives.filter((alternative) => !isSameAssignment(alternative, primaryMenu))
@@ -570,10 +624,18 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
       return;
     }
 
+    const row = weekRows.find((item) => item.day.key === dayKey);
+    const compatibility = getCompatibility(menu, row?.target);
+    if (!compatibility.canAssign) {
+      onToast?.({ type: "warning", message: compatibilityReason(compatibility) });
+      setPicker(null);
+      return;
+    }
+
     const alternative = {
-      ...menuToAssignment(menu, "alternative"),
+      ...menuToAssignment(menu, "alternative", { target: row?.target, dayKey }),
       reason: "Compatible con la meta del día",
-      compatibility: getCompatibility(menu, weekRows.find((row) => row.day.key === dayKey)?.target),
+      compatibility,
     };
     const alternatives = Array.isArray(current.alternatives) ? current.alternatives : [];
     if (isSameAssignment(alternative, currentPrimary) || alternatives.some((item) => isSameAssignment(item, alternative))) {
@@ -812,7 +874,15 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
   const percent = targetKcal > 0 ? Math.min(130, (row.totals.kcal / targetKcal) * 100) : 0;
   const overflow = percent > 100;
   const hasMenu = !!row.snapshot;
-  const barTone = !row.snapshot ? "empty" : overflow ? "overflow" : row.compatibility.key === "good" ? "good" : row.compatibility.key === "low" ? "low" : "review";
+  const barTone = !row.snapshot
+    ? "empty"
+    : overflow
+      ? "overflow"
+      : row.compatibility.tone === "good"
+        ? "good"
+        : row.flexibleCalories || row.compatibility.key === "deficit_excessive"
+          ? "low"
+          : "review";
   const targetSourceClass = row.target.customized ? "custom" : row.target.adjusted ? "adjusted" : "";
   const targetSourceLabel = row.target.statusLabel || (row.target.customized ? "Personalizado" : row.target.adjusted ? "General ajustado" : "General");
   const alternativesCount = row.alternatives?.length || 0;
@@ -839,6 +909,7 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
 
       <div className="wmp-dayKpis">
         <span><Flame size={14} aria-hidden="true" /> Meta {displayKcal(row.target.kcal)}</span>
+        {row.flexibleCalories > 0 ? <span>Libre {displayKcal(row.flexibleCalories)}</span> : null}
         <span>Menú {displayKcal(row.totals.kcal)}</span>
       </div>
 
@@ -927,6 +998,10 @@ function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose
           {menus.map((menu) => {
             const compatibility = getCompatibility(menu, row?.target);
             const totals = menuTotals(menu);
+            const canPick = compatibility.canAssign !== false;
+            const pickLabel = compatibility.flexibleCalories > 0
+              ? `Asignar con ${formatNumber(compatibility.flexibleCalories)} kcal libres`
+              : "Usar como principal";
             return (
               <article className="wmp-pickerCard" key={menu.id || menu.baseId || menu.name}>
                 <div>
@@ -934,13 +1009,15 @@ function MenuPickerDrawer({ row, menus, search, loading, mode, onSearch, onClose
                   <strong>{menu.name}</strong>
                   <p>{displayKcal(totals.kcal)} / P {displayMacro(totals.protein)} / C {displayMacro(totals.carbs)} / G {displayMacro(totals.fat)}</p>
                   <small>{menu.mealsCount || menu.meals?.length || 0} comidas / Dif. {formatSigned(compatibility.kcalDiff, " kcal")} / P {formatSigned(compatibility.proteinDiff, " g")}</small>
+                  {compatibility.flexibleCalories > 0 ? <small>Libre {displayKcal(compatibility.flexibleCalories)} para completar durante el dia.</small> : null}
+                  {!canPick ? <small>{compatibilityReason(compatibility)}</small> : null}
                 </div>
                 <div className="wmp-pickerActions">
-                  <button type="button" className="wmp-btn gold" onClick={() => onPick(menu)}>
-                    Usar como principal
+                  <button type="button" className="wmp-btn gold" onClick={() => onPick(menu)} disabled={!canPick}>
+                    {pickLabel}
                   </button>
                   {mode === "alternative" ? (
-                    <button type="button" className="wmp-btn" onClick={() => onSaveAlternative(menu)}>
+                    <button type="button" className="wmp-btn" onClick={() => onSaveAlternative(menu)} disabled={!canPick}>
                       Guardar alternativa
                     </button>
                   ) : null}
@@ -981,6 +1058,9 @@ function MenuDayDetailDrawer({
   const selectedMenu = selectedAlternative?.menuSnapshot || menu;
   const selectedTotals = selectedMenu ? menuTotals(selectedMenu) : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   const selectedCompatibility = selectedMenu ? getCompatibility(selectedMenu, row.target) : row.compatibility;
+  const selectedAssignment = selectedAlternative || row.primary || {};
+  const selectedFlexibleCalories = selectedMenu ? assignmentFlexibleCalories(selectedAssignment, row.target, selectedTotals) : 0;
+  const selectedMacroPending = selectedMenu ? assignmentMacroPending(selectedAssignment, row.target, selectedTotals) : { protein: 0, carbs: 0, fat: 0 };
   const selectedSnapshotIncomplete = selectedMenu ? isSnapshotIncomplete(selectedMenu) : false;
   return (
     <section className="wmp-drawer" role="dialog" aria-modal="true" aria-label="Detalle del menú del día">
@@ -1014,6 +1094,9 @@ function MenuDayDetailDrawer({
                 <strong>{displayKcal(selectedTotals.kcal)}</strong>
                 <span>P {displayMacro(selectedTotals.protein)} / C {displayMacro(selectedTotals.carbs)} / G {displayMacro(selectedTotals.fat)}</span>
                 <small>Dif. {formatSigned(selectedCompatibility.kcalDiff, " kcal")} / P {formatSigned(selectedCompatibility.proteinDiff, " g")}</small>
+                {selectedFlexibleCalories > 0 ? (
+                  <small>Margen flexible: {displayKcal(selectedFlexibleCalories)} libres / pendientes P {displayMacro(selectedMacroPending.protein)} / C {displayMacro(selectedMacroPending.carbs)} / G {displayMacro(selectedMacroPending.fat)}</small>
+                ) : null}
               </div>
             </section>
 

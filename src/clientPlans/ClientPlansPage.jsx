@@ -387,7 +387,7 @@ export default function ClientPlansPage() {
     const planIndex = PLAN_ORDER.indexOf(planId);
     const isCurrent = hasPlan && planId === plan;
     const isUpgrade = hasPlan && planIndex > currentPlanIndex;
-    if (isCurrent) return <span className="cp-current-label">Estas usando este plan</span>;
+    if (isCurrent) return <span className="cp-current-label">Plan actual</span>;
     if (trial?.active && planId === "pro") return <span className="cp-current-label pending">Prueba Pro activa</span>;
     if (canStartTrial && planId === "pro") {
       return (

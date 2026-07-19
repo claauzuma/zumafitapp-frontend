@@ -1,5 +1,5 @@
 // src/apiCredentials.js
-export const API_BASE = "https://zumafitapp-backend-production.up.railway.app";
+export const API_BASE = "http://localhost:8080";
 //"http://localhost:8080";
 // "http://192.168.1.38:8080"
 //"https://zumafitapp-backend-production.up.railway.app"; 

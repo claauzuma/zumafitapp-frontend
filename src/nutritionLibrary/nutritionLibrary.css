@@ -617,8 +617,10 @@
 }
 
 .nh-transition-note {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .nh-transition-note strong,
@@ -636,6 +638,19 @@
   font-size: 13px;
   font-weight: 800;
   line-height: 1.4;
+}
+
+.nh-transition-note button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid rgba(246, 212, 94, 0.28);
+  border-radius: 12px;
+  background: rgba(246, 212, 94, 0.10);
+  color: #ffe480;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
 }
 
 .nh-review-note {
@@ -2261,6 +2276,7 @@
   .nh-plan-strip span,
   .nh-plan-strip button,
   .nh-secondary-row button,
+  .nh-transition-note button,
   .nh-review-note button,
   .nh-error button {
     justify-content: center;

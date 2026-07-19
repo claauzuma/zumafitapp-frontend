@@ -321,10 +321,12 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 : "Accede a tus comidas, menus, favoritos y contenido ZumaFit permitido por tu plan."}
             </p>
           </div>
-          <div className="nl-heroMetric">
-            <strong>{totalItems}</strong>
-            <span>items visibles</span>
-          </div>
+          {professionalMode ? (
+            <div className="nl-heroMetric">
+              <strong>{totalItems}</strong>
+              <span>items visibles</span>
+            </div>
+          ) : null}
         </header>
 
         {!professionalMode ? (

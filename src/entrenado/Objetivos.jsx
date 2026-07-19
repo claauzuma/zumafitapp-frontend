@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -522,6 +522,16 @@ export default function Objetivos() {
     });
   }, [user?.goal?.type, user?.goal?.approach]);
 
+  const closeNutritionEditor = useCallback(() => {
+    setEditNutrition(false);
+    setShowDiscardConfirm(false);
+    setConfirmLastChange(false);
+    setStatus(null);
+    setNutritionMode("manual");
+    setNutritionDraft(initialDraft);
+    window.setTimeout(() => editButtonRef.current?.focus(), 0);
+  }, [initialDraft]);
+
   useEffect(() => {
     if (!editNutrition) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -533,13 +543,7 @@ export default function Objetivos() {
     }, 0);
 
     function closeFromKeyboard() {
-      if (mutation.isPending) return;
-      if (!nutritionDraftUnchanged) {
-        setShowDiscardConfirm(true);
-        return;
-      }
-      setEditNutrition(false);
-      window.setTimeout(() => editButtonRef.current?.focus(), 0);
+      closeNutritionEditor();
     }
 
     function handleKeyDown(event) {
@@ -569,7 +573,7 @@ export default function Objetivos() {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [editNutrition, mutation.isPending, nutritionDraftUnchanged]);
+  }, [editNutrition, closeNutritionEditor]);
 
   
 
@@ -580,19 +584,6 @@ export default function Objetivos() {
     setConfirmLastChange(false);
     setShowDiscardConfirm(false);
     setStatus(null);
-  }
-
-  function closeNutritionEditor({ discard = false } = {}) {
-    if (mutation.isPending) return;
-    if (!discard && !nutritionDraftUnchanged) {
-      setShowDiscardConfirm(true);
-      return;
-    }
-    setEditNutrition(false);
-    setShowDiscardConfirm(false);
-    setConfirmLastChange(false);
-    setNutritionDraft(initialDraft);
-    window.setTimeout(() => editButtonRef.current?.focus(), 0);
   }
 
   function handleEditorBackdrop(event) {
@@ -1047,8 +1038,7 @@ export default function Objetivos() {
                 type="button"
                 className="og-dialogClose"
                 aria-label="Cerrar editor"
-                onClick={() => closeNutritionEditor()}
-                disabled={mutation.isPending}
+                onClick={closeNutritionEditor}
               >
                 <X size={21} />
               </button>
@@ -1181,7 +1171,7 @@ export default function Objetivos() {
                   <Notice type="warn">
                     Tenes cambios sin guardar.
                     <div className="og-inlineActions">
-                      <button type="button" onClick={() => closeNutritionEditor({ discard: true })}>Descartar</button>
+                      <button type="button" onClick={closeNutritionEditor}>Descartar</button>
                       <button type="button" onClick={() => setShowDiscardConfirm(false)}>Seguir editando</button>
                     </div>
                   </Notice>
@@ -1193,8 +1183,7 @@ export default function Objetivos() {
               <button
                 type="button"
                 className="og-secondary"
-                disabled={mutation.isPending}
-                onClick={() => closeNutritionEditor()}
+                onClick={closeNutritionEditor}
               >
                 {canEditNutrition ? "Cancelar" : "Cerrar"}
               </button>

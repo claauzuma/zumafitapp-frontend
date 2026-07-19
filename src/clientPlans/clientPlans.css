@@ -894,8 +894,19 @@
 }
 
 .cp-current-label{
-  background:linear-gradient(135deg,#facc15,#f5d76e);
-  color:#080808;
+  display:inline-flex;
+  width:auto;
+  align-items:center;
+  justify-content:center;
+  border-color:rgba(45,212,191,.24);
+  background:rgba(45,212,191,.10);
+  color:#a7f3d0;
+  cursor:default;
+  box-shadow:none;
+}
+
+.cp-plan-card-foot .cp-current-label{
+  width:100%;
 }
 
 .cp-current-label.pending{

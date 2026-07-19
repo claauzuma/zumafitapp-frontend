@@ -843,7 +843,7 @@ return;
   }
 
   return (
-    <div className="auth-page" style={{ "--auth-hero-bg": `url(${fondoZumaFit})` }}>
+    <div className={`auth-page ap-mode-${mode} ap-step-${step}`} style={{ "--auth-hero-bg": `url(${fondoZumaFit})` }}>
       <style>{AUTH_CSS}</style>
 
       {loading && (
@@ -1862,52 +1862,239 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
 @media (min-width:1024px){
   .auth-page{
     display:grid;
-    grid-template-columns:minmax(0,1fr) minmax(440px,520px);
+    grid-template-columns:minmax(0,1fr) minmax(460px,540px);
+    grid-template-rows:minmax(24px,1fr) auto auto minmax(24px,1fr);
     align-items:stretch;
   }
   .ap-nav{ grid-column:1; }
   .ap-hero{
     grid-column:1;
+    grid-row:1 / -1;
     min-height:100dvh;
     align-content:center;
     border-right:1px solid rgba(255,255,255,.08);
     border-bottom:0;
-    padding:120px 42px;
+    padding:120px 56px;
+    background-position:center center;
   }
   .ap-tabs-wrap{
     grid-column:2;
+    grid-row:2;
     width:100%;
     margin:0;
-    padding:34px 28px 0;
+    padding:0 34px;
     align-self:end;
   }
+  .ap-tabs{ border-radius:21px; padding:5px; }
+  .ap-tab{ min-height:52px; border-radius:16px; font-size:17px; }
   .ap-main{
     grid-column:2;
+    grid-row:3;
     width:100%;
-    padding:0 28px 28px;
+    padding:0 34px;
     align-self:start;
   }
-  .ap-card{ border-radius:0 0 28px 28px; padding:34px; }
+  .ap-card{ border-radius:0 0 28px 28px; padding:30px; }
+  .ap-title{ font-size:38px; line-height:1.04; }
+  .ap-sub{ margin:10px 0 18px; font-size:17px; line-height:1.38; }
+  .ap-social-btn{ min-height:54px; border-radius:16px; font-size:16px; }
+  .ap-divider{ margin:18px 0; font-size:14px; }
+  .ap-form{ gap:12px; }
+  .ap-field{ gap:6px; font-size:14px; }
+  .ap-field input{ min-height:50px; border-radius:14px; padding:0 14px; }
+  .ap-pass-row{ grid-template-columns:minmax(0,1fr) 48px; gap:8px; }
+  .ap-peek,.ap-pass-spacer{ width:48px; min-height:50px; border-radius:14px; }
+  .ap-check{ font-size:14px; }
+  .btn.submit{ min-height:54px; border-radius:16px; font-size:18px; }
+  .ap-small{ font-size:14px; }
+  .ap-account-select{ gap:16px; }
+  .ap-register-steps span{ width:32px; height:32px; }
+  .ap-choice-fieldset{ gap:10px; }
+  .ap-choice-card{
+    min-height:102px;
+    gap:14px;
+    border-radius:18px;
+    padding:14px;
+  }
+  .ap-choice-icon{ width:54px; height:54px; }
+  .ap-choice-icon svg{ width:27px; height:27px; }
+  .ap-choice-copy strong{ font-size:21px; }
+  .ap-choice-copy small{ margin-top:4px; font-size:14px; line-height:1.35; }
+  .ap-choice-radio{ width:26px; height:26px; }
+  .ap-mode-register.ap-step-form .ap-form{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .ap-mode-register.ap-step-form .ap-check,
+  .ap-mode-register.ap-step-form .ap-error,
+  .ap-mode-register.ap-step-form .ap-success,
+  .ap-mode-register.ap-step-form .btn.submit,
+  .ap-mode-register.ap-step-form .ap-small{
+    grid-column:1 / -1;
+  }
   .ap-foot{ display:none; }
 }
 @media (max-width:640px){
-  .ap-nav-inner{ padding:12px 14px; }
-  .ap-brandLogo .brand-logo-img{ height:40px; max-width:170px; }
+  .auth-page{ min-height:100svh; }
+  .ap-nav{ display:none; }
   .ap-hero{
-    min-height:220px;
-    padding:78px 14px 48px;
+    min-height:178px;
+    padding:24px 12px 40px;
     background-position:58% top;
+    background-size:cover;
   }
-  .ap-tabs-wrap{ margin-top:-28px; padding-inline:10px; }
-  .ap-tabs{ border-radius:18px; padding:5px; }
-  .ap-tab{ min-height:54px; border-radius:14px; }
-  .ap-main{ padding-inline:10px; }
-  .ap-card{ padding:22px 18px; border-radius:0 0 24px 24px; }
-  .ap-row-between{ align-items:flex-start; flex-direction:column; }
-  .ap-choice-card{ grid-template-columns:1fr auto; min-height:auto; }
-  .ap-choice-icon{ width:54px; height:54px; grid-column:1; }
-  .ap-choice-copy{ grid-column:1 / 2; }
-  .ap-choice-radio{ grid-column:2; grid-row:1 / span 2; }
+  .ap-heroLogo .brand-logo-img{ height:44px; max-width:158px; }
+  .ap-hero p{
+    margin-top:12px;
+    max-width:320px;
+    font-size:12px;
+    line-height:1.35;
+    letter-spacing:.16em;
+  }
+  .ap-tabs-wrap{ margin-top:-30px; padding-inline:10px; }
+  .ap-tabs{ border-radius:18px; padding:4px; }
+  .ap-tab{
+    min-height:46px;
+    border-radius:14px;
+    font-size:16px;
+  }
+  .ap-main{ padding:0 10px 16px; }
+  .ap-card{ padding:18px 16px 20px; border-radius:0 0 22px 22px; }
+  .ap-title{
+    font-size:clamp(29px,8vw,34px);
+    line-height:1.08;
+    letter-spacing:-.025em;
+  }
+  .ap-sub{
+    margin:8px 0 16px;
+    font-size:16px;
+    line-height:1.34;
+  }
+  .ap-social{ gap:8px; margin-bottom:2px; }
+  .ap-social-btn{
+    min-height:54px;
+    border-radius:15px;
+    gap:10px;
+    font-size:16px;
+  }
+  .ap-google-g{ font-size:20px; }
+  .ap-divider{
+    gap:11px;
+    margin:14px 0;
+    font-size:13px;
+  }
+  .ap-form{ gap:14px; }
+  .ap-field{ gap:6px; font-size:15px; }
+  .ap-field input{
+    min-height:54px;
+    border-radius:15px;
+    padding:0 14px;
+  }
+  .ap-pass-row{
+    grid-template-columns:minmax(0,1fr) 48px;
+    gap:8px;
+  }
+  .ap-peek,.ap-pass-spacer{
+    width:48px;
+    min-height:54px;
+    border-radius:15px;
+  }
+  .ap-row-between{ align-items:center; gap:10px; }
+  .ap-check{ font-size:14px; gap:8px; }
+  .ap-check input{ width:18px; height:18px; }
+  .btn.submit{
+    min-height:56px;
+    border-radius:16px;
+    font-size:18px;
+    box-shadow:0 14px 34px rgba(244,197,66,.18);
+  }
+  .ap-small{ font-size:14px; }
+  .ap-account-select{ gap:14px; }
+  .ap-register-steps{
+    gap:8px;
+    justify-content:flex-start;
+  }
+  .ap-register-steps span{
+    width:32px;
+    height:32px;
+    font-size:14px;
+  }
+  .ap-register-steps strong{ font-size:13px; }
+  .ap-choice-fieldset{ gap:10px; }
+  .ap-choice-card{
+    grid-template-columns:46px minmax(0,1fr) 24px;
+    min-height:104px;
+    gap:12px;
+    border-radius:17px;
+    padding:14px;
+  }
+  .ap-choice-icon{
+    width:46px;
+    height:46px;
+    grid-column:auto;
+  }
+  .ap-choice-icon svg{ width:24px; height:24px; }
+  .ap-choice-copy{ grid-column:auto; min-width:0; }
+  .ap-choice-copy strong{ font-size:18px; line-height:1.1; }
+  .ap-choice-copy small{
+    margin-top:4px;
+    font-size:13.5px;
+    line-height:1.32;
+  }
+  .ap-choice-radio{
+    grid-column:auto;
+    grid-row:auto;
+    width:24px;
+    height:24px;
+  }
+  .ap-choice-card.selected .ap-choice-radio::after{ inset:5px; }
+  .ap-coach-note{
+    padding:10px 12px;
+    border-radius:14px;
+    font-size:13px;
+  }
+  .ap-error,.ap-success{
+    border-radius:14px;
+    padding:10px 12px;
+    font-size:13px;
+  }
+  .ap-foot{ padding:10px 14px 14px; font-size:13px; }
+}
+@media (max-width:430px){
+  .ap-hero{ min-height:168px; padding-top:20px; padding-bottom:38px; }
+  .ap-heroLogo .brand-logo-img{ height:42px; max-width:150px; }
+  .ap-hero p{ font-size:11px; letter-spacing:.15em; }
+  .ap-card{ padding:16px 14px 18px; }
+  .ap-title{ font-size:30px; }
+  .ap-sub{ font-size:15px; margin-bottom:14px; }
+  .ap-tab{ min-height:46px; font-size:15px; }
+  .ap-social-btn,.ap-field input,.ap-peek,.ap-pass-spacer{ min-height:52px; }
+  .ap-pass-row{ grid-template-columns:minmax(0,1fr) 46px; }
+  .ap-peek,.ap-pass-spacer{ width:46px; }
+  .btn.submit{ min-height:54px; }
+  .ap-account-select{ gap:12px; }
+  .ap-choice-card{
+    grid-template-columns:42px minmax(0,1fr) 22px;
+    min-height:96px;
+    gap:10px;
+    padding:12px;
+  }
+  .ap-choice-icon{ width:42px; height:42px; }
+  .ap-choice-copy strong{ font-size:17px; }
+  .ap-choice-copy small{ font-size:12.5px; line-height:1.28; }
+  .ap-choice-radio{ width:22px; height:22px; }
+}
+@media (max-width:370px){
+  .ap-hero{ min-height:154px; padding-top:16px; padding-bottom:34px; }
+  .ap-tabs-wrap{ margin-top:-28px; padding-inline:8px; }
+  .ap-tabs{ padding:4px; }
+  .ap-tab{ min-height:44px; }
+  .ap-main{ padding-inline:8px; }
+  .ap-card{ padding:14px 12px 16px; }
+  .ap-title{ font-size:28px; }
+  .ap-sub{ font-size:14px; }
+  .ap-form{ gap:12px; }
+  .ap-divider{ margin:12px 0; }
+  .ap-choice-card{ min-height:90px; }
 }
 `;
 

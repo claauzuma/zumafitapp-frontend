@@ -1,29 +1,28 @@
 import React, { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import {
-  Apple,
   ArrowDown,
   ArrowUp,
-  Bell,
   Camera,
   ChevronDown,
   ChevronRight,
   Dumbbell,
-  Home,
   LineChart,
-  Menu,
-  MoreHorizontal,
   Plus,
   Ruler,
   Scale,
   Target,
   TrendingUp,
   Trophy,
-  Weight,
-  X,
 } from "lucide-react";
 import { getCachedUser } from "../authCache.js";
-import BrandLogo from "../ui/BrandLogo.jsx";
+import {
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+  clientPlanCapabilitiesKey,
+  fetchClientPlanCapabilities,
+} from "../clientPlans/clientPlanQueries.js";
+import { clientPlanLabel, normalizeClientPlan, planFromCapabilities } from "../clientPlans/clientPlanUtils.js";
 
 const CSS = `
 :root{
@@ -44,14 +43,8 @@ const CSS = `
   --zp-red:#ff5d73;
 }
 
-body:has(.zp-page) .cs-header{ display:none; }
-body:has(.zp-page) .cs-content{
-  max-width:none;
-  padding:0;
-}
-
 .zp-page{
-  min-height:100vh;
+  min-height:calc(100vh - 120px);
   color:var(--zp-text);
   background:
     radial-gradient(900px 520px at 12% -5%, rgba(255,210,31,.07), transparent 58%),
@@ -65,7 +58,7 @@ body:has(.zp-page) .cs-content{
   width:100%;
   max-width:520px;
   margin:0 auto;
-  padding:18px 18px calc(102px + env(safe-area-inset-bottom));
+  padding:18px 0 26px;
 }
 
 .zp-desktop{
@@ -212,6 +205,48 @@ body:has(.zp-page) .cs-content{
   font-size:17px;
 }
 
+.zp-access-banner{
+  margin:-12px 0 22px;
+  border:1px solid rgba(255,210,31,.20);
+  background:linear-gradient(145deg, rgba(255,210,31,.09), rgba(18,20,24,.78));
+  border-radius:20px;
+  padding:14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.zp-access-banner strong,
+.zp-access-banner span{
+  display:block;
+}
+
+.zp-access-banner strong{
+  color:#fff6bf;
+  font-size:15px;
+}
+
+.zp-access-banner span{
+  margin-top:3px;
+  color:var(--zp-muted);
+  font-size:13px;
+  line-height:1.35;
+}
+
+.zp-access-pill{
+  flex:0 0 auto;
+  border:1px solid rgba(255,210,31,.30);
+  background:rgba(255,210,31,.12);
+  color:#ffe984;
+  border-radius:999px;
+  padding:8px 10px;
+  font-size:11px;
+  font-weight:950;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
 .zp-tabs{
   display:flex;
   align-items:flex-end;
@@ -329,6 +364,33 @@ body:has(.zp-page) .cs-content{
   position:absolute;
   right:14px;
   pointer-events:none;
+}
+
+.zp-range-lock{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:42px;
+  border-radius:999px;
+  padding:0 13px;
+  border:1px solid rgba(255,210,31,.22);
+  background:rgba(255,210,31,.08);
+  color:#ffe984;
+  font-size:12px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.zp-lock-note{
+  margin:12px 0 0;
+  border:1px solid rgba(255,210,31,.18);
+  background:rgba(255,210,31,.07);
+  color:rgba(255,255,255,.76);
+  border-radius:16px;
+  padding:12px;
+  font-size:13px;
+  line-height:1.4;
+  font-weight:800;
 }
 
 .zp-chart-shell{
@@ -504,6 +566,7 @@ body:has(.zp-page) .cs-content{
   border:1px solid var(--zp-border-strong);
   background:rgba(13,14,18,.7);
   color:var(--zp-text);
+  text-decoration:none;
   border-radius:999px;
   min-height:40px;
   padding:0 13px;
@@ -695,6 +758,12 @@ body:has(.zp-page) .cs-content{
   gap:12px;
 }
 
+.zp-measure-form{
+  display:grid;
+  gap:14px;
+  margin-top:16px;
+}
+
 .zp-info-tile{
   border:1px solid var(--zp-border);
   background:rgba(18,20,24,.7);
@@ -719,6 +788,52 @@ body:has(.zp-page) .cs-content{
   margin:8px 0 0;
   color:var(--zp-muted);
   line-height:1.35;
+}
+
+.zp-empty-state{
+  border:1px dashed rgba(255,255,255,.14);
+  background:rgba(255,255,255,.035);
+  border-radius:22px;
+  padding:20px;
+  display:grid;
+  gap:12px;
+  color:var(--zp-muted);
+}
+
+.zp-empty-state.compact{
+  padding:16px;
+}
+
+.zp-empty-state svg{
+  color:var(--zp-gold);
+}
+
+.zp-empty-state strong{
+  color:var(--zp-text);
+  font-size:18px;
+  line-height:1.15;
+}
+
+.zp-empty-state p{
+  margin:0;
+  line-height:1.45;
+}
+
+.zp-empty-state .zp-primary-btn,
+.zp-empty-state .zp-secondary-btn{
+  width:max-content;
+  max-width:100%;
+}
+
+.zp-pro-lock{
+  border-color:rgba(255,210,31,.24);
+  background:
+    radial-gradient(420px 180px at 100% 0%, rgba(255,210,31,.14), transparent 58%),
+    linear-gradient(145deg, rgba(18,20,24,.95), rgba(7,8,11,.98));
+}
+
+.zp-pro-lock .zp-access-pill{
+  width:max-content;
 }
 
 .zp-modal-backdrop{
@@ -1115,29 +1230,13 @@ body:has(.zp-page) .cs-content{
 
 const progressTabs = ["Resumen", "Peso", "Medidas", "Gym", "Fotos"];
 
-const initialWeightProgress = [
-  { week: "Semana 1", short: "S1", range: "26 may - 1 jun", averageWeight: 79.0 },
-  { week: "Semana 2", short: "S2", range: "2 - 8 jun", averageWeight: 78.6 },
-  { week: "Semana 3", short: "S3", range: "9 - 15 jun", averageWeight: 78.2 },
-  { week: "Semana 4", short: "S4", range: "16 - 22 jun", averageWeight: 77.9, current: true },
-];
+const basicMeasurementFields = ["Cintura", "Pecho", "Brazo"];
+const fullMeasurementFields = ["Cintura", "Pecho", "Brazo", "Cadera", "Pierna", "Abdomen"];
 
-const measurements = [
-  { name: "Cintura", value: 85.2, unit: "cm", change: -1.3, trend: "down", positive: true, icon: Ruler, points: [24, 18, 20, 19, 17, 25, 21, 23, 27, 22, 24, 20, 22] },
-  { name: "Pecho", value: 102.4, unit: "cm", change: 0.2, trend: "up", positive: false, icon: Weight, points: [18, 21, 20, 22, 16, 19, 13, 15, 22, 21, 16, 18, 14] },
-  { name: "Brazo", value: 33.1, unit: "cm", change: 0.1, trend: "up", positive: false, icon: Trophy, points: [16, 19, 22, 18, 23, 16, 21, 14, 18, 17, 13, 15, 18] },
-];
-
-const gymMetrics = [
-  { label: "Ultimo entrenamiento", value: "Push superior", text: "Ayer - 62 min" },
-  { label: "Semana actual", value: "4 / 5 sesiones", text: "80% de cumplimiento" },
-  { label: "PR reciente", value: "Press banca 82.5 kg", text: "+2.5 kg este mes" },
-  { label: "Volumen", value: "18.420 kg", text: "Trabajo semanal estimado" },
-];
-
-function firstName(fullName) {
-  const text = String(fullName || "").trim();
-  return text ? text.split(/\s+/)[0] : "Claudio";
+function measurementIconFor(name = "") {
+  const value = String(name).toLowerCase();
+  if (value.includes("brazo") || value.includes("pierna")) return Trophy;
+  return Ruler;
 }
 
 function todayInputValue() {
@@ -1148,46 +1247,168 @@ function todayInputValue() {
   return `${year}-${month}-${day}`;
 }
 
-function formatKg(value) {
-  return `${Number(value || 0).toFixed(1)} kg`;
+function maybeNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-function buildSummary(weights) {
-  const first = weights[0]?.averageWeight ?? 0;
-  const current = weights[weights.length - 1]?.averageWeight ?? 0;
-  const goal = 75;
-  const change = Number((current - first).toFixed(1));
-  const percentage = first ? Number(((change / first) * 100).toFixed(1)) : 0;
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = maybeNumber(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function formatKg(value) {
+  const number = maybeNumber(value);
+  return number === null ? "Sin registro" : `${number.toFixed(1)} kg`;
+}
+
+function formatShortDate(value) {
+  if (!value) return "Actual";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value).slice(0, 10) || "Actual";
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+}
+
+function currentWeightFromUser(user = {}) {
+  return firstNumber(
+    user?.body?.weightKg,
+    user?.antropometriaActual?.pesoKg,
+    user?.stats?.pesoActualKg,
+    user?.stats?.pesoActual,
+    user?.progress?.pesoActualKg,
+    user?.goal?.startWeightKg,
+    user?.profile?.basics?.peso,
+    user?.profile?.basics?.pesoKg
+  );
+}
+
+function goalWeightFromUser(user = {}) {
+  return firstNumber(
+    user?.goal?.targetWeightKg,
+    user?.goal?.targetPesoKg,
+    user?.body?.goalWeightKg,
+    user?.profile?.basics?.pesoObjetivo,
+    user?.profile?.basics?.objetivoPesoKg,
+    user?.objetivoPesoKg
+  );
+}
+
+function weightHistoryFromUser(user = {}) {
+  const candidates = [
+    user?.progress?.weights,
+    user?.progress?.weightHistory,
+    user?.body?.weightHistory,
+    user?.profile?.weightHistory,
+    user?.historialPeso,
+  ];
+  const raw = candidates.find((items) => Array.isArray(items) && items.length) || [];
+  const normalized = raw
+    .map((item, index) => {
+      const weight = firstNumber(item?.weightKg, item?.pesoKg, item?.weight, item?.peso, item?.value);
+      if (weight === null) return null;
+      const date = item?.date || item?.fecha || item?.createdAt || item?.updatedAt;
+      return {
+        week: item?.label || `Registro ${index + 1}`,
+        short: item?.short || `R${index + 1}`,
+        range: formatShortDate(date),
+        averageWeight: Number(weight.toFixed(1)),
+        date,
+      };
+    })
+    .filter(Boolean);
+
+  if (normalized.length) {
+    return normalized.map((item, index) => ({ ...item, current: index === normalized.length - 1 }));
+  }
+
+  const current = currentWeightFromUser(user);
+  if (current === null) return [];
+  return [{
+    week: "Actual",
+    short: "Hoy",
+    range: formatShortDate(new Date()),
+    averageWeight: Number(current.toFixed(1)),
+    date: new Date().toISOString(),
+    current: true,
+  }];
+}
+
+function buildSummary(weights, user = {}) {
+  const first = maybeNumber(weights[0]?.averageWeight);
+  const lastRecord = weights[weights.length - 1] || null;
+  const current = maybeNumber(lastRecord?.averageWeight) ?? currentWeightFromUser(user);
+  const goal = goalWeightFromUser(user);
+  const change = first !== null && current !== null && weights.length > 1 ? Number((current - first).toFixed(1)) : null;
+  const percentage = first && change !== null ? Number(((change / first) * 100).toFixed(1)) : null;
   return {
     currentWeight: current,
     goalWeight: goal,
-    remainingWeight: Math.max(0, Number((current - goal).toFixed(1))),
+    remainingWeight: current !== null && goal !== null ? Number(Math.abs(current - goal).toFixed(1)) : null,
     changeFourWeeks: change,
     changePercentage: percentage,
-    updatedAt: "Actualizado hoy",
+    updatedAt: current !== null ? (lastRecord?.date ? `Ultimo registro ${formatShortDate(lastRecord.date)}` : "Ultimo registro disponible") : "Sin peso registrado",
+    hasWeight: current !== null,
+    hasGoal: goal !== null,
+    hasTrend: weights.length > 1,
   };
+}
+
+function resolveProgressAccess(user = {}, capabilities = null) {
+  const plan = normalizeClientPlan(planFromCapabilities(user, capabilities));
+  const historyDays = Number(capabilities?.limits?.trackingHistoryDays);
+  const isBasic = plan === "free";
+  return {
+    plan,
+    label: clientPlanLabel(plan),
+    isBasic,
+    historyDays: Number.isFinite(historyDays) ? historyDays : null,
+    canUseLongHistory: !isBasic,
+    canUsePhotos: !isBasic,
+    canUseAdvancedGym: !isBasic,
+  };
+}
+
+function visibleWeightsForAccess(weights = [], access = {}) {
+  if (!Array.isArray(weights)) return [];
+  if (access.isBasic) return weights.slice(-2);
+  return weights;
 }
 
 function ProgressPage() {
   const cachedUser = useMemo(() => getCachedUser(), []);
-  const userName = firstName(cachedUser?.profile?.nombre || cachedUser?.nombre || "Claudio");
-  const [activeTab, setActiveTab] = useState("Peso");
+  const [activeTab, setActiveTab] = useState("Resumen");
   const [range, setRange] = useState("4 semanas");
-  const [weights, setWeights] = useState(initialWeightProgress);
+  const [weights, setWeights] = useState(() => weightHistoryFromUser(cachedUser));
+  const [measurements, setMeasurements] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [photos, setPhotos] = useState({});
-  const summary = useMemo(() => buildSummary(weights), [weights]);
+  const capabilitiesQuery = useQuery({
+    queryKey: clientPlanCapabilitiesKey,
+    queryFn: fetchClientPlanCapabilities,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const capabilities = capabilitiesQuery.data || cachedUser?.nutritionCapabilities || null;
+  const access = useMemo(() => resolveProgressAccess(cachedUser, capabilities), [cachedUser, capabilities]);
+  const summary = useMemo(() => buildSummary(weights, cachedUser), [weights, cachedUser]);
 
   function saveWeight(entry) {
     const nextWeight = Number(entry.weight);
     setWeights((current) => {
       const next = current.map((item) => ({ ...item, current: false }));
-      const last = next[next.length - 1];
       return [
-        ...next.slice(0, -1),
+        ...next,
         {
-          ...last,
+          week: `Registro ${next.length + 1}`,
+          short: `R${next.length + 1}`,
+          range: formatShortDate(entry.date),
           averageWeight: Number(nextWeight.toFixed(1)),
+          date: entry.date,
           current: true,
         },
       ];
@@ -1202,7 +1423,11 @@ function ProgressPage() {
     onRangeChange: setRange,
     weights,
     summary,
+    measurements,
+    onMeasurementsSave: setMeasurements,
     photos,
+    access,
+    capabilitiesError: capabilitiesQuery.isError,
     onPhotoChange: setPhotos,
     onAddWeight: () => setModalOpen(true),
   };
@@ -1211,10 +1436,10 @@ function ProgressPage() {
     <div className="zp-page">
       <style>{CSS}</style>
       <div className="zp-mobile">
-        <MobileProgressScreen userName={userName} {...commonProps} />
+        <MobileProgressScreen {...commonProps} />
       </div>
       <div className="zp-desktop">
-        <DesktopProgressScreen userName={userName} {...commonProps} />
+        <DesktopProgressScreen {...commonProps} />
       </div>
       {modalOpen ? (
         <AddWeightModal
@@ -1227,12 +1452,11 @@ function ProgressPage() {
   );
 }
 
-function MobileProgressScreen({ userName, activeTab, onTabChange, range, onRangeChange, weights, summary, onAddWeight }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, capabilitiesError, onPhotoChange, onAddWeight }) {
   return (
     <>
-      <AppHeader userName={userName} onMenu={() => setMenuOpen(true)} />
       <ProgressHero />
+      <ProgressAccessBanner access={access} capabilitiesError={capabilitiesError} />
       <ProgressTabs activeTab={activeTab} onTabChange={onTabChange} />
       <main className="zp-stack">
         <ProgressTabContent
@@ -1241,76 +1465,38 @@ function MobileProgressScreen({ userName, activeTab, onTabChange, range, onRange
           onRangeChange={onRangeChange}
           weights={weights}
           summary={summary}
+          measurements={measurements}
+          onMeasurementsSave={onMeasurementsSave}
+          photos={photos}
+          access={access}
+          onPhotoChange={onPhotoChange}
           onAddWeight={onAddWeight}
         />
       </main>
-      <BottomNavigation />
-      {menuOpen ? <MobileMenuSheet onClose={() => setMenuOpen(false)} /> : null}
     </>
   );
 }
 
-function DesktopProgressScreen({ userName, activeTab, onTabChange, range, onRangeChange, weights, summary, photos, onPhotoChange, onAddWeight }) {
+function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, capabilitiesError, onPhotoChange, onAddWeight }) {
   return (
-    <div className="zp-desktop-layout">
-      <DesktopSidebar />
-      <main className="zp-desktop-main">
-        <div className="zp-desktop-inner">
-          <div className="zp-desktop-header">
-            <ProgressHero />
-            <div className="zp-desktop-user">
-              <button className="zp-icon-btn" type="button" aria-label="Notificaciones">
-                <Bell size={23} />
-                <span className="zp-notification-dot" />
-              </button>
-              <div className="zp-brand">
-                <div className="zp-brand-stack">
-                  <BrandLogo className="zp-brandLogo" size="client" priority />
-                  <div className="zp-brand-text logo-caption">
-                    <span>Hola, {userName}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <ProgressTabs activeTab={activeTab} onTabChange={onTabChange} />
-          <DesktopDashboard
-            activeTab={activeTab}
-            range={range}
-            onRangeChange={onRangeChange}
-            weights={weights}
-            summary={summary}
-            photos={photos}
-            onPhotoChange={onPhotoChange}
-            onAddWeight={onAddWeight}
-          />
-        </div>
-      </main>
+    <div className="zp-desktop-inner">
+      <ProgressHero />
+      <ProgressTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <ProgressAccessBanner access={access} capabilitiesError={capabilitiesError} />
+      <DesktopDashboard
+        activeTab={activeTab}
+        range={range}
+        onRangeChange={onRangeChange}
+        weights={weights}
+        summary={summary}
+        measurements={measurements}
+        onMeasurementsSave={onMeasurementsSave}
+        photos={photos}
+        access={access}
+        onPhotoChange={onPhotoChange}
+        onAddWeight={onAddWeight}
+      />
     </div>
-  );
-}
-
-function AppHeader({ userName, onMenu }) {
-  return (
-    <header className="zp-topbar">
-      <div className="zp-brand">
-        <div className="zp-brand-stack">
-          <BrandLogo className="zp-brandLogo" size="client" priority />
-          <div className="zp-brand-text logo-caption">
-          <span>Hola, {userName} 👋</span>
-          </div>
-        </div>
-      </div>
-      <div className="zp-header-actions">
-        <button className="zp-icon-btn" type="button" aria-label="Notificaciones">
-          <Bell size={24} />
-          <span className="zp-notification-dot" />
-        </button>
-        <button className="zp-icon-btn" type="button" aria-label="Menu" onClick={onMenu}>
-          <Menu size={27} />
-        </button>
-      </div>
-    </header>
   );
 }
 
@@ -1324,6 +1510,25 @@ function ProgressHero() {
         <h1>Progresos</h1>
         <p>Sigue tu evolución y mantén el foco.</p>
       </div>
+    </section>
+  );
+}
+
+function ProgressAccessBanner({ access, capabilitiesError = false }) {
+  const title = access.isBasic ? "Progreso basico" : "Progreso completo";
+  const copy = access.isBasic
+    ? "Incluido en tu plan Free: peso, objetivo, medidas basicas y ultimos registros."
+    : "Historial completo, rangos largos y funciones avanzadas segun tu plan efectivo.";
+  return (
+    <section className="zp-access-banner" aria-label="Acceso a progresos">
+      <div>
+        <strong>{title}</strong>
+        <span>
+          {copy}
+          {capabilitiesError ? " No pudimos refrescar capacidades; usamos datos locales sin asumir funciones premium." : ""}
+        </span>
+      </div>
+      <span className="zp-access-pill">Plan {access.label}</span>
     </section>
   );
 }
@@ -1345,7 +1550,7 @@ function ProgressTabs({ activeTab, onTabChange }) {
   );
 }
 
-function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, photos, onPhotoChange, onAddWeight }) {
+function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, onPhotoChange, onAddWeight }) {
   if (activeTab === "Peso") {
     return (
       <>
@@ -1354,10 +1559,19 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
           summary={summary}
           range={range}
           onRangeChange={onRangeChange}
+          access={access}
           onAddWeight={onAddWeight}
         />
-        <BodyMeasurementsCard />
-        <ProgressPhotosCard photos={photos} onPhotoChange={onPhotoChange} />
+        <BodyMeasurementsCard access={access} measurements={measurements} />
+        {access.canUsePhotos ? (
+          <ProgressPhotosCard photos={photos} onPhotoChange={onPhotoChange} />
+        ) : (
+          <ProLockedCard
+            icon={Camera}
+            title="Fotos de progreso"
+            text="Compara tus cambios visuales con historial completo."
+          />
+        )}
       </>
     );
   }
@@ -1365,17 +1579,27 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
   if (activeTab === "Medidas") {
     return (
       <>
-        <BodyMeasurementsCard expanded />
-        <MeasurementsFormPreview />
+        <BodyMeasurementsCard expanded access={access} measurements={measurements} onMeasurementsSave={onMeasurementsSave} />
+        <MeasurementsFormPreview key={access.plan} access={access} onSave={onMeasurementsSave} />
       </>
     );
   }
 
   if (activeTab === "Gym") {
-    return <GymProgressCard />;
+    return <GymProgressCard access={access} />;
   }
 
   if (activeTab === "Fotos") {
+    if (!access.canUsePhotos) {
+      return (
+        <ProLockedCard
+          icon={Camera}
+          title="Fotos de progreso"
+          text="Compara tu evolucion visual con el tiempo. Disponible en Pro."
+          actionLabel="Ver beneficios Pro"
+        />
+      );
+    }
     return (
       <>
         <ProgressPhotosCard expanded photos={photos} onPhotoChange={onPhotoChange} />
@@ -1392,13 +1616,14 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
         summary={summary}
         range={range}
         onRangeChange={onRangeChange}
+        access={access}
         onAddWeight={onAddWeight}
       />
     </>
   );
 }
 
-function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, photos, onPhotoChange, onAddWeight }) {
+function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, onPhotoChange, onAddWeight }) {
   if (activeTab !== "Peso") {
     return (
       <div className="zp-stack">
@@ -1408,7 +1633,10 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, p
           onRangeChange={onRangeChange}
           weights={weights}
           summary={summary}
+          measurements={measurements}
+          onMeasurementsSave={onMeasurementsSave}
           photos={photos}
+          access={access}
           onPhotoChange={onPhotoChange}
           onAddWeight={onAddWeight}
         />
@@ -1420,8 +1648,8 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, p
     <>
       <div className="zp-kpi-row">
         <ProgressMetricCard icon={Scale} label="Peso actual" value={formatKg(summary.currentWeight)} detail={summary.updatedAt} />
-        <ProgressMetricCard icon={Target} label="Objetivo" value={formatKg(summary.goalWeight)} detail={`Faltan ${formatKg(summary.remainingWeight)}`} />
-        <ProgressMetricCard icon={TrendingUp} label="Cambio 4 semanas" value={`${summary.changeFourWeeks.toFixed(1)} kg`} detail={`${summary.changePercentage.toFixed(1)}% del peso inicial`} positive />
+        <ProgressMetricCard icon={Target} label="Objetivo" value={formatKg(summary.goalWeight)} detail={summary.hasGoal ? `Faltan ${formatKg(summary.remainingWeight)}` : "Configura tu objetivo"} />
+        <ProgressMetricCard icon={TrendingUp} label={access.isBasic ? "Cambio reciente" : `Cambio ${range}`} value={summary.hasTrend ? `${summary.changeFourWeeks.toFixed(1)} kg` : "Sin tendencia"} detail={summary.hasTrend ? `${summary.changePercentage.toFixed(1)}% del peso inicial` : "Cargá más registros"} positive />
       </div>
       <div className="zp-desktop-grid">
         <WeightChartCard
@@ -1429,20 +1657,24 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, p
           summary={summary}
           range={range}
           onRangeChange={onRangeChange}
+          access={access}
           onAddWeight={onAddWeight}
         />
         <div className="zp-side-stack">
-          <BodyMeasurementsCard />
-          <ProgressPhotosCard photos={photos} onPhotoChange={onPhotoChange} />
-          <GymProgressCard compact />
+          <BodyMeasurementsCard access={access} measurements={measurements} />
+          {access.canUsePhotos ? <ProgressPhotosCard photos={photos} onPhotoChange={onPhotoChange} /> : <ProLockedCard compact icon={Camera} title="Fotos Pro" text="Historial visual disponible en Pro." />}
+          <GymProgressCard compact access={access} />
         </div>
       </div>
     </>
   );
 }
 
-function RangeSelector({ value, onChange }) {
-  const ranges = ["4 semanas", "8 semanas", "12 semanas"];
+function RangeSelector({ value, onChange, access }) {
+  const ranges = ["4 semanas", "8 semanas", "12 semanas", "6 meses", "1 año"];
+  if (access?.isBasic) {
+    return <div className="zp-range-lock">Pro · Historial completo</div>;
+  }
   return (
     <label className="zp-range" aria-label="Cambiar rango">
       <select value={value} onChange={(event) => onChange(event.target.value)}>
@@ -1455,24 +1687,47 @@ function RangeSelector({ value, onChange }) {
   );
 }
 
-function WeightChartCard({ weights, summary, range, onRangeChange, onAddWeight }) {
+function WeightChartCard({ weights, summary, range, onRangeChange, access, onAddWeight }) {
+  const visibleWeights = visibleWeightsForAccess(weights, access);
+  const title = access.isBasic ? "Peso - ultimos registros" : `Peso - ${range}`;
+  const subtitle = access.isBasic ? "Progreso basico incluido en Free" : "historial completo";
+  const changeLabel = access.isBasic ? "Cambio reciente" : `Cambio ${range}`;
   return (
     <section className="zp-card zp-weight-card">
       <div className="zp-card-head">
         <div>
-          <h2 className="zp-card-title">Peso - últimas 4 semanas</h2>
-          <p className="zp-card-sub">promedio semanal</p>
+          <h2 className="zp-card-title">{title}</h2>
+          <p className="zp-card-sub">{subtitle}</p>
         </div>
-        <RangeSelector value={range} onChange={onRangeChange} />
+        <RangeSelector value={range} onChange={onRangeChange} access={access} />
       </div>
 
-      <WeightLineChart weights={weights} />
-      <WeeklyAverageCards weights={weights} />
+      {visibleWeights.length >= 2 ? (
+        <>
+          <WeightLineChart weights={visibleWeights} access={access} />
+          <WeeklyAverageCards weights={visibleWeights} />
+        </>
+      ) : (
+        <ProgressEmptyState
+          compact
+          icon={Scale}
+          title={summary.hasWeight ? "Todavia necesitas mas registros para ver una tendencia." : "Todavia no registraste peso."}
+          text={summary.hasWeight ? "Carga otro peso para comparar cambios recientes." : "Carga tu primer peso para empezar a medir tu evolucion."}
+          actionLabel="Registrar peso"
+          onAction={onAddWeight}
+        />
+      )}
+
+      {access.isBasic ? (
+        <div className="zp-lock-note">
+          Historial completo, rangos de varias semanas y comparativas largas estan disponibles en Pro.
+        </div>
+      ) : null}
 
       <div className="zp-metrics-strip">
         <ProgressMetricCard icon={Scale} label="Peso actual" value={formatKg(summary.currentWeight)} detail={summary.updatedAt} />
-        <ProgressMetricCard icon={Target} label="Objetivo" value={formatKg(summary.goalWeight)} detail={`Faltan ${formatKg(summary.remainingWeight)}`} />
-        <ProgressMetricCard icon={TrendingUp} label="Cambio 4 semanas" value={`${summary.changeFourWeeks.toFixed(1)} kg`} detail={`${summary.changePercentage.toFixed(1)}% del peso inicial`} positive />
+        <ProgressMetricCard icon={Target} label="Objetivo" value={formatKg(summary.goalWeight)} detail={summary.hasGoal ? `Faltan ${formatKg(summary.remainingWeight)}` : "Configura tu objetivo"} />
+        <ProgressMetricCard icon={TrendingUp} label={changeLabel} value={summary.hasTrend ? `${summary.changeFourWeeks.toFixed(1)} kg` : "Sin tendencia"} detail={summary.hasTrend ? `${summary.changePercentage.toFixed(1)}% del peso inicial` : "Carga mas registros"} positive />
       </div>
 
       <button className="zp-primary-btn" type="button" onClick={onAddWeight}>
@@ -1483,9 +1738,10 @@ function WeightChartCard({ weights, summary, range, onRangeChange, onAddWeight }
   );
 }
 
-function WeightLineChart({ weights }) {
-  const minY = 76;
-  const maxY = 80;
+function WeightLineChart({ weights, access }) {
+  const values = weights.map((item) => item.averageWeight).filter((value) => Number.isFinite(value));
+  const minY = Math.floor(Math.min(...values) - 1);
+  const maxY = Math.ceil(Math.max(...values) + 1);
   const width = 720;
   const height = 300;
   const left = 54;
@@ -1494,7 +1750,7 @@ function WeightLineChart({ weights }) {
   const bottom = 70;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const yTicks = [80, 79, 78, 77, 76];
+  const yTicks = Array.from({ length: 5 }, (_, index) => maxY - index * ((maxY - minY) / 4));
   const points = weights.map((item, index) => {
     const x = left + (plotWidth / Math.max(1, weights.length - 1)) * index;
     const y = top + ((maxY - item.averageWeight) / (maxY - minY)) * plotHeight;
@@ -1505,7 +1761,7 @@ function WeightLineChart({ weights }) {
 
   return (
     <div className="zp-chart-shell">
-      <svg className="zp-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de peso de las ultimas 4 semanas">
+      <svg className="zp-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={access?.isBasic ? "Grafico de peso de ultimos registros" : "Grafico de peso del historial seleccionado"}>
         <defs>
           <linearGradient id="zpWeightArea" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#ffd21f" stopOpacity=".42" />
@@ -1526,7 +1782,7 @@ function WeightLineChart({ weights }) {
           const y = top + ((maxY - tick) / (maxY - minY)) * plotHeight;
           return (
             <g key={tick}>
-              <text x="0" y={y + 5} fill="#f5f5f7" fontSize="15">{tick}</text>
+              <text x="0" y={y + 5} fill="#f5f5f7" fontSize="15">{Number(tick).toFixed(0)}</text>
               <line x1={left} x2={width - right} y1={y} y2={y} stroke="rgba(255,255,255,.14)" strokeWidth="1" strokeDasharray="5 6" />
             </g>
           );
@@ -1594,6 +1850,42 @@ function ProgressMetricCard({ icon, label, value, detail, positive = false }) {
   );
 }
 
+function ProgressEmptyState({ icon: Icon = InfoIcon, title, text, actionLabel = "", onAction = null, compact = false }) {
+  const content = (
+    <>
+      {React.createElement(Icon, { size: 24 })}
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </>
+  );
+  return (
+    <div className={`zp-empty-state ${compact ? "compact" : ""}`}>
+      {content}
+      {onAction && actionLabel ? (
+        <button type="button" className="zp-secondary-btn" onClick={onAction}>{actionLabel}</button>
+      ) : null}
+    </div>
+  );
+}
+
+function InfoIcon(props) {
+  return <LineChart {...props} />;
+}
+
+function ProLockedCard({ icon: Icon = Camera, title, text, actionLabel = "Ver beneficios Pro", compact = false }) {
+  return (
+    <section className={`zp-card zp-placeholder-card zp-pro-lock ${compact ? "compact" : ""}`}>
+      <span className="zp-access-pill">Disponible en Pro</span>
+      <div className="zp-empty-state compact">
+        {React.createElement(Icon, { size: 25 })}
+        <strong>{title}</strong>
+        <p>{text}</p>
+        <NavLink className="zp-secondary-btn" to="/app/planes">{actionLabel}</NavLink>
+      </div>
+    </section>
+  );
+}
+
 function SummaryCards({ summary }) {
   return (
     <section className="zp-card zp-placeholder-card">
@@ -1609,39 +1901,65 @@ function SummaryCards({ summary }) {
         <div className="zp-info-tile">
           <span>Objetivo</span>
           <strong>{formatKg(summary.goalWeight)}</strong>
-          <p>Faltan {formatKg(summary.remainingWeight)} para llegar a la meta.</p>
+          <p>{summary.hasGoal ? `Faltan ${formatKg(summary.remainingWeight)} para llegar a la meta.` : "Todavia no definiste tu objetivo de peso."}</p>
+          {!summary.hasGoal ? <NavLink className="zp-secondary-btn" to="/app/objetivos">Configurar objetivo</NavLink> : null}
+        </div>
+        <div className="zp-info-tile">
+          <span>Cambio reciente</span>
+          <strong>{summary.hasTrend ? `${summary.changeFourWeeks.toFixed(1)} kg` : "Sin tendencia"}</strong>
+          <p>{summary.hasTrend ? `${summary.changePercentage.toFixed(1)}% desde el primer registro visible.` : "Todavia necesitás mas registros para comparar."}</p>
         </div>
       </div>
     </section>
   );
 }
 
-function BodyMeasurementsCard({ expanded = false }) {
+function BodyMeasurementsCard({ expanded = false, access, measurements = [], onMeasurementsSave = null }) {
+  const hasMeasurements = measurements.length > 0;
   return (
     <section className="zp-card zp-section-card">
       <div className="zp-section-head">
         <h2>Medidas corporales</h2>
-        <button className="zp-see-all" type="button">
-          Ver todas
-          <ChevronRight size={16} />
-        </button>
+        {access?.isBasic ? (
+          <NavLink className="zp-see-all" to="/app/planes">
+            Historial Pro
+            <ChevronRight size={16} />
+          </NavLink>
+        ) : (
+          <button className="zp-see-all" type="button">
+            Ver todas
+            <ChevronRight size={16} />
+          </button>
+        )}
       </div>
-      <div className="zp-measure-table">
+      {hasMeasurements ? (
+        <div className="zp-measure-table">
         <div className="zp-measure-row zp-measure-head">
           <span>Medida</span>
           <span>Actual</span>
           <span>Cambio (vs mes anterior)</span>
           <span>Evolución</span>
         </div>
-        {measurements.map((item) => (
+          {measurements.map((item) => (
           <MeasurementRow key={item.name} item={item} />
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <ProgressEmptyState
+          compact
+          icon={Ruler}
+          title="Todavia no cargaste medidas."
+          text={access?.isBasic ? "Free incluye carga basica de cintura, pecho y brazo." : "Carga tus medidas para ver cambios y comparaciones."}
+        />
+      )}
+
+      {access?.isBasic ? (
+        <div className="zp-lock-note">
+          En Free podes cargar medidas basicas. El historial completo y las comparaciones mensuales se desbloquean con Pro.
+        </div>
+      ) : null}
       {expanded ? (
-        <button className="zp-primary-btn" type="button">
-          <Plus size={22} />
-          Cargar medidas
-        </button>
+        <MeasurementsFormPreview key={access?.plan || "free"} access={access} embedded onSave={onMeasurementsSave} />
       ) : null}
     </section>
   );
@@ -1651,6 +1969,8 @@ function MeasurementRow({ item }) {
   const Icon = item.icon;
   const TrendIcon = item.trend === "down" ? ArrowDown : ArrowUp;
   const tone = item.positive ? "good" : "bad";
+  const hasChange = maybeNumber(item.change) !== null;
+  const hasSparkline = Array.isArray(item.points) && item.points.length > 1;
   return (
     <div className="zp-measure-row">
       <div className="zp-measure-name">
@@ -1659,10 +1979,14 @@ function MeasurementRow({ item }) {
       </div>
       <div className="zp-measure-value">{item.value.toFixed(1)} {item.unit}</div>
       <div className={`zp-change ${tone}`}>
-        {item.change > 0 ? "+" : ""}{item.change.toFixed(1)} {item.unit}
-        <TrendIcon size={15} />
+        {hasChange ? (
+          <>
+            {item.change > 0 ? "+" : ""}{item.change.toFixed(1)} {item.unit}
+            <TrendIcon size={15} />
+          </>
+        ) : "Primer registro"}
       </div>
-      <Sparkline points={item.points} color={item.positive ? "#39d353" : "#ff5d73"} />
+      {hasSparkline ? <Sparkline points={item.points} color={item.positive ? "#39d353" : "#ff5d73"} /> : <span className="zp-measure-value">Sin historial</span>}
     </div>
   );
 }
@@ -1734,7 +2058,7 @@ function PhotoUpload({ label, photo, onPick }) {
   );
 }
 
-function GymProgressCard({ compact = false }) {
+function GymProgressCard({ compact = false, access }) {
   return (
     <section className="zp-card zp-placeholder-card">
       <div className="zp-section-head">
@@ -1744,21 +2068,23 @@ function GymProgressCard({ compact = false }) {
           <ChevronRight size={16} />
         </button>
       </div>
-      <div className="zp-placeholder-grid">
-        {gymMetrics.slice(0, compact ? 2 : gymMetrics.length).map((item) => (
-          <div className="zp-info-tile" key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <p>{item.text}</p>
-          </div>
-        ))}
-      </div>
+      <ProgressEmptyState
+        compact={compact}
+        icon={Dumbbell}
+        title="Todavia no registraste entrenamientos."
+        text={access?.canUseAdvancedGym ? "Cuando tengas registros reales, aca vas a ver tu progreso de entrenamiento." : "El registro basico sigue disponible en Rutina."}
+      />
+      {!access?.canUseAdvancedGym ? (
+        <div className="zp-lock-note">
+          Historial y analisis avanzado de entrenamiento disponible en Pro.
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function MeasurementsFormPreview() {
-  const fields = ["Cintura", "Pecho", "Brazo", "Cadera", "Pierna", "Abdomen"];
+function MeasurementsFormPreview({ access, embedded = false, onSave = null }) {
+  const fields = access?.isBasic ? basicMeasurementFields : fullMeasurementFields;
   const [values, setValues] = useState(() => Object.fromEntries(fields.map((field) => [field, ""])));
   const [saved, setSaved] = useState(false);
 
@@ -1769,11 +2095,30 @@ function MeasurementsFormPreview() {
 
   function saveMeasurements(event) {
     event.preventDefault();
+    const savedRows = fields
+      .map((field) => {
+        const value = maybeNumber(values[field]);
+        if (value === null) return null;
+        return {
+          name: field,
+          value,
+          unit: "cm",
+          change: null,
+          trend: null,
+          positive: false,
+          icon: measurementIconFor(field),
+          points: [],
+        };
+      })
+      .filter(Boolean);
+    if (savedRows.length) {
+      onSave?.(savedRows);
+    }
     setSaved(true);
   }
 
   return (
-    <form className="zp-card zp-placeholder-card" onSubmit={saveMeasurements}>
+    <form className={embedded ? "zp-measure-form" : "zp-card zp-placeholder-card"} onSubmit={saveMeasurements}>
       <div className="zp-section-head">
         <h2>Nueva medición</h2>
       </div>
@@ -1795,7 +2140,7 @@ function MeasurementsFormPreview() {
           </div>
         ))}
       </div>
-      {saved ? <div className="zp-info-tile"><span>Medidas guardadas en esta vista</span><p>Listo para conectar con historial cuando sumemos persistencia.</p></div> : null}
+      {saved ? <div className="zp-info-tile"><span>Medidas guardadas en esta vista</span><p>Se actualizo el formulario local sin tocar registros historicos.</p></div> : null}
       <button className="zp-primary-btn" type="submit">
         <Plus size={22} />
         Guardar medidas
@@ -1816,95 +2161,6 @@ function PhotoCompareCard() {
         <p>La estructura queda preparada para comparar fotos por fecha y postura.</p>
       </div>
     </section>
-  );
-}
-
-function MobileMenuSheet({ onClose }) {
-  const links = [
-    { to: "/app/inicio", label: "Inicio", icon: Home },
-    { to: "/app/menu", label: "Nutrición", icon: Apple },
-    { to: "/app/rutinas", label: "Entrenamiento", icon: Dumbbell },
-    { to: "/app/progresos", label: "Progresos", icon: LineChart },
-    { to: "/app/perfil", label: "Perfil", icon: MoreHorizontal },
-  ];
-  return (
-    <div className="zp-menu-sheet" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <div className="zp-menu-panel" role="dialog" aria-label="Menu principal">
-        <div className="zp-menu-panel-head">
-          <strong>Menú</strong>
-          <button className="zp-menu-close" type="button" onClick={onClose} aria-label="Cerrar menú">
-            <X size={20} />
-          </button>
-        </div>
-        {links.map((link) => {
-          const LinkIcon = link.icon;
-          return (
-            <NavLink key={link.to} to={link.to} className={({ isActive }) => `zp-menu-link ${isActive ? "active" : ""}`} onClick={onClose}>
-              <LinkIcon size={20} />
-              {link.label}
-            </NavLink>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function BottomNavigation() {
-  const items = [
-    { to: "/app/inicio", label: "Inicio", icon: Home },
-    { to: "/app/rutinas", label: "Entrenamiento", icon: Dumbbell },
-    { to: "/app/progresos", label: "Progresos", icon: LineChart, active: true },
-    { to: "/app/menu", label: "Nutrición", icon: Apple },
-    { to: "/app/perfil", label: "Más", icon: MoreHorizontal },
-  ];
-  return (
-    <nav className="zp-bottom-nav" aria-label="Navegación inferior">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <NavLink key={item.label} to={item.to} className={`zp-bottom-item ${item.active ? "active" : ""}`}>
-            <Icon />
-            <span>{item.label}</span>
-          </NavLink>
-        );
-      })}
-    </nav>
-  );
-}
-
-function DesktopSidebar() {
-  const items = [
-    { to: "/app/inicio", label: "Inicio", icon: Home },
-    { to: "/app/rutinas", label: "Entrenamientos", icon: Dumbbell },
-    { to: "/app/progresos", label: "Progresos", icon: LineChart },
-    { to: "/app/menu", label: "Nutrición", icon: Apple },
-    { to: "/app/perfil", label: "Perfil", icon: MoreHorizontal },
-  ];
-  return (
-    <aside className="zp-sidebar">
-      <div className="zp-brand">
-        <div className="zp-brand-stack">
-          <BrandLogo className="zp-brandLogo" size="client" priority />
-          <div className="zp-brand-text logo-caption">
-            <span>Panel cliente</span>
-          </div>
-        </div>
-      </div>
-      <nav className="zp-side-nav" aria-label="Navegación desktop">
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink key={item.label} to={item.to} className={({ isActive }) => `zp-side-link ${isActive ? "active" : ""}`}>
-              <Icon size={21} />
-              {item.label}
-            </NavLink>
-          );
-        })}
-      </nav>
-    </aside>
   );
 }
 

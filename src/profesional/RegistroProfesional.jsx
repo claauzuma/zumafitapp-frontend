@@ -312,5 +312,124 @@ const styles = `
 .rp-primary:disabled{opacity:.55}
 .rp-error{margin-top:16px;border:1px solid rgba(255,90,90,.32);background:rgba(255,90,90,.10);color:#ffd1d1;border-radius:16px;padding:12px;font-weight:800}
 .rp-note{margin-top:16px;color:#aeb9c5;display:flex;gap:8px;align-items:center;font-size:13px}
-@media (max-width:720px){.rp-page{padding:12px}.rp-head{align-items:flex-start}.rp-card{padding:16px;border-radius:22px}.rp-titleRow{grid-template-columns:1fr}.rp-grid{grid-template-columns:1fr}.rp-actions{display:grid;grid-template-columns:1fr}.rp-secondary,.rp-primary{width:100%;justify-content:center}}
+@media (max-width:720px){
+  .rp-page{
+    min-height:100svh;
+    padding:10px;
+    background-position:58% top;
+  }
+  .rp-head{
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .rp-head .brand-logo-img{
+    height:42px;
+    max-width:158px;
+  }
+  .rp-back,.rp-secondary{
+    min-height:40px;
+    border-radius:14px;
+    padding:0 11px;
+    font-size:12px;
+  }
+  .rp-card{
+    padding:14px;
+    border-radius:21px;
+  }
+  .rp-card.center{
+    gap:10px;
+    margin:18px auto;
+  }
+  .rp-titleRow{
+    grid-template-columns:42px minmax(0,1fr);
+    gap:10px;
+  }
+  .rp-icon{
+    width:42px;
+    height:42px;
+    border-radius:14px;
+  }
+  .rp-kicker{ font-size:11px; }
+  .rp-card h1{
+    margin-top:4px;
+    font-size:clamp(25px,7vw,31px);
+    line-height:1.06;
+  }
+  .rp-card p{
+    margin-top:6px;
+    font-size:13.5px;
+    line-height:1.38;
+  }
+  .rp-steps{
+    gap:7px;
+    margin:14px 0;
+  }
+  .rp-steps button{
+    width:34px;
+    height:34px;
+    border-radius:12px;
+  }
+  .rp-grid{
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+  .rp-grid label{
+    gap:6px;
+    font-size:11px;
+  }
+  .rp-grid input,.rp-grid select,.rp-grid textarea{
+    min-height:42px;
+    border-radius:13px;
+    padding-inline:12px;
+  }
+  .rp-grid textarea{
+    padding-block:10px;
+    min-height:88px;
+  }
+  .rp-scopeBox,.rp-terms{
+    border-radius:15px;
+    padding:11px;
+    gap:8px;
+  }
+  .rp-check{
+    gap:8px;
+    font-size:13px!important;
+  }
+  .rp-check input{
+    width:17px!important;
+    height:17px!important;
+  }
+  .rp-actions{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:9px;
+    margin-top:14px;
+  }
+  .rp-secondary,.rp-primary{
+    width:100%;
+    min-height:44px;
+    justify-content:center;
+  }
+  .rp-error{
+    margin-top:12px;
+    border-radius:14px;
+    padding:10px;
+    font-size:13px;
+  }
+  .rp-note{
+    margin-top:12px;
+    align-items:flex-start;
+    font-size:12px;
+    line-height:1.35;
+  }
+}
+@media (max-width:370px){
+  .rp-page{ padding:8px; }
+  .rp-head .brand-logo-img{ height:38px; max-width:142px; }
+  .rp-back{ max-width:150px; line-height:1.15; }
+  .rp-card{ padding:12px; }
+  .rp-titleRow{ grid-template-columns:1fr; }
+  .rp-card h1{ font-size:25px; }
+}
 `;
