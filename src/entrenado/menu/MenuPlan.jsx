@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -53,6 +54,11 @@ import {
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
 import { getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
+import {
+  CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+  clientPlanCapabilitiesKey,
+  fetchClientPlanCapabilities,
+} from "../../clientPlans/clientPlanQueries.js";
 import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
 import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
 
@@ -75,7 +81,9 @@ function uid(prefix = "id") {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60_000));
+  return localTime.toISOString().slice(0, 10);
 }
 
 function dateKeyFromSearch(search = "") {
@@ -480,22 +488,22 @@ function emptyMenuCopy(source = "none") {
   const key = menuSourceMeta(source).key;
   if (key === "coach") {
     return {
-      title: "Todavia no tenes menu para este dia.",
-      text: "Cuando tu coach lo asigne, lo vas a ver aca.",
-      emptyMealsText: "Podés revisar otros dias o avisarle a tu coach.",
+      title: "Todavía no tenés menú para este día.",
+      text: "Cuando tu coach lo asigne, lo vas a ver acá.",
+      emptyMealsText: "Podés revisar otros días o avisarle a tu coach.",
     };
   }
   if (key === "own") {
     return {
-      title: "Todavia no tenes menu propio para este dia.",
-      text: "Edita o activa tu menu propio para verlo aca con comidas y cantidades.",
-      emptyMealsText: "Edita tu menu propio para agregar comidas y alimentos.",
+      title: "Todavía no tenés menú propio para este día.",
+      text: "Editá o activá tu menú propio para verlo acá con comidas y cantidades.",
+      emptyMealsText: "Editá tu menú propio para agregar comidas y alimentos.",
     };
   }
   return {
-    title: "Todavia no tenes menu para este dia.",
-    text: "Crea tu propio menu, explora la biblioteca ZumaFit o registra libremente en Tracking.",
-    emptyMealsText: "Crea tu menu o usa Tracking mientras lo armas.",
+    title: "Todavía no tenés menú para este día.",
+    text: "Creá tu propio menú, explorá la biblioteca ZumaFit o registrá libremente en Tracking.",
+    emptyMealsText: "Creá tu menú o usá Tracking mientras lo armás.",
   };
 }
 
@@ -2069,6 +2077,27 @@ export default function MenuPlan() {
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canTrackFoods = permissions.canTrackFoods !== false;
   const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
+  const capabilitiesQuery = useQuery({
+    queryKey: clientPlanCapabilitiesKey,
+    queryFn: fetchClientPlanCapabilities,
+    staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
+  const historyOldestDate = Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
+    ? addDays(todayIso(), -(trackingHistoryDays - 1))
+    : "";
+
+  function canNavigateToMenuDate(date = "") {
+    if (!date || !historyOldestDate) return true;
+    // The menu endpoint loads a complete week, so the whole requested range must remain available.
+    return mondayOfWeek(date) >= historyOldestDate;
+  }
+
+  const previousDayDisabled = selectedRow?.date
+    ? !canNavigateToMenuDate(addDays(selectedRow.date, -1))
+    : false;
 
   function openActiveMenuEditor(row = selectedRow, options = {}) {
     if (menuSourceMeta(activePlanSource).key !== "own") return;
@@ -2224,6 +2253,11 @@ export default function MenuPlan() {
   function moveSelectedDay(amount) {
     const baseDate = selectedRow?.date || todayRow?.date || todayIso();
     const nextDate = addDays(baseDate, amount);
+    if (!canNavigateToMenuDate(nextDate)) {
+      setToast(`Tu plan permite consultar los últimos ${trackingHistoryDays} días de historial.`);
+      window.setTimeout(() => setToast(""), 2800);
+      return;
+    }
     setSelectedDate(nextDate);
     const nextWeek = mondayOfWeek(nextDate);
     if (nextWeek !== weekStart) setWeekStart(nextWeek);
@@ -2659,7 +2693,7 @@ export default function MenuPlan() {
 
   return (
     <div
-      className="min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-3 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
+      className="min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-0 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
       style={{ background: "#070707", color: "#f4f4f5", minHeight: "60vh" }}
     >
       <div className="mx-auto grid w-full max-w-6xl gap-3 sm:gap-5">
@@ -2695,6 +2729,7 @@ export default function MenuPlan() {
                 onBack={() => setMobileView("overview")}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
+                previousDisabled={previousDayDisabled}
                 onToggleMeal={toggleMenuMeal}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenFlexibleMargin={openFlexibleMargin}
@@ -2729,6 +2764,7 @@ export default function MenuPlan() {
                 activePlanSource={activePlanSource}
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
+                previousDisabled={previousDayDisabled}
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedRow, options)}
                 onOpenRemaining={() => setRemainingDraft(selectedRow)}
@@ -2875,6 +2911,7 @@ export default function MenuPlan() {
           canMarkMeals={canMarkMeals}
           canReplaceMeals={canUseMenuAlternatives}
           canReplaceFoods={canTrackFoods}
+          readOnlyProfessionalMenu={menuSourceMeta(activePlanSource).key === "coach"}
           onApplyMealReplacement={applyMealReplacement}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onDeleteManual={deleteManualEntry}
@@ -3161,28 +3198,45 @@ function MobileTopBar({ title, onBack }) {
   );
 }
 
-function MobileDayPicker({ row, onPrevious, onNext }) {
+function MobileDayPicker({
+  row,
+  onPrevious,
+  onNext,
+  previousDisabled = false,
+  nextDisabled = false,
+}) {
+  const selectedIsToday = row?.date === todayIso();
+  const dayLabel = compactDayLabel(row);
+  const dateLabel = formatDate(row?.date);
+  const secondaryLabel = selectedIsToday ? `${dayLabel} · ${dateLabel}` : dateLabel;
+
   return (
-    <div className="mt-2 grid grid-cols-[38px_minmax(0,1fr)_38px] items-center gap-1.5 rounded-[1rem] border border-white/10 bg-[#101824] p-1.5 shadow-[0_10px_26px_rgba(0,0,0,.22)]">
+    <div className="grid grid-cols-[42px_minmax(0,1fr)_42px] items-center gap-1.5 rounded-[1.05rem] border border-white/10 bg-[linear-gradient(145deg,rgba(16,24,36,.98),rgba(8,13,20,.98))] p-1.5 shadow-[0_10px_26px_rgba(0,0,0,.22)]">
       <button
         type="button"
         onClick={onPrevious}
-        className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-100"
+        disabled={previousDisabled}
+        className="grid h-10 w-10 place-items-center rounded-xl border border-white/12 bg-white/[0.045] text-zinc-100 transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
         aria-label="Día anterior"
       >
         <ChevronLeft size={18} />
       </button>
-      <div className="min-w-0 text-center">
+      <div className="min-w-0 py-0.5 text-center" aria-current={selectedIsToday ? "date" : undefined}>
         <div className="flex min-w-0 items-center justify-center gap-1.5">
-          <CalendarDays size={13} className="shrink-0 text-zinc-400" />
-          <span className="truncate text-sm font-black text-white">{compactDayLabel(row)}</span>
+          <CalendarDays size={14} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-400"}`} />
+          <span className="truncate text-[18px] font-black leading-tight text-white">
+            {selectedIsToday ? "Hoy" : dayLabel}
+          </span>
         </div>
-        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">{formatDate(row?.date)}</div>
+        <div className="mt-0.5 truncate text-[10px] font-black uppercase tracking-[0.08em] text-zinc-400">
+          {secondaryLabel}
+        </div>
       </div>
       <button
         type="button"
         onClick={onNext}
-        className="grid h-9 w-9 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"
+        disabled={nextDisabled}
+        className="grid h-10 w-10 place-items-center rounded-xl border border-white/12 bg-white/[0.045] text-zinc-100 transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
         aria-label="Día siguiente"
       >
         <ChevronRight size={18} />
@@ -3367,11 +3421,14 @@ function FlexibleMarginSlotCard({
 
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h4 className="truncate text-[15px] font-black leading-tight text-white">Calorias libres</h4>
+            <h4 className="truncate text-[15px] font-black leading-tight text-white">Calorías libres</h4>
             <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide ${palette.badge}`}>
               {badgeLabel}
             </span>
           </div>
+          <span className="mt-0.5 block text-[9px] font-black uppercase tracking-[0.1em] text-sky-100/55">
+            Extra flexible del día
+          </span>
           <p className={`mt-0.5 text-[16px] font-black leading-tight ${palette.value}`}>{mainLine}</p>
           <p className={`mt-0.5 text-[11px] font-black leading-snug ${palette.status}`}>
             {progressLine}
@@ -3559,6 +3616,7 @@ function MobileDayMenu({
   activePlanSource = "none",
   onPrevious,
   onNext,
+  previousDisabled = false,
   onOpenMenuOptions,
   onEditActiveMenu,
   onOpenRemaining,
@@ -3602,7 +3660,12 @@ function MobileDayMenu({
 
   return (
     <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-      <MobileDayPicker row={row} onPrevious={onPrevious} onNext={onNext} />
+      <MobileDayPicker
+        row={row}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        previousDisabled={previousDisabled}
+      />
 
       {activeChoice?.snapshot ? (
         <MobileActiveMenuLine
@@ -3672,7 +3735,7 @@ function MobileDayMenu({
       {activeChoice?.snapshot ? (
         <section className="mt-3 grid gap-2.5">
           <div className="flex items-center justify-between gap-3 px-1">
-            <h3 className="text-base font-black text-white">Comidas del dia</h3>
+            <h3 className="text-base font-black text-white">Comidas del día</h3>
             <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
               {completedMealsLabel(completedCount, countableMeals.length || 0)}
             </span>
@@ -4254,6 +4317,7 @@ function MobileDayDetailView({
   onBack,
   onPrevious,
   onNext,
+  previousDisabled = false,
   onToggleMeal,
   onOpenRemaining,
   onOpenFlexibleMargin,
@@ -4293,7 +4357,12 @@ function MobileDayDetailView({
   return (
     <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
       <MobileTopBar title={detailChoice?.type === "alternative" ? detailChoice.label : "Menú del día"} onBack={onBack} />
-      <MobileDayPicker row={row} onPrevious={onPrevious} onNext={onNext} />
+      <MobileDayPicker
+        row={row}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        previousDisabled={previousDisabled}
+      />
 
       <header className="mt-3 overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_50%_0,rgba(59,130,246,.16),transparent_34%),linear-gradient(180deg,#101824,#07101a)] p-3 shadow-[0_14px_34px_rgba(0,0,0,.28)]">
         {hasTarget ? (
@@ -4349,7 +4418,7 @@ function MobileDayDetailView({
       />
 
       <div className="mt-4 grid gap-3">
-        <h3 className="px-1 text-lg font-black text-white">Comidas del dia</h3>
+        <h3 className="px-1 text-lg font-black text-white">Comidas del día</h3>
         {!snapshot ? (
           <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
         ) : !effectiveMeals.length ? (
@@ -4542,21 +4611,21 @@ function MobileEmptyCard({ title, text }) {
     ? genericCopy.text
     : text;
   return (
-    <div className="rounded-[1.3rem] border border-dashed border-white/15 bg-[#101824] p-4">
-      <div className="flex items-center gap-3 text-zinc-100">
-        <CircleAlert size={19} className="text-[#FFD76B]" />
-        <strong className="text-base font-black">{displayTitle}</strong>
+    <div className="relative overflow-hidden rounded-[1.3rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_38%),linear-gradient(145deg,#111923,#090e15)] p-3.5 shadow-[0_14px_32px_rgba(0,0,0,.28)]">
+      <span className="pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37]" aria-hidden="true" />
+      <div className="flex items-start gap-3 text-zinc-100">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFD76B]">
+          <CircleAlert size={19} />
+        </span>
+        <span className="min-w-0 pt-0.5">
+          <span className="block text-[9px] font-black uppercase tracking-[0.12em] text-[#FFE8A3]/65">Plan del día</span>
+          <strong className="mt-0.5 block text-base font-black leading-tight">{displayTitle}</strong>
+        </span>
       </div>
-      {displayText ? <p className="mt-2 text-sm font-bold text-zinc-400">{displayText}</p> : null}
+      {displayText ? <p className="mt-2 pl-[52px] text-xs font-bold leading-relaxed text-zinc-400">{displayText}</p> : null}
       {isMissingAssignedMenuCopy ? (
         <>
-          <div className="mx-auto mt-5 grid h-28 w-28 place-items-center rounded-full border border-[#D4AF37]/20 bg-[radial-gradient(circle,rgba(212,175,55,.18),rgba(255,255,255,.03)_58%,transparent_70%)] text-[#FFE8A3]">
-            <div className="grid place-items-center gap-1">
-              <Apple size={34} strokeWidth={1.8} />
-              <Utensils size={28} strokeWidth={1.8} />
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2">
             <Link
               to="/app/menu/nuevo"
               state={{ from: "/app/menu" }}
@@ -4640,11 +4709,11 @@ function MobileMealCard({
   }
 
   return (
-    <article className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] shadow-[0_16px_34px_rgba(0,0,0,.28)] ${visual.frame} ${completedVisual ? "ring-1 ring-emerald-300/30" : "ring-1 ring-white/[0.035]"}`}>
+    <article className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] transition ${visual.frame} ${completedVisual ? "border-emerald-200/60 ring-2 ring-emerald-300/40 shadow-[0_0_28px_rgba(16,185,129,.22),0_18px_38px_rgba(0,0,0,.34)]" : "ring-1 ring-white/[0.035]"}`}>
       <div className={`relative overflow-hidden rounded-[calc(1.05rem-1px)] p-3 ${visual.card}`}>
         <span className={`pointer-events-none absolute inset-0 ${visual.haze}`} aria-hidden="true" />
-        {completedVisual ? <span className="pointer-events-none absolute inset-0 bg-emerald-300/[0.045]" aria-hidden="true" /> : null}
-        <span className={`pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full ${completedVisual ? "bg-gradient-to-b from-emerald-200 to-emerald-500 shadow-[0_0_18px_rgba(16,185,129,.55)]" : visual.rail}`} aria-hidden="true" />
+        {completedVisual ? <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(52,211,153,.16),transparent_38%),rgba(16,185,129,.07)]" aria-hidden="true" /> : null}
+        <span className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${completedVisual ? "bg-gradient-to-b from-emerald-100 via-emerald-300 to-emerald-500 shadow-[0_0_22px_rgba(16,185,129,.72)]" : visual.rail}`} aria-hidden="true" />
         <div className="relative z-10 flex items-center gap-2.5">
           <button
             type="button"
@@ -4659,8 +4728,8 @@ function MobileMealCard({
                 <span className={`shrink-0 text-xs font-black ${visual.kcalText}`}>{displayKcal(totals.kcal)}</span>
               </span>
               <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
-                <span className={`inline-flex min-h-5 items-center gap-1 rounded-full border px-1.5 text-[9px] font-black ${statusClass}`}>
-                  <StatusIcon size={10} />
+                <span className={`inline-flex min-h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-black ${statusClass}`}>
+                  <StatusIcon size={12} strokeWidth={2.6} />
                   {statusLabel}
                 </span>
               </span>
@@ -5461,7 +5530,7 @@ function DesktopMealsSection({
     <section className="grid gap-3 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comidas del dia</span>
+          <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comidas del día</span>
           <h4 className="mt-1 text-lg font-black text-white">Detalle visible del dia</h4>
         </div>
         <span className="rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black text-[#FFE8A3]">
@@ -6007,6 +6076,14 @@ function FlexibleMarginEditor({
   const titleId = "flexible-margin-editor-title";
 
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!canRecommend && mode === "calculate") {
       setMode("manual");
       setCalcFoods([]);
@@ -6024,11 +6101,17 @@ function FlexibleMarginEditor({
 
   useEffect(() => {
     function handleKey(event) {
-      if (event.key === "Escape" && !saving) onClose?.();
+      if (event.key !== "Escape" || saving) return;
+      if (foodPicker) {
+        setFoodPicker(null);
+        setError("");
+        return;
+      }
+      onClose?.();
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, saving]);
+  }, [foodPicker, onClose, saving]);
 
   useEffect(() => {
     const term = search.trim();
@@ -6388,6 +6471,10 @@ function FlexibleMarginEditor({
   }
 
   function save() {
+    if (foodPicker?.food) {
+      setError("Primero agregá o cancelá el alimento seleccionado.");
+      return;
+    }
     const invalid = draftEntries.some((entry) => {
       const food = flexibleMarginEntryFood(entry);
       return !(parseQuantity(food.quantity ?? food.cantidad ?? entry.quantity ?? entry.cantidad) > 0);
@@ -6474,28 +6561,29 @@ function FlexibleMarginEditor({
   const pickerQuantity = parseQuantity(foodPicker?.quantity);
   const pickerTotals = pickerFood && pickerQuantity > 0 ? flexibleTotalsFromFood(pickerFood, pickerQuantity).totals : emptyTotals();
   const pickerStep = quantityStep(pickerUnit);
+  const hasPendingFood = !!pickerFood;
 
   return (
-    <section className="fixed inset-0 z-[95] flex items-end bg-black/80 px-0 pt-5 backdrop-blur-md sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <section className="fixed inset-0 z-[95] flex items-end bg-black/80 px-0 pt-2 backdrop-blur-md sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onClose} aria-label="Cerrar calorias libres" />
       <div className="relative mx-auto flex max-h-[96dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,#101821_0%,#07111b_48%,#05080d_100%)] shadow-[0_30px_110px_rgba(0,0,0,.78)] sm:max-h-[92dvh] sm:rounded-[1.8rem]" style={{ maxWidth: "896px" }}>
-        <div className="mx-auto mt-3 h-1.5 w-20 shrink-0 rounded-full bg-white/20" aria-hidden="true" />
-        <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-5 sm:px-6 sm:pb-4 sm:pt-6">
+        <div className="mx-auto mt-2 h-1 w-14 shrink-0 rounded-full bg-white/20 sm:mt-3 sm:h-1.5 sm:w-20" aria-hidden="true" />
+        <header className="flex shrink-0 items-start justify-between gap-3 px-3 pb-2 pt-3 sm:gap-4 sm:px-6 sm:pb-4 sm:pt-6">
           <div className="min-w-0 flex-1">
-            <span className="inline-flex min-h-8 items-center gap-2 rounded-full border border-sky-300/30 bg-sky-300/10 px-3 text-[11px] font-black uppercase tracking-[0.16em] text-sky-200 shadow-[inset_0_0_18px_rgba(56,189,248,.08)]">
-              <Apple size={16} />
+            <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-sky-300/30 bg-sky-300/10 px-2.5 text-[10px] font-black uppercase tracking-[0.13em] text-sky-200 shadow-[inset_0_0_18px_rgba(56,189,248,.08)] sm:min-h-8 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.16em]">
+              <Apple size={15} />
               Tracking flexible
             </span>
-            <h3 id={titleId} className="mt-4 text-[2rem] font-black leading-[1.05] text-white sm:text-4xl">Editar calorias libres</h3>
-            <p className="mt-2 text-sm font-bold leading-snug text-slate-400 sm:text-base">{headerSummary}</p>
+            <h3 id={titleId} className="mt-2 text-[1.55rem] font-black leading-[1.05] text-white sm:mt-4 sm:text-4xl">Calorías libres</h3>
+            <p className="mt-1 text-xs font-bold leading-snug text-slate-400 sm:mt-2 sm:text-base">{headerSummary}</p>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#D4AF37]/30 bg-white/[0.055] text-white shadow-[inset_0_0_22px_rgba(212,175,55,.06)] disabled:opacity-50 sm:h-14 sm:w-14" aria-label="Cerrar">
-            <X size={24} strokeWidth={2.4} />
+          <button type="button" onClick={onClose} disabled={saving} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#D4AF37]/30 bg-white/[0.055] text-white shadow-[inset_0_0_22px_rgba(212,175,55,.06)] disabled:opacity-50 sm:h-14 sm:w-14" aria-label="Cerrar">
+            <X size={21} strokeWidth={2.4} />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
-          <div className="grid gap-4 sm:gap-5">
+        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-3 pb-3 sm:px-6 sm:pb-6">
+          <div className="grid gap-3 sm:gap-5">
             <section className={`rounded-[1.05rem] border p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.06)] ${summaryVisual.border} ${summaryVisual.card}`}>
               <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -6514,18 +6602,18 @@ function FlexibleMarginEditor({
               </div>
             </section>
 
-            <section className="rounded-[1.15rem] border border-white/10 bg-black/20 p-3 sm:p-4">
+            <section className="rounded-[1.15rem] border border-white/10 bg-black/20 p-2.5 sm:p-4">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
-                  <h4 className="text-xl font-black text-white">{searchHeading}</h4>
-                  <p className="mt-1 text-xs font-bold text-slate-500">{searchHelp}</p>
+                  <h4 className="text-lg font-black text-white sm:text-xl">{searchHeading}</h4>
+                  <p className="mt-0.5 text-[11px] font-bold leading-snug text-slate-500 sm:mt-1 sm:text-xs">{searchHelp}</p>
                 </div>
                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${searchModeIsCalculate ? "border-sky-300/25 bg-sky-300/10 text-sky-200" : "border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}>
                   {searchModeIsCalculate ? "Modo calcular" : "Agregar al margen"}
                 </span>
               </div>
-              <label className="mt-3 flex min-h-13 items-center gap-3 rounded-2xl border border-white/10 bg-[#050a0f] px-3">
-                <Search size={22} className="shrink-0 text-slate-500" strokeWidth={1.8} />
+              <label className="mt-2.5 flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-[#050a0f] px-3 sm:mt-3 sm:min-h-13">
+                <Search size={20} className="shrink-0 text-slate-500" strokeWidth={1.8} />
                 <input
                   value={search}
                   onChange={(event) => {
@@ -6677,7 +6765,7 @@ function FlexibleMarginEditor({
                 </span>
               </div>
 
-              <div className="mt-3 grid gap-2">
+              <div className="mt-2 grid gap-2 sm:mt-3">
                 {draftEntries.map((entry) => {
                   const food = flexibleMarginEntryFood(entry);
                   const entryTotals = totalFromLike(entry.totals || food);
@@ -6732,7 +6820,7 @@ function FlexibleMarginEditor({
                   </div>
                 ) : null}
               </div>
-              <p className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold leading-relaxed text-slate-500">
+              <p className="mt-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold leading-relaxed text-slate-500 sm:mt-3">
                 Se guardara como Tracking del margen flexible del dia seleccionado.
               </p>
             </section>
@@ -6900,19 +6988,25 @@ function FlexibleMarginEditor({
           </div>
         </div>
 
-        <footer className="shrink-0 border-t border-white/10 bg-[#070b10]/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6">
-          <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={onClose} disabled={saving} className="min-h-[52px] rounded-[1.1rem] border border-white/20 bg-white/[0.045] px-4 text-sm font-black text-slate-400 disabled:opacity-50">
+        <footer className="shrink-0 border-t border-white/10 bg-[#070b10]/95 px-3 pb-[calc(.65rem+env(safe-area-inset-bottom))] pt-2.5 sm:p-4 sm:px-6">
+          {hasPendingFood ? (
+            <p className="mb-2 flex items-center justify-center gap-1.5 text-center text-[11px] font-black text-amber-100" role="status">
+              <CircleAlert size={14} className="shrink-0" />
+              Primero agregá o cancelá el alimento seleccionado.
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            <button type="button" onClick={onClose} disabled={saving} className="min-h-[46px] rounded-[1rem] border border-white/20 bg-white/[0.045] px-3 text-sm font-black text-slate-400 disabled:opacity-50 sm:min-h-[52px] sm:rounded-[1.1rem] sm:px-4">
               Cancelar
             </button>
             <button
               type="button"
-              onClick={() => save(false)}
-              disabled={saving}
-              className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-[1.1rem] bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 text-sm font-black text-[#080808] shadow-[0_16px_36px_rgba(212,175,55,.22)] disabled:opacity-60"
+              onClick={save}
+              disabled={saving || hasPendingFood}
+              className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-[1rem] bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-3 text-sm font-black text-[#080808] shadow-[0_16px_36px_rgba(212,175,55,.22)] disabled:cursor-not-allowed disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-400 disabled:opacity-70 disabled:shadow-none sm:min-h-[52px] sm:rounded-[1.1rem] sm:px-4"
             >
               {!saving ? <Sparkles size={17} fill="currentColor" strokeWidth={1.8} /> : null}
-              {saving ? "Guardando..." : completionState.autoComplete && !completed ? "Guardar y marcar hecho" : "Guardar asi"}
+              {saving ? "Guardando..." : completionState.autoComplete && !completed ? "Guardar y marcar hecho" : "Guardar así"}
             </button>
           </div>
         </footer>
@@ -7421,6 +7515,7 @@ function MobileMealDetailDrawer({
   canMarkMeals,
   canReplaceMeals,
   canReplaceFoods,
+  readOnlyProfessionalMenu = false,
   onApplyMealReplacement,
   onSaveAsSavedMeal,
   saving,
@@ -7438,16 +7533,31 @@ function MobileMealDetailDrawer({
   const replacementOptions = useMemo(() => mealReplacementOptions(row, baseMeal, mealIndex), [row, baseMeal, mealIndex]);
   const canEditThisMeal = canEditOwnMenuMeal && !manual && !generated;
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   return (
-    <section className="fixed inset-0 z-50 flex items-center bg-black/75 px-3 py-5 backdrop-blur-md" role="dialog" aria-modal="true">
-      <div className="mx-auto flex max-h-[82dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[radial-gradient(circle_at_18%_0,rgba(45,212,191,.13),transparent_34%),radial-gradient(circle_at_100%_10%,rgba(212,175,55,.15),transparent_30%),linear-gradient(180deg,#111a25,#080d13)] shadow-[0_24px_80px_rgba(0,0,0,.62)]">
-        <header className="flex items-start justify-between gap-3 border-b border-white/10 bg-white/[0.025] p-4">
+    <section className="fixed inset-0 z-[100] flex items-end bg-black/80 p-0 backdrop-blur-md sm:items-center sm:px-3 sm:py-5" role="dialog" aria-modal="true">
+      <div className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_18%_0,rgba(45,212,191,.13),transparent_34%),radial-gradient(circle_at_100%_10%,rgba(212,175,55,.15),transparent_30%),linear-gradient(180deg,#111a25,#080d13)] shadow-[0_24px_80px_rgba(0,0,0,.62)] sm:h-auto sm:max-h-[82dvh] sm:rounded-[1.6rem]">
+        <header className="flex shrink-0 items-start justify-between gap-2.5 border-b border-white/10 bg-[#0d151f]/95 px-3 pb-3 pt-[calc(.75rem+env(safe-area-inset-top))] backdrop-blur-md sm:gap-3 sm:p-4">
           <div className="flex min-w-0 items-center gap-3">
             <MealTypeIcon meal={meal} index={mealIndex} done={done} />
             <div className="min-w-0">
-              <span className="text-xs font-black uppercase tracking-wide text-[#FFE8A3]">Comida</span>
-              <h3 className="mt-1 truncate text-2xl font-black text-white">{mealName(meal, mealIndex)}</h3>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wide text-[#FFE8A3]">Comida</span>
+                {readOnlyProfessionalMenu ? (
+                  <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-0.5 text-[9px] font-black text-sky-100">
+                    Coach · Solo lectura
+                  </span>
+                ) : null}
+              </div>
+              <h3 className="mt-0.5 truncate text-xl font-black leading-tight text-white sm:mt-1 sm:text-2xl">{mealName(meal, mealIndex)}</h3>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5">
                 <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
                   {displayKcal(totals.kcal)}
                 </span>
@@ -7473,12 +7583,12 @@ function MobileMealDetailDrawer({
               ) : null}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.055] text-zinc-100 shadow-[0_8px_22px_rgba(0,0,0,.24)]" aria-label="Cerrar">
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/15 bg-white/[0.07] text-zinc-100 shadow-[0_8px_22px_rgba(0,0,0,.24)] sm:h-11 sm:w-11 sm:rounded-2xl" aria-label="Cerrar">
             <X size={20} />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overscroll-contain overflow-x-hidden overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:p-4">
           {generated || manual ? (
             <div className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] ${manual ? "border-sky-300/35 bg-sky-300/10 text-sky-100" : "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"}`}>
               <span>{manual ? "Registro manual sumado al dia" : "Generada y guardada para esta semana"}</span>
@@ -7529,22 +7639,29 @@ function MobileMealDetailDrawer({
           </button>
 
           {!generated && !manual ? (
-            <button
-              type="button"
-              disabled={!canReplaceMeals || saving}
-              onClick={() => setReplaceOpen((value) => !value)}
-              className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55 ${
-                canReplaceMeals
-                  ? "border-white/10 bg-white/[0.055] text-zinc-100"
-                  : "border-white/10 bg-white/[0.025] text-zinc-500"
-              }`}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <RefreshCw size={17} className="shrink-0 text-[#FFD76B]" />
-                <span className="truncate">{canReplaceMeals ? "Cambiar comida" : "Tu coach no habilito cambios"}</span>
-              </span>
-              <ChevronRight size={18} className={`shrink-0 transition ${replaceOpen ? "rotate-90" : ""}`} />
-            </button>
+            <div className="mb-3">
+              <button
+                type="button"
+                disabled={!canReplaceMeals || saving}
+                onClick={() => setReplaceOpen((value) => !value)}
+                className={`flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55 ${
+                  canReplaceMeals
+                    ? "border-white/10 bg-white/[0.055] text-zinc-100"
+                    : "border-white/10 bg-white/[0.025] text-zinc-500"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <RefreshCw size={17} className="shrink-0 text-[#FFD76B]" />
+                  <span className="truncate">{canReplaceMeals ? "Cambiar para este día" : "Tu coach no habilitó cambios"}</span>
+                </span>
+                <ChevronRight size={18} className={`shrink-0 transition ${replaceOpen ? "rotate-90" : ""}`} />
+              </button>
+              {readOnlyProfessionalMenu && canReplaceMeals ? (
+                <p className="mt-1.5 px-1 text-[11px] font-bold leading-snug text-sky-100/65">
+                  Solo cambia tu tracking de hoy. El menú profesional del coach permanece intacto.
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           {replaceOpen ? (

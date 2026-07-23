@@ -102,18 +102,20 @@ const CSS = `
     max-width:none;
     margin-inline:0;
     overflow-x:hidden;
-    padding:8px 0 14px;
+    padding:3px 0 12px;
   }
   .menu-top,
   .tabs{
     padding-inline:2px;
   }
   .menu-top{
-    min-height:42px;
-    margin-bottom:6px;
+    min-height:38px;
+    margin-bottom:1px;
   }
   .menu-title{
-    font-size:16px;
+    gap:7px;
+    font-size:17px;
+    line-height:1.1;
   }
   .menu-mobile-actions{
     display:block;
@@ -122,7 +124,12 @@ const CSS = `
     display:none;
   }
   .menu-outlet{
-    margin-top:8px;
+    margin-top:2px;
+  }
+  .menu-options-btn{
+    width:38px;
+    height:38px;
+    border-radius:12px;
   }
 }
 `;
