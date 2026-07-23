@@ -1,10 +1,11 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
   Copy,
   Database,
   Loader2,
+  Lock,
   Search,
   Star,
   Users,
@@ -108,7 +109,26 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   const legacyCreateRedirect = !professionalMode && searchParams.get("tab") === "mineMenus" && searchParams.get("create") === "1";
   const authQuery = useAuthMe({ initialFromCache: true, enabled: !legacyCreateRedirect });
   const user = useMemo(() => authQuery.data || {}, [authQuery.data]);
-  const tabs = useMemo(() => defaultTabs(professionalMode ? "professional" : "client", user), [professionalMode, user]);
+  const professionalFeatures = user?.effectiveCapabilities?.features?.menus || {};
+  const professionalUsage = user?.effectiveCapabilities?.usage || {};
+  const professionalLimits = user?.effectiveCapabilities?.limits || {};
+  const ownedMenusUsage = Number(professionalUsage.currentCoachOwnedMenus || 0);
+  const ownedMealsUsage = Number(professionalUsage.currentCoachOwnedMeals || 0);
+  const ownedMenusLimit = Number(professionalLimits.maxCoachOwnedMenus);
+  const ownedMealsLimit = Number(professionalLimits.maxCoachOwnedMeals);
+  const menuLimitReached = professionalMode && Number.isFinite(ownedMenusLimit) && ownedMenusLimit >= 0 && ownedMenusUsage >= ownedMenusLimit;
+  const mealLimitReached = professionalMode && Number.isFinite(ownedMealsLimit) && ownedMealsLimit >= 0 && ownedMealsUsage >= ownedMealsLimit;
+  const canUseProfessionalGlobalLibrary =
+    professionalFeatures.canUseGlobalMenuTemplates === true &&
+    professionalFeatures.canUseGlobalMealTemplates === true;
+  const tabs = useMemo(
+    () => defaultTabs(professionalMode ? "professional" : "client", user).map((tab) => (
+      professionalMode && tab.id === "admin"
+        ? { ...tab, locked: !canUseProfessionalGlobalLibrary }
+        : tab
+    )),
+    [canUseProfessionalGlobalLibrary, professionalMode, user]
+  );
   const [activeTabId, setActiveTabId] = useState("mineMeals");
   const [search, setSearch] = useState("");
   const [type, setType] = useState("todos");
@@ -123,13 +143,15 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   const [clients, setClients] = useState([]);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
   const [editMenuRequest, setEditMenuRequest] = useState(null);
+  const [usageSignal, setUsageSignal] = useState(0);
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0] || TABS.client[0];
+  const activeTab = tabs.find((tab) => tab.id === activeTabId && !tab.locked) || tabs.find((tab) => !tab.locked) || TABS.client[0];
   const clientOwnMenusTab = !professionalMode && activeTab.id === "mineMenus";
+  const refreshUsageCounters = useCallback(() => setUsageSignal((current) => current + 1), []);
 
   useEffect(() => {
-    if (!tabs.some((tab) => tab.id === activeTabId)) {
-      setActiveTabId(tabs[0]?.id || "mineMeals");
+    if (!tabs.some((tab) => tab.id === activeTabId && !tab.locked)) {
+      setActiveTabId(tabs.find((tab) => !tab.locked)?.id || "mineMeals");
     }
   }, [activeTabId, tabs]);
 
@@ -217,11 +239,23 @@ export default function NutritionLibraryPage({ mode = "client" }) {
 
   async function handleCopy(item) {
     if (!itemId(item) || saving) return;
+    const copyLimitReached = item.kind === "menu" ? menuLimitReached : mealLimitReached;
+    if (professionalMode && copyLimitReached) {
+      const current = item.kind === "menu" ? ownedMenusUsage : ownedMealsUsage;
+      const limit = item.kind === "menu" ? ownedMenusLimit : ownedMealsLimit;
+      setToast({
+        type: "warning",
+        message: `Límite del plan alcanzado: ${current} / ${limit} ${item.kind === "menu" ? "menús" : "comidas"}.`,
+      });
+      return;
+    }
     setSaving(true);
     try {
       if (item.kind === "menu") await copyLibraryMenu(itemId(item));
       else await copyLibraryMeal(itemId(item));
       setToast({ type: "success", message: item.kind === "menu" ? "Menu guardado en Mis menus." : "Comida guardada en Mis comidas." });
+      refreshUsageCounters();
+      if (professionalMode) await authQuery.refetch();
       await refreshCurrent();
     } catch (err) {
       setToast({ type: "error", message: err?.message || "No se pudo guardar la copia." });
@@ -237,6 +271,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
     try {
       if (item.kind === "menu") await setLibraryMenuFavorite(itemId(item), next);
       else await setLibraryMealFavorite(itemId(item), next);
+      refreshUsageCounters();
       await refreshCurrent();
     } catch (err) {
       setToast({ type: "error", message: err?.message || "No se pudo actualizar favorito." });
@@ -322,12 +357,33 @@ export default function NutritionLibraryPage({ mode = "client" }) {
             </p>
           </div>
           {professionalMode ? (
-            <div className="nl-heroMetric">
-              <strong>{totalItems}</strong>
-              <span>items visibles</span>
+            <div className="nl-heroCounters">
+              <div className="nl-heroMetric">
+                <strong>{ownedMenusUsage} / {Number.isFinite(ownedMenusLimit) ? ownedMenusLimit : "∞"}</strong>
+                <span>menús propios</span>
+              </div>
+              <div className="nl-heroMetric">
+                <strong>{ownedMealsUsage} / {Number.isFinite(ownedMealsLimit) ? ownedMealsLimit : "∞"}</strong>
+                <span>comidas propias</span>
+              </div>
             </div>
           ) : null}
         </header>
+
+        {professionalMode && (menuLimitReached || mealLimitReached || ownedMenusLimit - ownedMenusUsage === 1 || ownedMealsLimit - ownedMealsUsage === 1) ? (
+          <div className="nl-state compact" role="status">
+            {menuLimitReached
+              ? "Límite de menús propios alcanzado. "
+              : ownedMenusLimit - ownedMenusUsage === 1
+                ? "Te queda 1 menú propio disponible. "
+                : ""}
+            {mealLimitReached
+              ? "Límite de comidas propias alcanzado."
+              : ownedMealsLimit - ownedMealsUsage === 1
+                ? "Te queda 1 comida propia disponible."
+                : ""}
+          </div>
+        ) : null}
 
         {!professionalMode ? (
           <ClientNutritionHome
@@ -337,6 +393,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
             onOpenMyMenus={openMyMenusTab}
             onOpenLibrary={openLibraryTab}
             onEditMenu={openEditMenu}
+            usageSignal={usageSignal}
           />
         ) : null}
 
@@ -346,12 +403,22 @@ export default function NutritionLibraryPage({ mode = "client" }) {
               key={tab.id}
               type="button"
               className={activeTab.id === tab.id ? "active" : ""}
-              onClick={() => setActiveTabId(tab.id)}
+              onClick={() => !tab.locked && setActiveTabId(tab.id)}
+              disabled={tab.locked}
+              title={tab.locked ? "Disponible en Coach Pro" : undefined}
             >
+              {tab.locked ? <Lock size={14} aria-hidden="true" /> : null}
               {tab.label}
             </button>
           ))}
         </div>
+
+        {professionalMode && !canUseProfessionalGlobalLibrary ? (
+          <div className="nl-state nl-libraryLocked" role="status">
+            <Lock size={17} aria-hidden="true" />
+            <span><strong>Biblioteca ZumaFit disponible en Coach Pro.</strong> Podés seguir trabajando con tus propias comidas y menús.</span>
+          </div>
+        ) : null}
 
         {!clientOwnMenusTab ? (
           <section className="nl-toolbar">
@@ -382,6 +449,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 onToast={setToast}
                 editMenuRequest={editMenuRequest}
                 user={user}
+                onUsageChange={refreshUsageCounters}
               />
             </Suspense>
           </RouteChunkErrorBoundary>
@@ -399,6 +467,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 item={meal}
                 professionalMode={professionalMode}
                 saving={saving}
+                copyLimitReached={mealLimitReached}
                 onCopy={handleCopy}
                 onFavorite={handleFavorite}
                 onAddToTracking={handleAddToTracking}
@@ -414,6 +483,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 item={menu}
                 professionalMode={professionalMode}
                 saving={saving}
+                copyLimitReached={menuLimitReached}
                 onCopy={handleCopy}
                 onFavorite={handleFavorite}
                 onAddToTracking={handleAddToTracking}
@@ -444,7 +514,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   );
 }
 
-function LibraryCard({ item, professionalMode, saving, onCopy, onFavorite, onAddToTracking, onAssign }) {
+function LibraryCard({ item, professionalMode, saving, copyLimitReached, onCopy, onFavorite, onAddToTracking, onAssign }) {
   const t = totals(item);
   const isMenu = item.kind === "menu";
   const favorite = !!(item.favorita || item.favorito);
@@ -512,7 +582,12 @@ function LibraryCard({ item, professionalMode, saving, onCopy, onFavorite, onAdd
           </button>
         ) : null}
         {permissions.canCopy ? (
-          <button type="button" onClick={() => onCopy(item)} disabled={saving}>
+          <button
+            type="button"
+            onClick={() => onCopy(item)}
+            disabled={saving || copyLimitReached}
+            title={copyLimitReached ? "Límite de contenido propio alcanzado" : undefined}
+          >
             <Copy size={15} />
             Guardar copia
           </button>

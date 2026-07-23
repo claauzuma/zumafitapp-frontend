@@ -29,6 +29,8 @@ export function normalizeMenuBase(raw = {}) {
     visibility: raw.visibilidad || raw.visibility || "",
     ownerType: raw.ownerType || "",
     ownerId: raw.ownerId || "",
+    sourceType: raw.sourceType || raw.templateSource || raw.source || "",
+    templateTier: raw.templateTier || raw.libraryTier || "",
     estado: raw.estado || raw.status || "",
     meals: comidas.map(normalizeMealForDisplay),
     raw,

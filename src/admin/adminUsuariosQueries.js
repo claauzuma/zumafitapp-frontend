@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getAdminCoaches,
   getAdminCoachClients,
+  getAdminCoachPlanPreview,
   getAdminCoachPlans,
+  getAdminClientPlans,
   getAdminUserById,
   getAdminUnassignedClients,
   listAdminUsers,
@@ -61,5 +63,22 @@ export function useAdminCoachPlans() {
     queryKey: queryKeys.adminCoachPlans(),
     queryFn: getAdminCoachPlans,
     staleTime: STALE_TIMES.adminCoachPlans,
+  });
+}
+
+export function useAdminClientPlans() {
+  return useQuery({
+    queryKey: queryKeys.adminClientPlans(),
+    queryFn: getAdminClientPlans,
+    staleTime: STALE_TIMES.adminClientPlans,
+  });
+}
+
+export function useAdminCoachPlanPreview(coachId, plan, resetOverrides = false, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.adminCoachPlanPreview(coachId, plan, resetOverrides),
+    queryFn: () => getAdminCoachPlanPreview(coachId, { plan, resetOverrides }),
+    enabled: Boolean(coachId && plan) && options.enabled !== false,
+    staleTime: STALE_TIMES.adminCoachPlanPreview,
   });
 }

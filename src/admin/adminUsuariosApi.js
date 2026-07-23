@@ -84,6 +84,32 @@ export async function resetAdminCoachPlanConfig(planCode) {
   return data?.plan || data;
 }
 
+export async function getAdminClientPlans() {
+  const data = await apiFetch("/api/usuarios/admin/client-plans", {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return data?.plans || [];
+}
+
+export async function updateAdminClientPlanConfig(planCode, payload) {
+  const data = await apiFetch(`/api/usuarios/admin/client-plans/${planCode}`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.plan || data;
+}
+
+export async function resetAdminClientPlanConfig(planCode) {
+  const data = await apiFetch(`/api/usuarios/admin/client-plans/${planCode}/reset`, {
+    method: "POST",
+    body: {},
+    timeoutMs: 12000,
+  });
+  return data?.plan || data;
+}
+
 export async function updateAdminCoachPlan(id, payload) {
   const data = await apiFetch(`/api/usuarios/admin/users/${id}/coach-plan`, {
     method: "PATCH",
@@ -91,6 +117,17 @@ export async function updateAdminCoachPlan(id, payload) {
     timeoutMs: 12000,
   });
   return data?.user || data;
+}
+
+export async function getAdminCoachPlanPreview(id, payload = {}) {
+  const qs = new URLSearchParams();
+  qs.set("plan", String(payload.plan || "coach_initial"));
+  qs.set("resetOverrides", payload.resetOverrides ? "true" : "false");
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/coach-plan-preview?${qs.toString()}`, {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return data?.preview || data;
 }
 
 export async function updateAdminCoachOverrides(id, payload) {

@@ -1,3 +1,5 @@
+import { coachProfessionalPlanLabel } from "../professionalPlans.js";
+
 export function fullName(user) {
   const nombre = String(user?.profile?.nombre || "").trim();
   const apellido = String(user?.profile?.apellido || "").trim();
@@ -24,18 +26,15 @@ export function avatarUrl(user) {
 }
 
 export function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  return "Prueba Pro";
+  return coachProfessionalPlanLabel(plan);
 }
 
 export function specialtyLabel(user) {
   const training = !!user?.coachProfile?.specialties?.training;
   const nutrition = !!user?.coachProfile?.specialties?.nutrition;
-  if (training && nutrition) return "Entrenamiento + Nutricion";
+  if (training && nutrition) return "Entrenamiento + Nutrición";
   if (training) return "Entrenamiento";
-  if (nutrition) return "Nutricion";
+  if (nutrition) return "Nutrición";
   return "Sin especialidad";
 }
 
@@ -54,7 +53,7 @@ export function fmtKcal(value) {
 
 export function goalLabel(goalType) {
   if (!goalType) return "-";
-  if (goalType === "perder_peso") return "Perdida de grasa";
+  if (goalType === "perder_peso") return "Pérdida de grasa";
   if (goalType === "ganar_peso") return "Ganancia muscular";
   if (goalType === "mantener_peso") return "Mantenimiento";
   return String(goalType);
@@ -63,7 +62,7 @@ export function goalLabel(goalType) {
 export function capacityLabel(user) {
   const effective = user?.effectiveCapabilities || {};
   const current = effective?.currentClients ?? user?.coachStats?.currentClients ?? 0;
-  const max = effective?.maxClients ?? "sin limite";
+  const max = effective?.maxClients ?? "sin límite";
   if (effective?.isTrialExpired) return `${current}/${max} - prueba vencida`;
   return `${current}/${max}`;
 }

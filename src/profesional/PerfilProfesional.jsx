@@ -1,6 +1,20 @@
 import React from "react";
-import { RefreshCw } from "lucide-react";
+import {
+  Activity,
+  CalendarDays,
+  Clock3,
+  Dumbbell,
+  IdCard,
+  Package,
+  RefreshCw,
+  ShieldCheck,
+  Upload,
+  UserCircle,
+  Users,
+  Utensils,
+} from "lucide-react";
 import { useProfessionalMe } from "../authQueries.js";
+import { coachTrialState } from "../professionalPlans.js";
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import {
   capacityLabel,
@@ -19,13 +33,17 @@ export default function PerfilProfesional() {
 
   const effective = me?.effectiveCapabilities || {};
   const features = effective?.features || {};
+  const trial = coachTrialState(me);
 
   return (
     <div className="prof-page">
       <section className="prof-shell">
         <div className="prof-hero">
           <div>
-            <div className="prof-kicker">🧑‍🏫 Perfil profesional</div>
+            <div className="prof-kicker">
+              <UserCircle size={15} strokeWidth={2.3} aria-hidden="true" />
+              Perfil profesional
+            </div>
             <h1 className="prof-title">Tu perfil de coach</h1>
             <p className="prof-sub">
               Datos de cuenta, especialidad, plan y capacidades activas dentro de ZumaFit.
@@ -56,28 +74,32 @@ export default function PerfilProfesional() {
         {err ? <div className="prof-error">{err}</div> : null}
 
         <div className="prof-grid">
-          <Metric emoji="👥" label="Clientes" value={capacityLabel(me)} />
-          <Metric emoji="📦" label="Plan" value={effective?.planName || planLabel(me?.plan)} />
-          <Metric emoji="⏳" label="Prueba vence" value={fmtDate(effective?.trialEndsAt)} />
-          <Metric emoji="🛡️" label="Estado prueba" value={effective?.isTrialExpired ? "Vencida" : "Activa"} />
+          <Metric icon={Users} label="Clientes" value={capacityLabel(me)} />
+          <Metric icon={Package} label="Plan" value={effective?.planName || planLabel(me?.plan)} />
+          <Metric icon={Clock3} label="Prueba vence" value={trial.isTrial ? fmtDate(trial.endsAt) : "-"} />
+          <Metric
+            icon={ShieldCheck}
+            label="Beneficio de prueba"
+            value={trial.isTrial ? (trial.expired ? "Vencida" : "Activa") : "No aplica"}
+          />
         </div>
 
         <div className="prof-section">
-          <h3 className="prof-sectionTitle">Permisos y modulos</h3>
+          <h3 className="prof-sectionTitle">Permisos y módulos</h3>
           <div className="prof-permissionGrid">
-            <Metric emoji="🏋️" label="Rutinas" value={featureStatus(features?.routines)} />
-            <Metric emoji="🥗" label="Menus" value={featureStatus(features?.menus)} />
-            <Metric emoji="📈" label="Metricas avanzadas" value={features?.metrics?.advanced ? "Habilitadas" : "No habilitadas"} />
-            <Metric emoji="📤" label="Exportaciones" value={features?.exports?.enabled ? "Habilitadas" : "No habilitadas"} />
+            <Metric icon={Dumbbell} label="Rutinas" value={featureStatus(features?.routines)} />
+            <Metric icon={Utensils} label="Menús" value={featureStatus(features?.menus)} />
+            <Metric icon={Activity} label="Métricas avanzadas" value={features?.metrics?.advanced ? "Habilitadas" : "No habilitadas"} />
+            <Metric icon={Upload} label="Exportaciones" value={features?.exports?.enabled ? "Habilitadas" : "No habilitadas"} />
           </div>
         </div>
 
         <div className="prof-section">
           <h3 className="prof-sectionTitle">Cuenta</h3>
           <div className="prof-grid three">
-            <Metric emoji="📅" label="Alta" value={fmtDate(me?.createdAt)} />
-            <Metric emoji="🕒" label="Ultimo login" value={fmtDate(me?.lastLoginAt || me?.lastActivityAt)} />
-            <Metric emoji="🆔" label="ID" value={me?.id || me?._id || "-"} />
+            <Metric icon={CalendarDays} label="Alta" value={fmtDate(me?.createdAt)} />
+            <Metric icon={Clock3} label="Último login" value={fmtDate(me?.lastLoginAt || me?.lastActivityAt)} />
+            <Metric icon={IdCard} label="ID" value={me?.id || me?._id || "-"} />
           </div>
         </div>
       </section>
@@ -88,5 +110,5 @@ export default function PerfilProfesional() {
 function featureStatus(group = {}) {
   const enabled = Object.values(group || {}).filter(Boolean).length;
   if (enabled <= 0) return "No disponible";
-  return `${enabled} funcion${enabled === 1 ? "" : "es"}`;
+  return `${enabled} función${enabled === 1 ? "" : "es"}`;
 }

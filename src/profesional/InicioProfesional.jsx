@@ -1,11 +1,16 @@
 ﻿import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dumbbell, Settings, Users, Utensils } from "lucide-react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import { getCachedUser, setAuthLogged } from "../authCache.js";
 import { useProfessionalMe } from "../authQueries.js";
 import { setAuthUserQueryData } from "../queryClient.js";
 import { createCoachSubscriptionRequest, getCoachSubscription } from "../professionalAccessApi.js";
+import {
+  coachProfessionalPlanFromUser,
+  coachProfessionalPlanLabel,
+} from "../professionalPlans.js";
 
 export default function InicioProfesional() {
   const queryClient = useQueryClient();
@@ -51,9 +56,9 @@ export default function InicioProfesional() {
     const training = !!me?.coachWelcome?.specialties?.training;
     const nutrition = !!me?.coachWelcome?.specialties?.nutrition;
 
-    if (training && nutrition) return "Entrenamiento + NutriciÃ³n";
+    if (training && nutrition) return "Entrenamiento + Nutrición";
     if (training) return "Entrenamiento";
-    if (nutrition) return "NutriciÃ³n";
+    if (nutrition) return "Nutrición";
     return "Coach";
   }, [me]);
 
@@ -105,12 +110,12 @@ async function handleCloseWelcome() {
             <h1 className="pro-welcomeTitle">Fuiste invitado como coach</h1>
 
             <p className="pro-welcomeText">
-              Ya tenÃ©s acceso a tu panel profesional en ZumaFit.
+              Ya tenés acceso a tu panel profesional en ZumaFit.
             </p>
 
             <div className="pro-welcomeMeta">
               <span className="pro-chip">
-                Plan: {planLabel(me?.effectiveCapabilities?.planCode || me?.coachWelcome?.plan || me?.plan)}
+                Plan profesional: {coachProfessionalPlanLabel(coachProfessionalPlanFromUser(me))}
               </span>
               <span className="pro-chip">
                 Especialidad: {specialtyLabel}
@@ -139,7 +144,7 @@ async function handleCloseWelcome() {
         <div className="pro-hero">
           <h1 className="pro-title">Panel profesional</h1>
           <p className="pro-sub">
-            Desde acÃ¡ vas a poder gestionar clientes, planes y seguimiento.
+            Desde acá vas a poder gestionar clientes, planes y seguimiento.
           </p>
         </div>
 
@@ -157,14 +162,14 @@ async function handleCloseWelcome() {
 
         <div className="pro-grid">
           <Link to="/profesional/clientes" className="pro-card">
-            <div className="pro-icon">ðŸ‘¥</div>
+            <div className="pro-icon"><Users size={27} strokeWidth={2.1} aria-hidden="true" /></div>
             <div className="pro-cardTitle">Clientes</div>
             <div className="pro-cardText">Ver y administrar tus clientes.</div>
           </Link>
 
           {canTraining && (
             <Link to="/profesional/rutinas" className="pro-card">
-              <div className="pro-icon">ðŸ‹ï¸</div>
+              <div className="pro-icon"><Dumbbell size={27} strokeWidth={2.1} aria-hidden="true" /></div>
               <div className="pro-cardTitle">Rutinas</div>
               <div className="pro-cardText">Crear y editar entrenamientos.</div>
             </Link>
@@ -172,8 +177,8 @@ async function handleCloseWelcome() {
 
           {canNutrition && (
             <Link to="/profesional/menus" className="pro-card">
-              <div className="pro-icon">ðŸ¥—</div>
-              <div className="pro-cardTitle">MenÃºs</div>
+              <div className="pro-icon"><Utensils size={27} strokeWidth={2.1} aria-hidden="true" /></div>
+              <div className="pro-cardTitle">Menús</div>
               <div className="pro-cardText">
                 Armar planes y seguimiento nutricional.
               </div>
@@ -181,15 +186,15 @@ async function handleCloseWelcome() {
           )}
 
           <Link to="/profesional/perfil" className="pro-card">
-            <div className="pro-icon">âš™ï¸</div>
+            <div className="pro-icon"><Settings size={27} strokeWidth={2.1} aria-hidden="true" /></div>
             <div className="pro-cardTitle">Perfil profesional</div>
-            <div className="pro-cardText">Datos, foto y configuraciÃ³n.</div>
+            <div className="pro-cardText">Datos, foto y configuración.</div>
           </Link>
         </div>
 
         {me?.effectiveCapabilities?.isTrialExpired ? (
           <div className="pro-note">
-            Tu prueba esta vencida. Conservas datos y clientes, pero las nuevas acciones de gestion quedan limitadas hasta pasar a Pro o VIP.
+            Tu prueba está vencida. Conservás datos y clientes, pero las nuevas acciones de gestión quedan limitadas hasta pasar a Pro o VIP.
           </div>
         ) : null}
       </div>
@@ -204,7 +209,11 @@ function ProfessionalStatusCard({ me, data, loading, notice, onRequestPlan, requ
   const scopes = data?.scopes || me?.professionalScopes || me?.coachProfile?.specialties || {};
   const status = data?.professionalStatus || me?.professionalStatus || me?.coachProfile?.status || "approved";
   const currentClients = me?.effectiveCapabilities?.currentClients || me?.coachStats?.currentClients || 0;
-  const limit = subscription?.clientLimit ?? me?.effectiveCapabilities?.maxClients ?? 0;
+  const limit = me?.effectiveCapabilities?.limits?.maxActiveClients ?? me?.effectiveCapabilities?.maxClients ?? subscription?.clientLimit ?? 0;
+  const currentMenus = Number(me?.effectiveCapabilities?.usage?.currentCoachOwnedMenus || 0);
+  const menuLimit = Number(me?.effectiveCapabilities?.limits?.maxCoachOwnedMenus || 0);
+  const currentMeals = Number(me?.effectiveCapabilities?.usage?.currentCoachOwnedMeals || 0);
+  const mealLimit = Number(me?.effectiveCapabilities?.limits?.maxCoachOwnedMeals || 0);
   const available = limit ? Math.max(0, Number(limit) - Number(currentClients || 0)) : null;
 
   return (
@@ -214,19 +223,21 @@ function ProfessionalStatusCard({ me, data, loading, notice, onRequestPlan, requ
         <h2>{statusLabel(status)}</h2>
         <p>
           {loading
-            ? "Consultando suscripcion..."
-            : `Suscripcion: ${subscriptionLabel(subscription)}. Cupos disponibles: ${available === null ? "sin limite" : available}.`}
+            ? "Consultando suscripción..."
+            : `Suscripción: ${subscriptionLabel(subscription)}. Cupos disponibles: ${available === null ? "sin límite" : available}.`}
         </p>
         <div className="pro-statusChips">
-          <span>Training: {scopes.training ? "aprobado" : "pendiente"}</span>
-          <span>Nutricion: {scopes.nutrition ? "aprobado" : "pendiente"}</span>
-          <span>{currentClients} / {limit || "sin limite"} clientes</span>
+          <span>Entrenamiento: {scopes.training ? "aprobado" : "pendiente"}</span>
+          <span>Nutrición: {scopes.nutrition ? "aprobado" : "pendiente"}</span>
+          <span>{currentClients} / {limit || "sin límite"} clientes</span>
+          {menuLimit >= 0 ? <span>{currentMenus} / {menuLimit} menús propios</span> : null}
+          {mealLimit >= 0 ? <span>{currentMeals} / {mealLimit} comidas propias</span> : null}
         </div>
       </div>
       <div className="pro-statusActions">
-        <button type="button" onClick={() => onRequestPlan("coach_initial")} disabled={requesting}>Coach Inicial</button>
-        <button type="button" onClick={() => onRequestPlan("coach_pro")} disabled={requesting}>Coach Pro</button>
-        <button type="button" onClick={() => onRequestPlan("coach_ai")} disabled={requesting}>Coach IA</button>
+        <button type="button" onClick={() => onRequestPlan("coach_initial")} disabled={requesting}>Inicial</button>
+        <button type="button" onClick={() => onRequestPlan("coach_pro")} disabled={requesting}>Pro</button>
+        <button type="button" onClick={() => onRequestPlan("coach_ai")} disabled={requesting}>VIP</button>
       </div>
       {notice ? <div className="pro-statusNotice">{notice}</div> : null}
     </section>
@@ -239,13 +250,23 @@ function statusLabel(value) {
   if (raw === "corrections required") return "Correcciones requeridas";
   if (raw === "rejected") return "Rechazado";
   if (raw === "suspended") return "Suspendido";
-  return "Pendiente de verificacion";
+  return "Pendiente de verificación";
 }
 
 function subscriptionLabel(subscription) {
   if (!subscription) return "sin datos";
-  const label = subscription.label || planLabel(subscription.plan);
-  return `${label} - ${subscription.status || "pendiente"}`;
+  const label = coachProfessionalPlanLabel(subscription.plan);
+  return `${label} - ${subscriptionStatusLabel(subscription.status)}`;
+}
+
+function subscriptionStatusLabel(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "active") return "activa";
+  if (status === "trial" || status === "trialing") return "prueba activa";
+  if (status === "past_due") return "pago pendiente";
+  if (status === "cancel_at_period_end") return "activa hasta fin de período";
+  if (status === "expired") return "vencida";
+  return status || "pendiente";
 }
 
 const styles = `
@@ -444,8 +465,10 @@ const styles = `
 
 .pro-statusActions{
   display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
   gap:8px;
   align-self:start;
+  min-width:240px;
 }
 
 .pro-statusActions button{
@@ -500,7 +523,15 @@ const styles = `
 }
 
 .pro-icon{
-  font-size:28px;
+  width:44px;
+  height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(245,215,110,.20);
+  border-radius:14px;
+  background:rgba(245,215,110,.08);
+  color:#f5d76e;
 }
 
 .pro-cardTitle{
@@ -529,7 +560,8 @@ const styles = `
   }
 
   .pro-statusActions{
-    grid-template-columns:1fr;
+    width:100%;
+    min-width:0;
   }
 
   .pro-grid{
@@ -570,10 +602,3 @@ const styles = `
   }
 }
 `;
-
-function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  return "Prueba Pro";
-}

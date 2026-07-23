@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAdminUsers } from "./adminUsuariosQueries.js";
+import {
+  clientPlanLabel,
+  coachProfessionalPlanFromUser,
+  coachProfessionalPlanLabel,
+} from "../professionalPlans.js";
 
 export default function AdminUsuarios() {
   const navigate = useNavigate();
@@ -379,6 +384,15 @@ function getUserPlanMeta(u) {
     return { emoji: "👑", label: "Admin", className: "vip" };
   }
 
+  if (role === "coach") {
+    const plan = coachProfessionalPlanFromUser(u);
+    return {
+      emoji: plan === "coach_ai" ? "💎" : "",
+      label: `Coach ${coachProfessionalPlanLabel(plan)}`,
+      className: plan === "coach_ai" ? "vip" : plan === "coach_pro" ? "plus" : "free",
+    };
+  }
+
   const rawPlan =
     u?.effectiveCapabilities?.planCode ||
     u?.plan ||
@@ -394,23 +408,10 @@ function getUserPlanMeta(u) {
 
   const plan = String(rawPlan || "free").toLowerCase().trim();
 
-  if (plan === "trial_pro" || plan === "trial" || plan === "free") {
-    return { emoji: "", label: "Prueba Pro", className: "free" };
-  }
-
-  if (plan === "premium" || plan === "pro" || plan === "plus") {
-    return { emoji: "", label: "Plan Pro", className: "plus" };
-  }
-
-  if (plan === "premium2" || plan === "vip") {
-    return { emoji: "💎", label: "Plan VIP", className: "vip" };
-  }
-
-  if (plan === "premium" || plan === "pro" || plan === "plus") {
-    return { emoji: "⭐", label: "Plan Premium", className: "plus" };
-  }
-
-  return { emoji: "🆓", label: "Plan Free", className: "free" };
+  const label = clientPlanLabel(plan);
+  if (label === "VIP") return { emoji: "💎", label: "Cliente VIP", className: "vip" };
+  if (label === "Pro") return { emoji: "", label: "Cliente Pro", className: "plus" };
+  return { emoji: "🆓", label: "Cliente Free", className: "free" };
 }
 
 function formatLastActivity(value) {

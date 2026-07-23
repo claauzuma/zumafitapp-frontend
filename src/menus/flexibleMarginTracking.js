@@ -122,8 +122,5 @@ export function flexibleMarginMacroRemaining(plan = {}, rowOrEntries = {}) {
 }
 
 export function canUseFlexibleMarginRecommendations(permissions = {}) {
-  if (permissions?.canUseFlexibleMarginRecommendations !== undefined) {
-    return permissions.canUseFlexibleMarginRecommendations !== false;
-  }
-  return permissions?.canAutoCompleteRemainingMeals !== false;
+  return permissions?.canUseFlexibleMarginRecommendations === true;
 }

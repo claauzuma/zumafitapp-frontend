@@ -1,5 +1,6 @@
 import React from "react";
 import { useOutletContext } from "react-router-dom";
+import { coachProfessionalPlanFromUser, coachProfessionalPlanLabel } from "../professionalPlans.js";
 
 const META = {
   clientes: {
@@ -32,7 +33,7 @@ export default function ProfesionalPlaceholder({ type }) {
   return (
     <div className="pp-wrap">
       <div className={`pp-card ${allowed ? "" : "locked"}`}>
-        <div className="pp-kicker">{planLabel(me?.effectiveCapabilities?.planCode || me?.plan)}</div>
+        <div className="pp-kicker">{coachProfessionalPlanLabel(coachProfessionalPlanFromUser(me))}</div>
         <h1 className="pp-title">{allowed ? meta.title : "Modulo no disponible"}</h1>
         <p className="pp-text">
           {allowed
@@ -88,13 +89,6 @@ function specialtyLabel(user) {
   if (training) return "Entrenamiento";
   if (nutrition) return "Nutricion";
   return "Sin especialidad";
-}
-
-function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  return "Prueba Pro";
 }
 
 function capacityLabel(user) {

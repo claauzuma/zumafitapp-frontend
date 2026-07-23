@@ -314,6 +314,51 @@
   opacity: 0.62;
 }
 
+.td-objectivePending {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid rgba(245, 215, 110, 0.22);
+  border-radius: 18px;
+  background: rgba(245, 215, 110, 0.065);
+  padding: 14px;
+}
+
+.td-objectivePending div {
+  display: grid;
+  gap: 4px;
+}
+
+.td-objectivePending strong {
+  color: #fff8db;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.td-objectivePending p {
+  margin: 0;
+  color: #b7c2cf;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.td-objectivePending a {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(245, 215, 110, 0.3);
+  border-radius: 12px;
+  color: #ffe480;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
 .td-dailySummarySide {
   display: flex;
   align-items: center;
@@ -1462,6 +1507,15 @@
 }
 
 @media (max-width: 760px) {
+  .td-objectivePending {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .td-objectivePending a {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
   .td-shell {
     border-radius: 22px;
     padding: 14px;

@@ -1,104 +1,91 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  updateAdminCoachPlanConfig,
-  resetAdminCoachPlanConfig,
-} from "./adminUsuariosApi.js";
-import { useAdminCoachPlans } from "./adminUsuariosQueries.js";
-import { invalidateAfterCoachPlansChange, queryKeys } from "../queryClient.js";
+import { Save, RotateCcw } from "lucide-react";
 
-const FEATURE_SECTIONS = [
-  {
-    key: "clients",
-    title: "Clientes",
-    fields: [["canAssign", "Asignar clientes"], ["canViewProgress", "Ver progreso"]],
-  },
-  {
-    key: "routines",
-    title: "Rutinas",
-    fields: [
-      ["manualBuilder", "Armador manual"],
-      ["librarySearch", "Biblioteca"],
-      ["ownTemplates", "Plantillas propias"],
-      ["duplicatePlans", "Duplicar planes"],
-      ["semiAutomaticBuilder", "Armador semiautomatico"],
-      ["automaticGenerator", "Generador automatico"],
-    ],
-    limitField: "ownTemplatesLimit",
-  },
-  {
-    key: "menus",
-    title: "Menus",
-    fields: [
-      ["manualBuilder", "Armador manual"],
-      ["foodLibrarySearch", "Biblioteca alimentos"],
-      ["menuLibrarySearch", "Biblioteca menus"],
-      ["ownTemplates", "Plantillas propias"],
-      ["duplicatePlans", "Duplicar planes"],
-      ["semiAutomaticBuilder", "Armador semiautomatico"],
-      ["automaticGenerator", "Generador automatico"],
-    ],
-    limitField: "ownTemplatesLimit",
-  },
-  {
-    key: "metrics",
-    title: "Metricas",
-    fields: [["basic", "Basicas"], ["advanced", "Avanzadas"]],
-  },
-  {
-    key: "exports",
-    title: "Exportaciones",
-    fields: [["enabled", "Exportaciones habilitadas"]],
-  },
+import {
+  resetAdminClientPlanConfig,
+  resetAdminCoachPlanConfig,
+  updateAdminClientPlanConfig,
+  updateAdminCoachPlanConfig,
+} from "./adminUsuariosApi.js";
+import { useAdminClientPlans, useAdminCoachPlans } from "./adminUsuariosQueries.js";
+import {
+  invalidateAfterClientPlansChange,
+  invalidateAfterCoachPlansChange,
+  queryKeys,
+} from "../queryClient.js";
+import { coachProfessionalPlanLabel } from "../professionalPlans.js";
+
+const COACH_CAPABILITIES = [
+  ["canUseGlobalMenuTemplates", "Biblioteca global de menús"],
+  ["canUseGlobalMealTemplates", "Biblioteca global de comidas"],
+  ["canUsePremiumMenuTemplates", "Menús premium"],
+  ["canUsePremiumMealTemplates", "Comidas premium"],
+];
+
+const CLIENT_LIMITS = [
+  ["maxMenus", "Menús propios", false],
+  ["maxDaysPerMenu", "Días por menú", false],
+  ["maxSavedMeals", "Comidas guardadas", false],
+  ["maxFavorites", "Favoritos", false],
+  ["trackingHistoryDays", "Días de historial", true],
+  ["goalChangesPerWindow", "Cambios de objetivos", true],
+  ["goalChangesWindowDays", "Ventana de cambios (días)", true],
 ];
 
 export default function AdminCoachPlanes() {
   const queryClient = useQueryClient();
-  const plansQuery = useAdminCoachPlans();
-  const plans = useMemo(
-    () => (Array.isArray(plansQuery.data) ? plansQuery.data : []),
-    [plansQuery.data]
-  );
-  const [selectedCode, setSelectedCode] = useState("trial_pro");
+  const coachPlansQuery = useAdminCoachPlans();
+  const clientPlansQuery = useAdminClientPlans();
+  const [scope, setScope] = useState("coaches");
+  const [selectedCodes, setSelectedCodes] = useState({ coaches: "trial_pro", clients: "free" });
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-  const loading = plansQuery.isLoading;
-  const queryErr = plansQuery.error?.message || "";
+  const [message, setMessage] = useState(null);
 
-  const selectedPlan = useMemo(
-    () => plans.find((plan) => plan.code === selectedCode) || plans[0] || null,
-    [plans, selectedCode]
+  const plans = useMemo(
+    () => scope === "coaches"
+      ? (Array.isArray(coachPlansQuery.data) ? coachPlansQuery.data : [])
+      : (Array.isArray(clientPlansQuery.data) ? clientPlansQuery.data : []),
+    [clientPlansQuery.data, coachPlansQuery.data, scope]
   );
+  const selectedCode = selectedCodes[scope];
+  const selectedPlan = plans.find((plan) => plan.code === selectedCode) || plans[0] || null;
+  const activeQuery = scope === "coaches" ? coachPlansQuery : clientPlansQuery;
 
   useEffect(() => {
-    if (selectedPlan) setDraft(clone(selectedPlan));
+    if (!selectedPlan) return;
+    setDraft(clone(selectedPlan));
+    setMessage(null);
   }, [selectedPlan]);
 
   useEffect(() => {
-    if (plans.length && !plans.find((plan) => plan.code === selectedCode)) {
-      setSelectedCode(plans[0].code);
-    }
-  }, [plans, selectedCode]);
+    if (!plans.length || plans.some((plan) => plan.code === selectedCode)) return;
+    setSelectedCodes((previous) => ({ ...previous, [scope]: plans[0].code }));
+  }, [plans, scope, selectedCode]);
 
-  function updatePlanCache(updated) {
-    queryClient.setQueryData(queryKeys.adminCoachPlans(), (prev) => {
-      const arr = Array.isArray(prev) ? prev : [];
-      return arr.map((plan) => (plan.code === updated.code ? updated : plan));
-    });
+  function selectPlan(code) {
+    setSelectedCodes((previous) => ({ ...previous, [scope]: code }));
   }
 
   function patchDraft(path, value) {
-    setDraft((prev) => {
-      const next = clone(prev);
+    setDraft((previous) => {
+      const next = clone(previous);
       let cursor = next;
-      for (let i = 0; i < path.length - 1; i += 1) {
-        cursor[path[i]] = cursor[path[i]] || {};
-        cursor = cursor[path[i]];
+      for (let index = 0; index < path.length - 1; index += 1) {
+        cursor[path[index]] = cursor[path[index]] || {};
+        cursor = cursor[path[index]];
       }
       cursor[path[path.length - 1]] = value;
       return next;
+    });
+  }
+
+  function updateCache(updated) {
+    const key = scope === "coaches" ? queryKeys.adminCoachPlans() : queryKeys.adminClientPlans();
+    queryClient.setQueryData(key, (previous) => {
+      const current = Array.isArray(previous) ? previous : [];
+      return current.map((plan) => plan.code === updated.code ? updated : plan);
     });
   }
 
@@ -106,35 +93,37 @@ export default function AdminCoachPlanes() {
     if (!draft?.code) return;
     try {
       setSaving(true);
-      setErr("");
-      setOk("");
-      const updated = await updateAdminCoachPlanConfig(draft.code, draft);
-      updatePlanCache(updated);
-      await invalidateAfterCoachPlansChange();
-      setOk("Plan guardado.");
-    } catch (e) {
-      setErr(e?.message || "No se pudo guardar el plan");
+      setMessage(null);
+      const updated = scope === "coaches"
+        ? await updateAdminCoachPlanConfig(draft.code, coachPayload(draft))
+        : await updateAdminClientPlanConfig(draft.code, clientPayload(draft));
+      updateCache(updated);
+      setDraft(clone(updated));
+      if (scope === "coaches") await invalidateAfterCoachPlansChange();
+      else await invalidateAfterClientPlansChange();
+      setMessage({ type: "ok", text: "Configuración guardada. Los usuarios sin override ya heredan estos valores." });
+    } catch (error) {
+      setMessage({ type: "error", text: error?.message || "No se pudo guardar el plan." });
     } finally {
       setSaving(false);
     }
   }
 
   async function reset() {
-    if (!draft?.code) return;
-    const okReset = window.confirm("Restaurar este plan a los valores base?");
-    if (!okReset) return;
-
+    if (!draft?.code || !window.confirm("¿Restaurar los valores seguros de este plan?")) return;
     try {
       setSaving(true);
-      setErr("");
-      setOk("");
-      const updated = await resetAdminCoachPlanConfig(draft.code);
-      updatePlanCache(updated);
+      setMessage(null);
+      const updated = scope === "coaches"
+        ? await resetAdminCoachPlanConfig(draft.code)
+        : await resetAdminClientPlanConfig(draft.code);
+      updateCache(updated);
       setDraft(clone(updated));
-      await invalidateAfterCoachPlansChange();
-      setOk("Plan restaurado.");
-    } catch (e) {
-      setErr(e?.message || "No se pudo restaurar el plan");
+      if (scope === "coaches") await invalidateAfterCoachPlansChange();
+      else await invalidateAfterClientPlansChange();
+      setMessage({ type: "ok", text: "Defaults restaurados." });
+    } catch (error) {
+      setMessage({ type: "error", text: error?.message || "No se pudo restaurar el plan." });
     } finally {
       setSaving(false);
     }
@@ -142,102 +131,66 @@ export default function AdminCoachPlanes() {
 
   return (
     <div className="acp-page">
-      <div className="acp-head">
+      <header className="acp-head">
         <div>
-          <h1>Planes de coaches</h1>
-          <p>Configura reglas base para Prueba Pro, Pro y VIP. Los overrides por coach se editan desde el detalle del coach.</p>
+          <h1>Configuración de planes</h1>
+          <p>Editá defaults globales sin mezclar planes personales, planes profesionales ni servicios coach-cliente.</p>
         </div>
-        <button className="acp-btn" onClick={() => plansQuery.refetch()} disabled={plansQuery.isFetching}>
-          {plansQuery.isFetching ? "Actualizando..." : "Recargar"}
+        <button className="acp-btn" type="button" onClick={() => activeQuery.refetch()} disabled={activeQuery.isFetching}>
+          {activeQuery.isFetching ? "Actualizando..." : "Recargar"}
         </button>
+      </header>
+
+      <div className="acp-scopeTabs" role="tablist" aria-label="Tipo de plan">
+        <button type="button" className={scope === "coaches" ? "active" : ""} onClick={() => setScope("coaches")}>Coaches</button>
+        <button type="button" className={scope === "clients" ? "active" : ""} onClick={() => setScope("clients")}>Clientes</button>
       </div>
 
-      {queryErr ? <div className="acp-alert error">{queryErr}</div> : null}
-      {err ? <div className="acp-alert error">{err}</div> : null}
-      {ok ? <div className="acp-alert ok">{ok}</div> : null}
+      {message ? <div className={`acp-alert ${message.type}`}>{message.text}</div> : null}
+      {activeQuery.error ? <div className="acp-alert error">{activeQuery.error.message}</div> : null}
 
-      <div className="acp-tabs">
+      <div className="acp-planTabs">
         {plans.map((plan) => (
           <button
             key={plan.code}
-            className={`acp-tab ${selectedCode === plan.code ? "active" : ""}`}
-            onClick={() => setSelectedCode(plan.code)}
             type="button"
+            className={selectedPlan?.code === plan.code ? "active" : ""}
+            onClick={() => selectPlan(plan.code)}
           >
-            {plan.name}
+            {scope === "coaches" ? coachProfessionalPlanLabel(plan.code) : plan.label}
           </button>
         ))}
       </div>
 
-      {loading ? (
-        <div className="acp-card">Cargando planes...</div>
+      {activeQuery.isLoading ? (
+        <div className="acp-card">Cargando configuración...</div>
       ) : draft ? (
-        <div className="acp-card">
-          <div className="acp-grid">
-            <label>
-              Nombre
-              <input className="acp-input" value={draft.name || ""} onChange={(e) => patchDraft(["name"], e.target.value)} />
-            </label>
-            <label>
-              Max clientes
-              <input
-                className="acp-input"
-                value={numToInput(draft.maxClients)}
-                onChange={(e) => patchDraft(["maxClients"], inputToNumOrNull(e.target.value) ?? 0)}
-              />
-            </label>
-            <label>
-              Duracion prueba (dias)
-              <input
-                className="acp-input"
-                value={draft.durationDays == null ? "" : String(draft.durationDays)}
-                onChange={(e) => patchDraft(["durationDays"], inputToNumOrNull(e.target.value))}
-                placeholder="Sin vencimiento"
-              />
-            </label>
+        <section className="acp-card">
+          <div className="acp-cardHead">
+            <div>
+              <span>{scope === "coaches" ? "Plan profesional del coach" : "Plan personal del cliente"}</span>
+              <h2>{scope === "coaches" ? coachProfessionalPlanLabel(draft.code) : draft.label}</h2>
+            </div>
+            <small>Los overrides individuales del coach no se pisan.</small>
           </div>
 
-          <div className="acp-sections">
-            {FEATURE_SECTIONS.map((section) => (
-              <div className="acp-section" key={section.key}>
-                <h2>{section.title}</h2>
-                <div className="acp-featureGrid">
-                  {section.fields.map(([field, label]) => (
-                    <label key={field} className="acp-check">
-                      <input
-                        type="checkbox"
-                        checked={!!draft?.features?.[section.key]?.[field]}
-                        onChange={(e) => patchDraft(["features", section.key, field], e.target.checked)}
-                      />
-                      {label}
-                    </label>
-                  ))}
-
-                  {section.limitField ? (
-                    <label>
-                      Limite plantillas
-                      <input
-                        className="acp-input"
-                        value={draft?.features?.[section.key]?.[section.limitField] == null ? "" : String(draft.features[section.key][section.limitField])}
-                        onChange={(e) => patchDraft(["features", section.key, section.limitField], inputToNumOrNull(e.target.value))}
-                        placeholder="Sin limite"
-                      />
-                    </label>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
+          {scope === "coaches" ? (
+            <CoachPlanForm draft={draft} patchDraft={patchDraft} />
+          ) : (
+            <ClientPlanForm draft={draft} patchDraft={patchDraft} />
+          )}
 
           <div className="acp-actions">
-            <button className="acp-btn gold" onClick={save} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar plan"}
+            <button className="acp-btn gold" type="button" onClick={save} disabled={saving}>
+              <Save size={16} aria-hidden="true" />
+              {saving ? "Guardando..." : "Guardar cambios"}
             </button>
-            <button className="acp-btn" onClick={reset} disabled={saving}>
-              Resetear plan
+            <button className="acp-btn" type="button" onClick={reset} disabled={saving}>
+              <RotateCcw size={16} aria-hidden="true" />
+              Restaurar defaults
             </button>
           </div>
-        </div>
+        </section>
       ) : (
         <div className="acp-card">No hay planes configurados.</div>
       )}
@@ -247,140 +200,103 @@ export default function AdminCoachPlanes() {
   );
 }
 
+function CoachPlanForm({ draft, patchDraft }) {
+  const menus = draft?.features?.menus || {};
+  return (
+    <>
+      <div className="acp-fieldGrid">
+        <NumberField label="Clientes activos" value={draft.maxClients} onChange={(value) => patchDraft(["maxClients"], value)} min={1} />
+        <NumberField label="Menús propios" value={draft.maxCoachOwnedMenus} onChange={(value) => patchDraft(["maxCoachOwnedMenus"], value)} />
+        <NumberField label="Comidas propias" value={draft.maxCoachOwnedMeals} onChange={(value) => patchDraft(["maxCoachOwnedMeals"], value)} />
+      </div>
+      <div className="acp-section">
+        <h3>Biblioteca profesional</h3>
+        <p>Estos permisos no habilitan IA ni cambian los paquetes service_pro/service_vip.</p>
+        <div className="acp-checkGrid">
+          {COACH_CAPABILITIES.map(([key, label]) => (
+            <label key={key} className="acp-check">
+              <input type="checkbox" checked={menus[key] === true} onChange={(event) => patchDraft(["features", "menus", key], event.target.checked)} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ClientPlanForm({ draft, patchDraft }) {
+  return (
+    <>
+      <div className="acp-fieldGrid">
+        {CLIENT_LIMITS.map(([key, label, nullable]) => (
+          <NumberField
+            key={key}
+            label={label}
+            value={draft?.limits?.[key]}
+            nullable={nullable}
+            min={key === "maxDaysPerMenu" || key.endsWith("Days") ? 1 : 0}
+            max={key === "maxDaysPerMenu" ? 7 : undefined}
+            onChange={(value) => patchDraft(["limits", key], value)}
+          />
+        ))}
+        <label className="acp-field">
+          <span>Acceso a biblioteca</span>
+          <select value={draft.libraryAccess || "basic"} onChange={(event) => patchDraft(["libraryAccess"], event.target.value)}>
+            <option value="basic">Básica</option>
+            <option value="global">Global</option>
+            <option value="premium">Premium</option>
+          </select>
+        </label>
+      </div>
+      <div className="acp-note">“Sin límite” se guarda como null. Las funciones automáticas continúan bloqueadas o coming_soon.</div>
+    </>
+  );
+}
+
+function NumberField({ label, value, onChange, nullable = false, min = 0, max }) {
+  return (
+    <label className="acp-field">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step="1"
+        value={value == null ? "" : value}
+        placeholder={nullable ? "Sin límite" : String(min)}
+        onChange={(event) => {
+          const raw = event.target.value;
+          onChange(raw === "" && nullable ? null : Math.max(min, Number.parseInt(raw || String(min), 10)));
+        }}
+      />
+    </label>
+  );
+}
+
+function coachPayload(draft) {
+  return {
+    maxClients: draft.maxClients,
+    maxCoachOwnedMenus: draft.maxCoachOwnedMenus,
+    maxCoachOwnedMeals: draft.maxCoachOwnedMeals,
+    features: {
+      menus: Object.fromEntries(COACH_CAPABILITIES.map(([key]) => [key, draft?.features?.menus?.[key] === true])),
+    },
+  };
+}
+
+function clientPayload(draft) {
+  return {
+    limits: Object.fromEntries(CLIENT_LIMITS.map(([key]) => [key, draft?.limits?.[key] ?? null])),
+    libraryAccess: draft.libraryAccess,
+  };
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value || {}));
 }
 
-function inputToNumOrNull(x) {
-  const s = String(x ?? "").replace(/[^\d]/g, "");
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-function numToInput(v) {
-  if (v == null) return "";
-  const n = Number(v);
-  return Number.isFinite(n) ? String(n) : "";
-}
-
 const styles = `
-.acp-page{
-  color:#eaeaea;
-}
-.acp-head{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:flex-start;
-  margin-bottom:14px;
-}
-.acp-head h1{
-  margin:0;
-  color:#f5d76e;
-}
-.acp-head p{
-  margin:6px 0 0;
-  color:#b8c0cc;
-  line-height:1.5;
-}
-.acp-tabs{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-bottom:14px;
-}
-.acp-tab,.acp-btn{
-  min-height:44px;
-  padding:0 14px;
-  border-radius:14px;
-  border:1px solid #2a3038;
-  background:#0d1117;
-  color:#edf2f7;
-  font-weight:900;
-  cursor:pointer;
-}
-.acp-tab.active,.acp-btn.gold{
-  border-color:rgba(245,215,110,.42);
-  background:rgba(245,215,110,.08);
-  color:#f5d76e;
-}
-.acp-card{
-  border:1px solid rgba(245,215,110,.12);
-  background:linear-gradient(180deg, rgba(12,14,19,.96), rgba(8,10,14,.98));
-  border-radius:22px;
-  padding:16px;
-}
-.acp-grid,.acp-featureGrid{
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0,1fr));
-  gap:12px;
-}
-.acp-input{
-  margin-top:8px;
-  width:100%;
-  min-height:44px;
-  border-radius:14px;
-  border:1px solid #2a313b;
-  background:#0b0f15;
-  color:#edf2f7;
-  padding:0 12px;
-  outline:none;
-}
-.acp-sections{
-  margin-top:14px;
-  display:grid;
-  gap:12px;
-}
-.acp-section{
-  border:1px solid rgba(255,255,255,.06);
-  background:#0f141b;
-  border-radius:18px;
-  padding:14px;
-}
-.acp-section h2{
-  margin:0 0 12px;
-  font-size:16px;
-  color:#f5d76e;
-}
-.acp-check{
-  min-height:44px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  font-weight:850;
-}
-.acp-actions{
-  margin-top:14px;
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-}
-.acp-alert{
-  margin-bottom:12px;
-  border-radius:14px;
-  padding:12px 14px;
-  font-weight:850;
-}
-.acp-alert.error{
-  border:1px solid rgba(255,80,80,.24);
-  background:rgba(255,80,80,.08);
-  color:#ffb9b9;
-}
-.acp-alert.ok{
-  border:1px solid rgba(80,220,140,.24);
-  background:rgba(80,220,140,.08);
-  color:#bdf4d0;
-}
-@media (max-width: 800px){
-  .acp-head{
-    flex-direction:column;
-  }
-  .acp-grid,.acp-featureGrid{
-    grid-template-columns:1fr;
-  }
-  .acp-btn,.acp-tab{
-    width:100%;
-  }
-}
+.acp-page{color:#edf2f7;max-width:1200px;margin:0 auto}.acp-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}.acp-head h1{margin:0;color:#f5d76e}.acp-head p{margin:7px 0 0;color:#aeb8c6;line-height:1.5;max-width:760px}.acp-scopeTabs,.acp-planTabs{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px}.acp-scopeTabs button,.acp-planTabs button,.acp-btn{min-height:44px;padding:0 16px;border:1px solid #2a313b;border-radius:13px;background:#0c1118;color:#eef2f7;font-weight:850;cursor:pointer}.acp-scopeTabs button.active,.acp-planTabs button.active,.acp-btn.gold{border-color:rgba(245,215,110,.5);background:rgba(245,215,110,.11);color:#f5d76e}.acp-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px}.acp-btn:disabled{opacity:.55;cursor:wait}.acp-card{border:1px solid rgba(245,215,110,.15);background:linear-gradient(180deg,rgba(13,17,23,.98),rgba(8,11,16,.98));border-radius:22px;padding:20px}.acp-cardHead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.acp-cardHead span{color:#f5d76e;font-size:12px;text-transform:uppercase;font-weight:900;letter-spacing:.08em}.acp-cardHead h2{margin:5px 0 0;font-size:26px}.acp-cardHead small{color:#9da8b6}.acp-fieldGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.acp-field{display:grid;gap:7px;color:#c7d0dc;font-weight:800}.acp-field input,.acp-field select{width:100%;min-height:46px;border:1px solid #2b3440;border-radius:13px;background:#090e14;color:#f4f7fa;padding:0 12px;font:inherit}.acp-section{margin-top:18px;border:1px solid rgba(255,255,255,.07);border-radius:17px;background:#0d131b;padding:16px}.acp-section h3{margin:0;color:#f5d76e}.acp-section p{color:#9da8b6;margin:6px 0 14px}.acp-checkGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.acp-check{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:#090e14}.acp-check input{accent-color:#d8b848}.acp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.acp-alert,.acp-note{padding:12px 14px;border-radius:13px;margin-bottom:14px;font-weight:750}.acp-alert.error{border:1px solid rgba(255,90,90,.3);background:rgba(255,70,70,.09);color:#ffc1c1}.acp-alert.ok{border:1px solid rgba(80,220,140,.28);background:rgba(60,210,130,.08);color:#bff2d2}.acp-note{margin:16px 0 0;border:1px solid rgba(245,215,110,.16);background:rgba(245,215,110,.05);color:#cbd4df}
+@media(max-width:800px){.acp-head,.acp-cardHead{flex-direction:column}.acp-fieldGrid,.acp-checkGrid{grid-template-columns:1fr}.acp-scopeTabs button,.acp-planTabs button,.acp-actions .acp-btn{flex:1}.acp-card{padding:15px}}
 `;

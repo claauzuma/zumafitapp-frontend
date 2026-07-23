@@ -8,6 +8,8 @@ export const STALE_TIMES = {
   adminUnassignedClients: 60 * 1000,
   adminCoachClients: 2 * 60 * 1000,
   adminCoachPlans: 5 * 60 * 1000,
+  adminClientPlans: 5 * 60 * 1000,
+  adminCoachPlanPreview: 30 * 1000,
   adminEffectiveCapabilities: 2 * 60 * 1000,
   adminDatabaseStats: 45 * 1000,
   professionalMe: 60 * 1000,
@@ -111,6 +113,15 @@ export const queryKeys = {
   adminUnassignedClients: (search = "") => ["admin", "unassignedClients", cleanText(search)],
   adminCoachClients: (coachId) => ["admin", "coachClients", cleanId(coachId)],
   adminCoachPlans: () => ["admin", "coachPlans"],
+  adminClientPlans: () => ["admin", "clientPlans"],
+  adminCoachPlanPreviewRoot: (coachId) => ["admin", "coachPlanPreview", cleanId(coachId)],
+  adminCoachPlanPreview: (coachId, plan, resetOverrides = false) => [
+    "admin",
+    "coachPlanPreview",
+    cleanId(coachId),
+    cleanText(plan),
+    !!resetOverrides,
+  ],
   adminEffectiveCapabilities: (coachId) => ["admin", "effectiveCapabilities", cleanId(coachId)],
   adminDatabaseStats: () => ["admin", "databaseStats"],
   adminCollectionDetail: (collectionName) => ["admin", "collection", cleanId(collectionName), "detail"],
@@ -242,6 +253,10 @@ export async function invalidateAdminCoachPlans() {
   await invalidate(queryKeys.adminCoachPlans());
 }
 
+export async function invalidateAdminClientPlans() {
+  await invalidate(queryKeys.adminClientPlans());
+}
+
 export async function invalidateCoachRelated(coachIds = []) {
   const unique = [...new Set(coachIds.map(cleanId).filter(Boolean))];
   await Promise.all([
@@ -322,6 +337,7 @@ export async function invalidateAfterCoachCapabilitiesChange(coachId, updatedCoa
   await Promise.all([
     id ? invalidate(queryKeys.adminUser(id)) : Promise.resolve(),
     id ? invalidate(queryKeys.adminEffectiveCapabilities(id)) : Promise.resolve(),
+    id ? invalidate(queryKeys.adminCoachPlanPreviewRoot(id)) : Promise.resolve(),
     id ? invalidate(queryKeys.adminCoachClients(id)) : Promise.resolve(),
     invalidate(queryKeys.adminCoachesRoot()),
     invalidate(queryKeys.adminUsersRoot()),
@@ -338,6 +354,15 @@ export async function invalidateAfterCoachPlansChange() {
     invalidate(["admin", "effectiveCapabilities"]),
     invalidate(queryKeys.professionalMe()),
     invalidate(queryKeys.professionalClients()),
+  ]);
+}
+
+export async function invalidateAfterClientPlansChange() {
+  await Promise.all([
+    invalidate(queryKeys.adminClientPlans()),
+    invalidate(queryKeys.adminUsersRoot()),
+    invalidate(queryKeys.authMe()),
+    invalidate(["client", "accessContext"]),
   ]);
 }
 

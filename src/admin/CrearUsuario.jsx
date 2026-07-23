@@ -2,17 +2,17 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api.js";
 import AppToast from "../ui/AppToast.jsx";
+import {
+  COACH_PROFESSIONAL_PLAN_OPTIONS,
+  coachProfessionalPlanLabel,
+} from "../professionalPlans.js";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin", emoji: "👑" },
   { value: "coach", label: "Coach", emoji: "🧠" },
 ];
 
-const PLAN_OPTIONS = [
-  { value: "trial_pro", label: "Prueba Pro" },
-  { value: "pro", label: "Pro" },
-  { value: "vip", label: "VIP" },
-];
+const PLAN_OPTIONS = COACH_PROFESSIONAL_PLAN_OPTIONS;
 
 export default function CrearUsuario() {
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ export default function CrearUsuario() {
     apellido: "",
     email: "",
     role: "coach",
-    plan: "trial_pro",
+    plan: "coach_initial",
     coachProfile: {
       specialties: {
         training: true,
@@ -288,7 +288,7 @@ export default function CrearUsuario() {
               {showPlan ? (
                 <div className="iu-block">
                   <div className="iu-blockHead">
-                    <h2 className="iu-h2">Plan</h2>
+                    <h2 className="iu-h2">Plan profesional del coach</h2>
                     <p className="iu-small">
                       Podés cambiarlo más adelante si querés.
                     </p>
@@ -363,7 +363,7 @@ export default function CrearUsuario() {
                 <span className="iu-tag">{selectedRole.label}</span>
                 {isCoach ? <span className="iu-tag">{specialtyLabel}</span> : null}
                 {showPlan ? (
-                  <span className="iu-tag">{form.plan.toUpperCase()}</span>
+                  <span className="iu-tag">{coachProfessionalPlanLabel(form.plan)}</span>
                 ) : null}
               </div>
             </div>

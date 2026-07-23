@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  CheckCircle2,
   Eye,
   FilePlus2,
   Flame,
@@ -240,6 +241,7 @@ function assignmentPlanningMeta(entry = {}) {
     "assignmentType",
     "dayKey",
     "targetCalories",
+    "targetMacros",
     "plannedCalories",
     "flexibleCalories",
     "flexibleMode",
@@ -890,7 +892,7 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
     <article className={`wmp-dayCard ${hasMenu ? "assigned" : "empty"} ${selected ? "selected" : ""}`} onClick={onSelect}>
       <header>
         <div className="wmp-dayIdentity">
-          <span className={`wmp-dayIcon ${hasMenu ? "assigned" : ""}`} aria-hidden="true">
+          <span className={`wmp-dayIcon ${hasMenu ? "assigned" : "empty"}`} aria-hidden="true">
             {hasMenu ? <Utensils size={18} strokeWidth={2.4} /> : <Search size={18} strokeWidth={2.4} />}
           </span>
           <div>
@@ -900,11 +902,27 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
             </span>
           </div>
         </div>
-        <span className={`wmp-status ${row.compatibility.tone}`}>{row.compatibility.label}</span>
+        {hasMenu ? (
+          <span className={`wmp-status ${row.compatibility.tone}`}>{row.compatibility.label}</span>
+        ) : (
+          <span className="wmp-status empty">
+            <AlertTriangle size={13} strokeWidth={2.6} aria-hidden="true" />
+            Sin asignar
+          </span>
+        )}
       </header>
 
       <div className="wmp-menuName">
-        {row.snapshot ? row.snapshot.name : "Sin menú principal"}
+        {row.snapshot ? row.snapshot.name : "Día sin menú"}
+      </div>
+
+      <div className={`wmp-assignmentState ${hasMenu ? "assigned" : "empty"}`}>
+        {hasMenu ? (
+          <CheckCircle2 size={15} strokeWidth={2.5} aria-hidden="true" />
+        ) : (
+          <AlertTriangle size={15} strokeWidth={2.5} aria-hidden="true" />
+        )}
+        <span>{hasMenu ? "Menú activo para este día" : "Planificación pendiente"}</span>
       </div>
 
       <div className="wmp-dayKpis">
@@ -913,9 +931,10 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
         <span>Menú {displayKcal(row.totals.kcal)}</span>
       </div>
 
-      <div className="wmp-targetLine">
-        <span>{row.snapshot ? `${row.snapshot.mealsCount || row.snapshot.meals?.length || 0} comidas` : "Elegí o creá un menú"}</span>
+      <div className={`wmp-targetLine ${hasMenu ? "" : "empty"}`}>
         {hasMenu ? (
+          <>
+            <span>{`${row.snapshot.mealsCount || row.snapshot.meals?.length || 0} comidas`}</span>
           <span className="wmp-altInline">
             <span>{alternativesCount ? `${alternativesCount} alternativas` : "Sin alternativas"}</span>
             <button
@@ -932,8 +951,9 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
               Alternativa
             </button>
           </span>
+          </>
         ) : (
-          <span>Sin alternativas</span>
+          <span className="wmp-emptyHint">Asigná un menú para cubrir la meta del día.</span>
         )}
       </div>
       <div className={`wmp-bar ${barTone}`} aria-label={`Progreso calórico ${Math.round(percent)}%`}>
@@ -944,30 +964,46 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
         <span>{formatSigned(row.compatibility.kcalDiff, " kcal")}</span>
       </div>
 
-      <div className="wmp-cardActions" onClick={(event) => event.stopPropagation()}>
-        <button type="button" className="wmp-iconBtn" onClick={row.snapshot ? onView : onChoose} title={row.snapshot ? "Ver detalle" : "Elegir menú"}>
-          {row.snapshot ? <Eye size={16} /> : <Search size={16} />}
-        </button>
-        <button
-          type="button"
-          className="wmp-iconBtn"
-          onClick={row.snapshot ? onEdit : onCreate}
-          disabled={!canCreate}
-          title={canCreate ? (row.snapshot ? "Editar menú" : "Crear menú") : "Tu plan no permite crear menús propios"}
-        >
-          {row.snapshot ? <Pencil size={16} /> : <FilePlus2 size={16} />}
-        </button>
-        {row.snapshot ? (
-          <>
-            <button type="button" className="wmp-iconBtn" onClick={onAlternative} title="Agregar alternativa">
-              <Plus size={16} />
-            </button>
-            <button type="button" className="wmp-iconBtn danger" onClick={onClear} disabled={busy} title="Quitar menú">
-              <Trash2 size={16} />
-            </button>
-          </>
-        ) : null}
-      </div>
+      {hasMenu ? (
+        <div className="wmp-cardActions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="wmp-iconBtn" onClick={onView} title="Ver detalle" aria-label={`Ver detalle del menú de ${row.day.label}`}>
+            <Eye size={16} />
+          </button>
+          <button
+            type="button"
+            className="wmp-iconBtn"
+            onClick={onEdit}
+            disabled={!canCreate}
+            title={canCreate ? "Editar menú" : "Tu plan no permite crear menús propios"}
+            aria-label={`Editar el menú de ${row.day.label}`}
+          >
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="wmp-iconBtn" onClick={onAlternative} title="Agregar alternativa" aria-label={`Agregar alternativa para ${row.day.label}`}>
+            <Plus size={16} />
+          </button>
+          <button type="button" className="wmp-iconBtn danger" onClick={onClear} disabled={busy} title="Quitar menú" aria-label={`Quitar el menú de ${row.day.label}`}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ) : (
+        <div className="wmp-emptyActions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="wmp-emptyAction primary" onClick={onChoose}>
+            <Search size={16} aria-hidden="true" />
+            Elegir menú
+          </button>
+          <button
+            type="button"
+            className="wmp-emptyAction"
+            onClick={onCreate}
+            disabled={!canCreate}
+            title={canCreate ? "Crear menú" : "Tu plan no permite crear menús propios"}
+          >
+            <FilePlus2 size={16} aria-hidden="true" />
+            Crear propio
+          </button>
+        </div>
+      )}
     </article>
   );
 }

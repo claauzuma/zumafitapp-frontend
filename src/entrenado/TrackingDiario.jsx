@@ -1,15 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
-  Bookmark,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  ClipboardList,
   Crosshair,
   Flag,
   Loader2,
@@ -18,7 +17,6 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
-  Star,
   Sun,
   Sunrise,
   Trash2,
@@ -112,6 +110,7 @@ export default function TrackingDiario() {
   const objective = tracking.objetivo || null;
   const remaining = remainingTotals(objective, totals);
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
+  const canAutoCompleteRemainingMeals = capabilitiesQuery.data?.canAutoCompleteRemainingMeals === true;
   const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
   const historyOldestDate = useMemo(
     () => Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
@@ -327,9 +326,13 @@ export default function TrackingDiario() {
     setToast({ type: "success", message: "Comida vaciada." });
   }
 
-  function persistMealsConfig(nextMeals, successMessage = "Cambios guardados.") {
+  function persistMealsConfig(nextMeals, successMessage = "Cambios guardados.", options = {}) {
     updateMealsMutation.mutate(
-      { date, mealsConfig: toBackendMealsConfig(nextMeals) },
+      {
+        date,
+        mealsConfig: toBackendMealsConfig(nextMeals),
+        ...(options.operation ? { operation: options.operation } : {}),
+      },
       {
         onSuccess: () => setToast({ type: "success", message: successMessage }),
         onError: (error) => setToast({ type: "error", message: error?.message || "No se pudo guardar la comida." }),
@@ -392,6 +395,7 @@ export default function TrackingDiario() {
   }
 
   function calculateRemainingTargets() {
+    if (!canAutoCompleteRemainingMeals) return;
     if (!objective) {
       setToast({ type: "warning", message: "No hay una meta diaria para calcular el restante." });
       return;
@@ -420,13 +424,9 @@ export default function TrackingDiario() {
       next,
       targetMeals.length === 1
         ? `Restante asignado a ${targetMeals[0].label}.`
-        : `Restante distribuido en ${targetMeals.length} comidas.`
+        : `Restante distribuido en ${targetMeals.length} comidas.`,
+      { operation: "auto_complete_remaining_meals" }
     );
-  }
-
-  function mealMenuFeedback(label) {
-    setOpenMealMenu("");
-    setToast({ type: "info", message: `${label} va a estar disponible desde el flujo de comidas guardadas.` });
   }
 
   return (
@@ -472,7 +472,7 @@ export default function TrackingDiario() {
           expanded={isDailySummaryExpanded}
           onToggle={() => setIsDailySummaryExpanded((current) => !current)}
           menuTotals={menuConsumedTotals}
-          objective={objective || emptyTotals()}
+          objective={objective}
           remaining={remaining || emptyTotals()}
           totals={totals}
         />
@@ -481,12 +481,19 @@ export default function TrackingDiario() {
           type="button"
           className="td-calcRemainingBtn"
           onClick={calculateRemainingTargets}
-          disabled={updateMealsMutation.isPending}
+          disabled={!canAutoCompleteRemainingMeals || !objective || updateMealsMutation.isPending}
+          title={!canAutoCompleteRemainingMeals ? "Disponible en Pro" : !objective ? "Configurá tus objetivos" : undefined}
         >
           <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
           <span>
             <strong>Distribuir restante</strong>
-            <small>Repartir la meta restante entre comidas pendientes</small>
+            <small>
+              {!canAutoCompleteRemainingMeals
+                ? "Disponible en Pro"
+                : !objective
+                  ? "Configurá tus objetivos para calcular el restante"
+                  : "Repartir la meta restante entre comidas pendientes"}
+            </small>
           </span>
         </button>
 
@@ -533,9 +540,6 @@ export default function TrackingDiario() {
                       </button>
                       {mealMenuOpen ? (
                         <MealOptionsMenu
-                          onSaveMeal={() => mealMenuFeedback("Guardar como comida")}
-                          onFavorite={() => mealMenuFeedback("Guardar como favorita")}
-                          onUseSaved={() => mealMenuFeedback("Usar comida guardada")}
                           hasTarget={mealHasTarget}
                           onSetGoal={() => openMealGoal(meal)}
                           onRemoveGoal={() => removeMealGoal(meal.id)}
@@ -790,9 +794,6 @@ function MealTypeBadge({ type = "" }) {
 
 function MealOptionsMenu({
   hasTarget,
-  onSaveMeal,
-  onFavorite,
-  onUseSaved,
   onSetGoal,
   onRemoveGoal,
   onClear,
@@ -800,18 +801,6 @@ function MealOptionsMenu({
 }) {
   return (
     <div className="td-mealMenu" role="menu">
-      <button type="button" onClick={onSaveMeal} role="menuitem">
-        <Bookmark size={20} strokeWidth={2.2} aria-hidden="true" />
-        <span>Guardar como comida</span>
-      </button>
-      <button type="button" onClick={onFavorite} role="menuitem">
-        <Star size={20} strokeWidth={2.2} aria-hidden="true" />
-        <span>Guardar como favorita</span>
-      </button>
-      <button type="button" onClick={onUseSaved} role="menuitem">
-        <ClipboardList size={20} strokeWidth={2.2} aria-hidden="true" />
-        <span>Usar comida guardada</span>
-      </button>
       <button type="button" onClick={onSetGoal} role="menuitem">
         <Flag size={20} strokeWidth={2.2} aria-hidden="true" />
         <span>{hasTarget ? "Editar meta de esta comida" : "Definir meta de esta comida"}</span>
@@ -1005,6 +994,21 @@ function FoodLogThumb({ item = {} }) {
 }
 
 function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), objective, totals, remaining }) {
+  if (!objective) {
+    return (
+      <section className="td-objectivePending" aria-label="Meta diaria pendiente">
+        <span className="td-actionIcon">
+          <Flag size={20} strokeWidth={2.2} aria-hidden="true" />
+        </span>
+        <div>
+          <strong>Meta diaria pendiente</strong>
+          <p>Configurá tus objetivos para ver kcal y macros del día.</p>
+        </div>
+        <Link to="/app/objetivos">Configurar objetivos</Link>
+      </section>
+    );
+  }
+
   const target = objective || emptyTotals();
   const consumed = totals || emptyTotals();
   const rest = remaining || emptyTotals();

@@ -22,7 +22,7 @@ import {
   deleteAdminCoachOverrides,
   updateAdminCoachProfile,
 } from "./adminUsuariosApi.js";
-import { useAdminCoachClients } from "./adminUsuariosQueries.js";
+import { useAdminCoachClients, useAdminCoachPlanPreview } from "./adminUsuariosQueries.js";
 import { startAdminImpersonation } from "../impersonationApi.js";
 import {
   STALE_TIMES,
@@ -32,13 +32,18 @@ import {
   invalidateAfterUnassignCoach,
   queryKeys,
 } from "../queryClient.js";
+import {
+  COACH_PROFESSIONAL_PLAN_OPTIONS,
+  clientPlanLabel,
+  coachProfessionalPlanFromUser,
+  coachProfessionalPlanLabel,
+  coachProfessionalPlanSummary,
+  coachTrialState,
+  normalizeCoachProfessionalPlan,
+} from "../professionalPlans.js";
 import "./adminUsuarioCoach.css";
 
-const PLAN_OPTIONS = [
-  { value: "trial_pro", label: "Prueba Pro" },
-  { value: "pro", label: "Pro" },
-  { value: "vip", label: "VIP" },
-];
+const PLAN_OPTIONS = COACH_PROFESSIONAL_PLAN_OPTIONS;
 
 const SPECIALTY_OPTIONS = [
   {
@@ -121,6 +126,10 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
   const [overrideDraft, setOverrideDraft] = useState(() => normalizeOverrides(user?.coachOverrides));
   const [maxMode, setMaxMode] = useState(user?.coachOverrides?.maxClients != null ? "custom" : "plan");
   const [customMaxClients, setCustomMaxClients] = useState(numToInput(user?.coachOverrides?.maxClients));
+  const [menuLimitMode, setMenuLimitMode] = useState(user?.coachOverrides?.maxCoachOwnedMenus != null ? "custom" : "plan");
+  const [customMaxMenus, setCustomMaxMenus] = useState(numToInput(user?.coachOverrides?.maxCoachOwnedMenus));
+  const [mealLimitMode, setMealLimitMode] = useState(user?.coachOverrides?.maxCoachOwnedMeals != null ? "custom" : "plan");
+  const [customMaxMeals, setCustomMaxMeals] = useState(numToInput(user?.coachOverrides?.maxCoachOwnedMeals));
   const [trialEndsAt, setTrialEndsAt] = useState(dateInput(user?.coachOverrides?.trialEndsAt));
 
   const [specialtyDraft, setSpecialtyDraft] = useState(() => getSpecialtyValue(user));
@@ -140,12 +149,45 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
   const specialties = user?.coachProfile?.specialties || {};
   const currentClients = Number(effective?.currentClients ?? clients.length ?? 0);
   const maxClients = effective?.maxClients ?? "sin limite";
+  const currentCoachOwnedMenus = Number(effective?.usage?.currentCoachOwnedMenus || 0);
+  const currentCoachOwnedMeals = Number(effective?.usage?.currentCoachOwnedMeals || 0);
+  const maxCoachOwnedMenus = Number(effective?.limits?.maxCoachOwnedMenus || 0);
+  const maxCoachOwnedMeals = Number(effective?.limits?.maxCoachOwnedMeals || 0);
+  const trial = coachTrialState(user);
+  const savedPlan = getPlanCode(user);
+  const needsCanonicalPlan = !normalizeCoachProfessionalPlan(user?.coachSubscription?.plan);
+  const planSelectionChanged = draftPlan !== savedPlan;
+  const resetOverridesChanged = !!effective?.usesOverrides && resetOverridesOnPlanChange;
+  const hasPendingPlanChanges = planSelectionChanged || needsCanonicalPlan || resetOverridesChanged;
+  const coachPlanPreviewQuery = useAdminCoachPlanPreview(
+    user?.id,
+    draftPlan,
+    resetOverridesOnPlanChange,
+    { enabled: activeTab === "plan" }
+  );
+  const planPreview = coachPlanPreviewQuery.data || null;
+  const planPreviewLoading = coachPlanPreviewQuery.isLoading || coachPlanPreviewQuery.isFetching;
+  const planPreviewFailed = coachPlanPreviewQuery.isError;
+  const downgradeBlocked = planPreview?.limitExceeded === true;
+  const savePlanLabel = savingPlan
+    ? "Guardando..."
+    : !hasPendingPlanChanges
+      ? "Sin cambios"
+      : planSelectionChanged
+        ? `Guardar cambio a ${coachProfessionalPlanLabel(draftPlan)}`
+        : needsCanonicalPlan
+          ? `Guardar plan ${coachProfessionalPlanLabel(draftPlan)}`
+          : "Guardar configuración";
 
   useEffect(() => {
     setDraftPlan(getPlanCode(user));
     setOverrideDraft(normalizeOverrides(user?.coachOverrides));
     setMaxMode(user?.coachOverrides?.maxClients != null ? "custom" : "plan");
     setCustomMaxClients(numToInput(user?.coachOverrides?.maxClients));
+    setMenuLimitMode(user?.coachOverrides?.maxCoachOwnedMenus != null ? "custom" : "plan");
+    setCustomMaxMenus(numToInput(user?.coachOverrides?.maxCoachOwnedMenus));
+    setMealLimitMode(user?.coachOverrides?.maxCoachOwnedMeals != null ? "custom" : "plan");
+    setCustomMaxMeals(numToInput(user?.coachOverrides?.maxCoachOwnedMeals));
     setTrialEndsAt(dateInput(user?.coachOverrides?.trialEndsAt));
     setSpecialtyDraft(getSpecialtyValue(user));
   }, [user]);
@@ -157,7 +199,17 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
   }
 
   async function handleSavePlan() {
-    if (draftPlan === getPlanCode(user) && !resetOverridesOnPlanChange) return;
+    if (!hasPendingPlanChanges) return;
+    if (!planPreview || planPreviewLoading || planPreviewFailed) {
+      setErr("Esperá a que termine la validación del plan antes de guardar.");
+      return;
+    }
+    if (downgradeBlocked) {
+      setErr(
+        `No se puede guardar ${coachProfessionalPlanLabel(draftPlan)}: ${formatLimitViolations(planPreview.violations)}`
+      );
+      return;
+    }
 
     try {
       setSavingPlan(true);
@@ -185,6 +237,8 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       const payload = normalizeOverrides({
         ...overrideDraft,
         maxClients: maxMode === "custom" ? inputToNumOrNull(customMaxClients) : null,
+        maxCoachOwnedMenus: menuLimitMode === "custom" ? inputToNumOrNull(customMaxMenus) : null,
+        maxCoachOwnedMeals: mealLimitMode === "custom" ? inputToNumOrNull(customMaxMeals) : null,
         trialEndsAt: trialEndsAt ? new Date(`${trialEndsAt}T23:59:59`).toISOString() : null,
       });
 
@@ -193,6 +247,57 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
       await invalidateAfterCoachCapabilitiesChange(user.id, updated);
     } catch (e) {
       setErr(e?.message || "No se pudieron guardar los permisos personalizados");
+    } finally {
+      setSavingPermissions(false);
+    }
+  }
+
+  async function handleSaveLimits() {
+    if (planSelectionChanged) {
+      setErr("Guardá primero el cambio de plan para calcular y aplicar los overrides sobre el plan correcto.");
+      return;
+    }
+    const emptyCustom = [
+      [maxMode, customMaxClients, "clientes activos"],
+      [menuLimitMode, customMaxMenus, "menús propios"],
+      [mealLimitMode, customMaxMeals, "comidas propias"],
+    ].find(([mode, value]) => mode === "custom" && String(value || "").trim() === "");
+    if (emptyCustom) {
+      setErr(`Ingresá un límite personalizado para ${emptyCustom[2]}.`);
+      return;
+    }
+    try {
+      setSavingPermissions(true);
+      setErr("");
+      const updated = await updateAdminCoachOverrides(user.id, {
+        maxClients: maxMode === "custom" ? inputToNumOrNull(customMaxClients) : null,
+        maxCoachOwnedMenus: menuLimitMode === "custom" ? inputToNumOrNull(customMaxMenus) : null,
+        maxCoachOwnedMeals: mealLimitMode === "custom" ? inputToNumOrNull(customMaxMeals) : null,
+      });
+      onUserChange?.(updated);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
+    } catch (e) {
+      setErr(e?.message || "No se pudieron guardar los límites individuales");
+    } finally {
+      setSavingPermissions(false);
+    }
+  }
+
+  async function handleResetLimits() {
+    const ok = window.confirm("¿Restaurar los tres límites al default global del plan? Los permisos personalizados se conservan.");
+    if (!ok) return;
+    try {
+      setSavingPermissions(true);
+      setErr("");
+      const updated = await updateAdminCoachOverrides(user.id, {
+        maxClients: null,
+        maxCoachOwnedMenus: null,
+        maxCoachOwnedMeals: null,
+      });
+      onUserChange?.(updated);
+      await invalidateAfterCoachCapabilitiesChange(user.id, updated);
+    } catch (e) {
+      setErr(e?.message || "No se pudieron restaurar los límites del plan");
     } finally {
       setSavingPermissions(false);
     }
@@ -393,11 +498,10 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
     });
   }, [clients, clientsSearch]);
 
-  const currentPlanChanged = draftPlan !== getPlanCode(user);
   const tabs = [
     { key: "resumen", label: "Resumen" },
     { key: "clientes", label: "Clientes" },
-    { key: "plan", label: "Plan y limites" },
+    { key: "plan", label: "Plan y límites" },
     { key: "permisos", label: "Permisos" },
     { key: "cuenta", label: "Cuenta" },
   ];
@@ -430,7 +534,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
             <div className="auco-infoGrid">
               <Info label="Especialidad" value={specialtyLabel(user)} />
-              <Info label="Plan" value={effective?.planName || planLabel(user?.plan)} />
+              <Info label="Plan profesional" value={coachProfessionalPlanLabel(getPlanCode(user))} />
               <Info label="Estado" value={user?.estado || "activo"} />
               <Info label="Ultimo acceso" value={dateLabel(user?.lastLoginAt || user?.lastActivityAt)} />
               <Info label="Clientes" value={`${currentClients} / ${maxClients}`} />
@@ -439,12 +543,8 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                 value={effective?.usesOverrides ? "Personalizados" : "Heredados del plan"}
               />
               <Info
-                label="Prueba"
-                value={
-                  getPlanCode(user) === "trial_pro"
-                    ? `${effective?.isTrialExpired ? "Vencida" : "Activa"} - ${dateLabel(effective?.trialEndsAt)}`
-                    : "No aplica"
-                }
+                label="Beneficio de prueba"
+                value={trial.isTrial ? `${trial.expired ? "Vencida" : "Activa"} - ${dateLabel(trial.endsAt)}` : "No aplica"}
               />
             </div>
           </div>
@@ -524,7 +624,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                       <div className="auco-clientMeta">
                         <span className="auco-chip">Objetivo: {goalLabel(client?.goal?.type)}</span>
                         <span className="auco-chip">Kcal: {fmtNumOrDash(client?.metasActuales?.kcal)}</span>
-                        <span className="auco-chip">Plan: {planLabel(client?.plan)}</span>
+                        <span className="auco-chip">Plan cliente: {clientPlanLabel(client?.plan)}</span>
                         <span className="auco-chip">Estado: {client?.estado || "activo"}</span>
                       </div>
                     </div>
@@ -562,9 +662,9 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
 
       {activeTab === "plan" && (
         <div className="auco-card">
-          <div className="auco-title">Plan y limites</div>
+          <div className="auco-title">Plan profesional del coach</div>
           <div className="auco-sub">
-            Seleccionar un plan no guarda cambios hasta tocar Guardar plan.
+            Define el acceso profesional del coach. No modifica planes personales de clientes ni paquetes de servicio coach-cliente.
           </div>
 
           <div className="auco-planRow">
@@ -580,13 +680,76 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
             ))}
           </div>
 
-          <div className="auco-infoGrid">
-            <Info label="Plan guardado" value={effective?.planName || planLabel(user?.plan)} />
-            <Info label="Plan seleccionado" value={planLabel(draftPlan)} />
-            <Info label="Clientes actuales" value={currentClients} />
-            <Info label="Limite efectivo" value={maxClients} />
-            <Info label="Prueba vence" value={dateLabel(effective?.trialEndsAt)} />
-            <Info label="Estado de prueba" value={effective?.isTrialExpired ? "Vencida" : "Sin vencer"} />
+          <div className={`auco-planChange ${hasPendingPlanChanges ? "pending" : "saved"}`}>
+            {planSelectionChanged
+              ? `Cambio sin guardar: ${coachProfessionalPlanLabel(savedPlan)} → ${coachProfessionalPlanLabel(draftPlan)}`
+              : needsCanonicalPlan
+                ? "Registro legacy: al guardar se completará el plan profesional canónico."
+                : resetOverridesChanged
+                  ? "Cambio sin guardar: se restaurarán los permisos personalizados."
+                  : "Sin cambios pendientes."}
+          </div>
+
+          <div className="auco-planStatusGrid">
+            <section className="auco-planPanel">
+              <div className="auco-kicker">Estado actual guardado</div>
+              <h3 className="auco-planPanelTitle">
+                Plan profesional actual: {coachProfessionalPlanLabel(savedPlan)}
+              </h3>
+              <p className="auco-planDescription">{coachProfessionalPlanSummary(savedPlan)}</p>
+              <div className="auco-planMetrics">
+                <PlanMetric label="Clientes" value={`${currentClients} / ${formatLimit(maxClients)}`} />
+                <PlanMetric label="Menús propios" value={`${currentCoachOwnedMenus} / ${formatLimit(maxCoachOwnedMenus)}`} />
+                <PlanMetric label="Comidas propias" value={`${currentCoachOwnedMeals} / ${formatLimit(maxCoachOwnedMeals)}`} />
+                <PlanMetric
+                  label="Beneficio de prueba"
+                  value={trial.isTrial ? (trial.expired ? "Vencido" : "Activo") : "No aplica"}
+                />
+                <PlanMetric label="Prueba vence" value={trial.isTrial ? dateLabel(trial.endsAt) : "-"} />
+              </div>
+            </section>
+
+            <section className="auco-planPanel preview">
+              <div className="auco-kicker">Preview al guardar</div>
+              <h3 className="auco-planPanelTitle">Plan seleccionado: {coachProfessionalPlanLabel(draftPlan)}</h3>
+              <p className="auco-planDescription">{coachProfessionalPlanSummary(draftPlan)}</p>
+
+              {planPreviewLoading && !planPreview ? (
+                <div className="auco-planPreviewState">Calculando permisos y límite efectivos...</div>
+              ) : planPreviewFailed ? (
+                <div className="auco-planPreviewState is-error">
+                  No se pudo validar el plan seleccionado. Reintentá antes de guardar.
+                </div>
+              ) : planPreview ? (
+                <>
+                  <div className="auco-planMetrics compact">
+                    <PlanMetric label="Clientes" value={`${planPreview.currentClients} / ${formatLimit(planPreview.maxClients)}`} />
+                    <PlanMetric label="Menús propios" value={`${planPreview.currentCoachOwnedMenus} / ${formatLimit(planPreview.maxCoachOwnedMenus)}`} />
+                    <PlanMetric label="Comidas propias" value={`${planPreview.currentCoachOwnedMeals} / ${formatLimit(planPreview.maxCoachOwnedMeals)}`} />
+                  </div>
+                  <div className="auco-capabilityList" aria-label="Permisos efectivos al guardar">
+                    <CapabilityPreviewRow label="Crear menús propios" enabled={planPreview.libraryCapabilities?.canCreateCoachMenus} />
+                    <CapabilityPreviewRow label="Crear comidas propias" enabled={planPreview.libraryCapabilities?.canCreateCoachMeals} />
+                    <CapabilityPreviewRow
+                      label="Biblioteca global ZumaFit"
+                      enabled={
+                        planPreview.libraryCapabilities?.canUseGlobalMenuTemplates ||
+                        planPreview.libraryCapabilities?.canUseGlobalMealTemplates
+                      }
+                    />
+                    <CapabilityPreviewRow
+                      label="Plantillas premium"
+                      enabled={
+                        planPreview.libraryCapabilities?.canUsePremiumMenuTemplates ||
+                        planPreview.libraryCapabilities?.canUsePremiumMealTemplates
+                      }
+                    />
+                    <CapabilityPreviewRow label="Duplicar plantillas globales" enabled={planPreview.libraryCapabilities?.canDuplicateGlobalTemplates} />
+                    <CapabilityPreviewRow label="Asignar plantillas globales" enabled={planPreview.libraryCapabilities?.canAssignGlobalTemplates} />
+                  </div>
+                </>
+              ) : null}
+            </section>
           </div>
 
           {effective?.usesOverrides ? (
@@ -600,11 +763,69 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
             </label>
           ) : null}
 
-          <div className="auco-note">
-            {effective?.usesOverrides
-              ? "Este coach tiene overrides. Si no los restauras, se mantienen y pisan solo los valores personalizados."
-              : "Este coach hereda los permisos del plan."}
-            {currentPlanChanged ? " Hay un cambio de plan pendiente." : ""}
+          {planPreview?.usesOverrides && !resetOverridesOnPlanChange ? (
+            <div className="auco-note">
+              El preview conserva los permisos personalizados actuales. Esos valores pueden modificar el preset del plan seleccionado.
+            </div>
+          ) : null}
+
+          {downgradeBlocked ? (
+            <div className="auco-planAlert danger" role="alert">
+              No se puede guardar {coachProfessionalPlanLabel(draftPlan)}. {formatLimitViolations(planPreview.violations)}
+            </div>
+          ) : hasPendingPlanChanges && planPreview ? (
+            <div className="auco-planAlert warning">
+              Este cambio actualizará el plan profesional y sus permisos efectivos. No modifica el plan personal de ningún cliente.
+            </div>
+          ) : null}
+
+          <div className="auco-box">
+            <div className="auco-sectionHead">
+              <div>
+                <div className="auco-kicker">Límites individuales del coach</div>
+                <div className="auco-sectionHint">Heredar usa el default global del plan. Personalizar afecta únicamente a este coach.</div>
+              </div>
+            </div>
+            <div className="auco-permissionGrid">
+              <LimitOverrideControl
+                label="Clientes activos"
+                current={currentClients}
+                planDefault={planPreview?.planDefaults?.maxActiveClients}
+                mode={maxMode}
+                value={customMaxClients}
+                onModeChange={setMaxMode}
+                onValueChange={setCustomMaxClients}
+                minimum={1}
+              />
+              <LimitOverrideControl
+                label="Menús propios"
+                current={currentCoachOwnedMenus}
+                planDefault={planPreview?.planDefaults?.maxCoachOwnedMenus}
+                mode={menuLimitMode}
+                value={customMaxMenus}
+                onModeChange={setMenuLimitMode}
+                onValueChange={setCustomMaxMenus}
+              />
+              <LimitOverrideControl
+                label="Comidas propias"
+                current={currentCoachOwnedMeals}
+                planDefault={planPreview?.planDefaults?.maxCoachOwnedMeals}
+                mode={mealLimitMode}
+                value={customMaxMeals}
+                onModeChange={setMealLimitMode}
+                onValueChange={setCustomMaxMeals}
+              />
+            </div>
+            <div className="auco-actions">
+              <button type="button" className="auco-btn auco-btnGold" onClick={handleSaveLimits} disabled={savingPermissions || planSelectionChanged}>
+                <Save size={16} strokeWidth={2.2} aria-hidden="true" />
+                {savingPermissions ? "Guardando..." : "Guardar límites individuales"}
+              </button>
+              <button type="button" className="auco-btn" onClick={handleResetLimits} disabled={savingPermissions || planSelectionChanged}>
+                <RefreshCw size={16} strokeWidth={2.2} aria-hidden="true" />
+                Restaurar límites del plan
+              </button>
+            </div>
           </div>
 
           <div className="auco-actions">
@@ -612,10 +833,17 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
               type="button"
               className="auco-btn auco-btnGold"
               onClick={handleSavePlan}
-              disabled={savingPlan || (!currentPlanChanged && !resetOverridesOnPlanChange)}
+              disabled={
+                savingPlan ||
+                planPreviewLoading ||
+                planPreviewFailed ||
+                !planPreview ||
+                !hasPendingPlanChanges ||
+                downgradeBlocked
+              }
             >
               <Save size={16} strokeWidth={2.2} aria-hidden="true" />
-              {savingPlan ? "Guardando..." : "Guardar plan"}
+              {savePlanLabel}
             </button>
           </div>
         </div>
@@ -648,7 +876,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
             </div>
 
             <div className="auco-box">
-              <div className="auco-kicker">Vencimiento de prueba</div>
+              <div className="auco-kicker">Vencimiento del beneficio de prueba</div>
               <div className="auco-inlineControls">
                 <input
                   className="auco-input compact"
@@ -660,6 +888,7 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
                   Heredar
                 </button>
               </div>
+              <div className="auco-sub">Solo se aplica cuando subscription.status indica una prueba real.</div>
             </div>
 
             {PERMISSION_SECTIONS.map((section) => {
@@ -842,6 +1071,68 @@ function Info({ label, value }) {
   );
 }
 
+function PlanMetric({ label, value }) {
+  return (
+    <div className="auco-planMetric">
+      <span>{label}</span>
+      <strong>{value ?? "-"}</strong>
+    </div>
+  );
+}
+
+function LimitOverrideControl({
+  label,
+  current,
+  planDefault,
+  mode,
+  value,
+  onModeChange,
+  onValueChange,
+  minimum = 0,
+}) {
+  return (
+    <label className="auco-permissionControl">
+      <span>{label}</span>
+      <small>Uso actual: {current} · Default del plan: {formatLimit(planDefault)}</small>
+      <select className="auco-select" value={mode} onChange={(event) => onModeChange(event.target.value)}>
+        <option value="plan">Heredado del plan</option>
+        <option value="custom">Personalizado</option>
+      </select>
+      {mode === "custom" ? (
+        <input
+          className="auco-input compact"
+          inputMode="numeric"
+          value={value}
+          onChange={(event) => onValueChange(sanitizeNumInput(event.target.value))}
+          placeholder={`Mínimo ${minimum}`}
+        />
+      ) : null}
+    </label>
+  );
+}
+
+function CapabilityPreviewRow({ label, enabled }) {
+  return (
+    <div className="auco-capabilityRow">
+      <span>{label}</span>
+      <span className={`auco-capabilityState ${enabled ? "is-on" : "is-off"}`}>{enabled ? "Incluido" : "No incluido"}</span>
+    </div>
+  );
+}
+
+function formatLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit < 0) return "Sin límite";
+  return String(limit);
+}
+
+function formatLimitViolations(violations = []) {
+  if (!Array.isArray(violations) || !violations.length) return "El uso actual supera los límites resultantes.";
+  return violations
+    .map((violation) => `${violation.current} ${violation.label || "elementos"} para un límite de ${violation.limit}`)
+    .join("; ");
+}
+
 function getAvatarUrl(user) {
   return (
     user?.profile?.avatarUrl ||
@@ -897,21 +1188,8 @@ function fmtNumOrDash(v) {
   return Number.isFinite(n) ? String(n) : "-";
 }
 
-function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  if (p === "free" || p === "trial_pro" || p === "trial") return "Prueba Pro";
-  return "Prueba Pro";
-}
-
 function getPlanCode(user) {
-  const p = String(user?.effectiveCapabilities?.planCode || user?.plan || "").toLowerCase();
-  if (p === "premium2") return "vip";
-  if (p === "premium") return "pro";
-  if (p === "free" || p === "trial" || p === "trialpro") return "trial_pro";
-  if (["trial_pro", "pro", "vip"].includes(p)) return p;
-  return "trial_pro";
+  return coachProfessionalPlanFromUser(user);
 }
 
 function dateLabel(value) {
@@ -953,6 +1231,8 @@ function numToInput(v) {
 function normalizeOverrides(raw = {}) {
   const base = {
     maxClients: null,
+    maxCoachOwnedMenus: null,
+    maxCoachOwnedMeals: null,
     trialEndsAt: null,
     features: {
       routines: {

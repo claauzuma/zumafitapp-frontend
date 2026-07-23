@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Activity,
+  AlertTriangle,
   Apple,
   BarChart3,
   Beef,
@@ -23,6 +24,7 @@ import {
   Ruler,
   Save,
   Scale,
+  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
@@ -52,6 +54,7 @@ import {
   serializeDailyTargets,
 } from "../nutricion/dailyNutritionTargets.js";
 import AppToast from "../ui/AppToast.jsx";
+import { buildNutritionAssignmentImpact } from "./nutritionAssignmentImpact.js";
 import "./profesionalPanel.css";
 
 const MODE_LABELS = {
@@ -74,6 +77,7 @@ export default function ClienteDetalleProfesional() {
   const [editingMacros, setEditingMacros] = useState(false);
   const [editingProfileSection, setEditingProfileSection] = useState("");
   const [editingProgressCheckin, setEditingProgressCheckin] = useState(false);
+  const [pendingNutritionSave, setPendingNutritionSave] = useState(null);
   const detailQuery = useProfessionalClientDetail(clientId);
   const loading = detailQuery.isLoading;
   const loadErr = detailQuery.error?.message || "";
@@ -92,41 +96,86 @@ export default function ClienteDetalleProfesional() {
     setEditingMacros(false);
     setEditingProfileSection("");
     setEditingProgressCheckin(false);
+    setPendingNutritionSave(null);
   }, [client]);
 
   const access = useMemo(() => getCoachAccess(coach), [coach]);
+  const nutritionAssignmentImpact = useMemo(
+    () => buildNutritionAssignmentImpact(client, nutritionDraft),
+    [client, nutritionDraft]
+  );
 
   async function saveNutrition() {
+    await requestNutritionSave(nutritionDraft, "Nutrición actualizada para el cliente.");
+  }
+
+  async function persistNutritionDraft(
+    nextDraft,
+    okMessage = "Nutrición actualizada para el cliente.",
+    assignmentInvalidation = null
+  ) {
     try {
       setSaving("nutrition");
       setErr("");
       setOk("");
-      const data = await updateProfessionalClientNutrition(clientId, nutritionPayloadFromDraft(nutritionDraft));
+      const data = await updateProfessionalClientNutrition(
+        clientId,
+        nutritionPayloadFromDraft(nextDraft, assignmentInvalidation)
+      );
       queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
       await invalidateProfessionalClient(clientId, data?.client);
-      setOk("Nutrición actualizada para el cliente.");
+      const invalidatedDays = data?.assignmentInvalidation?.affectedDays?.length || 0;
+      const reconciledExisting = invalidatedDays > 0 && data?.assignmentInvalidation?.changedDays === 0;
+      setOk(
+        invalidatedDays
+          ? `${reconciledExisting ? "Asignaciones obsoletas revisadas." : "Metas actualizadas."} Se desasignaron menús de ${invalidatedDays} ${invalidatedDays === 1 ? "día afectado" : "días afectados"} y sus snapshots quedaron preservados.`
+          : okMessage
+      );
+      setPendingNutritionSave(null);
+      return data;
     } catch (error) {
+      if (error?.code === "NUTRITION_ASSIGNMENTS_CONFIRMATION_REQUIRED" && error?.impact) {
+        setPendingNutritionSave({
+          draft: nextDraft,
+          okMessage,
+          impact: error.impact,
+        });
+        setErr("");
+        return null;
+      }
       setErr(error?.message || "No se pudo guardar nutrición");
+      throw error;
     } finally {
       setSaving("");
     }
   }
 
-  async function persistNutritionDraft(nextDraft, okMessage = "Nutrición actualizada para el cliente.") {
+  async function requestNutritionSave(nextDraft, okMessage) {
+    const impact = buildNutritionAssignmentImpact(client, nextDraft);
+    if (impact.affectedDays.length) {
+      setPendingNutritionSave({ draft: nextDraft, okMessage, impact });
+      return;
+    }
     try {
-      setSaving("nutrition");
-      setErr("");
-      setOk("");
-      const data = await updateProfessionalClientNutrition(clientId, nutritionPayloadFromDraft(nextDraft));
-      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
-      await invalidateProfessionalClient(clientId, data?.client);
-      setOk(okMessage);
-      return data;
-    } catch (error) {
-      setErr(error?.message || "No se pudo guardar nutrición");
-      throw error;
-    } finally {
-      setSaving("");
+      await persistNutritionDraft(nextDraft, okMessage);
+    } catch {
+      // El error ya queda visible en la pantalla principal.
+    }
+  }
+
+  async function confirmNutritionSave() {
+    if (!pendingNutritionSave) return;
+    try {
+      await persistNutritionDraft(
+        pendingNutritionSave.draft,
+        pendingNutritionSave.okMessage,
+        {
+          confirmed: true,
+          affectedDays: pendingNutritionSave.impact.affectedDayKeys,
+        }
+      );
+    } catch {
+      // El error ya queda visible en la pantalla principal.
     }
   }
 
@@ -304,12 +353,8 @@ export default function ClienteDetalleProfesional() {
       goalType: values.goalType,
     };
     setNutritionDraft(nextDraft);
-    try {
-      await persistNutritionDraft(nextDraft, "Macros base guardados para el cliente.");
-      setEditingMacros(false);
-    } catch {
-      // El error ya queda visible en la pantalla principal.
-    }
+    setEditingMacros(false);
+    await requestNutritionSave(nextDraft, "Macros base guardados para el cliente.");
   }
 
   if (loading) {
@@ -441,6 +486,17 @@ export default function ClienteDetalleProfesional() {
               onRecalculateWeek={recalculateNutritionWeek}
             />
 
+            {nutritionAssignmentImpact.affectedDays.length ? (
+              <NutritionAssignmentImpactNotice
+                impact={nutritionAssignmentImpact}
+                onReview={() => setPendingNutritionSave({
+                  draft: nutritionDraft,
+                  okMessage: "Asignaciones nutricionales revisadas.",
+                  impact: nutritionAssignmentImpact,
+                })}
+              />
+            ) : null}
+
             <SaveRow onSave={saveNutrition} saving={saving === "nutrition"} label="Guardar planificación" />
           </EditablePanel>
         )}
@@ -569,9 +625,141 @@ export default function ClienteDetalleProfesional() {
           onClose={() => setEditingProgressCheckin(false)}
         />
       ) : null}
+      {pendingNutritionSave ? (
+        <NutritionAssignmentConfirmDialog
+          impact={pendingNutritionSave.impact}
+          saving={saving === "nutrition"}
+          onCancel={() => setPendingNutritionSave(null)}
+          onConfirm={confirmNutritionSave}
+        />
+      ) : null}
       <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
+}
+
+function NutritionAssignmentImpactNotice({ impact, onReview }) {
+  const count = impact?.affectedDays?.length || 0;
+  const staleOnly = impact?.staleDays > 0 && impact?.changedDays === 0;
+  if (!count) return null;
+  return (
+    <aside className="prof-nutritionImpactNotice" role="status">
+      <span className="prof-nutritionImpactIcon"><AlertTriangle size={19} /></span>
+      <div>
+        <strong>
+          {staleOnly
+            ? `Hay ${count} ${count === 1 ? "día con un menú anterior" : "días con menús anteriores"} a la última actualización de metas.`
+            : `Las nuevas metas afectan ${count} ${count === 1 ? "día con menú asignado" : "días con menús asignados"}.`}
+        </strong>
+        <p>
+          {staleOnly
+            ? "Revisalos y desasignalos antes de continuar con la planificación actual."
+            : "Al guardar, te vamos a pedir confirmación antes de desasignarlos."} Las plantillas y los snapshots anteriores no se borran.
+        </p>
+        <div className="prof-nutritionImpactDays">
+          {impact.affectedDays.map((day) => <span key={day.key}>{day.label}</span>)}
+        </div>
+        {onReview ? (
+          <button type="button" className="prof-btn compact" onClick={onReview}>
+            <RefreshCw size={14} />
+            Revisar asignaciones
+          </button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function NutritionAssignmentConfirmDialog({ impact, saving, onCancel, onConfirm }) {
+  const affectedDays = impact?.affectedDays || [];
+  const count = affectedDays.length;
+  const assignedMenus = impact?.assignedMenus || count;
+  const staleOnly = impact?.staleDays > 0 && impact?.changedDays === 0;
+
+  return (
+    <div className="prof-modalBackdrop prof-nutritionConfirmBackdrop" role="presentation" onMouseDown={saving ? undefined : onCancel}>
+      <section
+        className="prof-nutritionConfirmDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prof-nutritionConfirmTitle"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="prof-nutritionConfirmHeader">
+          <span className="prof-nutritionConfirmIcon"><AlertTriangle size={24} /></span>
+          <div>
+            <span>Revisión necesaria</span>
+            <h3 id="prof-nutritionConfirmTitle">
+              {staleOnly ? "Desasignar menús de metas anteriores" : "Actualizar metas y desasignar menús"}
+            </h3>
+            <p>
+              {staleOnly
+                ? "Estas asignaciones son anteriores a la última actualización nutricional."
+                : "La referencia nutricional cambió en días que ya tenían una asignación."}
+            </p>
+          </div>
+          <button type="button" className="prof-iconBtn" onClick={onCancel} disabled={saving} aria-label="Cerrar confirmación">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="prof-nutritionConfirmBody">
+          <div className="prof-nutritionConfirmSummary">
+            <div>
+              <span>Días afectados</span>
+              <strong>{count}</strong>
+            </div>
+            <div>
+              <span>Menús y alternativas</span>
+              <strong>{assignedMenus}</strong>
+            </div>
+            <div>
+              <span>Meta semanal</span>
+              <strong>{formatKcalChange(impact?.previousWeeklyKcal, impact?.nextWeeklyKcal)}</strong>
+            </div>
+          </div>
+
+          <div className="prof-nutritionConfirmDays">
+            {affectedDays.map((day) => (
+              <article key={day.key}>
+                <strong>{day.label}</strong>
+                <span>{formatDailyTarget(day.previousTarget)} <b>→</b> {formatDailyTarget(day.nextTarget)}</span>
+                <small>{day.assignedMenus} {day.assignedMenus === 1 ? "menú asignado" : "menús/alternativas asignados"}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="prof-nutritionConfirmSafety">
+            <ShieldCheck size={19} />
+            <div>
+              <strong>Desasignación segura</strong>
+              <p>Solo se quitan las asignaciones de estos días. No se eliminan plantillas, menús de biblioteca ni snapshots: la última asignación queda respaldada.</p>
+            </div>
+          </div>
+        </div>
+
+        <footer className="prof-nutritionConfirmActions">
+          <button type="button" className="prof-btn" onClick={onCancel} disabled={saving}>Volver y revisar</button>
+          <button type="button" className="prof-btn gold" onClick={onConfirm} disabled={saving}>
+            <Save size={16} />
+            {saving ? "Actualizando..." : `Guardar y desasignar ${count} ${count === 1 ? "día" : "días"}`}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function formatDailyTarget(target = {}) {
+  const kcal = Number.isFinite(Number(target?.kcal)) ? `${Math.round(Number(target.kcal))} kcal` : "sin kcal";
+  const protein = Number.isFinite(Number(target?.p)) ? `P ${Math.round(Number(target.p))} g` : "P —";
+  return `${kcal} · ${protein}`;
+}
+
+function formatKcalChange(previous, next) {
+  const from = Number.isFinite(Number(previous)) ? `${Math.round(Number(previous))}` : "—";
+  const to = Number.isFinite(Number(next)) ? `${Math.round(Number(next))}` : "—";
+  return `${from} → ${to} kcal`;
 }
 
 function EditablePanel({ title, icon: Icon, locked, lockedText, children }) {
@@ -1695,7 +1883,7 @@ function normalizeDailyTargetDraft(target = {}) {
   };
 }
 
-function nutritionPayloadFromDraft(draft = {}) {
+function nutritionPayloadFromDraft(draft = {}, assignmentInvalidation = null) {
   const weeklyPlan = serializeDailyTargets(draft.dailyTargets);
   return {
     kcal: calculateMacroKcal(draft.p, draft.c, draft.g) ?? toNullableNumber(draft.kcal),
@@ -1708,6 +1896,7 @@ function nutritionPayloadFromDraft(draft = {}) {
     targetWeightKg: toNullableNumber(draft.targetWeightKg),
     approach: draft.approach,
     weeklyPlan,
+    ...(assignmentInvalidation ? { assignmentInvalidation } : {}),
   };
 }
 

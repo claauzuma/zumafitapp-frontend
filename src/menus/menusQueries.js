@@ -9,10 +9,11 @@ import {
   listMenusBase,
 } from "./menusApi.js";
 
-export function useMenusBase(filters = {}) {
+export function useMenusBase(filters = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.menusBase(filters),
     queryFn: () => listMenusBase(filters),
+    enabled: options.enabled !== false,
     staleTime: STALE_TIMES.menusBase,
     placeholderData: (previous) => previous,
   });

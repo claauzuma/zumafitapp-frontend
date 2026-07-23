@@ -165,6 +165,11 @@ export function buildFlexibleAssignmentMetadata(menuTotals = {}, target = {}, op
     source: options.source || "coach",
     dayKey: options.dayKey || "",
     targetCalories: round(compatibility.target.kcal),
+    targetMacros: {
+      p: round(compatibility.target.protein),
+      c: round(compatibility.target.carbs),
+      g: round(compatibility.target.fat),
+    },
     plannedCalories: round(compatibility.menu.kcal),
     flexibleCalories,
     flexibleMode: flexibleCalories > 0 ? "free_margin" : "",

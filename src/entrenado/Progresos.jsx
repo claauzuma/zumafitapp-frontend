@@ -9,12 +9,10 @@ import {
   ChevronRight,
   Dumbbell,
   LineChart,
-  Plus,
   Ruler,
   Scale,
   Target,
   TrendingUp,
-  Trophy,
 } from "lucide-react";
 import { getCachedUser } from "../authCache.js";
 import {
@@ -1230,15 +1228,6 @@ const CSS = `
 
 const progressTabs = ["Resumen", "Peso", "Medidas", "Gym", "Fotos"];
 
-const basicMeasurementFields = ["Cintura", "Pecho", "Brazo"];
-const fullMeasurementFields = ["Cintura", "Pecho", "Brazo", "Cadera", "Pierna", "Abdomen"];
-
-function measurementIconFor(name = "") {
-  const value = String(name).toLowerCase();
-  if (value.includes("brazo") || value.includes("pierna")) return Trophy;
-  return Ruler;
-}
-
 function todayInputValue() {
   const now = new Date();
   const year = now.getFullYear();
@@ -1382,9 +1371,8 @@ function ProgressPage() {
   const cachedUser = useMemo(() => getCachedUser(), []);
   const [activeTab, setActiveTab] = useState("Resumen");
   const [range, setRange] = useState("4 semanas");
-  const [weights, setWeights] = useState(() => weightHistoryFromUser(cachedUser));
-  const [measurements, setMeasurements] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [weights] = useState(() => weightHistoryFromUser(cachedUser));
+  const [measurements] = useState([]);
   const [photos, setPhotos] = useState({});
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
@@ -1397,25 +1385,6 @@ function ProgressPage() {
   const access = useMemo(() => resolveProgressAccess(cachedUser, capabilities), [cachedUser, capabilities]);
   const summary = useMemo(() => buildSummary(weights, cachedUser), [weights, cachedUser]);
 
-  function saveWeight(entry) {
-    const nextWeight = Number(entry.weight);
-    setWeights((current) => {
-      const next = current.map((item) => ({ ...item, current: false }));
-      return [
-        ...next,
-        {
-          week: `Registro ${next.length + 1}`,
-          short: `R${next.length + 1}`,
-          range: formatShortDate(entry.date),
-          averageWeight: Number(nextWeight.toFixed(1)),
-          date: entry.date,
-          current: true,
-        },
-      ];
-    });
-    setModalOpen(false);
-  }
-
   const commonProps = {
     activeTab,
     onTabChange: setActiveTab,
@@ -1424,12 +1393,10 @@ function ProgressPage() {
     weights,
     summary,
     measurements,
-    onMeasurementsSave: setMeasurements,
     photos,
     access,
     capabilitiesError: capabilitiesQuery.isError,
     onPhotoChange: setPhotos,
-    onAddWeight: () => setModalOpen(true),
   };
 
   return (
@@ -1441,18 +1408,11 @@ function ProgressPage() {
       <div className="zp-desktop">
         <DesktopProgressScreen {...commonProps} />
       </div>
-      {modalOpen ? (
-        <AddWeightModal
-          initialWeight={summary.currentWeight}
-          onClose={() => setModalOpen(false)}
-          onSave={saveWeight}
-        />
-      ) : null}
     </div>
   );
 }
 
-function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, capabilitiesError, onPhotoChange, onAddWeight }) {
+function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange }) {
   return (
     <>
       <ProgressHero />
@@ -1466,18 +1426,16 @@ function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, we
           weights={weights}
           summary={summary}
           measurements={measurements}
-          onMeasurementsSave={onMeasurementsSave}
           photos={photos}
           access={access}
           onPhotoChange={onPhotoChange}
-          onAddWeight={onAddWeight}
         />
       </main>
     </>
   );
 }
 
-function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, capabilitiesError, onPhotoChange, onAddWeight }) {
+function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange }) {
   return (
     <div className="zp-desktop-inner">
       <ProgressHero />
@@ -1490,11 +1448,9 @@ function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, w
         weights={weights}
         summary={summary}
         measurements={measurements}
-        onMeasurementsSave={onMeasurementsSave}
         photos={photos}
         access={access}
         onPhotoChange={onPhotoChange}
-        onAddWeight={onAddWeight}
       />
     </div>
   );
@@ -1517,7 +1473,7 @@ function ProgressHero() {
 function ProgressAccessBanner({ access, capabilitiesError = false }) {
   const title = access.isBasic ? "Progreso basico" : "Progreso completo";
   const copy = access.isBasic
-    ? "Incluido en tu plan Free: peso, objetivo, medidas basicas y ultimos registros."
+    ? "Free muestra tu peso, objetivo y medidas basicas reales cuando ya estan disponibles. El alta de nuevos registros se habilitara con guardado persistente."
     : "Historial completo, rangos largos y funciones avanzadas segun tu plan efectivo.";
   return (
     <section className="zp-access-banner" aria-label="Acceso a progresos">
@@ -1550,7 +1506,7 @@ function ProgressTabs({ activeTab, onTabChange }) {
   );
 }
 
-function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, onPhotoChange, onAddWeight }) {
+function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange }) {
   if (activeTab === "Peso") {
     return (
       <>
@@ -1560,7 +1516,6 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
           range={range}
           onRangeChange={onRangeChange}
           access={access}
-          onAddWeight={onAddWeight}
         />
         <BodyMeasurementsCard access={access} measurements={measurements} />
         {access.canUsePhotos ? (
@@ -1579,8 +1534,7 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
   if (activeTab === "Medidas") {
     return (
       <>
-        <BodyMeasurementsCard expanded access={access} measurements={measurements} onMeasurementsSave={onMeasurementsSave} />
-        <MeasurementsFormPreview key={access.plan} access={access} onSave={onMeasurementsSave} />
+        <BodyMeasurementsCard expanded access={access} measurements={measurements} />
       </>
     );
   }
@@ -1617,13 +1571,12 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
         range={range}
         onRangeChange={onRangeChange}
         access={access}
-        onAddWeight={onAddWeight}
       />
     </>
   );
 }
 
-function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, measurements, onMeasurementsSave, photos, access, onPhotoChange, onAddWeight }) {
+function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange }) {
   if (activeTab !== "Peso") {
     return (
       <div className="zp-stack">
@@ -1634,11 +1587,9 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, m
           weights={weights}
           summary={summary}
           measurements={measurements}
-          onMeasurementsSave={onMeasurementsSave}
           photos={photos}
           access={access}
           onPhotoChange={onPhotoChange}
-          onAddWeight={onAddWeight}
         />
       </div>
     );
@@ -1658,7 +1609,6 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, m
           range={range}
           onRangeChange={onRangeChange}
           access={access}
-          onAddWeight={onAddWeight}
         />
         <div className="zp-side-stack">
           <BodyMeasurementsCard access={access} measurements={measurements} />
@@ -1687,7 +1637,7 @@ function RangeSelector({ value, onChange, access }) {
   );
 }
 
-function WeightChartCard({ weights, summary, range, onRangeChange, access, onAddWeight }) {
+function WeightChartCard({ weights, summary, range, onRangeChange, access }) {
   const visibleWeights = visibleWeightsForAccess(weights, access);
   const title = access.isBasic ? "Peso - ultimos registros" : `Peso - ${range}`;
   const subtitle = access.isBasic ? "Progreso basico incluido en Free" : "historial completo";
@@ -1711,10 +1661,8 @@ function WeightChartCard({ weights, summary, range, onRangeChange, access, onAdd
         <ProgressEmptyState
           compact
           icon={Scale}
-          title={summary.hasWeight ? "Todavia necesitas mas registros para ver una tendencia." : "Todavia no registraste peso."}
-          text={summary.hasWeight ? "Carga otro peso para comparar cambios recientes." : "Carga tu primer peso para empezar a medir tu evolucion."}
-          actionLabel="Registrar peso"
-          onAction={onAddWeight}
+          title={summary.hasWeight ? "Todavia necesitas mas registros para ver una tendencia." : "Todavia no hay un peso registrado."}
+          text="Registro de progreso proximamente. No vamos a simular un guardado que se pierda al recargar."
         />
       )}
 
@@ -1730,10 +1678,9 @@ function WeightChartCard({ weights, summary, range, onRangeChange, access, onAdd
         <ProgressMetricCard icon={TrendingUp} label={changeLabel} value={summary.hasTrend ? `${summary.changeFourWeeks.toFixed(1)} kg` : "Sin tendencia"} detail={summary.hasTrend ? `${summary.changePercentage.toFixed(1)}% del peso inicial` : "Carga mas registros"} positive />
       </div>
 
-      <button className="zp-primary-btn" type="button" onClick={onAddWeight}>
-        <Plus size={24} />
-        Cargar nuevo peso
-      </button>
+      <div className="zp-lock-note" role="status">
+        Registro de peso proximamente. Disponible cuando activemos guardado de progreso.
+      </div>
     </section>
   );
 }
@@ -1914,7 +1861,7 @@ function SummaryCards({ summary }) {
   );
 }
 
-function BodyMeasurementsCard({ expanded = false, access, measurements = [], onMeasurementsSave = null }) {
+function BodyMeasurementsCard({ expanded = false, access, measurements = [] }) {
   const hasMeasurements = measurements.length > 0;
   return (
     <section className="zp-card zp-section-card">
@@ -1925,12 +1872,7 @@ function BodyMeasurementsCard({ expanded = false, access, measurements = [], onM
             Historial Pro
             <ChevronRight size={16} />
           </NavLink>
-        ) : (
-          <button className="zp-see-all" type="button">
-            Ver todas
-            <ChevronRight size={16} />
-          </button>
-        )}
+        ) : <span className="zp-see-all">Historial</span>}
       </div>
       {hasMeasurements ? (
         <div className="zp-measure-table">
@@ -1948,18 +1890,18 @@ function BodyMeasurementsCard({ expanded = false, access, measurements = [], onM
         <ProgressEmptyState
           compact
           icon={Ruler}
-          title="Todavia no cargaste medidas."
-          text={access?.isBasic ? "Free incluye carga basica de cintura, pecho y brazo." : "Carga tus medidas para ver cambios y comparaciones."}
+          title="Registro de progreso proximamente"
+          text="Disponible cuando activemos guardado persistente de medidas."
         />
       )}
 
       {access?.isBasic ? (
         <div className="zp-lock-note">
-          En Free podes cargar medidas basicas. El historial completo y las comparaciones mensuales se desbloquean con Pro.
+          Free mostrara peso y medidas basicas reales. El historial completo y las comparaciones mensuales se desbloquean con Pro.
         </div>
       ) : null}
       {expanded ? (
-        <MeasurementsFormPreview key={access?.plan || "free"} access={access} embedded onSave={onMeasurementsSave} />
+        <MeasurementsFormPreview key={access?.plan || "free"} access={access} embedded />
       ) : null}
     </section>
   );
@@ -2063,10 +2005,10 @@ function GymProgressCard({ compact = false, access }) {
     <section className="zp-card zp-placeholder-card">
       <div className="zp-section-head">
         <h2>Gym</h2>
-        <button className="zp-see-all" type="button">
+        <NavLink className="zp-see-all" to="/app/rutinas">
           Ver rutina
           <ChevronRight size={16} />
-        </button>
+        </NavLink>
       </div>
       <ProgressEmptyState
         compact={compact}
@@ -2083,69 +2025,22 @@ function GymProgressCard({ compact = false, access }) {
   );
 }
 
-function MeasurementsFormPreview({ access, embedded = false, onSave = null }) {
-  const fields = access?.isBasic ? basicMeasurementFields : fullMeasurementFields;
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map((field) => [field, ""])));
-  const [saved, setSaved] = useState(false);
-
-  function updateField(field, value) {
-    setSaved(false);
-    setValues((current) => ({ ...current, [field]: value }));
-  }
-
-  function saveMeasurements(event) {
-    event.preventDefault();
-    const savedRows = fields
-      .map((field) => {
-        const value = maybeNumber(values[field]);
-        if (value === null) return null;
-        return {
-          name: field,
-          value,
-          unit: "cm",
-          change: null,
-          trend: null,
-          positive: false,
-          icon: measurementIconFor(field),
-          points: [],
-        };
-      })
-      .filter(Boolean);
-    if (savedRows.length) {
-      onSave?.(savedRows);
-    }
-    setSaved(true);
-  }
-
+function MeasurementsFormPreview({ access, embedded = false }) {
   return (
-    <form className={embedded ? "zp-measure-form" : "zp-card zp-placeholder-card"} onSubmit={saveMeasurements}>
+    <section className={embedded ? "zp-measure-form" : "zp-card zp-placeholder-card"}>
       <div className="zp-section-head">
         <h2>Nueva medición</h2>
       </div>
-      <div className="zp-placeholder-grid">
-        {fields.map((label) => (
-          <div className="zp-info-tile" key={label}>
-            <span>{label}</span>
-            <div className="zp-input-wrap" style={{ marginTop: 10 }}>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={values[label]}
-                onChange={(event) => updateField(label, event.target.value)}
-                placeholder="--"
-              />
-              <span className="zp-input-unit">cm</span>
-            </div>
-          </div>
-        ))}
+      <div className="zp-empty-state compact" role="status">
+        <Ruler size={24} />
+        <strong>Registro de progreso próximamente</strong>
+        <p>
+          {access?.isBasic
+            ? "Disponible cuando activemos guardado persistente de medidas básicas."
+            : "Disponible cuando activemos guardado persistente de medidas."}
+        </p>
       </div>
-      {saved ? <div className="zp-info-tile"><span>Medidas guardadas en esta vista</span><p>Se actualizo el formulario local sin tocar registros historicos.</p></div> : null}
-      <button className="zp-primary-btn" type="submit">
-        <Plus size={22} />
-        Guardar medidas
-      </button>
-    </form>
+    </section>
   );
 }
 
@@ -2161,74 +2056,6 @@ function PhotoCompareCard() {
         <p>La estructura queda preparada para comparar fotos por fecha y postura.</p>
       </div>
     </section>
-  );
-}
-
-function AddWeightModal({ initialWeight, onSave, onClose }) {
-  const [weight, setWeight] = useState(String(initialWeight || ""));
-  const [date, setDate] = useState(todayInputValue());
-  const [note, setNote] = useState("");
-  const [error, setError] = useState("");
-
-  function submit(event) {
-    event.preventDefault();
-    const numericWeight = Number(weight);
-    if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
-      setError("Ingresá un peso válido mayor a 0.");
-      return;
-    }
-    if (!date) {
-      setError("Elegí una fecha para el registro.");
-      return;
-    }
-    onSave({ weight: numericWeight, date, note });
-  }
-
-  return (
-    <div className="zp-modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <form className="zp-modal" onSubmit={submit}>
-        <h2>Cargar nuevo peso</h2>
-        <div className="zp-form">
-          <div className="zp-field">
-            <label htmlFor="progress-weight">Peso</label>
-            <div className="zp-input-wrap">
-              <input
-                id="progress-weight"
-                type="number"
-                min="1"
-                step="0.1"
-                value={weight}
-                onChange={(event) => {
-                  setWeight(event.target.value);
-                  setError("");
-                }}
-                autoFocus
-              />
-              <span className="zp-input-unit">kg</span>
-            </div>
-          </div>
-          <div className="zp-field">
-            <label htmlFor="progress-date">Fecha</label>
-            <div className="zp-input-wrap">
-              <input id="progress-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            </div>
-          </div>
-          <div className="zp-field">
-            <label htmlFor="progress-note">Nota opcional</label>
-            <div className="zp-input-wrap">
-              <textarea id="progress-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ej: ayunas, post entrenamiento..." />
-            </div>
-          </div>
-          {error ? <div className="zp-error">{error}</div> : null}
-        </div>
-        <div className="zp-modal-actions">
-          <button className="zp-secondary-btn" type="button" onClick={onClose}>Cancelar</button>
-          <button className="zp-gold-btn" type="submit">Guardar</button>
-        </div>
-      </form>
-    </div>
   );
 }
 

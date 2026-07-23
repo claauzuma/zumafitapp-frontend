@@ -759,6 +759,10 @@
   gap:10px;
 }
 
+.nf-cardTopEnd{
+  justify-content:flex-end;
+}
+
 .nf-card h3{
   margin:0;
   color:#f8fafc;
@@ -973,6 +977,32 @@
   color:#090909;
   border-color:transparent;
   background:linear-gradient(135deg, rgba(245,215,110,.95), rgba(212,175,55,.92));
+}
+
+.nf-librarySourceBlock{
+  margin:12px 0 4px;
+}
+
+.nf-librarySourceBlock .nf-sourceTabs{
+  margin:0;
+}
+
+.nf-sourceTabs .nf-tab{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+}
+
+.nf-sourceTabs .nf-tab:disabled{
+  cursor:not-allowed;
+  opacity:.52;
+}
+
+.nf-libraryLock{
+  margin:8px 0 0;
+  border:1px solid rgba(245,215,110,.2);
+  border-radius:14px;
+  padding:10px 12px;
 }
 
 .nf-tabPanel{

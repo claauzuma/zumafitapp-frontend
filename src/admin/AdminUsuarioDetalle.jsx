@@ -5,6 +5,11 @@ import { useAdminUser } from "./adminUsuariosQueries.js";
 import AdminUsuarioClienteDetalle from "./AdminUsuarioClienteDetalle.jsx";
 import AdminUsuarioCoachDetalle from "./AdminUsuarioCoachDetalle.jsx";
 import { setAdminUserQueryData } from "../queryClient.js";
+import {
+  clientPlanLabel,
+  coachProfessionalPlanFromUser,
+  coachProfessionalPlanLabel,
+} from "../professionalPlans.js";
 import "./adminUsuarioDetalle.css";
 
 export default function AdminUsuarioDetalle() {
@@ -102,7 +107,11 @@ export default function AdminUsuarioDetalle() {
           <div className="aud-badges">
             <span className="aud-badge">{user?.role || "-"}</span>
             <span className="aud-badge">{user?.tipo || "-"}</span>
-            <span className="aud-badge aud-badgeInfo">{planLabel(user?.plan)}</span>
+            <span className="aud-badge aud-badgeInfo">
+              {roleNorm === "coach"
+                ? `Plan profesional: ${coachProfessionalPlanLabel(coachProfessionalPlanFromUser(user))}`
+                : `Plan cliente: ${clientPlanLabel(user?.plan)}`}
+            </span>
             <span
               className={`aud-badge ${
                 String(user?.estado || "").toLowerCase() === "bloqueado"
@@ -187,12 +196,4 @@ function fmtDate(v) {
   } catch {
     return "-";
   }
-}
-
-function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  if (p === "trial_pro" || p === "trial" || p === "free") return "Prueba Pro";
-  return "Prueba Pro";
 }

@@ -19,6 +19,7 @@ import { formatNumber } from "../nutricion/nutricionUtils.js";
 import PlanLimitNotice from "../clientPlans/PlanLimitNotice.jsx";
 import { clientPlanLabel as getClientPlanLabel } from "../clientPlans/clientPlanUtils.js";
 import { menuContentSummary } from "../clientNutrition/nutritionState.js";
+import { listLibraryMeals, listLibraryMenus } from "../nutritionLibrary/nutritionLibraryApi.js";
 import {
   activateClientMenu,
   deactivateClientMenu,
@@ -135,12 +136,14 @@ export default function ClientNutritionHome({
   onOpenMyMenus,
   onOpenLibrary,
   onEditMenu,
+  usageSignal = 0,
 }) {
   const navigate = useNavigate();
   const [menus, setMenus] = useState([]);
   const [activeMenu, setActiveMenu] = useState(null);
   const [capabilities, setCapabilities] = useState(user?.nutritionCapabilities || null);
   const [pagination, setPagination] = useState(null);
+  const [libraryUsage, setLibraryUsage] = useState({ ownMeals: null, favorites: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -172,12 +175,26 @@ export default function ClientNutritionHome({
     setLoading(true);
     setError("");
     try {
-      const data = await listClientMenus({ includeComidas: false, limit: 3 });
+      const [data, ownMealsData, favoriteMealsData, favoriteMenusData] = await Promise.all([
+        listClientMenus({ includeComidas: false, limit: 3 }),
+        listLibraryMeals({ scope: "mine", limit: 1 }).catch(() => null),
+        listLibraryMeals({ scope: "favorites", limit: 1 }).catch(() => null),
+        listLibraryMenus({ scope: "favorites", limit: 1 }).catch(() => null),
+      ]);
       if (!mounted.current) return;
       setMenus(data?.items || []);
       setActiveMenu(data?.activeMenu || null);
       setCapabilities(data?.capabilities || user?.nutritionCapabilities || null);
       setPagination(data?.pagination || null);
+      const ownMeals = ownMealsData ? Number(ownMealsData.total ?? ownMealsData.comidas?.length ?? 0) : null;
+      const favoriteMeals = favoriteMealsData ? Number(favoriteMealsData.total ?? favoriteMealsData.comidas?.length ?? 0) : null;
+      const favoriteMenus = favoriteMenusData ? Number(favoriteMenusData.total ?? favoriteMenusData.menus?.length ?? 0) : null;
+      setLibraryUsage({
+        ownMeals: Number.isFinite(ownMeals) ? ownMeals : null,
+        favorites: Number.isFinite(favoriteMeals) && Number.isFinite(favoriteMenus)
+          ? favoriteMeals + favoriteMenus
+          : null,
+      });
     } catch (err) {
       if (mounted.current) setError(err?.message || "No pudimos cargar tu informacion nutricional.");
     } finally {
@@ -191,10 +208,12 @@ export default function ClientNutritionHome({
     return () => {
       mounted.current = false;
     };
-  }, [load]);
+  }, [load, usageSignal]);
 
   const usedMenus = Number(pagination?.total ?? menus.length);
   const ownMenusLimit = Number(capabilities?.limits?.ownMenus);
+  const ownMealsLimit = Number(capabilities?.limits?.ownMeals);
+  const favoritesLimit = Number(capabilities?.limits?.favorites);
   const limitReached = Number.isFinite(ownMenusLimit) && usedMenus >= ownMenusLimit;
   const state = useMemo(
     () => primaryState({ capabilities, activeMenu, ownMenus: menus, user }),
@@ -274,7 +293,9 @@ export default function ClientNutritionHome({
     <section className="nutrition-home" aria-label="Inicio de nutricion">
       <div className="nh-plan-strip">
         <span>Plan {plan}</span>
-        <span>{usedMenus} / {Number.isFinite(ownMenusLimit) ? ownMenusLimit : "sin limite"} menus propios</span>
+        <span>Menus: {usedMenus}/{Number.isFinite(ownMenusLimit) ? ownMenusLimit : "sin limite"}</span>
+        <span>Comidas guardadas: {libraryUsage.ownMeals ?? "-"}/{Number.isFinite(ownMealsLimit) ? ownMealsLimit : "sin limite"}</span>
+        <span>Favoritos: {libraryUsage.favorites ?? "-"}/{Number.isFinite(favoritesLimit) ? favoritesLimit : "sin limite"}</span>
         <span>{libraryLabel(capabilities)}</span>
         <button type="button" onClick={() => navigate("/app/planes")}>Ver beneficios</button>
       </div>

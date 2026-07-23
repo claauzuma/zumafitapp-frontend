@@ -87,9 +87,10 @@ test("persiste completado con marcador asociado a la fecha visible", () => {
   assert.deepEqual(flexibleMarginStatusEntry(row, true).totals, { kcal: 0, proteina: 0, carbs: 0, grasas: 0 });
 });
 
-test("recomendacion automatica usa capability especifica o fallback existente", () => {
+test("recomendacion automatica requiere capability especifica y falla cerrada", () => {
   assert.equal(canUseFlexibleMarginRecommendations({ canUseFlexibleMarginRecommendations: false, canAutoCompleteRemainingMeals: true }), false);
   assert.equal(canUseFlexibleMarginRecommendations({ canUseFlexibleMarginRecommendations: true, canAutoCompleteRemainingMeals: false }), true);
   assert.equal(canUseFlexibleMarginRecommendations({ canAutoCompleteRemainingMeals: false }), false);
-  assert.equal(canUseFlexibleMarginRecommendations({}), true);
+  assert.equal(canUseFlexibleMarginRecommendations({ canAutoCompleteRemainingMeals: true }), false);
+  assert.equal(canUseFlexibleMarginRecommendations({}), false);
 });

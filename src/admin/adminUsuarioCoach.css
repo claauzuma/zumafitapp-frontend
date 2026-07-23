@@ -452,6 +452,166 @@
   box-shadow:0 0 0 4px rgba(245,215,110,.08);
 }
 
+.auco-planChange{
+  margin-top:14px;
+  border-radius:12px;
+  padding:10px 13px;
+  font-size:13px;
+  font-weight:900;
+}
+
+.auco-planChange.saved{
+  border:1px solid rgba(80,220,140,.20);
+  background:rgba(80,220,140,.06);
+  color:#bdf4d0;
+}
+
+.auco-planChange.pending{
+  border:1px solid rgba(245,215,110,.25);
+  background:rgba(245,215,110,.07);
+  color:#f5df92;
+}
+
+.auco-planStatusGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:14px;
+  margin-top:14px;
+}
+
+.auco-planPanel{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:18px;
+  padding:16px;
+  background:#0c1118;
+}
+
+.auco-planPanel.preview{
+  border-color:rgba(245,215,110,.20);
+  background:linear-gradient(180deg, rgba(245,215,110,.055), rgba(12,17,24,.96));
+}
+
+.auco-planPanelTitle{
+  margin:7px 0 0;
+  color:#f1f5f9;
+  font-size:17px;
+  line-height:1.3;
+}
+
+.auco-planDescription{
+  min-height:42px;
+  margin:8px 0 0;
+  color:#aeb9c6;
+  line-height:1.45;
+}
+
+.auco-planMetrics{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+  margin-top:14px;
+}
+
+.auco-planMetrics.compact{
+  margin-top:12px;
+}
+
+.auco-planMetric{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:12px;
+  padding:10px 11px;
+  background:rgba(255,255,255,.025);
+}
+
+.auco-planMetric span{
+  display:block;
+  color:#8f9ba8;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.auco-planMetric strong{
+  display:block;
+  margin-top:5px;
+  color:#eef3f8;
+  font-size:14px;
+  overflow-wrap:anywhere;
+}
+
+.auco-planPreviewState{
+  margin-top:14px;
+  border:1px dashed rgba(245,215,110,.22);
+  border-radius:12px;
+  padding:14px;
+  color:#d9c77f;
+  font-weight:800;
+}
+
+.auco-planPreviewState.is-error{
+  border-color:rgba(255,90,90,.28);
+  color:#ffbcbc;
+}
+
+.auco-capabilityList{
+  display:grid;
+  gap:7px;
+  margin-top:12px;
+}
+
+.auco-capabilityRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid rgba(255,255,255,.055);
+  padding:7px 1px;
+  color:#d9e0e8;
+  font-size:13px;
+  font-weight:800;
+}
+
+.auco-capabilityState{
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:4px 8px;
+  font-size:11px;
+  font-weight:1000;
+}
+
+.auco-capabilityState.is-on{
+  background:rgba(80,220,140,.09);
+  color:#bdf4d0;
+}
+
+.auco-capabilityState.is-off{
+  background:rgba(255,255,255,.045);
+  color:#9da8b4;
+}
+
+.auco-planAlert{
+  margin-top:14px;
+  border-radius:14px;
+  padding:12px 14px;
+  line-height:1.45;
+  font-weight:850;
+}
+
+.auco-planAlert.warning{
+  border:1px solid rgba(245,215,110,.24);
+  background:rgba(245,215,110,.07);
+  color:#f3dfa0;
+}
+
+.auco-planAlert.danger{
+  border:1px solid rgba(255,90,90,.28);
+  background:rgba(255,90,90,.08);
+  color:#ffc1c1;
+}
+
 .auco-note{
   margin-top:14px;
   border:1px dashed rgba(245,215,110,.18);
@@ -482,6 +642,10 @@
 
 @media (max-width: 980px){
   .auco-grid{
+    grid-template-columns:1fr;
+  }
+
+  .auco-planStatusGrid{
     grid-template-columns:1fr;
   }
 }
@@ -542,6 +706,10 @@
   }
 
   .auco-permissionGrid{
+    grid-template-columns:1fr;
+  }
+
+  .auco-planMetrics{
     grid-template-columns:1fr;
   }
 }

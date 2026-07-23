@@ -54,6 +54,19 @@ const STATUS = [
   ["inactivo", "Inactivo"],
 ];
 
+const TEMPLATE_TIERS = [
+  ["global_basic", "Global basic"],
+  ["global_pro", "Coach Pro"],
+  ["global_premium", "Coach AI / VIP"],
+];
+
+function tierFromLegacyPlan(value = "") {
+  const plan = String(value || "").trim().toLowerCase();
+  if (["vip", "premium", "global_premium"].includes(plan)) return "global_premium";
+  if (["pro", "global_pro"].includes(plan)) return "global_pro";
+  return "global_basic";
+}
+
 const MEAL_LIBRARY_GROUPS = [
   ["todas", "Todas"],
   ["desayuno_merienda", "Desayuno / Merienda"],
@@ -110,6 +123,7 @@ export function createEmptyMealDraft() {
     grupoComida: "almuerzo_cena",
     tags: [],
     visibilidad: "privada",
+    templateTier: "global_basic",
     estado: "activo",
     items: [],
   };
@@ -125,6 +139,7 @@ export function createEmptyMenuDraft() {
     objetivo: "mantenimiento",
     tags: [],
     visibilidad: "privada",
+    templateTier: "global_basic",
     estado: "activo",
     comidas: [],
   };
@@ -140,6 +155,7 @@ export function mealDraftToPayload(draft = {}) {
     items,
     tags: tagsFromInput(draft.tags),
     visibilidad: draft.visibilidad || "privada",
+    templateTier: draft.templateTier || "global_basic",
     estado: draft.estado || "activo",
   };
 }
@@ -249,6 +265,7 @@ export function menuDraftToPayload(draft = {}) {
     cantidadComidas: comidas.length,
     tags: tagsFromInput(draft.tags),
     visibilidad: draft.visibilidad || "privada",
+    templateTier: draft.templateTier || "global_basic",
     estado: draft.estado || "activo",
     comidas,
   };
@@ -268,6 +285,7 @@ export function normalizeMealDraft(raw = {}, foods = []) {
     objetivoProteina: source.objetivoProteina ?? raw.objetivoProteina,
     tags: Array.isArray(source.tags || raw.tags) ? source.tags || raw.tags : [],
     visibilidad: source.visibilidad || raw.visibilidad || raw.visibility || "privada",
+    templateTier: source.templateTier || raw.templateTier || tierFromLegacyPlan(source.planMinimo || raw.planMinimo),
     estado: source.estado || raw.estado || raw.status || "activo",
     items: normalizeItems(items, foods),
   });
@@ -314,6 +332,7 @@ export function normalizeMenuDraft(raw = {}) {
     objetivo: source.objetivo || raw.goals?.[0] || "mantenimiento",
     tags: Array.isArray(source.tags || raw.tags) ? source.tags || raw.tags : [],
     visibilidad: source.visibilidad || raw.visibility || "privada",
+    templateTier: source.templateTier || raw.templateTier || tierFromLegacyPlan(source.planMinimo || raw.planMinimo),
     estado: source.estado || raw.estado || "activo",
     comidas: meals.map((meal) => normalizeMealDraft(meal)),
   });
@@ -398,6 +417,14 @@ export function MealRecipeEditor({
               onChange={(value) => update({ visibilidad: value })}
             />
           </div>
+          {allowSystemVisibility ? (
+            <SelectField
+              label="Nivel biblioteca"
+              value={draft.templateTier || "global_basic"}
+              options={TEMPLATE_TIERS}
+              onChange={(value) => update({ templateTier: value })}
+            />
+          ) : null}
           <SelectField label="Estado" value={draft.estado} options={STATUS} onChange={(value) => update({ estado: value })} />
           <Field
             label="Tags"
@@ -1213,6 +1240,14 @@ export function MenuBaseEditor({
             />
             <SelectField label="Estado" value={draft.estado} options={STATUS} onChange={(value) => update({ estado: value })} />
           </div>
+          {allowSystemVisibility ? (
+            <SelectField
+              label="Nivel biblioteca"
+              value={draft.templateTier || "global_basic"}
+              options={TEMPLATE_TIERS}
+              onChange={(value) => update({ templateTier: value })}
+            />
+          ) : null}
           <BufferedField label="Tags" value={tagsFromInput(draft.tags).join(", ")} fieldKey="tags" onCommit={updateMenuField} />
           <button type="button" className="nf-btn ghost" onClick={useCurrentTotals}>Usar totales actuales</button>
           <MacroSummary totals={menuTotals} />
@@ -2442,6 +2477,14 @@ function MobileMenuSettingsDrawer({
             />
             <SelectField label="Estado" value={draft.estado} options={STATUS} onChange={(value) => onUpdateMenu({ estado: value })} />
           </div>
+          {allowSystemVisibility ? (
+            <SelectField
+              label="Nivel biblioteca"
+              value={draft.templateTier || "global_basic"}
+              options={TEMPLATE_TIERS}
+              onChange={(value) => onUpdateMenu({ templateTier: value })}
+            />
+          ) : null}
           <BufferedField label="Tags" value={tagsFromInput(draft.tags).join(", ")} fieldKey="tags" onCommit={onUpdateMenuField} />
           <button type="button" className="nf-btn ghost" onClick={onUseCurrentTotals}>Usar totales actuales</button>
           <MacroSummary totals={menuTotals} />

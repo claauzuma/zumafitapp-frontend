@@ -289,6 +289,8 @@ export function normalizeMeal(raw = {}, foodsOrIndex = []) {
     visibilidad: raw?.visibilidad || raw?.visibility || "",
     ownerType: raw?.ownerType || "",
     ownerId: raw?.ownerId || "",
+    sourceType: raw?.sourceType || raw?.templateSource || raw?.source || "",
+    templateTier: raw?.templateTier || raw?.libraryTier || "",
     estado: raw?.estado || raw?.status || "",
     _searchText: searchText,
     raw,

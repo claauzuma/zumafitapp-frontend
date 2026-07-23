@@ -17,6 +17,7 @@ import {
 } from "./adminUsuariosApi.js";
 import { useAdminCoaches, useAdminUser } from "./adminUsuariosQueries.js";
 import { startAdminImpersonation } from "../impersonationApi.js";
+import { clientPlanLabel } from "../professionalPlans.js";
 import {
   invalidateAfterAdminUserUpdate,
   invalidateAfterAssignCoach,
@@ -567,11 +568,7 @@ function specialtyLabel(user) {
 }
 
 function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  if (p === "free" || p === "trial_pro" || p === "trial") return "Prueba Pro";
-  return "Prueba Pro";
+  return clientPlanLabel(plan);
 }
 
 function capacityLabel(coach) {

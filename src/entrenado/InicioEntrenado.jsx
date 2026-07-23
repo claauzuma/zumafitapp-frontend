@@ -1290,7 +1290,7 @@ export default function InicioEntrenado() {
         <div className="card">
           <strong className="homeCardTitle"><TrendingUp aria-hidden="true" /> Progreso</strong>
           <p className="p" style={{ marginTop: 6 }}>
-            Medidas, fotos, rendimiento y constancia.
+            Peso, medidas y constancia con datos reales disponibles.
           </p>
           <div className="homeActionsRow">
             <button type="button" className="cardAction secondary" onClick={() => navigate("/app/progresos")}>

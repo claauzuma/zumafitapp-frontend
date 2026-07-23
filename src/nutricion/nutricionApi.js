@@ -30,7 +30,13 @@ export async function listAlimentos(filters = {}) {
 }
 
 export async function listComidas(filters = {}, foods = []) {
-  const data = await apiFetch("/api/comidas", {
+  const params = new URLSearchParams();
+  const scope = String(filters.scope || "").trim();
+  const search = String(filters.search || "").trim();
+  if (scope) params.set("scope", scope);
+  if (search) params.set("search", search);
+  const query = params.toString();
+  const data = await apiFetch(`/api/comidas${query ? `?${query}` : ""}`, {
     method: "GET",
     timeoutMs: 12000,
   });

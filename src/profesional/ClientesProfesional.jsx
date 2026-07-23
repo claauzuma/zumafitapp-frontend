@@ -291,7 +291,10 @@ export default function ClientesProfesional() {
       <section className="prof-shell">
         <div className="prof-hero prof-heroClean">
           <div className="prof-titleRow">
-            <div className="prof-kicker">👥 Clientes</div>
+            <div className="prof-kicker">
+              <Users size={15} strokeWidth={2.3} aria-hidden="true" />
+              Clientes
+            </div>
             <div className="prof-titleWithIcon">
               <Users size={22} strokeWidth={2.4} aria-hidden="true" />
               <h1 className="prof-title">Tus clientes</h1>
@@ -352,8 +355,16 @@ export default function ClientesProfesional() {
           loading={invitationsQuery.isLoading}
           refreshing={invitationsQuery.isFetching && !invitationsQuery.isLoading}
           onCancel={(id) => cancelInviteMutation.mutate(id)}
-          onActivate={(id) => activateInviteMutation.mutate(id)}
+          onActivate={(id) => {
+            if (capacity.atLimit) {
+              setToast({ type: "warning", message: `Límite de ${capacity.limit} clientes activos alcanzado.` });
+              return;
+            }
+            activateInviteMutation.mutate(id);
+          }}
           onDelete={(id) => deleteInviteMutation.mutate(id)}
+          activationBlocked={capacity.atLimit}
+          activationBlockedReason={capacity.atLimit ? `Tu plan permite hasta ${capacity.limit} clientes activos.` : ""}
           readOnly={readOnlySimulation}
           busyId={
             cancelInviteMutation.variables ||
@@ -648,6 +659,8 @@ function ClientInvitationsPanel({
   onCancel,
   onActivate,
   onDelete,
+  activationBlocked,
+  activationBlockedReason,
   readOnly,
   busyId,
   isBusy,
@@ -698,6 +711,8 @@ function ClientInvitationsPanel({
                 setOpenMenuId("");
               }}
               onActivate={onActivate}
+              activationBlocked={activationBlocked}
+              activationBlockedReason={activationBlockedReason}
               onCancel={onCancel}
               onDelete={onDelete}
             />
@@ -718,6 +733,8 @@ function ClientInvitationsPanel({
                 setOpenMenuId("");
               }}
               onActivate={onActivate}
+              activationBlocked={activationBlocked}
+              activationBlockedReason={activationBlockedReason}
               onCancel={onCancel}
               onDelete={onDelete}
             />
@@ -750,6 +767,8 @@ function ClientInvitationsPanel({
                     setOpenMenuId("");
                   }}
                   onActivate={onActivate}
+                  activationBlocked={activationBlocked}
+                  activationBlockedReason={activationBlockedReason}
                   onCancel={onCancel}
                   onDelete={onDelete}
                 />
@@ -793,6 +812,8 @@ function CoachInvitationCard({
   onMenuToggle,
   onDetails,
   onActivate,
+  activationBlocked,
+  activationBlockedReason,
   onCancel,
   onDelete,
 }) {
@@ -841,11 +862,12 @@ function CoachInvitationCard({
           <button
             type="button"
             className="prof-invitePrimaryAction"
-            disabled={locked || readOnly}
+            disabled={locked || readOnly || activationBlocked}
+            title={activationBlocked ? activationBlockedReason : undefined}
             onClick={() => onActivate(id)}
           >
             <Zap size={16} strokeWidth={2.5} aria-hidden="true" />
-            {locked ? "Activando..." : "Activar servicio"}
+            {locked ? "Activando..." : activationBlocked ? "Límite alcanzado" : "Activar servicio"}
           </button>
         ) : null}
         <button type="button" className="prof-inviteSecondaryAction" onClick={onDetails}>
@@ -998,7 +1020,7 @@ function InviteClientDialog({
               >
                 <option value="service_pro">Coach Pro</option>
                 <option value="service_vip" disabled={!access.canOfferServiceVip}>
-                  Coach VIP{access.canOfferServiceVip ? "" : " - requiere Coach IA"}
+                  Coach VIP{access.canOfferServiceVip ? "" : " - requiere plan profesional VIP"}
                 </option>
               </select>
             </label>
@@ -1278,13 +1300,20 @@ function formatReadyCount(count) {
 
 function getCapacitySummary(coach, activeClients) {
   const effective = coach?.effectiveCapabilities || {};
-  const maxRaw = effective?.maxClients ?? coach?.coachStats?.maxClients ?? null;
+  const maxRaw =
+    effective?.limits?.maxActiveClients ??
+    effective?.maxActiveClients ??
+    effective?.maxClients ??
+    coach?.coachStats?.maxClients ??
+    null;
   const max = Number(maxRaw);
 
   if (!Number.isFinite(max) || max <= 0) {
     return {
       availableLabel: "Sin limite",
       usedLabel: `${activeClients} usados`,
+      atLimit: false,
+      limit: null,
     };
   }
 
@@ -1292,6 +1321,8 @@ function getCapacitySummary(coach, activeClients) {
   return {
     availableLabel: `${available} de ${max}`,
     usedLabel: `${activeClients} usados de ${max}`,
+    atLimit: activeClients >= max,
+    limit: max,
   };
 }
 

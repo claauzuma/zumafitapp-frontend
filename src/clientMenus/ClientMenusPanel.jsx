@@ -353,6 +353,7 @@ export default function ClientMenusPanel({
   user = {},
   directCreate = false,
   returnTo = "/app/menu",
+  onUsageChange,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -479,6 +480,7 @@ export default function ClientMenusPanel({
       await fn();
       if (successMessage) onToast?.({ type: "success", message: successMessage });
       await loadMenus();
+      onUsageChange?.();
       return true;
     } catch (err) {
       onToast?.({ type: "error", message: err?.error || err?.message || "No se pudo completar la accion." });
@@ -651,6 +653,16 @@ export default function ClientMenusPanel({
         </div>
       ) : null}
 
+      {limitReached ? (
+        <div className="client-menu-warning" role="status">
+          <AlertTriangle size={17} />
+          <span>
+            <strong>{plan === "free" ? "Limite Free alcanzado." : `Limite ${planLabel(plan)} alcanzado.`}</strong>{" "}
+            {plan === "free" ? "Actualiza a Pro para crear mas menus." : "Elimina un menu antes de duplicar otro."}
+          </span>
+        </div>
+      ) : null}
+
       <label className="client-menu-search">
         <Search size={16} />
         <span className="sr-only">Buscar menu propio</span>
@@ -712,6 +724,7 @@ export default function ClientMenusPanel({
               saving={saving}
               capabilities={capabilities}
               canActivate={capabilities?.canActivateOwnMenu !== false && capabilities?.activeMenuSource !== "coach"}
+              canDuplicate={capabilities?.canDuplicateOwnMenu !== false && !limitReached}
               onEdit={() => openEdit(menu)}
               onActivate={() => runAction(() => activateClientMenu(menuId(menu)), "Menu activado.")}
               onDuplicate={() => runAction(() => duplicateClientMenu(menuId(menu)), "Menu duplicado.")}
@@ -750,7 +763,7 @@ export default function ClientMenusPanel({
   );
 }
 
-function ClientMenuCard({ menu, saving, capabilities, canActivate, onEdit, onActivate, onDuplicate, onDelete }) {
+function ClientMenuCard({ menu, saving, capabilities, canActivate, canDuplicate, onEdit, onActivate, onDuplicate, onDelete }) {
   const totals = menu.macrosTotales || menuTotals(menu);
   const dayCount = Object.keys(menu.dias || {}).length || menu.selectedDays?.length || 0;
   const updatedAt = menu.updatedAt ? new Date(menu.updatedAt) : null;
@@ -789,7 +802,12 @@ function ClientMenuCard({ menu, saving, capabilities, canActivate, onEdit, onAct
           </button>
         ) : null}
         {capabilities?.canDuplicateOwnMenu !== false ? (
-          <button type="button" onClick={onDuplicate} disabled={saving}>
+          <button
+            type="button"
+            onClick={onDuplicate}
+            disabled={saving || !canDuplicate}
+            title={!canDuplicate ? "Limite del plan alcanzado" : undefined}
+          >
             <Copy size={15} />
             Duplicar
           </button>

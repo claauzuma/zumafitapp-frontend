@@ -69,6 +69,7 @@ test("metadata guarda margen flexible y pendientes por dia", () => {
   assert.equal(metadata.source, "coach");
   assert.equal(metadata.dayKey, "monday");
   assert.equal(metadata.targetCalories, 2930);
+  assert.deepEqual(metadata.targetMacros, { p: 180, c: 350, g: 90 });
   assert.equal(metadata.plannedCalories, 2523);
   assert.equal(metadata.flexibleCalories, 407);
   assert.equal(metadata.flexibleMode, "free_margin");

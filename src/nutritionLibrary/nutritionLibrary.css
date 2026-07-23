@@ -56,6 +56,14 @@
   text-align: right;
 }
 
+.nl-heroCounters {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .nl-heroMetric strong {
   display: block;
   color: #ffe480;
@@ -109,6 +117,15 @@
   background: linear-gradient(135deg, rgba(246, 212, 94, 0.22), rgba(246, 212, 94, 0.08));
   color: #fff4bd;
   box-shadow: inset 0 0 0 1px rgba(246, 212, 94, 0.25);
+}
+
+.nl-tabs button:disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: not-allowed;
+  color: rgba(226, 236, 248, 0.48);
+  opacity: 0.78;
 }
 
 .nl-toolbar {
@@ -185,6 +202,21 @@
 
 .nl-state.compact {
   min-height: 52px;
+}
+
+.nl-libraryLocked {
+  min-height: 0;
+  justify-content: flex-start;
+  margin: 0 0 12px;
+  border-color: rgba(246, 212, 94, 0.22);
+  background: rgba(246, 212, 94, 0.07);
+  padding: 11px 13px;
+  color: #dce7f5;
+}
+
+.nl-libraryLocked svg {
+  flex: 0 0 auto;
+  color: #ffe480;
 }
 
 .nl-spin {
@@ -2251,6 +2283,15 @@
 
   .nl-heroMetric {
     text-align: left;
+  }
+
+  .nl-heroCounters {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .nl-heroCounters .nl-heroMetric {
+    flex: 1 1 140px;
   }
 
   .nl-toolbar {

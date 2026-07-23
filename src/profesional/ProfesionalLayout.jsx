@@ -20,15 +20,15 @@ import { useProfessionalMe } from "../authQueries.js";
 import { clearPrivateQueryCache } from "../queryClient.js";
 import ImpersonationBanner from "../ImpersonationBanner.jsx";
 import AppToast from "../ui/AppToast.jsx";
-import BrandLogo from "../ui/BrandLogo.jsx";
 import { createNavigationPrefetchHandlers, scheduleIdleRoutePrefetch } from "../routes/routePrefetch.js";
+import { coachProfessionalPlanFromUser, coachProfessionalPlanLabel } from "../professionalPlans.js";
 
 export default function ProfesionalLayout({ me: meProp }) {
   const navigate = useNavigate();
   const meQuery = useProfessionalMe();
   const me = meProp || meQuery.data || getCachedUser() || null;
   const navItems = useMemo(() => buildNavItems(me), [me]);
-  const plan = planLabel(me?.effectiveCapabilities?.planCode || me?.plan);
+  const plan = coachProfessionalPlanLabel(coachProfessionalPlanFromUser(me));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [toast, setToast] = useState(null);
@@ -182,8 +182,9 @@ export default function ProfesionalLayout({ me: meProp }) {
 function BrandBlock({ compact = false }) {
   return (
     <div className={`pl-brandBlock ${compact ? "compact" : ""}`}>
-      <BrandLogo className="pl-brandLogo" size={compact ? "sm" : "client"} priority />
+      <div className="pl-brandMark" aria-hidden="true">Z</div>
       <div className="pl-brandCopy">
+        <div className="pl-brandName">ZumaFit</div>
         <div className="pl-sub">Panel profesional</div>
       </div>
     </div>
@@ -242,13 +243,6 @@ function buildNavItems(me) {
   return items;
 }
 
-function planLabel(plan) {
-  const p = String(plan || "").toLowerCase();
-  if (p === "premium2" || p === "vip") return "VIP";
-  if (p === "premium" || p === "pro") return "Pro";
-  return "Prueba Pro";
-}
-
 const styles = `
 .pl-wrap{
   --pl-bg:#090909;
@@ -275,32 +269,25 @@ const styles = `
 }
 .pl-topInner{
   box-sizing:border-box;
-  width:min(100%, 1480px);
-  min-height:66px;
+  width:100%;
+  max-width:1800px;
+  min-height:70px;
   margin:0 auto;
-  padding:10px 22px;
+  padding:8px clamp(12px, 1.4vw, 26px);
   display:grid;
   grid-template-columns:auto minmax(0, 1fr) auto;
   align-items:center;
-  gap:14px;
+  gap:clamp(8px, 1vw, 16px);
 }
 .pl-topBrand{
   min-width:0;
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
 }
 .pl-topBrand .pl-plan{
   margin:0;
   flex:0 0 auto;
-}
-.pl-topBrand .pl-mark{
-  width:38px;
-  height:38px;
-  border-radius:14px;
-}
-.pl-topBrand .pl-brand{
-  font-size:18px;
 }
 .pl-side{
   display:none;
@@ -311,51 +298,57 @@ const styles = `
 .pl-brandBlock{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
   min-width:0;
   overflow:hidden;
 }
-.pl-mark{
+.pl-brandMark{
   width:42px;
   height:42px;
-  border-radius:15px;
+  flex:0 0 auto;
+  border-radius:13px;
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid rgba(245,215,110,.24);
-  background:linear-gradient(180deg, rgba(245,215,110,.13), rgba(255,255,255,.03));
+  border:1px solid rgba(245,215,110,.34);
+  background:
+    linear-gradient(145deg, rgba(245,215,110,.20), rgba(245,153,0,.05)),
+    #101114;
   color:var(--pl-gold);
   font-weight:1000;
-  letter-spacing:0;
+  font-size:25px;
+  font-style:italic;
+  line-height:1;
+  text-shadow:0 2px 14px rgba(245,153,0,.30);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 8px 24px rgba(0,0,0,.20);
 }
 .pl-brandCopy{
   min-width:0;
 }
-.pl-brandLogo{
-  min-width:0;
-}
-.pl-brandLogo .brand-logo-img{
-  height:52px;
-  max-width:225px;
-}
-.pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
-  height:46px;
-  max-width:188px;
-}
-.pl-brand{
-  font-size:20px;
+.pl-brandName{
+  color:#f4f6f8;
+  font-size:18px;
   line-height:1;
   font-weight:1000;
-  color:var(--pl-gold);
   white-space:nowrap;
 }
 .pl-sub{
-  margin-top:4px;
+  margin-top:5px;
   color:var(--pl-muted);
-  font-size:12px;
+  font-size:10px;
   font-weight:800;
-  letter-spacing:0;
+  letter-spacing:.055em;
   text-transform:uppercase;
+  white-space:nowrap;
+}
+.pl-brandBlock.compact .pl-brandMark{
+  width:38px;
+  height:38px;
+  border-radius:12px;
+  font-size:23px;
+}
+.pl-brandBlock.compact .pl-brandName{
+  font-size:16px;
 }
 .pl-plan{
   margin:16px 0 18px;
@@ -381,13 +374,8 @@ const styles = `
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:5px;
-  overflow-x:auto;
-  scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
-}
-.pl-topNav::-webkit-scrollbar{
-  display:none;
+  gap:clamp(1px, .28vw, 5px);
+  overflow:hidden;
 }
 .pl-link{
   display:flex;
@@ -411,13 +399,19 @@ const styles = `
   border-color:rgba(245,215,110,.26);
 }
 .pl-topNav .pl-link{
-  flex:0 0 auto;
+  flex:0 1 auto;
+  min-width:0;
   min-height:40px;
-  padding:0 11px;
+  padding:0 clamp(7px, .62vw, 11px);
   border-radius:12px;
-  gap:8px;
-  font-size:14px;
+  gap:6px;
+  font-size:clamp(12px, .78vw, 14px);
   white-space:nowrap;
+}
+.pl-topNav .pl-link svg{
+  flex:0 0 auto;
+  width:17px;
+  height:17px;
 }
 .pl-logout{
   width:100%;
@@ -437,7 +431,7 @@ const styles = `
 .pl-logout.top{
   width:auto;
   min-height:40px;
-  padding:0 13px;
+  padding:0 12px;
   border-radius:12px;
   white-space:nowrap;
 }
@@ -531,13 +525,13 @@ const styles = `
   width:38px;
   height:38px;
 }
-@media (min-width: 861px){
+@media (min-width: 1181px){
   .pl-backdrop,
   .pl-drawer{
     display:none;
   }
 }
-@media (max-width: 860px){
+@media (max-width: 1180px){
   .pl-wrap{
     grid-template-columns:1fr;
   }
@@ -561,24 +555,9 @@ const styles = `
   .pl-side{
     display:none;
   }
-  .pl-mark{
-    width:38px;
-    height:38px;
-    border-radius:14px;
-  }
   .pl-brandBlock.compact{
     min-width:0;
     flex:1 1 auto;
-  }
-  .pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
-    height:44px;
-    max-width:176px;
-  }
-  .pl-brand{
-    max-width:155px;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    font-size:16px;
   }
   .pl-sub{
     display:none;
@@ -589,12 +568,10 @@ const styles = `
   }
 }
 @media (max-width: 420px){
-  .pl-brandBlock.compact .pl-brandLogo .brand-logo-img{
-    height:44px;
-    max-width:175px;
-  }
-  .pl-brand{
-    max-width:130px;
+  .pl-brandBlock.compact .pl-brandMark{
+    width:36px;
+    height:36px;
+    font-size:21px;
   }
   .pl-drawer{
     width:min(92vw, 330px);

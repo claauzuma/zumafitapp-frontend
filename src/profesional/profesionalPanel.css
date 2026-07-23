@@ -1185,6 +1185,248 @@
   padding:18px;
 }
 
+.prof-nutritionImpactNotice{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:start;
+  gap:12px;
+  border:1px solid rgba(251,191,36,.28);
+  border-radius:16px;
+  background:
+    radial-gradient(circle at 0 0, rgba(245,215,110,.11), transparent 36%),
+    rgba(245,158,11,.055);
+  padding:13px 14px;
+}
+
+.prof-nutritionImpactIcon{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(251,191,36,.28);
+  border-radius:12px;
+  background:rgba(245,158,11,.11);
+  color:#ffe174;
+}
+
+.prof-nutritionImpactNotice strong{
+  display:block;
+  color:#fff1b7;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:1000;
+}
+
+.prof-nutritionImpactNotice p{
+  margin:4px 0 0;
+  color:#b8c4d2;
+  font-size:12px;
+  line-height:1.5;
+  font-weight:750;
+}
+
+.prof-nutritionImpactDays{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:9px;
+}
+
+.prof-nutritionImpactDays span{
+  border:1px solid rgba(245,215,110,.18);
+  border-radius:999px;
+  background:rgba(245,215,110,.075);
+  color:#f8df82;
+  padding:4px 8px;
+  font-size:10px;
+  font-weight:950;
+}
+
+.prof-nutritionImpactNotice .prof-btn.compact{
+  min-height:34px;
+  margin-top:10px;
+  padding:7px 10px;
+  font-size:11px;
+}
+
+.prof-nutritionConfirmDialog{
+  width:min(760px, 100%);
+  max-height:min(92vh, 900px);
+  overflow:auto;
+  border:1px solid rgba(245,215,110,.22);
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 10% 0, rgba(245,215,110,.13), transparent 32%),
+    radial-gradient(circle at 100% 15%, rgba(245,158,11,.07), transparent 28%),
+    linear-gradient(180deg, rgba(13,20,30,.995), rgba(6,10,16,.995));
+  box-shadow:0 30px 90px rgba(0,0,0,.62);
+  padding:18px;
+}
+
+.prof-nutritionConfirmHeader{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:start;
+  gap:13px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  padding-bottom:15px;
+}
+
+.prof-nutritionConfirmIcon{
+  width:50px;
+  height:50px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(251,191,36,.30);
+  border-radius:16px;
+  background:rgba(245,158,11,.11);
+  color:#ffe174;
+}
+
+.prof-nutritionConfirmHeader > div > span{
+  display:block;
+  color:#f5d76e;
+  font-size:10px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.prof-nutritionConfirmHeader h3{
+  margin:4px 0 0;
+  color:#f8fafc;
+  font-size:23px;
+  line-height:1.15;
+  font-weight:1000;
+}
+
+.prof-nutritionConfirmHeader p{
+  margin:6px 0 0;
+  color:#aab7c7;
+  font-size:13px;
+  line-height:1.45;
+  font-weight:750;
+}
+
+.prof-nutritionConfirmBody{
+  display:grid;
+  gap:14px;
+  padding:16px 0;
+}
+
+.prof-nutritionConfirmSummary{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:9px;
+}
+
+.prof-nutritionConfirmSummary > div{
+  min-width:0;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:15px;
+  background:rgba(255,255,255,.035);
+  padding:11px 12px;
+}
+
+.prof-nutritionConfirmSummary span,
+.prof-nutritionConfirmSummary strong{
+  display:block;
+}
+
+.prof-nutritionConfirmSummary span{
+  color:#8392a5;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.prof-nutritionConfirmSummary strong{
+  margin-top:5px;
+  color:#f7e49b;
+  font-size:15px;
+  line-height:1.25;
+  font-weight:1000;
+}
+
+.prof-nutritionConfirmDays{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:8px;
+}
+
+.prof-nutritionConfirmDays article{
+  min-width:0;
+  display:grid;
+  gap:4px;
+  border-left:3px solid rgba(245,215,110,.68);
+  border-radius:0 13px 13px 0;
+  background:#0d141d;
+  padding:10px 11px;
+}
+
+.prof-nutritionConfirmDays strong{
+  color:#f8fafc;
+  font-size:12px;
+  font-weight:1000;
+}
+
+.prof-nutritionConfirmDays span{
+  color:#c4cfdb;
+  font-size:11px;
+  line-height:1.45;
+  font-weight:850;
+}
+
+.prof-nutritionConfirmDays span b{
+  color:#f5d76e;
+}
+
+.prof-nutritionConfirmDays small{
+  color:#7f91a5;
+  font-size:10px;
+  font-weight:800;
+}
+
+.prof-nutritionConfirmSafety{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:10px;
+  align-items:start;
+  border:1px solid rgba(74,222,128,.20);
+  border-radius:16px;
+  background:rgba(34,197,94,.065);
+  color:#77e3ad;
+  padding:12px 13px;
+}
+
+.prof-nutritionConfirmSafety strong{
+  display:block;
+  color:#b8f5d4;
+  font-size:12px;
+  font-weight:1000;
+}
+
+.prof-nutritionConfirmSafety p{
+  margin:3px 0 0;
+  color:#a9bdB5;
+  font-size:11px;
+  line-height:1.5;
+  font-weight:750;
+}
+
+.prof-nutritionConfirmActions{
+  display:grid;
+  grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr);
+  gap:10px;
+  border-top:1px solid rgba(255,255,255,.08);
+  padding-top:14px;
+}
+
+.prof-nutritionConfirmActions .prof-btn{
+  justify-content:center;
+}
+
 .prof-serviceEndDialog{
   width:min(720px, 100%);
   max-height:min(92vh, 860px);
@@ -1339,6 +1581,52 @@
 
   .prof-serviceEndActions .prof-btn:last-child{
     justify-content:center;
+  }
+}
+
+@media (max-width: 679px){
+  .prof-nutritionConfirmBackdrop{
+    align-items:flex-end;
+    padding:10px;
+  }
+
+  .prof-nutritionConfirmDialog{
+    max-height:92dvh;
+    border-radius:22px 22px 16px 16px;
+    padding:14px;
+  }
+
+  .prof-nutritionConfirmHeader{
+    grid-template-columns:auto minmax(0,1fr) auto;
+    gap:10px;
+  }
+
+  .prof-nutritionConfirmIcon{
+    width:42px;
+    height:42px;
+    border-radius:13px;
+  }
+
+  .prof-nutritionConfirmHeader h3{
+    font-size:19px;
+  }
+
+  .prof-nutritionConfirmSummary,
+  .prof-nutritionConfirmDays,
+  .prof-nutritionConfirmActions{
+    grid-template-columns:1fr;
+  }
+
+  .prof-nutritionConfirmSummary{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+
+  .prof-nutritionConfirmSummary > div:last-child{
+    grid-column:1 / -1;
+  }
+
+  .prof-nutritionConfirmActions .prof-btn.gold{
+    min-height:48px;
   }
 }
 

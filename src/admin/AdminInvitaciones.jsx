@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { apiFetch } from "../Api.js";
+import {
+  clientPlanLabel,
+  coachProfessionalPlanLabel,
+  normalizeCoachProfessionalPlan,
+} from "../professionalPlans.js";
 
 export default function AdminInvitaciones() {
   const navigate = useNavigate();
@@ -154,7 +159,7 @@ export default function AdminInvitaciones() {
             const fullName = `${nombre} ${apellido}`.trim();
             const roleMeta = getInviteRoleMeta(it);
             const statusMeta = getInviteStatusMeta(it?.status);
-            const planMeta = getInvitePlanMeta(it?.plan);
+            const planMeta = getInvitePlanMeta(it?.professionalPlan || it?.plan, it?.targetRole || it?.role);
             const specialtyText = getInviteSpecialtyText(it);
             const invitedAt = formatDateTime(it?.invitedAt || it?.createdAt);
             const email = String(it?.email || "");
@@ -263,23 +268,26 @@ function getInviteStatusMeta(status) {
   return { emoji: "🟡", label: "Pendiente", className: "pending" };
 }
 
-function getInvitePlanMeta(planRaw) {
+function getInvitePlanMeta(planRaw, roleRaw) {
   const plan = String(planRaw || "").toLowerCase().trim();
+  const role = String(roleRaw || "").toLowerCase().trim();
 
   if (!plan) return null;
-  if (plan === "trial_pro" || plan === "trial" || plan === "free") {
-    return { emoji: "", label: "Prueba Pro", className: "free" };
+  if (role === "coach") {
+    const professionalPlan = normalizeCoachProfessionalPlan(plan);
+    const label = coachProfessionalPlanLabel(professionalPlan);
+    return {
+      emoji: professionalPlan === "coach_ai" ? "💎" : "",
+      label: `Coach ${label}`,
+      className: professionalPlan === "coach_ai" ? "vip" : professionalPlan === "coach_pro" ? "plus" : "free",
+    };
   }
-  if (plan === "premium" || plan === "pro" || plan === "plus") {
-    return { emoji: "", label: "Pro", className: "plus" };
-  }
-  if (plan === "premium2" || plan === "vip") {
-    return { emoji: "💎", label: "VIP", className: "vip" };
-  }
-  if (plan === "premium" || plan === "pro" || plan === "plus") {
-    return { emoji: "⭐", label: "Premium", className: "plus" };
-  }
-  return { emoji: "🆓", label: "Free", className: "free" };
+  const label = clientPlanLabel(plan);
+  return {
+    emoji: label === "VIP" ? "💎" : label === "Free" ? "🆓" : "",
+    label: `Cliente ${label}`,
+    className: label === "VIP" ? "vip" : label === "Pro" ? "plus" : "free",
+  };
 }
 
 function getInviteSpecialtyText(it) {

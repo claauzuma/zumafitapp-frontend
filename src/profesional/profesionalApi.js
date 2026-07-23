@@ -53,6 +53,7 @@ export async function updateProfessionalClientNutrition(clientId, payload) {
   return {
     coach: data?.coach || null,
     client: data?.client || null,
+    assignmentInvalidation: data?.assignmentInvalidation || null,
   };
 }
 

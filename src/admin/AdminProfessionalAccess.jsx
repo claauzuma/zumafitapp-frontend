@@ -10,12 +10,12 @@ import {
   patchAdminProfessionalApplication,
   rejectAdminCoachSubscriptionRequest,
 } from "../professionalAccessApi.js";
+import {
+  COACH_PROFESSIONAL_PLAN_OPTIONS,
+  coachProfessionalPlanLabel,
+} from "../professionalPlans.js";
 
-const PLAN_OPTIONS = [
-  ["coach_initial", "Coach Inicial"],
-  ["coach_pro", "Coach Pro"],
-  ["coach_ai", "Coach IA"],
-];
+const PLAN_OPTIONS = COACH_PROFESSIONAL_PLAN_OPTIONS.map(({ value, label }) => [value, label]);
 
 export default function AdminProfessionalAccess() {
   const queryClient = useQueryClient();
@@ -91,7 +91,7 @@ export default function AdminProfessionalAccess() {
   }
 
   function approveSubscription(req) {
-    const plan = window.prompt("Plan a aprobar: coach_initial, coach_pro o coach_ai", req.requestedPlan || "coach_initial");
+    const plan = window.prompt("Plan profesional: coach_initial (Inicial), coach_pro (Pro) o coach_ai (VIP)", req.requestedPlan || "coach_initial");
     if (plan === null) return;
     subscriptionMutation.mutate({ id: req.id, action: "approve", payload: { plan } });
   }
@@ -108,7 +108,7 @@ export default function AdminProfessionalAccess() {
         <div>
           <span className="apa-kicker">Sistema profesional</span>
           <h1>Profesionales, scopes y suscripciones</h1>
-          <p>Revisá solicitudes, aprobá alcances reales y gestioná planes Coach Inicial, Pro o IA.</p>
+          <p>Revisá solicitudes, aprobá alcances reales y gestioná planes profesionales Inicial, Pro o VIP.</p>
         </div>
         <button type="button" className="apa-btn" onClick={() => {
           applicationsQuery.refetch();
@@ -229,9 +229,7 @@ function dateLabel(value) {
 }
 
 function planLabel(value) {
-  if (value === "coach_ai") return "Coach IA";
-  if (value === "coach_pro") return "Coach Pro";
-  return "Coach Inicial";
+  return coachProfessionalPlanLabel(value);
 }
 
 function typeLabel(value) {

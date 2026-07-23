@@ -125,6 +125,8 @@ function buildPlanDetailGroups(planId = "free", capabilities = {}) {
   const ownMeals = Number(limits.ownMeals);
   const favorites = Number(limits.favorites);
   const menuDays = Number(limits.menuDays);
+  const objectiveChangeDays = Number(limits.manualObjectiveChangeDays);
+  const objectiveChanges = Number(limits.manualObjectiveChangesPerWindow);
   const automaticMenuSoon = capabilities.automaticMenusStatus === "coming_soon";
   const automaticRoutineSoon = capabilities.automaticRoutineStatus === "coming_soon";
   const autoCoachNutritionSoon = capabilities.autoCoachNutrition === "coming_soon";
@@ -138,6 +140,12 @@ function buildPlanDetailGroups(planId = "free", capabilities = {}) {
         { text: Number.isFinite(ownMenus) ? formatLimit(ownMenus, "menu propio", "menus propios") : "Menus propios", state: ownMenus > 0 ? "included" : "blocked" },
         { text: Number.isFinite(menuDays) ? `${formatLimit(menuDays, "dia", "dias")} por menu` : "Menu semanal", state: menuDays > 0 ? "included" : "blocked" },
         { text: Number.isFinite(ownMeals) ? formatLimit(ownMeals, "comida guardada", "comidas guardadas") : "Comidas guardadas", state: ownMeals > 0 ? "included" : "blocked" },
+        {
+          text: Number.isFinite(objectiveChanges) && Number.isFinite(objectiveChangeDays)
+            ? `${objectiveChanges} cambios exitosos de objetivos cada ${objectiveChangeDays} dias`
+            : "Cambios de objetivos sin limite del plan",
+          state: "included",
+        },
       ],
     },
     {
@@ -160,7 +168,8 @@ function buildPlanDetailGroups(planId = "free", capabilities = {}) {
       title: "Progreso",
       items: [
         { text: limits.trackingHistoryDays ? `${limits.trackingHistoryDays} dias de historial` : "Historial completo", state: "included" },
-        { text: "Medidas y fotos de progreso", state: "included" },
+        { text: planId === "free" ? "Peso y medidas basicas" : "Peso y medidas de progreso", state: "included" },
+        { text: "Fotos de progreso", state: planId === "free" ? "blocked" : "included" },
       ],
     },
     {
@@ -361,6 +370,7 @@ export default function ClientPlansPage() {
   const serviceCatalog = accessContext?.catalogs?.professionalServices || {};
   const isAccessFallback = !accessContext && !!capabilitiesQuery.data;
   const planPresets = PLAN_ORDER.reduce((acc, planId) => {
+    const configuredLibrary = personalCatalog[planId]?.library;
     acc[planId] = {
       ...PLAN_PRESETS[planId],
       ...(personalCatalog[planId]
@@ -369,6 +379,9 @@ export default function ClientPlansPage() {
               ...PLAN_PRESETS[planId].limits,
               ...personalCatalog[planId].limits,
             },
+            canUseBasicLibrary: ["basic", "global", "premium"].includes(configuredLibrary),
+            canUseGlobalLibrary: ["global", "premium"].includes(configuredLibrary),
+            canUsePremiumLibrary: configuredLibrary === "premium",
           }
         : {}),
     };
@@ -463,9 +476,26 @@ export default function ClientPlansPage() {
                 <span>Historial</span>
                 <strong>{currentPreset?.limits?.trackingHistoryDays ? `${currentPreset.limits.trackingHistoryDays} dias` : "Completo"}</strong>
               </article>
+              <article>
+                <span>Dia base</span>
+                <strong>{currentPreset?.limits?.menuDays ? `${currentPreset.limits.menuDays}` : "Semanal"}</strong>
+              </article>
+              <article>
+                <span>Objetivos</span>
+                <strong>
+                  {currentPreset?.limits?.manualObjectiveChangesPerWindow && currentPreset?.limits?.manualObjectiveChangeDays
+                    ? `${currentPreset.limits.manualObjectiveChangesPerWindow} / ${currentPreset.limits.manualObjectiveChangeDays} dias`
+                    : "Sin limite"}
+                </strong>
+              </article>
             </div>
           ) : null}
-          {hasPlan ? <span className="cp-current-status">Estas usando este plan</span> : null}
+          {hasPlan ? (
+            <span className="cp-current-status">
+              <CheckCircle2 size={14} aria-hidden="true" />
+              Plan actual
+            </span>
+          ) : null}
         </div>
         <div className={`cp-plan-orb ${tone}`} aria-hidden="true">
           <span>{isCoachAccess ? "Servicio activo" : trial?.active ? "Prueba activa" : "Plan actual"}</span>

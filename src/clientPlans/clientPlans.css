@@ -317,7 +317,7 @@
 
 .cp-current-stats{
   display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:8px;
   margin-top:14px;
 }
@@ -346,15 +346,19 @@
 }
 
 .cp-current-status{
-  display:flex;
+  display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-height:42px;
+  gap:6px;
+  min-height:28px;
   margin-top:13px;
-  border-radius:14px;
-  background:linear-gradient(135deg,#facc15,#f5d76e);
-  color:#080808;
-  font-weight:950;
+  border:1px solid rgba(245,215,110,.24);
+  border-radius:999px;
+  background:rgba(245,215,110,.08);
+  color:#f8e8a2;
+  padding:0 10px;
+  font-size:11px;
+  font-weight:900;
 }
 
 .cp-section-head{
