@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { ArrowRight, CheckCircle2, Loader2, RefreshCw, Route, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, RefreshCw, Target, X } from "lucide-react";
 
 import { manualDayStatusText } from "../../tracking/manualDayCompletion.js";
 
@@ -19,70 +19,89 @@ function configuredMacroItems(progress = {}) {
   ].filter((item) => progress?.configured?.[item.key]);
 }
 
-export function ManualDayCompletionBanner({
+export function ManualDayCompletionAction({
   active = false,
   completed = 0,
   total = 0,
   onStart,
   onOpenTracking,
   disabled = false,
+  canPlan = false,
+  coachMenu = false,
 }) {
+  const inactiveDescription = coachMenu
+    ? "Registrá el resto sin modificar el menú de tu coach."
+    : completed === 0
+      ? "Todavía no marcaste comidas del menú. Podés registrar el día desde Tracking."
+      : canPlan
+        ? `${completed} de ${total} comidas realizadas · tracking manual u organización automática.`
+        : `${completed} de ${total} comidas realizadas · continuá desde Tracking.`;
+
   if (active) {
     return (
-      <section className="mx-3 rounded-[1.45rem] border border-emerald-300/20 bg-[linear-gradient(135deg,rgba(16,185,129,.13),rgba(255,255,255,.035))] p-3.5 shadow-[0_16px_42px_rgba(0,0,0,.22)] sm:mx-0 sm:p-4">
-        <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200/25 bg-emerald-300/10 text-emerald-100">
-            <CheckCircle2 size={21} aria-hidden="true" />
+      <section
+        className="relative overflow-hidden rounded-[1.15rem] border border-emerald-300/20 bg-[linear-gradient(135deg,rgba(16,185,129,.105),rgba(255,255,255,.025))] p-3 shadow-[0_12px_30px_rgba(0,0,0,.2)]"
+        aria-label="Estado del seguimiento manual del día"
+      >
+        <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 sm:grid-cols-[40px_minmax(0,1fr)_auto]">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[.9rem] border border-emerald-200/25 bg-emerald-300/10 text-emerald-100">
+            <CheckCircle2 size={19} aria-hidden="true" />
           </span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 sm:pr-2">
             <span className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-100/70">
               Estado del día
             </span>
-            <h2 className="mt-0.5 text-base font-black text-white">
-              Continuaste el resto del día por tu cuenta
+            <h2 className="mt-0.5 text-[15px] font-black leading-tight text-white">
+              Continuaste por tu cuenta
             </h2>
             <p className="mt-1 text-xs font-bold leading-relaxed text-zinc-400">
-              El menú conserva {completed} de {total} comidas realizadas. Tus próximos registros se cargan en Tracking.
+              Las comidas pendientes quedaron sin realizar.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={onOpenTracking}
+            className="col-span-2 inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-emerald-200/25 bg-emerald-300/10 px-4 text-sm font-black text-emerald-50 transition hover:bg-emerald-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200 sm:col-span-1 sm:w-auto"
+            aria-label="Ver Tracking del día"
+          >
+            Ver Tracking del día
+            <ArrowRight size={17} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpenTracking}
-          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200/25 bg-emerald-300/10 px-4 text-sm font-black text-emerald-50 transition hover:bg-emerald-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200 sm:w-auto"
-        >
-          Ir al Tracking Diario
-          <ArrowRight size={17} aria-hidden="true" />
-        </button>
       </section>
     );
   }
 
   return (
-    <section className="mx-3 rounded-[1.45rem] border border-[#D4AF37]/24 bg-[linear-gradient(135deg,rgba(212,175,55,.12),rgba(255,255,255,.035))] p-3.5 shadow-[0_16px_42px_rgba(0,0,0,.22)] sm:mx-0 sm:p-4">
-      <div className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/28 bg-[#D4AF37]/10 text-[#FFE8A3]">
-          <Route size={21} aria-hidden="true" />
+    <section
+      className="relative overflow-hidden rounded-[1.25rem] border border-[#D4AF37]/45 bg-[radial-gradient(circle_at_10%_0,rgba(255,232,163,.13),transparent_34%),linear-gradient(135deg,rgba(212,175,55,.13),rgba(12,16,22,.96)_58%,rgba(7,9,12,.98))] p-3 shadow-[0_0_0_1px_rgba(255,232,163,.035),0_14px_34px_rgba(0,0,0,.3),0_0_28px_rgba(212,175,55,.075)]"
+      aria-label="Completar lo que falta desde Tracking"
+    >
+      <span className="pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37] shadow-[0_0_14px_rgba(255,215,107,.55)]" aria-hidden="true" />
+      <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 sm:grid-cols-[40px_minmax(0,1fr)_auto]">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[.9rem] border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3] shadow-[0_0_18px_rgba(212,175,55,.12)]">
+          <Target size={19} strokeWidth={2.4} aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 sm:pr-2">
           <span className="text-[10px] font-black uppercase tracking-[0.1em] text-[#FFE8A3]/70">
-            {completed} de {total} comidas realizadas
+            Continuá en Tracking
           </span>
-          <h2 className="mt-0.5 text-base font-black text-white">Seguir por mi cuenta</h2>
+          <h2 className="mt-0.5 text-base font-black leading-tight text-white">Completar lo que falta</h2>
           <p className="mt-1 text-xs font-bold leading-relaxed text-zinc-400">
-            Completá el resto del día con tracking manual.
+            {inactiveDescription}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={disabled}
+          className="col-span-2 inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#FFE8A3] to-[#D4AF37] px-4 text-sm font-black text-[#090909] shadow-[0_10px_24px_rgba(212,175,55,.2)] transition hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FFE8A3] disabled:cursor-not-allowed disabled:opacity-55 sm:col-span-1 sm:w-auto"
+          aria-label="Completar lo que falta y continuar a Tracking"
+        >
+          Continuar
+          <ArrowRight size={17} aria-hidden="true" />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onStart}
-        disabled={disabled}
-        className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#FFE8A3] to-[#D4AF37] px-4 text-sm font-black text-[#090909] shadow-[0_12px_28px_rgba(212,175,55,.16)] transition hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FFE8A3] disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto"
-      >
-        Seguir por mi cuenta
-        <ArrowRight size={17} aria-hidden="true" />
-      </button>
     </section>
   );
 }
@@ -239,7 +258,7 @@ export function ManualDayCompletionDialog({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.045] px-4 text-sm font-black text-zinc-100 disabled:opacity-55"
+            className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.045] px-4 text-sm font-black text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FFE8A3] disabled:opacity-55"
           >
             Cancelar
           </button>
@@ -247,10 +266,10 @@ export function ManualDayCompletionDialog({
             type="button"
             onClick={onConfirm}
             disabled={saving || state?.loading || Boolean(state?.error) || !progress}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#FFE8A3] to-[#D4AF37] px-4 text-sm font-black text-[#080808] disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#FFE8A3] to-[#D4AF37] px-4 text-sm font-black text-[#080808] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FFE8A3] disabled:cursor-not-allowed disabled:opacity-55"
           >
             {saving ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : null}
-            {saving ? "Guardando..." : "Seguir por mi cuenta"}
+            {saving ? "Guardando..." : "Continuar a Tracking"}
           </button>
         </footer>
       </div>

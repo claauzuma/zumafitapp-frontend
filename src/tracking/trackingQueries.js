@@ -35,6 +35,43 @@ export function useMenuTrackingWeek(start) {
 export function useUpdateManualDayCompletion() {
   return useMutation({
     mutationFn: ({ date, ...payload }) => updateManualDayCompletion(date, payload),
+    onMutate: async (variables) => {
+      const date = variables?.date;
+      const hasPlanPatch = Object.prototype.hasOwnProperty.call(variables || {}, "plan");
+      if (!date || !hasPlanPatch) return null;
+
+      const queryFilter = { queryKey: ["menuTrackingWeek"] };
+      await queryClient.cancelQueries(queryFilter);
+      const previousQueries = queryClient.getQueriesData(queryFilter);
+
+      queryClient.setQueriesData(queryFilter, (current) => {
+        if (!current?.days) return current;
+        return {
+          ...current,
+          days: current.days.map((day) => (
+            day.date === date
+              ? {
+                  ...day,
+                  tracking: {
+                    ...(day.tracking || {}),
+                    manualCompletion: {
+                      ...(day.tracking?.manualCompletion || {}),
+                      plan: variables.plan || null,
+                    },
+                  },
+                }
+              : day
+          )),
+        };
+      });
+
+      return { previousQueries };
+    },
+    onError: (_error, _variables, context) => {
+      (context?.previousQueries || []).forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
     onSuccess: async (data, variables) => {
       const date = data?.record?.date || variables?.date;
       const tracking = data?.record?.tracking;

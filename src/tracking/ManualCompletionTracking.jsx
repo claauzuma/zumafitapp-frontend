@@ -1,21 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight,
+  AlertTriangle,
   Calculator,
   CheckCircle2,
-  Crown,
   Loader2,
   Plus,
-  Search,
   Sparkles,
   Target,
   X,
 } from "lucide-react";
 
-import { listAlimentos } from "../nutricion/nutricionApi.js";
-import { formatNumber, getFoodImageUrl } from "../nutricion/nutricionUtils.js";
+import { formatNumber } from "../nutricion/nutricionUtils.js";
 import { calculateTrackingQuantities } from "./trackingApi.js";
 import { manualDayStatusText, nutritionTotals } from "./manualDayCompletion.js";
+import { buildTrackingQuantityReview } from "./trackingQuantityReview.js";
+import {
+  isTrackingDraftAutomatic,
+  trackingDraftCalculationPayload,
+  trackingDraftProposals,
+} from "./trackingQuantityDrafts.js";
 
 function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
   const openerRef = useRef(null);
@@ -63,27 +66,35 @@ function statusTone(status = "") {
 }
 
 function macroItems(progress = {}) {
-  const remaining = progress.remaining || {};
+  const consumed = progress.trackedConsumed || {};
+  const available = progress.available || {};
   return [
-    { key: "proteina", label: "Proteína", short: "P", value: remaining.proteina },
-    { key: "carbs", label: "Carbohidratos", short: "C", value: remaining.carbs },
-    { key: "grasas", label: "Grasas", short: "G", value: remaining.grasas },
+    { key: "proteina", label: "Proteína", short: "P", consumed: consumed.proteina, target: available.proteina },
+    { key: "carbs", label: "Carbohidratos", short: "C", consumed: consumed.carbs, target: available.carbs },
+    { key: "grasas", label: "Grasas", short: "G", consumed: consumed.grasas, target: available.grasas },
   ].filter((item) => progress?.configured?.[item.key]);
+}
+
+function registeredProgressTone(percent = 0) {
+  if (percent > 105) return "is-exceeded";
+  if (percent >= 90) return "is-positive";
+  if (percent > 0) return "is-progress";
+  return "is-empty";
 }
 
 export function ManualCompletionTrackingCard({
   progress,
-  plan = null,
-  canPlan = false,
-  onAddFood,
-  onOpenPlanner,
+  organizationCount = 0,
 }) {
   if (!progress) return null;
   const macros = macroItems(progress);
   const availableKcal = Math.max(0, Number(progress.available?.kcal) || 0);
   const registeredKcal = Math.max(0, Number(progress.trackedConsumed?.kcal) || 0);
   const remainingKcal = Number(progress.remaining?.kcal) || 0;
-  const planCount = Number(plan?.count) || 0;
+  const mealCount = Math.max(0, Number(organizationCount) || 0);
+  const registeredPercent = availableKcal > 0
+    ? Math.max(0, Math.round((registeredKcal / availableKcal) * 100))
+    : 0;
 
   return (
     <section className={`td-manualCompletionCard ${statusTone(progress.status)}`}>
@@ -102,7 +113,12 @@ export function ManualCompletionTrackingCard({
         <>
           <div className="td-manualCompletionKcal">
             <span>
-              <small>Registrado en Tracking</small>
+              <span className="td-manualCompletionMetricLabel">
+                <small>Registrado en Tracking</small>
+                <b className={`td-manualCompletionPercent ${registeredProgressTone(registeredPercent)}`}>
+                  {registeredPercent}%
+                </b>
+              </span>
               <strong>{formatNumber(registeredKcal, 0)} / {formatNumber(availableKcal, 0)} kcal</strong>
             </span>
             <span>
@@ -128,11 +144,16 @@ export function ManualCompletionTrackingCard({
       )}
 
       {macros.length ? (
-        <div className="td-manualCompletionMacros" aria-label="Macros restantes">
+        <div className="td-manualCompletionMacros" aria-label="Macros registradas respecto del objetivo disponible">
           {macros.map((item) => (
             <span key={item.key}>
               <small>{item.short}</small>
-              <strong>{formatNumber(Math.max(0, item.value), 1)} g</strong>
+              <strong>
+                {formatNumber(Math.max(0, item.consumed), 1)}
+                <i aria-hidden="true">/</i>
+                {formatNumber(Math.max(0, item.target), 1)} g
+              </strong>
+              <span className="sr-only">{item.label}: registrado sobre objetivo disponible</span>
             </span>
           ))}
         </div>
@@ -140,96 +161,16 @@ export function ManualCompletionTrackingCard({
         <p className="td-manualCompletionNoMacros">No hay objetivos de macros configurados.</p>
       )}
 
-      {planCount ? (
+      {mealCount ? (
         <div className="td-manualCompletionPlanState">
           <Sparkles size={15} aria-hidden="true" />
-          Organizado en {planCount} momento{planCount === 1 ? "" : "s"} flexible{planCount === 1 ? "" : "s"}.
-        </div>
-      ) : null}
-
-      <div className="td-manualCompletionActions">
-        <button type="button" className="td-primaryBtn" onClick={onAddFood}>
-          <Plus size={17} aria-hidden="true" />
-          Agregar alimento
-        </button>
-        {canPlan ? (
-          <button type="button" className="td-secondaryBtn" onClick={onOpenPlanner}>
-            <Sparkles size={17} aria-hidden="true" />
-            Organizar lo que queda
-          </button>
-        ) : null}
-      </div>
-
-      {!canPlan ? (
-        <div className="td-manualCompletionProNote">
-          <Crown size={15} aria-hidden="true" />
-          <span>
-            <strong>Organizá lo que te queda</strong>
-            Distribuí calorías y calculá cantidades automáticamente con Pro.
-          </span>
+          Organizado en {mealCount} comida{mealCount === 1 ? "" : "s"} flexible{mealCount === 1 ? "" : "s"}.
         </div>
       ) : null}
 
       <p className="td-manualCompletionHint">
-        Calculado según tu objetivo, el menú realmente realizado y lo que ya registraste hoy.
+        Calculado según tu objetivo, el menú realizado, calorías libres registradas y lo que ya cargaste hoy.
       </p>
-    </section>
-  );
-}
-
-export function RemainingMomentsPlannerDialog({
-  currentCount = 0,
-  saving = false,
-  onClose,
-  onSave,
-}) {
-  const [count, setCount] = useState(currentCount || 1);
-  const panelRef = useRef(null);
-  useDialogKeyboard(panelRef, { onClose, disabled: saving });
-
-  return (
-    <section className="td-modalBackdrop td-bottomSheet" role="dialog" aria-modal="true" aria-labelledby="td-plan-moments-title">
-      <button type="button" className="td-dialogBackdropButton" onClick={saving ? undefined : onClose} aria-label="Cerrar" />
-      <div className="td-modal td-planMomentsModal" ref={panelRef}>
-        <div className="td-modalTop">
-          <div>
-            <span className="td-kicker">
-              <Sparkles size={14} aria-hidden="true" />
-              Planificación temporal
-            </span>
-            <h3 id="td-plan-moments-title">Organizar lo que queda</h3>
-          </div>
-          <button type="button" className="td-iconBtn" onClick={onClose} disabled={saving} aria-label="Cerrar">
-            <X size={18} aria-hidden="true" />
-          </button>
-        </div>
-        <p className="td-planMomentsCopy">¿En cuántos momentos querés repartir lo que te queda?</p>
-        <div className="td-planMomentOptions" role="radiogroup" aria-label="Cantidad de momentos">
-          {[1, 2, 3, 4].map((value) => (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={count === value}
-              className={count === value ? "active" : ""}
-              onClick={() => setCount(value)}
-              key={value}
-            >
-              <strong>{value}</strong>
-              <span>momento{value === 1 ? "" : "s"}</span>
-            </button>
-          ))}
-        </div>
-        <p className="td-planMomentsHint">
-          Son referencias flexibles. Si consumís más en un momento, ZumaFit redistribuye el restante entre los siguientes.
-        </p>
-        <div className="td-modalActions">
-          <button type="button" className="td-secondaryBtn" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button type="button" className="td-primaryBtn" onClick={() => onSave(count)} disabled={saving}>
-            {saving ? <Loader2 size={17} className="td-spin" aria-hidden="true" /> : <CheckCircle2 size={17} aria-hidden="true" />}
-            {saving ? "Guardando..." : "Organizar momentos"}
-          </button>
-        </div>
-      </div>
     </section>
   );
 }
@@ -240,32 +181,6 @@ function foodId(food = {}) {
 
 function foodName(food = {}) {
   return food.nombre || food.name || food.Alimentos || "Alimento";
-}
-
-function quantityFoodPayload(food = {}) {
-  const unit = food.unidad || food.unit || "g";
-  const isGram = ["g", "gr", "gramo", "gramos", "ml"].includes(String(unit).toLowerCase());
-  const divisor = isGram ? 100 : 1;
-  return {
-    foodId: food.id || food._id || food.alimentoId || null,
-    name: foodName(food),
-    nombre: foodName(food),
-    unit,
-    unidad: unit,
-    kcalPerUnitOrGram: (Number(food.kcal ?? food.calorias) || 0) / divisor,
-    proteinPerUnitOrGram: (Number(food.proteina ?? food.protein) || 0) / divisor,
-    carbsPerUnitOrGram: (Number(food.carbs ?? food.carbohidratos) || 0) / divisor,
-    fatPerUnitOrGram: (Number(food.grasas ?? food.fat) || 0) / divisor,
-    categoria: food.categoria || food.fuente || "",
-  };
-}
-
-function matchGeneratedFood(generated = {}, selected = []) {
-  const generatedId = String(generated.foodId || generated.id || "");
-  const normalizedName = String(generated.nombre || generated.name || "").trim().toLowerCase();
-  return selected.find((food) => generatedId && foodId(food) === generatedId)
-    || selected.find((food) => foodName(food).trim().toLowerCase() === normalizedName)
-    || generated;
 }
 
 function proposalTotals(proposals = []) {
@@ -282,99 +197,92 @@ function proposalTotals(proposals = []) {
   }, { kcal: 0, proteina: 0, carbs: 0, grasas: 0 });
 }
 
+function signedNutritionValue(value, digits = 1) {
+  const number = Number(value) || 0;
+  return `${number > 0 ? "+" : ""}${formatNumber(number, digits)}`;
+}
+
 export function AutoQuantityPlannerDialog({
   date,
-  moment,
+  meal,
   target,
+  configured = {},
+  drafts = [],
   saving = false,
   onClose,
-  onConfirm,
+  onApply,
+  onAddFood,
 }) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState([]);
-  const [selected, setSelected] = useState([]);
   const [proposals, setProposals] = useState([]);
-  const [loadingFoods, setLoadingFoods] = useState(false);
-  const [calculating, setCalculating] = useState(false);
+  const [calculationResult, setCalculationResult] = useState(null);
+  const [calculating, setCalculating] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const panelRef = useRef(null);
+  const autoStartedRef = useRef(false);
   useDialogKeyboard(panelRef, { onClose, disabled: saving || calculating });
   const totals = useMemo(() => proposalTotals(proposals), [proposals]);
+  const calculationInput = useMemo(
+    () => trackingDraftCalculationPayload(drafts),
+    [drafts]
+  );
+  const targetAfterFixed = Math.max(
+    0,
+    (Number(target?.kcal) || 0) - (Number(calculationInput.fixedTotals?.kcal) || 0)
+  );
+  const review = useMemo(
+    () => buildTrackingQuantityReview({ target, proposal: totals, configured }),
+    [configured, target, totals]
+  );
 
-  useEffect(() => {
-    const term = search.trim();
-    if (term.length < 2) {
-      setResults([]);
-      return undefined;
+  const calculate = useCallback(async () => {
+    if (!calculationInput.pendingFoods.length) {
+      setCalculating(false);
+      setError("");
+      setMessage("Todos los alimentos ya tienen una cantidad. Podés confirmarlos sin recalcular.");
+      setCalculationResult(null);
+      setProposals(trackingDraftProposals(drafts, []));
+      return;
     }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      setLoadingFoods(true);
-      listAlimentos({ search: term, limit: 10 })
-        .then((data) => {
-          if (active) setResults((data?.alimentos || data?.all || []).slice(0, 10));
-        })
-        .catch((foodError) => {
-          if (active) setError(foodError?.message || "No se pudieron buscar alimentos.");
-        })
-        .finally(() => {
-          if (active) setLoadingFoods(false);
-        });
-    }, 240);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [search]);
-
-  function toggleFood(food) {
-    const id = foodId(food);
-    setProposals([]);
-    setMessage("");
-    setSelected((current) => current.some((entry) => foodId(entry) === id)
-      ? current.filter((entry) => foodId(entry) !== id)
-      : [...current, food].slice(0, 4));
-  }
-
-  async function calculate() {
-    if (!selected.length || calculating) return;
     setCalculating(true);
     setError("");
     setMessage("");
+    setCalculationResult(null);
     try {
       const response = await calculateTrackingQuantities({
         date,
         target,
-        mode: target?.carbs || target?.grasas ? "full" : target?.proteina ? "kcalProteina" : "kcal",
+        mode: "kcalProteina",
         generationType: "selectedOnly",
-        fixedFoods: [],
-        pendingFoods: selected.map(quantityFoodPayload),
-        options: { redondear: true, usarMinMax: true },
+        fixedFoods: calculationInput.fixedFoods,
+        pendingFoods: calculationInput.pendingFoods,
+        options: { redondear: true, usarMinMax: true, trackingPriority: true },
       });
-      if (!Array.isArray(response?.foods) || !response.foods.length) {
+      if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
         throw new Error(response?.message || "No se encontró una combinación razonable.");
       }
-      setProposals(response.foods.map((generated) => {
-        const quantity = Number(generated.quantity ?? generated.cantidad) || 0;
-        return {
-          food: matchGeneratedFood(generated, selected),
-          generated,
-          quantity,
-          initialQuantity: quantity,
-          unit: generated.unit || generated.unidad || "g",
-        };
-      }).filter((proposal) => proposal.quantity > 0));
+      const nextProposals = trackingDraftProposals(drafts, response.foods);
+      if (nextProposals.length !== drafts.length) {
+        throw new Error("No se pudo obtener una cantidad válida para todos los alimentos pendientes.");
+      }
+      setProposals(nextProposals);
+      setCalculationResult(response);
       setMessage(response.message || "Propuesta calculada. Podés ajustar las cantidades antes de confirmar.");
     } catch (calculationError) {
       setError(calculationError?.message || "No se pudieron calcular las cantidades.");
     } finally {
       setCalculating(false);
     }
-  }
+  }, [calculationInput, date, drafts, target]);
+
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void calculate();
+  }, [calculate]);
 
   return (
-    <section className="td-modalBackdrop td-bottomSheet" role="dialog" aria-modal="true" aria-labelledby="td-auto-quantity-title">
+    <section className="td-modalBackdrop td-bottomSheet td-autoQuantityBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-auto-quantity-title">
       <button type="button" className="td-dialogBackdropButton" onClick={saving || calculating ? undefined : onClose} aria-label="Cerrar" />
       <div className="td-modal td-autoQuantityModal" ref={panelRef}>
         <div className="td-modalTop">
@@ -384,56 +292,51 @@ export function AutoQuantityPlannerDialog({
               Herramienta Pro
             </span>
             <h3 id="td-auto-quantity-title">Calcular cantidades</h3>
-            <p>{moment?.label} · meta actual {formatNumber(target?.kcal || 0, 0)} kcal</p>
+            <p>{meal?.label} · objetivo disponible {formatNumber(target?.kcal || 0, 0)} kcal</p>
           </div>
           <button type="button" className="td-iconBtn" onClick={onClose} disabled={saving || calculating} aria-label="Cerrar">
             <X size={18} aria-hidden="true" />
           </button>
         </div>
 
-        <label className="td-autoQuantitySearch">
-          <Search size={17} aria-hidden="true" />
-          <span className="sr-only">Buscar alimentos</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar yogur, banana..." />
-          {loadingFoods ? <Loader2 size={16} className="td-spin" aria-hidden="true" /> : null}
-        </label>
-
-        {results.length ? (
-          <div className="td-autoQuantityResults">
-            {results.map((food) => {
-              const selectedFood = selected.some((entry) => foodId(entry) === foodId(food));
-              return (
-                <button type="button" className={selectedFood ? "selected" : ""} onClick={() => toggleFood(food)} key={foodId(food)}>
-                  <img src={getFoodImageUrl(food)} alt="" />
-                  <span>
-                    <strong>{foodName(food)}</strong>
-                    <small>{formatNumber(food.kcal ?? food.calorias, 0)} kcal por {food.unidad || food.unit || "g"}</small>
-                  </span>
-                  {selectedFood ? <CheckCircle2 size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
-                </button>
-              );
-            })}
+        <div className="td-autoQuantityDrafts" aria-label="Alimentos de esta comida">
+          <div className="td-autoQuantityDraftsTop">
+            <strong>Alimentos a preparar</strong>
+            <span>
+              {calculationInput.fixedFoods.length} fijos · {calculationInput.pendingFoods.length} pendientes
+            </span>
           </div>
-        ) : null}
-
-        {selected.length ? (
-          <div className="td-autoQuantitySelected">
-            <span>Seleccionados</span>
-            <div>
-              {selected.map((food) => (
-                <button type="button" onClick={() => toggleFood(food)} key={foodId(food)}>
-                  {foodName(food)}
-                  <X size={13} aria-hidden="true" />
-                </button>
-              ))}
+          {drafts.map((draft) => (
+            <div className="td-autoQuantityDraftRow" key={draft.id}>
+              <span>
+                <strong>{draft.name || foodName(draft.food)}</strong>
+                <small>
+                  {isTrackingDraftAutomatic(draft)
+                    ? draft.quantity
+                      ? `${formatNumber(draft.quantity, 1)} ${draft.unit || "g"} · se recalculará`
+                      : "Cantidad pendiente"
+                    : `${formatNumber(draft.quantity, 1)} ${draft.unit || "g"} · cantidad fija`}
+                </small>
+              </span>
+              <b className={isTrackingDraftAutomatic(draft) ? "is-pending" : "is-fixed"}>
+                {isTrackingDraftAutomatic(draft) ? "A calcular" : "Fijo"}
+              </b>
             </div>
+          ))}
+          {calculationInput.fixedFoods.length ? (
+            <p>
+              Las cantidades fijas aportan {formatNumber(calculationInput.fixedTotals?.kcal || 0, 0)} kcal.
+              Quedan aproximadamente {formatNumber(targetAfterFixed, 0)} kcal para distribuir.
+            </p>
+          ) : null}
+        </div>
+
+        {calculating ? (
+          <div className="td-autoQuantityCalculating" role="status">
+            <Loader2 size={19} className="td-spin" aria-hidden="true" />
+            Calculando una propuesta con los alimentos pendientes...
           </div>
         ) : null}
-
-        <button type="button" className="td-calculateQuantityBtn" onClick={calculate} disabled={!selected.length || calculating || saving}>
-          {calculating ? <Loader2 size={18} className="td-spin" aria-hidden="true" /> : <Calculator size={18} aria-hidden="true" />}
-          {calculating ? "Calculando..." : proposals.length ? "Recalcular cantidades" : "Calcular cantidades"}
-        </button>
 
         {error ? <div className="td-error" role="alert">{error}</div> : null}
         {message ? <p className="td-autoQuantityMessage">{message}</p> : null}
@@ -444,12 +347,15 @@ export function AutoQuantityPlannerDialog({
               <article key={`${foodId(proposal.food)}-${index}`}>
                 <span>
                   <strong>{foodName(proposal.food)}</strong>
-                  <small>{formatNumber(proposal.generated?.kcal, 0)} kcal sugeridas</small>
+                  <small>
+                    {proposal.fixed ? "Cantidad manual respetada" : `${formatNumber(proposal.generated?.kcal, 0)} kcal sugeridas`}
+                  </small>
                 </span>
                 <label>
                   <input
                     value={proposal.quantity}
                     inputMode="decimal"
+                    readOnly={proposal.fixed}
                     aria-label={`Cantidad de ${foodName(proposal.food)}`}
                     onChange={(event) => setProposals((current) => current.map((entry, entryIndex) => (
                       entryIndex === index ? { ...entry, quantity: event.target.value } : entry
@@ -463,24 +369,98 @@ export function AutoQuantityPlannerDialog({
               <strong>{formatNumber(totals.kcal, 0)} kcal</strong>
               <span>P {formatNumber(totals.proteina, 1)} · C {formatNumber(totals.carbs, 1)} · G {formatNumber(totals.grasas, 1)}</span>
             </div>
+            <div className="td-autoQuantityComparison" aria-label="Comparación entre objetivo y propuesta">
+              <div className="td-autoQuantityComparisonHead">
+                <strong>Resultado nutricional</strong>
+                <span>Objetivo</span>
+                <span>Propuesta</span>
+                <span>Desvío</span>
+              </div>
+              {review.rows.filter((row) => row.configured).map((row) => (
+                <div className="td-autoQuantityComparisonRow" key={row.key}>
+                  <strong>{row.short}</strong>
+                  <span>{formatNumber(row.target, row.key === "kcal" ? 0 : 1)} {row.unit}</span>
+                  <span>{formatNumber(row.proposed, row.key === "kcal" ? 0 : 1)} {row.unit}</span>
+                  <b>{signedNutritionValue(row.difference, row.key === "kcal" ? 0 : 1)} {row.unit}</b>
+                </div>
+              ))}
+            </div>
+            {!review.respectsCalorieCeiling ? (
+              <div className="td-autoQuantityCalorieWarning" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>
+                  <strong>La propuesta supera el techo por {formatNumber(review.calorieExcess, 1)} kcal.</strong>
+                  <small>Reducí una cantidad o recalculá antes de continuar.</small>
+                </span>
+              </div>
+            ) : null}
+            {review.proteinLevel ? (
+              <div className={`td-autoQuantityProteinWarning is-${review.proteinLevel}`} role="alert">
+                <AlertTriangle size={19} aria-hidden="true" />
+                <span>
+                  <strong>
+                    {review.proteinLevel === "near"
+                      ? `Faltan aproximadamente ${formatNumber(review.proteinDeficit, 1)} g de proteína.`
+                      : `Esta combinación queda ${formatNumber(review.proteinDeficit, 1)} g por debajo de tu meta de proteína.`}
+                  </strong>
+                  <small>
+                    {review.proteinLevel === "near"
+                      ? "¿Querés continuar con esta combinación?"
+                      : "Te conviene agregar o reemplazar un alimento proteico."}
+                  </small>
+                </span>
+              </div>
+            ) : null}
+            {review.secondaryMacroRows.length ? (
+              <p className="td-autoQuantitySecondaryNotice">
+                <strong>Mejor aproximación disponible:</strong>{" "}
+                {review.secondaryMacroRows.map((row) => (
+                  `${row.short} ${signedNutritionValue(row.difference)} g`
+                )).join(" · ")}
+              </p>
+            ) : null}
+            {calculationResult?.warnings?.length ? (
+              <p className="td-autoQuantityWarnings">{calculationResult.warnings.join(" ")}</p>
+            ) : null}
           </div>
         ) : null}
 
-        <div className="td-modalActions">
-          <button type="button" className="td-secondaryBtn" onClick={onClose} disabled={saving || calculating}>Cancelar</button>
+        {!calculating && calculationInput.pendingFoods.length ? (
+          <button type="button" className="td-calculateQuantityBtn" onClick={calculate} disabled={saving}>
+            <Calculator size={18} aria-hidden="true" />
+            {proposals.length ? "Recalcular propuesta" : "Reintentar cálculo"}
+          </button>
+        ) : null}
+
+        <p className="td-autoQuantityProposalNotice">
+          Esta es una propuesta. El total superior del Tracking se actualizará recién cuando confirmes el consumo desde la comida.
+        </p>
+        <div className={`td-modalActions td-autoQuantityDecisionActions ${review.proteinLevel ? "has-protein-warning" : ""}`}>
+          {review.proteinLevel ? (
+            <button type="button" className="td-secondaryBtn" onClick={onAddFood} disabled={saving || calculating}>
+              <Plus size={17} aria-hidden="true" />
+              Agregar otro alimento
+            </button>
+          ) : null}
+          <button type="button" className="td-secondaryBtn" onClick={onClose} disabled={saving || calculating}>
+            Revisar selección
+          </button>
           <button
             type="button"
             className="td-primaryBtn"
-            onClick={() => onConfirm(proposals)}
-            disabled={saving || calculating || !proposals.length || proposals.some((proposal) => !(Number(proposal.quantity) > 0))}
+            onClick={() => onApply(proposals)}
+            disabled={
+              saving ||
+              calculating ||
+              !review.canContinue ||
+              !proposals.length ||
+              proposals.some((proposal) => !(Number(proposal.quantity) > 0))
+            }
           >
-            {saving ? <Loader2 size={17} className="td-spin" aria-hidden="true" /> : <CheckCircle2 size={17} aria-hidden="true" />}
-            {saving ? "Guardando..." : "Confirmar como consumido"}
+            <CheckCircle2 size={17} aria-hidden="true" />
+            {review.proteinLevel ? "Continuar igualmente" : "Usar esta propuesta"}
           </button>
         </div>
-        <p className="td-autoQuantityFootnote">
-          La propuesta no cuenta como consumo hasta que la confirmes.
-        </p>
       </div>
     </section>
   );
@@ -494,16 +474,5 @@ export function ManualMomentStatus({ meal, totals }) {
       {consumed ? <CheckCircle2 size={13} aria-hidden="true" /> : <Target size={13} aria-hidden="true" />}
       {consumed ? "Consumido" : "Planificado"}
     </span>
-  );
-}
-
-export function ManualMomentCalculatorAction({ meal, onCalculate }) {
-  if (!meal?.manualCompletionMoment || meal?.manualMomentState === "consumed") return null;
-  return (
-    <button type="button" className="td-manualMomentCalcBtn" onClick={() => onCalculate(meal)}>
-      <Calculator size={16} aria-hidden="true" />
-      Calcular cantidades
-      <ArrowRight size={15} aria-hidden="true" />
-    </button>
   );
 }

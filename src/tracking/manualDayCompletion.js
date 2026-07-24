@@ -99,6 +99,15 @@ export function hasNutritionConsumption(value = {}) {
   return NUTRITION_KEYS.some((key) => totals[key] > 0);
 }
 
+export function menuTrackingConsumedTotals(day = null) {
+  const tracking = day?.tracking || {};
+  const consumed = nutritionTotals(tracking.consumedTotals || {});
+  if (hasNutritionConsumption(consumed)) return consumed;
+
+  return (Array.isArray(tracking.completedMenuMeals) ? tracking.completedMenuMeals : [])
+    .reduce((acc, meal) => addNutritionTotals(acc, meal), nutritionTotals());
+}
+
 export function calculateManualDayProgress({
   target = null,
   menuConsumed = {},
@@ -132,6 +141,89 @@ export function calculateManualDayProgress({
     remaining,
     status,
     exceededBy: remainingKcal < 0 ? round(Math.abs(remainingKcal)) : 0,
+  };
+}
+
+export function resolveTrackingMealCalculationTarget({
+  meal = null,
+  meals = [],
+  consumedByMeal = {},
+  dayRemaining = {},
+  dayConfigured = {},
+} = {}) {
+  const mealId = String(meal?.id || "");
+  const consumed = nutritionTotals(consumedByMeal?.[mealId] || {});
+  const configuredTarget = configuredNutritionTarget(meal?.target || {});
+  const configuredKeys = NUTRITION_KEYS.filter((key) => configuredTarget.configured[key]);
+
+  if (configuredKeys.length) {
+    const rawRemaining = subtractNutritionTotals(configuredTarget.totals, consumed);
+    const kcalReached = configuredTarget.configured.kcal && rawRemaining.kcal <= 0.5;
+    const hasRemaining = configuredKeys.some((key) => rawRemaining[key] > 0.5);
+    if (kcalReached || !hasRemaining) {
+      return {
+        status: "reached",
+        source: "meal",
+        target: nutritionTotals(),
+        configured: configuredTarget.configured,
+      };
+    }
+    return {
+      status: "ready",
+      source: "meal",
+      target: positiveNutritionTotals(rawRemaining),
+      configured: configuredTarget.configured,
+    };
+  }
+
+  const trackingMeals = Array.isArray(meals) ? meals : [];
+  const freeMeals = trackingMeals.filter((entry) => {
+    const target = configuredNutritionTarget(entry?.target || {});
+    return !NUTRITION_KEYS.some((key) => target.configured[key]);
+  });
+  const pendingFreeMeals = freeMeals.filter((entry) => (
+    !hasNutritionConsumption(consumedByMeal?.[String(entry?.id || "")] || {})
+  ));
+  const isOnlyFreeMeal = freeMeals.length === 1 && String(freeMeals[0]?.id || "") === mealId;
+  const isLastPendingFreeMeal =
+    pendingFreeMeals.length === 1 &&
+    String(pendingFreeMeals[0]?.id || "") === mealId;
+
+  if (!isOnlyFreeMeal && !isLastPendingFreeMeal) {
+    return {
+      status: "ambiguous",
+      source: "day",
+      target: nutritionTotals(),
+      configured: dayConfigured,
+    };
+  }
+
+  const remaining = nutritionTotals(dayRemaining);
+  const configuredDayKeys = NUTRITION_KEYS.filter((key) => dayConfigured?.[key] === true);
+  if (!configuredDayKeys.length) {
+    return {
+      status: "missing_target",
+      source: "day",
+      target: nutritionTotals(),
+      configured: dayConfigured,
+    };
+  }
+  const kcalReached = dayConfigured?.kcal === true && remaining.kcal <= 0.5;
+  const hasRemaining = configuredDayKeys.some((key) => remaining[key] > 0.5);
+  if (kcalReached || !hasRemaining) {
+    return {
+      status: "reached",
+      source: "day",
+      target: nutritionTotals(),
+      configured: dayConfigured,
+    };
+  }
+
+  return {
+    status: "ready",
+    source: "day",
+    target: positiveNutritionTotals(remaining),
+    configured: dayConfigured,
   };
 }
 
@@ -208,7 +300,7 @@ export function buildRemainingMomentTargets({
     return {
       ...moment,
       id,
-      label: moment?.label || `Momento ${index + 1}`,
+      label: visibleTrackingMealLabel(moment?.label, index),
       consumed,
       state: hasNutritionConsumption(consumed) ? "consumed" : "planned",
       target: { kcal: 0, proteina: 0, carbs: 0, grasas: 0 },
@@ -232,12 +324,47 @@ export function buildRemainingMomentTargets({
 export function createManualCompletionPlan(count = 1, previous = null) {
   const safeCount = Math.max(1, Math.min(4, Math.trunc(finiteNumber(count, 1))));
   const previousMoments = Array.isArray(previous?.moments) ? previous.moments : [];
+  const usedIds = new Set();
+
+  function nextMomentId() {
+    let sequence = 1;
+    while (usedIds.has(`manual_completion_moment_${sequence}`)) sequence += 1;
+    return `manual_completion_moment_${sequence}`;
+  }
+
   return {
     count: safeCount,
-    moments: Array.from({ length: safeCount }, (_, index) => ({
-      id: previousMoments[index]?.id || `manual_completion_moment_${index + 1}`,
-      label: previousMoments[index]?.label || `Momento ${index + 1}`,
-      order: index,
-    })),
+    moments: Array.from({ length: safeCount }, (_, index) => {
+      const previousId = String(previousMoments[index]?.id || "").trim();
+      const id = previousId && !usedIds.has(previousId) ? previousId : nextMomentId();
+      usedIds.add(id);
+      return {
+        id,
+        label: visibleTrackingMealLabel(previousMoments[index]?.label, index),
+        order: index,
+      };
+    }),
   };
+}
+
+export function removeManualCompletionMoment(plan = null, momentId = "") {
+  const id = String(momentId || "").trim();
+  const current = Array.isArray(plan?.moments) ? plan.moments : [];
+  if (!id || !current.some((moment) => String(moment?.id || "") === id)) return plan;
+
+  const moments = current
+    .filter((moment) => String(moment?.id || "") !== id)
+    .map((moment, index) => ({
+      id: String(moment?.id || `manual_completion_moment_${index + 1}`),
+      label: visibleTrackingMealLabel(moment?.label, index),
+      order: index,
+    }));
+
+  return moments.length ? { count: moments.length, moments } : null;
+}
+
+function visibleTrackingMealLabel(label = "", index = 0) {
+  const value = String(label || "").trim();
+  if (!value || /^momento\s+\d+$/i.test(value)) return `Comida ${index + 1}`;
+  return value;
 }

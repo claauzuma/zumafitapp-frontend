@@ -6,7 +6,11 @@ import {
   calculateManualDayProgress,
   calculateMenuAdherence,
   calculateNutritionAdherence,
+  createManualCompletionPlan,
   distributeNutritionTarget,
+  menuTrackingConsumedTotals,
+  removeManualCompletionMoment,
+  resolveTrackingMealCalculationTarget,
 } from "./manualDayCompletion.js";
 
 const target = { kcal: 2000, proteina: 150, carbs: 220, grasas: 65 };
@@ -38,6 +42,61 @@ test("incluye margen flexible realmente consumido dentro de la fuente del Menu",
     trackedConsumed: { kcal: 130 },
   });
   assert.equal(result.remaining.kcal, 420);
+});
+
+test("mantiene las calorias libres no consumidas dentro del restante", () => {
+  const result = calculateManualDayProgress({
+    target: { kcal: 2776 },
+    menuConsumed: { kcal: 2523 },
+  });
+  assert.equal(result.remaining.kcal, 253);
+});
+
+test("descuenta calorias libres parciales una sola vez", () => {
+  const menuTrackingDay = {
+    tracking: {
+      consumedTotals: { kcal: 2623 },
+      manualEntries: [
+        { source: "flexible_margin", countsAsMenuMeal: false, kcal: 100 },
+      ],
+    },
+  };
+  const result = calculateManualDayProgress({
+    target: { kcal: 2776 },
+    menuConsumed: menuTrackingConsumedTotals(menuTrackingDay),
+  });
+  assert.equal(result.menuConsumed.kcal, 2623);
+  assert.equal(result.trackedConsumed.kcal, 0);
+  assert.equal(result.remaining.kcal, 153);
+});
+
+test("cuenta calorias libres completas y excedidas sin bloquear el tracking", () => {
+  const completed = calculateManualDayProgress({
+    target: { kcal: 2776 },
+    menuConsumed: { kcal: 2776 },
+  });
+  const exceeded = calculateManualDayProgress({
+    target: { kcal: 2776 },
+    menuConsumed: { kcal: 2823 },
+  });
+  assert.equal(completed.status, "reached");
+  assert.equal(completed.remaining.kcal, 0);
+  assert.equal(exceeded.status, "exceeded");
+  assert.equal(exceeded.remaining.kcal, -47);
+  assert.equal(exceeded.exceededBy, 47);
+});
+
+test("no vuelve a sumar manualEntries flexibles sobre consumedTotals", () => {
+  const consumed = menuTrackingConsumedTotals({
+    tracking: {
+      consumedTotals: { kcal: 2623, proteina: 120 },
+      manualEntries: [
+        { source: "flexible_margin", countsAsMenuMeal: false, kcal: 100 },
+      ],
+    },
+  });
+  assert.equal(consumed.kcal, 2623);
+  assert.equal(consumed.proteina, 120);
 });
 
 test("distingue objetivo alcanzado y excedente sin truncar negativos", () => {
@@ -116,4 +175,107 @@ test("mantiene adherencia de menu y nutricional como métricas separadas", () =>
   const nutrition = calculateNutritionAdherence({ kcal: 1980 }, { kcal: 2000 });
   assert.equal(menu.percent, 60);
   assert.equal(nutrition.percent, 99);
+});
+
+test("calcula contra la meta restante de la comida", () => {
+  const result = resolveTrackingMealCalculationTarget({
+    meal: { id: "comida_2", target: { kcal: 400, proteina: 30 } },
+    meals: [{ id: "comida_2", target: { kcal: 400, proteina: 30 } }],
+    consumedByMeal: { comida_2: { kcal: 110, proteina: 8 } },
+    dayRemaining: { kcal: 792 },
+    dayConfigured: { kcal: true },
+  });
+  assert.equal(result.status, "ready");
+  assert.equal(result.source, "meal");
+  assert.deepEqual(result.target, { kcal: 290, proteina: 22, carbs: 0, grasas: 0 });
+  assert.equal(result.configured.kcal, true);
+  assert.equal(result.configured.proteina, true);
+});
+
+test("usa el restante diario para la unica comida libre", () => {
+  const result = resolveTrackingMealCalculationTarget({
+    meal: { id: "registro_manual", target: {} },
+    meals: [{ id: "registro_manual", target: {} }],
+    consumedByMeal: {},
+    dayRemaining: { kcal: 792, proteina: 66.5, carbs: 113.9, grasas: 56.6 },
+    dayConfigured: { kcal: true, proteina: true, carbs: true, grasas: true },
+  });
+  assert.equal(result.status, "ready");
+  assert.equal(result.source, "day");
+  assert.equal(result.target.kcal, 792);
+  assert.equal(result.configured.proteina, true);
+});
+
+test("usa el restante diario solo para la ultima comida libre pendiente", () => {
+  const meals = [
+    { id: "comida_1", target: {} },
+    { id: "comida_2", target: {} },
+  ];
+  const result = resolveTrackingMealCalculationTarget({
+    meal: meals[1],
+    meals,
+    consumedByMeal: { comida_1: { kcal: 250 }, comida_2: {} },
+    dayRemaining: { kcal: 500 },
+    dayConfigured: { kcal: true },
+  });
+  assert.equal(result.status, "ready");
+  assert.equal(result.target.kcal, 500);
+});
+
+test("no adivina una meta entre varias comidas libres", () => {
+  const meals = [
+    { id: "comida_1", target: {} },
+    { id: "comida_2", target: {} },
+  ];
+  const result = resolveTrackingMealCalculationTarget({
+    meal: meals[0],
+    meals,
+    consumedByMeal: {},
+    dayRemaining: { kcal: 792 },
+    dayConfigured: { kcal: true },
+  });
+  assert.equal(result.status, "ambiguous");
+});
+
+test("informa objetivo alcanzado sin impedir el registro manual", () => {
+  const mealTargetReached = resolveTrackingMealCalculationTarget({
+    meal: { id: "comida_1", target: { kcal: 400 } },
+    meals: [{ id: "comida_1", target: { kcal: 400 } }],
+    consumedByMeal: { comida_1: { kcal: 410 } },
+    dayRemaining: { kcal: 300 },
+    dayConfigured: { kcal: true },
+  });
+  const dayTargetReached = resolveTrackingMealCalculationTarget({
+    meal: { id: "registro_manual", target: {} },
+    meals: [{ id: "registro_manual", target: {} }],
+    consumedByMeal: {},
+    dayRemaining: { kcal: -20 },
+    dayConfigured: { kcal: true },
+  });
+  assert.equal(mealTargetReached.status, "reached");
+  assert.equal(dayTargetReached.status, "reached");
+});
+
+test("elimina un momento vacío y no duplica ids al volver a organizar", () => {
+  const initial = createManualCompletionPlan(3);
+  const reduced = removeManualCompletionMoment(initial, "manual_completion_moment_2");
+
+  assert.equal(reduced.count, 2);
+  assert.deepEqual(
+    reduced.moments.map((moment) => moment.id),
+    ["manual_completion_moment_1", "manual_completion_moment_3"]
+  );
+  assert.deepEqual(reduced.moments.map((moment) => moment.order), [0, 1]);
+
+  const expanded = createManualCompletionPlan(3, reduced);
+  assert.deepEqual(
+    expanded.moments.map((moment) => moment.id),
+    ["manual_completion_moment_1", "manual_completion_moment_3", "manual_completion_moment_2"]
+  );
+  assert.equal(new Set(expanded.moments.map((moment) => moment.id)).size, 3);
+});
+
+test("eliminar el último momento quita la organización temporal", () => {
+  const initial = createManualCompletionPlan(1);
+  assert.equal(removeManualCompletionMoment(initial, initial.moments[0].id), null);
 });

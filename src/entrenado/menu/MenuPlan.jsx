@@ -64,7 +64,7 @@ import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
 import { getTrackingDay, updateManualDayCompletion } from "../../tracking/trackingApi.js";
 import { calculateManualDayProgress } from "../../tracking/manualDayCompletion.js";
 import {
-  ManualDayCompletionBanner,
+  ManualDayCompletionAction,
   ManualDayCompletionDialog,
 } from "./ManualDayCompletion.jsx";
 
@@ -104,11 +104,6 @@ function dateKeyFromSearch(search = "") {
 function canUseFlexibleMarginCalculation(permissions = {}) {
   // Strict capability: canAutoCompleteRemainingMeals is a different flow and must not unlock flexible-margin quantities.
   return permissions?.canUseFlexibleMarginRecommendations === true;
-}
-
-function canUseRemainingMealCalculation(permissions = {}) {
-  // Strict capability: missing data must not unlock automatic remaining-meal generation.
-  return permissions?.canAutoCompleteRemainingMeals === true;
 }
 
 function getMenuWeekCacheEntry(start) {
@@ -1964,6 +1959,26 @@ async function saveMenuTrackingDay(payload) {
   });
 }
 
+function manualCompletionSummaryForRow(row, enabled = true) {
+  const choice = trackingChoice(row);
+  const menuMeals = choiceMeals(choice);
+  const completedIds = completedMealIdSet(row);
+  const completed = menuMeals.reduce(
+    (count, meal, index) => count + (completedIds.has(mealId(meal, index)) ? 1 : 0),
+    0
+  );
+  const total = menuMeals.length;
+  const active = row?.tracking?.dayCompletionMode === "manual_completion";
+  const status = row?.tracking?.status || "pending";
+  const show =
+    enabled &&
+    Boolean(row?.date && choice && total > 0) &&
+    row.date <= todayIso() &&
+    (active || (completed < total && status !== "missed"));
+
+  return { row, choice, completed, total, active, show };
+}
+
 export default function MenuPlan() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -2080,11 +2095,11 @@ export default function MenuPlan() {
   const activePlanSource = activePlan?.source || "none";
   const canQuickEditActiveMenu = menuSourceMeta(activePlanSource).key === "own";
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
-  const canAutoCompleteRemaining = canUseRemainingMealCalculation(permissions);
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canTrackFoods = permissions.canTrackFoods !== false;
   const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
   const canUseManualDayCompletion = permissions.canUseManualDayCompletion !== false;
+  const canPlanRemainingIntake = permissions.canPlanRemainingIntake === true;
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
@@ -2106,25 +2121,10 @@ export default function MenuPlan() {
   const previousDayDisabled = selectedRow?.date
     ? !canNavigateToMenuDate(addDays(selectedRow.date, -1))
     : false;
-  const manualCompletionSummary = useMemo(() => {
-    const row = selectedDisplayRow;
-    const choice = trackingChoice(row);
-    const menuMeals = choiceMeals(choice);
-    const completedIds = completedMealIdSet(row);
-    const completed = menuMeals.reduce(
-      (count, meal, index) => count + (completedIds.has(mealId(meal, index)) ? 1 : 0),
-      0
-    );
-    const total = menuMeals.length;
-    const active = row?.tracking?.dayCompletionMode === "manual_completion";
-    const status = row?.tracking?.status || "pending";
-    const show =
-      canUseManualDayCompletion &&
-      Boolean(row?.date && choice && total > 0) &&
-      row.date <= todayIso() &&
-      (active || (completed < total && status !== "missed"));
-    return { row, choice, completed, total, active, show };
-  }, [canUseManualDayCompletion, selectedDisplayRow]);
+  const manualCompletionSummary = useMemo(
+    () => manualCompletionSummaryForRow(selectedDisplayRow, canUseManualDayCompletion),
+    [canUseManualDayCompletion, selectedDisplayRow]
+  );
 
   async function loadManualCompletionPreview(summary = manualCompletionSummary) {
     if (!summary?.row?.date || saving) return;
@@ -2183,6 +2183,22 @@ export default function MenuPlan() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function renderManualCompletionAction(summary = manualCompletionSummary) {
+    if (!summary?.show) return null;
+    return (
+      <ManualDayCompletionAction
+        active={summary.active}
+        completed={summary.completed}
+        total={summary.total}
+        disabled={saving}
+        canPlan={canPlanRemainingIntake}
+        coachMenu={menuSourceMeta(activePlanSource).key === "coach"}
+        onStart={() => loadManualCompletionPreview(summary)}
+        onOpenTracking={() => navigate(`/app/tracking?date=${encodeURIComponent(summary.row.date)}`)}
+      />
+    );
   }
 
   function openActiveMenuEditor(row = selectedRow, options = {}) {
@@ -2803,17 +2819,6 @@ export default function MenuPlan() {
         {loading ? <LoadingState /> : null}
         {error ? <ErrorState message={error} onRetry={() => loadWeek(weekStart)} /> : null}
 
-        {!loading && !error && weekData && manualCompletionSummary.show ? (
-          <ManualDayCompletionBanner
-            active={manualCompletionSummary.active}
-            completed={manualCompletionSummary.completed}
-            total={manualCompletionSummary.total}
-            disabled={saving}
-            onStart={() => loadManualCompletionPreview(manualCompletionSummary)}
-            onOpenTracking={() => navigate(`/app/tracking?date=${encodeURIComponent(manualCompletionSummary.row.date)}`)}
-          />
-        ) : null}
-
         {!loading && !error && weekData ? (
           isMobileLayout ? (
             mobileView === "detail" ? (
@@ -2828,7 +2833,6 @@ export default function MenuPlan() {
                 onNext={() => moveSelectedDay(1)}
                 previousDisabled={previousDayDisabled}
                 onToggleMeal={toggleMenuMeal}
-                onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onOpenMeal={(payload) => setMealDrawer(payload)}
@@ -2838,8 +2842,8 @@ export default function MenuPlan() {
                 onRestoreManual={restoreManualEntries}
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
-                canAutoCompleteRemaining={canAutoCompleteRemaining}
                 canUseFlexibleRecommendations={canUseFlexibleRecommendations}
+                manualCompletionAction={renderManualCompletionAction()}
                 saving={saving}
               />
             ) : mobileView === "alternatives" ? (
@@ -2864,7 +2868,6 @@ export default function MenuPlan() {
                 previousDisabled={previousDayDisabled}
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedRow, options)}
-                onOpenRemaining={() => setRemainingDraft(selectedRow)}
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onToggleMeal={toggleMenuMeal}
@@ -2875,8 +2878,8 @@ export default function MenuPlan() {
                 onRestoreManual={restoreManualEntries}
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
-                canAutoCompleteRemaining={canAutoCompleteRemaining}
                 canUseFlexibleRecommendations={canUseFlexibleRecommendations}
+                manualCompletionAction={renderManualCompletionAction()}
                 saving={saving}
               />
             )
@@ -2896,13 +2899,12 @@ export default function MenuPlan() {
                 onOpenMeal={(payload) => setMealDrawer(payload)}
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
-                onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onDeleteManual={deleteManualEntry}
                 canMarkMeals={canMarkMeals}
-                canAutoCompleteRemaining={canAutoCompleteRemaining}
                 canUseFlexibleRecommendations={canUseFlexibleRecommendations}
+                manualCompletionAction={renderManualCompletionAction()}
                 saving={saving}
               />
 
@@ -2926,14 +2928,12 @@ export default function MenuPlan() {
                     onOpenMeal={(payload) => setMealDrawer(payload)}
                     onQuickEditMeal={openQuickMealEditor}
                     onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
-                    onOpenRemaining={() => setRemainingDraft(selectedDisplayRow)}
                     onOpenFlexibleMargin={openFlexibleMargin}
                     onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                     onRestoreGenerated={restoreGeneratedRemaining}
                     onRestoreManual={restoreManualEntries}
                     onDeleteManual={deleteManualEntry}
                     canMarkMeals={canMarkMeals}
-                    canAutoCompleteRemaining={canAutoCompleteRemaining}
                     canUseFlexibleRecommendations={canUseFlexibleRecommendations}
                     onUseAlternative={useAlternative}
                     saving={saving}
@@ -2955,15 +2955,19 @@ export default function MenuPlan() {
           onOpenMeal={(payload) => setMealDrawer(payload)}
           onQuickEditMeal={openQuickMealEditor}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
-          onOpenRemaining={() => setRemainingDraft(rowWithActiveGeneratedMeals(detailRow, days))}
           onOpenFlexibleMargin={openFlexibleMargin}
           onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
           onRestoreGenerated={restoreGeneratedRemaining}
           onRestoreManual={restoreManualEntries}
           onDeleteManual={deleteManualEntry}
           canMarkMeals={canMarkMeals}
-          canAutoCompleteRemaining={canAutoCompleteRemaining}
           canUseFlexibleRecommendations={canUseFlexibleRecommendations}
+          manualCompletionAction={renderManualCompletionAction(
+            manualCompletionSummaryForRow(
+              rowWithActiveGeneratedMeals(detailRow, days),
+              canUseManualDayCompletion
+            )
+          )}
           onUseAlternative={useAlternative}
           weekRows={days}
           saving={saving}
@@ -3358,26 +3362,6 @@ function MobileDayPicker({
   );
 }
 
-function MobileCalculateButton({ onClick, disabled = false, locked = false }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex min-h-12 w-full items-center justify-between gap-3 rounded-[1.05rem] border border-[#D4AF37]/45 bg-[linear-gradient(135deg,rgba(245,215,110,.14),rgba(255,255,255,.045))] px-4 text-left text-[#FFE8A3] shadow-[0_12px_28px_rgba(0,0,0,.32)] transition active:scale-[0.99] disabled:opacity-45"
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        {locked ? <Lock size={20} className="shrink-0" /> : <Calculator size={20} className="shrink-0" />}
-        <span className="grid min-w-0 leading-tight">
-          <span className="min-w-0 truncate text-sm font-black">Calcular lo que falta</span>
-          {locked ? <span className="truncate text-[10px] font-black text-[#FFE8A3]/70">Disponible en Pro</span> : null}
-        </span>
-      </span>
-      <ChevronRight size={20} className="shrink-0" />
-    </button>
-  );
-}
-
 function FlexibleMarginSlotCard({
   row,
   plan,
@@ -3733,7 +3717,6 @@ function MobileDayMenu({
   previousDisabled = false,
   onOpenMenuOptions,
   onEditActiveMenu,
-  onOpenRemaining,
   onOpenFlexibleMargin,
   onToggleFlexibleMarginCompleted,
   onToggleMeal,
@@ -3744,8 +3727,8 @@ function MobileDayMenu({
   onRestoreManual,
   onDeleteManual,
   canMarkMeals,
-  canAutoCompleteRemaining,
   canUseFlexibleRecommendations,
+  manualCompletionAction = null,
   saving,
 }) {
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
@@ -3767,7 +3750,6 @@ function MobileDayMenu({
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
   const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
-  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
   const emptyCopy = emptyMenuCopy(activePlanSource);
   const flexiblePlan = flexiblePlanForChoice(displayRow, activeChoice, activePlanSource);
@@ -3890,12 +3872,9 @@ function MobileDayMenu({
             onRestoreManual={onRestoreManual}
             onDeleteManual={onDeleteManual}
           />
+          {manualCompletionAction}
         </section>
       ) : null}
-
-      <div className="mt-4">
-        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} locked={!canAutoCompleteRemaining} />
-      </div>
     </section>
   );
 }
@@ -4433,7 +4412,6 @@ function MobileDayDetailView({
   onNext,
   previousDisabled = false,
   onToggleMeal,
-  onOpenRemaining,
   onOpenFlexibleMargin,
   onToggleFlexibleMarginCompleted,
   onOpenMeal,
@@ -4443,8 +4421,8 @@ function MobileDayDetailView({
   onRestoreManual,
   onDeleteManual,
   canMarkMeals,
-  canAutoCompleteRemaining,
   canUseFlexibleRecommendations,
+  manualCompletionAction = null,
   saving,
 }) {
   if (!row) return null;
@@ -4463,7 +4441,6 @@ function MobileDayDetailView({
   const consumed = consumedTotals(displayRow);
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
-  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40 && canAutoCompleteRemaining;
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
   const emptyCopy = emptyMenuCopy(activePlanSource);
   const flexiblePlan = flexiblePlanForChoice(displayRow, detailChoice, activePlanSource);
@@ -4571,10 +4548,7 @@ function MobileDayDetailView({
           onRestoreManual={onRestoreManual}
           onDeleteManual={onDeleteManual}
         />
-      </div>
-
-      <div className="mt-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <MobileCalculateButton onClick={onOpenRemaining} disabled={!canCalculateRemaining || saving} locked={!canAutoCompleteRemaining} />
+        {manualCompletionAction}
       </div>
     </section>
   );
@@ -5402,13 +5376,12 @@ function TodayHero({
   onOpenMeal,
   onQuickEditMeal,
   onSaveAsSavedMeal,
-  onOpenRemaining,
   onOpenFlexibleMargin,
   onToggleFlexibleMarginCompleted,
   onDeleteManual,
   canMarkMeals,
-  canAutoCompleteRemaining,
   canUseFlexibleRecommendations,
+  manualCompletionAction = null,
   saving,
 }) {
   if (!row) return null;
@@ -5428,7 +5401,6 @@ function TodayHero({
   const remaining = remainingTotals(row);
   const menuKcal = activeTotals.kcal;
   const pct = hasTarget && targetKcal ? Math.min(135, Math.round((consumed.kcal / targetKcal) * 100)) : 0;
-  const canCalculateRemaining = hasTarget && positiveTotals(remaining).kcal > 40;
   const sourceMeta = menuSourceMeta(activePlanSource);
   const menuName = activeChoice ? activeMenuDisplayName(activeChoice, activePlan, activePlanSource) : "Menu del dia";
   const menuSummary = activeChoice ? activeMenuSummary(activeChoice, activePlanSource) : "";
@@ -5576,23 +5548,13 @@ function TodayHero({
             saving={saving}
             compact
           />
+          {manualCompletionAction ? <div className="mt-3">{manualCompletionAction}</div> : null}
         </div>
       ) : null}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <button type="button" onClick={onView} className="rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-3 text-xs font-black text-sky-100">
+      <div className="mt-3">
+        <button type="button" onClick={onView} className="w-full rounded-2xl border border-sky-400/25 bg-sky-400/10 px-3 py-3 text-xs font-black text-sky-100">
           Ver menu completo
-        </button>
-        <button
-          type="button"
-          onClick={onOpenRemaining}
-          disabled={!canCalculateRemaining || !canAutoCompleteRemaining || saving}
-          className="rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-3 text-xs font-black text-[#FFE8A3] disabled:opacity-45"
-        >
-          <span className="grid leading-tight">
-            <span>Calcular lo que falta</span>
-            {!canAutoCompleteRemaining ? <span className="text-[10px] text-[#FFE8A3]/70">Disponible en Pro</span> : null}
-          </span>
         </button>
       </div>
     </section>
@@ -5629,6 +5591,7 @@ function DesktopMealsSection({
   onRestoreManual,
   onDeleteManual,
   canMarkMeals,
+  manualCompletionAction = null,
   saving,
 }) {
   const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
@@ -5674,6 +5637,7 @@ function DesktopMealsSection({
             onRestoreManual={onRestoreManual}
             onDeleteManual={onDeleteManual}
           />
+          {manualCompletionAction}
         </>
       ) : (
         <MobileEmptyCard
@@ -6001,13 +5965,12 @@ function DayDetailDrawer({
   onOpenMeal,
   onQuickEditMeal,
   onSaveAsSavedMeal,
-  onOpenRemaining,
   onOpenFlexibleMargin,
   onToggleFlexibleMarginCompleted,
   onRestoreGenerated,
   canMarkMeals,
-  canAutoCompleteRemaining,
   canUseFlexibleRecommendations,
+  manualCompletionAction = null,
   onUseAlternative,
   saving,
 }) {
@@ -6033,13 +5996,12 @@ function DayDetailDrawer({
             onOpenMeal={onOpenMeal}
             onQuickEditMeal={onQuickEditMeal}
             onSaveAsSavedMeal={onSaveAsSavedMeal}
-            onOpenRemaining={onOpenRemaining}
             onOpenFlexibleMargin={onOpenFlexibleMargin}
             onToggleFlexibleMarginCompleted={onToggleFlexibleMarginCompleted}
             onRestoreGenerated={onRestoreGenerated}
             canMarkMeals={canMarkMeals}
-            canAutoCompleteRemaining={canAutoCompleteRemaining}
             canUseFlexibleRecommendations={canUseFlexibleRecommendations}
+            manualCompletionAction={manualCompletionAction}
             onUseAlternative={onUseAlternative}
             saving={saving}
           />
@@ -6058,13 +6020,12 @@ function DayDetail({
   onOpenMeal,
   onQuickEditMeal,
   onSaveAsSavedMeal,
-  onOpenRemaining,
   onOpenFlexibleMargin,
   onToggleFlexibleMarginCompleted,
   onRestoreGenerated,
   canMarkMeals,
-  canAutoCompleteRemaining,
   canUseFlexibleRecommendations,
+  manualCompletionAction = null,
   onUseAlternative,
   saving,
 }) {
@@ -6090,17 +6051,6 @@ function DayDetail({
           </p>
         </div>
         <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={onOpenRemaining}
-            disabled={!hasTarget || !canAutoCompleteRemaining}
-            className="rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 py-2 text-xs font-black text-[#FFE8A3] disabled:opacity-45"
-          >
-            <span className="grid leading-tight">
-              <span>Calcular lo que falta</span>
-              {!canAutoCompleteRemaining ? <span className="text-[10px] text-[#FFE8A3]/70">Disponible en Pro</span> : null}
-            </span>
-          </button>
           <button
             type="button"
             onClick={() => onMarkMissed(row)}
@@ -6157,6 +6107,7 @@ function DayDetail({
         onSaveAsSavedMeal={onSaveAsSavedMeal}
         onRestoreGenerated={onRestoreGenerated}
         canMarkMeals={canMarkMeals}
+        manualCompletionAction={manualCompletionAction}
         saving={saving}
       />
 
