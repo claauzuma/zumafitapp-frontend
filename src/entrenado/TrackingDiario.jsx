@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarDays,
@@ -33,14 +33,29 @@ import {
   fetchClientPlanCapabilities,
 } from "../clientPlans/clientPlanQueries.js";
 import {
+  useAddCalculatedFoodLogs,
   useAddFoodLog,
   useDeleteFoodLog,
   useDeleteTrackingMeal,
   useMenuTrackingWeek,
   useTrackingDay,
+  useUpdateManualDayCompletion,
   useUpdateFoodLog,
   useUpdateTrackingMealsConfig,
 } from "../tracking/trackingQueries.js";
+import {
+  buildRemainingMomentTargets,
+  calculateManualDayProgress,
+  configuredNutritionTarget,
+  createManualCompletionPlan,
+} from "../tracking/manualDayCompletion.js";
+import {
+  AutoQuantityPlannerDialog,
+  ManualCompletionTrackingCard,
+  ManualMomentCalculatorAction,
+  ManualMomentStatus,
+  RemainingMomentsPlannerDialog,
+} from "../tracking/ManualCompletionTracking.jsx";
 import "./trackingDiario.css";
 
 const TRACKING_MEAL_TYPES = ["desayuno", "almuerzo", "merienda", "cena", "snack", "otra"];
@@ -55,7 +70,9 @@ const MEAL_TYPE_OPTIONS = [
 ];
 
 export default function TrackingDiario() {
-  const [date, setDate] = useState(todayLocalString());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDate = validDateKey(searchParams.get("date")) || todayLocalString();
+  const [date, setDate] = useState(requestedDate);
   const [modalMeal, setModalMeal] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -72,16 +89,22 @@ export default function TrackingDiario() {
   const [goalMealId, setGoalMealId] = useState("");
   const [goalDraft, setGoalDraft] = useState(() => emptyTotals());
   const [deleteMealCandidate, setDeleteMealCandidate] = useState(null);
+  const [remainingPlannerOpen, setRemainingPlannerOpen] = useState(false);
+  const [quantityPlannerMeal, setQuantityPlannerMeal] = useState(null);
+  const [autoQuantitySaving, setAutoQuantitySaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const autoQuantityRequestRef = useRef("");
 
   const weekStart = useMemo(() => mondayOfWeek(date), [date]);
   const trackingQuery = useTrackingDay(date);
   const menuTrackingQuery = useMenuTrackingWeek(weekStart);
   const addMutation = useAddFoodLog();
+  const addCalculatedMutation = useAddCalculatedFoodLogs();
   const updateMutation = useUpdateFoodLog();
   const deleteMutation = useDeleteFoodLog();
   const updateMealsMutation = useUpdateTrackingMealsConfig();
   const deleteMealMutation = useDeleteTrackingMeal();
+  const manualCompletionMutation = useUpdateManualDayCompletion();
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
@@ -95,11 +118,13 @@ export default function TrackingDiario() {
     updateMutation.isPending ||
     deleteMutation.isPending ||
     updateMealsMutation.isPending ||
-    deleteMealMutation.isPending;
+    deleteMealMutation.isPending ||
+    manualCompletionMutation.isPending ||
+    autoQuantitySaving;
   const tracking = trackingQuery.data || emptyTrackingDay(date);
   const configuredMeals = useMemo(() => normalizeMealSettings(tracking.mealsConfig || []), [tracking.mealsConfig]);
   const log = useMemo(() => normalizeMeals(tracking.meals, configuredMeals), [tracking.meals, configuredMeals]);
-  const meals = useMemo(() => mealsWithLoggedExtras(configuredMeals, log), [configuredMeals, log]);
+  const baseMeals = useMemo(() => mealsWithLoggedExtras(configuredMeals, log), [configuredMeals, log]);
   const trackedTotals = tracking.totals || emptyTotals();
   const menuTrackingDay = useMemo(
     () => (menuTrackingQuery.data?.days || []).find((day) => day.date === date) || null,
@@ -107,10 +132,42 @@ export default function TrackingDiario() {
   );
   const menuConsumedTotals = useMemo(() => normalizeMenuConsumedTotals(menuTrackingDay), [menuTrackingDay]);
   const totals = useMemo(() => addTotals(trackedTotals, menuConsumedTotals), [menuConsumedTotals, trackedTotals]);
-  const objective = tracking.objetivo || null;
+  const menuObjective = useMemo(() => objectiveFromMenuTrackingDay(menuTrackingDay), [menuTrackingDay]);
+  const objective = hasConfiguredNutritionTarget(menuObjective) ? menuObjective : tracking.objetivo || null;
   const remaining = remainingTotals(objective, totals);
+  const manualCompletionActive = menuTrackingDay?.tracking?.dayCompletionMode === "manual_completion";
+  const manualCompletionPlan = menuTrackingDay?.tracking?.manualCompletion?.plan || null;
+  const manualProgress = useMemo(() => manualCompletionActive
+    ? calculateManualDayProgress({
+        target: objective,
+        menuConsumed: menuConsumedTotals,
+        trackedConsumed: trackedTotals,
+      })
+    : null,
+  [manualCompletionActive, menuConsumedTotals, objective, trackedTotals]);
+  const consumedByMoment = useMemo(() => Object.fromEntries(
+    (manualCompletionPlan?.moments || []).map((moment) => [
+      String(moment.id),
+      totalItems(log[String(moment.id)] || []),
+    ])
+  ), [log, manualCompletionPlan?.moments]);
+  const remainingMoments = useMemo(() => manualCompletionActive && manualCompletionPlan
+    ? buildRemainingMomentTargets({
+        remaining: manualProgress?.remaining || emptyTotals(),
+        moments: manualCompletionPlan.moments || [],
+        consumedByMoment,
+      })
+    : [],
+  [consumedByMoment, manualCompletionActive, manualCompletionPlan, manualProgress?.remaining]);
+  const meals = useMemo(
+    () => mergeManualCompletionMeals(baseMeals, remainingMoments, manualCompletionActive),
+    [baseMeals, manualCompletionActive, remainingMoments]
+  );
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
   const canAutoCompleteRemainingMeals = capabilitiesQuery.data?.canAutoCompleteRemainingMeals === true;
+  const canPlanRemainingIntake = capabilitiesQuery.data?.canPlanRemainingIntake === true;
+  const canAutoCalculateTrackingQuantities =
+    capabilitiesQuery.data?.canAutoCalculateTrackingQuantities === true;
   const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
   const historyOldestDate = useMemo(
     () => Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
@@ -135,6 +192,10 @@ export default function TrackingDiario() {
     : isSaving
       ? "Guardando cambios"
       : "Diario guardado";
+
+  useEffect(() => {
+    if (requestedDate !== date) setDate(requestedDate);
+  }, [date, requestedDate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 260);
@@ -216,6 +277,11 @@ export default function TrackingDiario() {
       return;
     }
     setDate(nextDate);
+    setSearchParams((current) => {
+      const nextParams = new URLSearchParams(current);
+      nextParams.set("date", nextDate);
+      return nextParams;
+    });
   }
 
   function addFood() {
@@ -429,6 +495,77 @@ export default function TrackingDiario() {
     );
   }
 
+  function openManualCompletionAdd() {
+    const targetMeal =
+      remainingMoments.find((moment) => moment.state === "planned") ||
+      remainingMoments[0] ||
+      meals[0];
+    if (!targetMeal) {
+      setToast({ type: "error", message: "No pudimos preparar una sección para registrar el alimento." });
+      return;
+    }
+    openAdd(targetMeal.id);
+  }
+
+  function saveRemainingMomentsPlan(count) {
+    const plan = createManualCompletionPlan(count, manualCompletionPlan);
+    manualCompletionMutation.mutate(
+      {
+        date,
+        dayCompletionMode: "manual_completion",
+        plan,
+      },
+      {
+        onSuccess: () => {
+          setRemainingPlannerOpen(false);
+          setToast({
+            type: "success",
+            message: `Restante organizado en ${plan.count} momento${plan.count === 1 ? "" : "s"}.`,
+          });
+        },
+        onError: (mutationError) => {
+          setToast({ type: "error", message: mutationError?.message || "No se pudo guardar la planificación." });
+        },
+      }
+    );
+  }
+
+  async function confirmAutomaticQuantities(proposals = []) {
+    const meal = quantityPlannerMeal;
+    if (!meal?.id || !proposals.length || autoQuantitySaving) return;
+    if (!autoQuantityRequestRef.current) {
+      autoQuantityRequestRef.current = createWriteRequestId(date, meal.id);
+    }
+    setAutoQuantitySaving(true);
+    try {
+      const items = proposals.map((proposal) => {
+        const unit = proposal.unit || proposal.food?.unidad || "g";
+        return buildMenuItemSnapshot(proposal.food, Number(proposal.quantity), unit);
+      });
+      await addCalculatedMutation.mutateAsync({
+        requestId: autoQuantityRequestRef.current,
+        date,
+        mealId: meal.id,
+        mealType: meal.type || "otra",
+        mealName: meal.label,
+        items,
+      });
+      setQuantityPlannerMeal(null);
+      autoQuantityRequestRef.current = "";
+      setToast({
+        type: "success",
+        message: `${proposals.length} alimento${proposals.length === 1 ? "" : "s"} confirmado${proposals.length === 1 ? "" : "s"} como consumido${proposals.length === 1 ? "" : "s"}.`,
+      });
+    } catch (confirmationError) {
+      setToast({
+        type: "error",
+        message: confirmationError?.message || "No se pudieron guardar todas las cantidades.",
+      });
+    } finally {
+      setAutoQuantitySaving(false);
+    }
+  }
+
   return (
     <div className="td-page">
       <section className="td-shell">
@@ -468,34 +605,57 @@ export default function TrackingDiario() {
           <div className="td-error">No se pudo cargar el tracking diario.</div>
         ) : null}
 
+        {manualCompletionActive && manualProgress ? (
+          <ManualCompletionTrackingCard
+            progress={manualProgress}
+            plan={manualCompletionPlan}
+            canPlan={canPlanRemainingIntake}
+            onAddFood={openManualCompletionAdd}
+            onOpenPlanner={() => setRemainingPlannerOpen(true)}
+          />
+        ) : null}
+
         <DailySummaryCard
           expanded={isDailySummaryExpanded}
           onToggle={() => setIsDailySummaryExpanded((current) => !current)}
           menuTotals={menuConsumedTotals}
+          menuAdherence={menuTrackingDay?.tracking?.menuAdherencePercent}
           objective={objective}
           remaining={remaining || emptyTotals()}
           totals={totals}
         />
 
-        <button
-          type="button"
-          className="td-calcRemainingBtn"
-          onClick={calculateRemainingTargets}
-          disabled={!canAutoCompleteRemainingMeals || !objective || updateMealsMutation.isPending}
-          title={!canAutoCompleteRemainingMeals ? "Disponible en Pro" : !objective ? "Configurá tus objetivos" : undefined}
-        >
-          <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
-          <span>
-            <strong>Distribuir restante</strong>
-            <small>
-              {!canAutoCompleteRemainingMeals
-                ? "Disponible en Pro"
-                : !objective
-                  ? "Configurá tus objetivos para calcular el restante"
-                  : "Repartir la meta restante entre comidas pendientes"}
-            </small>
-          </span>
-        </button>
+        {!manualCompletionActive ? (
+          <button
+            type="button"
+            className="td-calcRemainingBtn"
+            onClick={calculateRemainingTargets}
+            disabled={!canAutoCompleteRemainingMeals || !objective || updateMealsMutation.isPending}
+            title={!canAutoCompleteRemainingMeals ? "Disponible en Pro" : !objective ? "Configurá tus objetivos" : undefined}
+          >
+            <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
+            <span>
+              <strong>Distribuir restante</strong>
+              <small>
+                {!canAutoCompleteRemainingMeals
+                  ? "Disponible en Pro"
+                  : !objective
+                    ? "Configurá tus objetivos para calcular el restante"
+                    : "Repartir la meta restante entre comidas pendientes"}
+              </small>
+            </span>
+          </button>
+        ) : null}
+
+        {manualCompletionActive && remainingMoments.some((moment) => moment.state === "planned") && Number(manualProgress?.remaining?.kcal) <= 0 ? (
+          <div className="td-manualCompletionOptional" role="status">
+            <CheckCircle2 size={18} aria-hidden="true" />
+            <span>
+              <strong>Ya completaste el objetivo disponible.</strong>
+              Los momentos restantes son opcionales y podés seguir registrando si comés algo más.
+            </span>
+          </div>
+        ) : null}
 
         {issues.length ? <TrackingIssueList issues={issues} /> : null}
 
@@ -515,6 +675,7 @@ export default function TrackingDiario() {
                       <p>{macroLine(mealTotals)}</p>
                       <div className="td-mealMeta">
                         <span>{mealTypeLabel(meal.type)}</span>
+                        <ManualMomentStatus meal={meal} totals={mealTotals} />
                         {mealHasTarget ? <span className="goal">Meta {mealTargetLine(meal.target)}</span> : null}
                       </div>
                     </div>
@@ -550,6 +711,16 @@ export default function TrackingDiario() {
                     </div>
                   </div>
                 </div>
+
+                {canAutoCalculateTrackingQuantities ? (
+                  <ManualMomentCalculatorAction
+                    meal={meal}
+                    onCalculate={(selectedMeal) => {
+                      autoQuantityRequestRef.current = createWriteRequestId(date, selectedMeal.id);
+                      setQuantityPlannerMeal(selectedMeal);
+                    }}
+                  />
+                ) : null}
 
                 {items.length ? (
                   <div className="td-foodList">
@@ -768,6 +939,33 @@ export default function TrackingDiario() {
           onClose={() => setGoalMealId("")}
           onSave={saveMealGoal}
           onRemove={() => removeMealGoal(goalMealId)}
+        />
+      ) : null}
+
+      {remainingPlannerOpen ? (
+        <RemainingMomentsPlannerDialog
+          currentCount={manualCompletionPlan?.count || 1}
+          saving={manualCompletionMutation.isPending}
+          onClose={() => {
+            if (!manualCompletionMutation.isPending) setRemainingPlannerOpen(false);
+          }}
+          onSave={saveRemainingMomentsPlan}
+        />
+      ) : null}
+
+      {quantityPlannerMeal ? (
+        <AutoQuantityPlannerDialog
+          date={date}
+          moment={quantityPlannerMeal}
+          target={quantityPlannerMeal.target || emptyTotals()}
+          saving={autoQuantitySaving}
+          onClose={() => {
+            if (!autoQuantitySaving) {
+              setQuantityPlannerMeal(null);
+              autoQuantityRequestRef.current = "";
+            }
+          }}
+          onConfirm={confirmAutomaticQuantities}
         />
       ) : null}
 
@@ -993,7 +1191,7 @@ function FoodLogThumb({ item = {} }) {
   );
 }
 
-function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), objective, totals, remaining }) {
+function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), menuAdherence = null, objective, totals, remaining }) {
   if (!objective) {
     return (
       <section className="td-objectivePending" aria-label="Meta diaria pendiente">
@@ -1069,7 +1267,7 @@ function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), obje
             ) : null}
             {hasMenuTotals ? (
               <span className="menu">
-                <small>Menu hecho</small>
+                <small>Menú realizado{Number.isFinite(Number(menuAdherence)) ? ` · ${formatNumber(menuAdherence, 0)}%` : ""}</small>
                 <strong>{displayCompactKcal(menuTotals.kcal)} · {macroLineCurrent(menuTotals)}</strong>
               </span>
             ) : null}
@@ -1085,7 +1283,7 @@ function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), obje
           >
             <span>
               <strong>{progressLabel}%</strong>
-              <small>cumplimiento</small>
+              <small>nutrición</small>
             </span>
           </span>
           <span className="td-dailySummaryChevron">
@@ -1268,6 +1466,56 @@ function emptyTrackingDay(date) {
     mealsConfig: [],
     meals: {},
   };
+}
+
+function objectiveFromMenuTrackingDay(day = null) {
+  const target = day?.target;
+  if (!target || typeof target !== "object") return null;
+  return {
+    kcal: target.kcal ?? target.calorias ?? null,
+    proteina: target.proteina ?? target.p ?? null,
+    carbs: target.carbs ?? target.c ?? null,
+    grasas: target.grasas ?? target.g ?? null,
+  };
+}
+
+function hasConfiguredNutritionTarget(value = null) {
+  if (!value) return false;
+  const configured = configuredNutritionTarget(value).configured;
+  return Object.values(configured).some(Boolean);
+}
+
+function mergeManualCompletionMeals(baseMeals = [], momentRows = [], active = false) {
+  const current = Array.isArray(baseMeals) ? baseMeals : [];
+  if (!active) return current;
+
+  if (!momentRows.length) {
+    if (current.length) return current;
+    return [{
+      id: "manual_completion_general",
+      label: "Registro manual",
+      type: "otra",
+      target: emptyTotals(),
+      manualCompletionGeneral: true,
+    }];
+  }
+
+  const byId = new Map(current.map((meal) => [String(meal.id), meal]));
+  const momentIds = new Set(momentRows.map((moment) => String(moment.id)));
+  const planned = momentRows.map((moment) => ({
+    ...(byId.get(String(moment.id)) || {}),
+    id: String(moment.id),
+    label: moment.label,
+    type: byId.get(String(moment.id))?.type || "otra",
+    target: moment.target || emptyTotals(),
+    manualCompletionMoment: true,
+    manualMomentState: moment.state,
+    manualMomentConsumed: moment.consumed || emptyTotals(),
+  }));
+  return [
+    ...planned,
+    ...current.filter((meal) => !momentIds.has(String(meal.id))),
+  ];
 }
 
 function normalizeMeals(raw = {}, meals = []) {
@@ -1652,6 +1900,13 @@ function todayLocalString() {
   return toDateInputValue(new Date());
 }
 
+function validDateKey(value = "") {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
+  const parsed = new Date(`${raw}T12:00:00`);
+  return Number.isFinite(parsed.getTime()) && toDateInputValue(parsed) === raw ? raw : "";
+}
+
 function toDateInputValue(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1684,4 +1939,11 @@ function foodPayload(food = {}) {
     imagen: food.imagen,
     imagenUrl: getFoodImageUrl(food),
   };
+}
+
+function createWriteRequestId(date = "", mealId = "") {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `manual-completion:${date}:${String(mealId || "moment").slice(0, 60)}:${randomPart}`;
 }

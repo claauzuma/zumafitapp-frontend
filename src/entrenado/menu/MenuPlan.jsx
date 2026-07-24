@@ -61,6 +61,12 @@ import {
 } from "../../clientPlans/clientPlanQueries.js";
 import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
 import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
+import { getTrackingDay, updateManualDayCompletion } from "../../tracking/trackingApi.js";
+import { calculateManualDayProgress } from "../../tracking/manualDayCompletion.js";
+import {
+  ManualDayCompletionBanner,
+  ManualDayCompletionDialog,
+} from "./ManualDayCompletion.jsx";
 
 const EMPTY_DAYS = [];
 const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1982,6 +1988,7 @@ export default function MenuPlan() {
   const [quickMealEditor, setQuickMealEditor] = useState(null);
   const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
   const [trackingOnlyConfirmOpen, setTrackingOnlyConfirmOpen] = useState(false);
+  const [manualCompletionPrompt, setManualCompletionPrompt] = useState(null);
   const [mealToggleConfirm, setMealToggleConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -2077,6 +2084,7 @@ export default function MenuPlan() {
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canTrackFoods = permissions.canTrackFoods !== false;
   const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
+  const canUseManualDayCompletion = permissions.canUseManualDayCompletion !== false;
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
     queryFn: fetchClientPlanCapabilities,
@@ -2098,6 +2106,84 @@ export default function MenuPlan() {
   const previousDayDisabled = selectedRow?.date
     ? !canNavigateToMenuDate(addDays(selectedRow.date, -1))
     : false;
+  const manualCompletionSummary = useMemo(() => {
+    const row = selectedDisplayRow;
+    const choice = trackingChoice(row);
+    const menuMeals = choiceMeals(choice);
+    const completedIds = completedMealIdSet(row);
+    const completed = menuMeals.reduce(
+      (count, meal, index) => count + (completedIds.has(mealId(meal, index)) ? 1 : 0),
+      0
+    );
+    const total = menuMeals.length;
+    const active = row?.tracking?.dayCompletionMode === "manual_completion";
+    const status = row?.tracking?.status || "pending";
+    const show =
+      canUseManualDayCompletion &&
+      Boolean(row?.date && choice && total > 0) &&
+      row.date <= todayIso() &&
+      (active || (completed < total && status !== "missed"));
+    return { row, choice, completed, total, active, show };
+  }, [canUseManualDayCompletion, selectedDisplayRow]);
+
+  async function loadManualCompletionPreview(summary = manualCompletionSummary) {
+    if (!summary?.row?.date || saving) return;
+    setManualCompletionPrompt({
+      row: summary.row,
+      completed: summary.completed,
+      total: summary.total,
+      loading: true,
+      error: "",
+      progress: null,
+    });
+    try {
+      const trackingDay = await getTrackingDay(summary.row.date);
+      const target = hasConfiguredTarget(summary.row)
+        ? summary.row.target
+        : trackingDay?.objetivo;
+      const progress = calculateManualDayProgress({
+        target,
+        menuConsumed: consumedTotals(summary.row),
+        trackedConsumed: trackingDay?.totals || {},
+      });
+      setManualCompletionPrompt((current) => current?.row?.date === summary.row.date
+        ? { ...current, loading: false, error: "", progress }
+        : current);
+    } catch (previewError) {
+      setManualCompletionPrompt((current) => current?.row?.date === summary.row.date
+        ? {
+            ...current,
+            loading: false,
+            progress: null,
+            error: previewError?.message || "Revisá tu conexión e intentá nuevamente.",
+          }
+        : current);
+    }
+  }
+
+  async function confirmManualDayCompletion() {
+    const prompt = manualCompletionPrompt;
+    if (!prompt?.row?.date || !prompt?.progress || prompt.loading || saving) return;
+    setSaving(true);
+    try {
+      await updateManualDayCompletion(prompt.row.date, {
+        dayCompletionMode: "manual_completion",
+        selectedAlternative: prompt.row?.tracking?.selectedAlternative || null,
+      });
+      setManualCompletionPrompt(null);
+      menuWeekMemoryCache.delete(mondayOfWeek(prompt.row.date));
+      navigate(`/app/tracking?date=${encodeURIComponent(prompt.row.date)}`);
+    } catch (completionError) {
+      setManualCompletionPrompt((current) => current
+        ? {
+            ...current,
+            error: completionError?.message || "No se pudo cambiar el modo del día.",
+          }
+        : current);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function openActiveMenuEditor(row = selectedRow, options = {}) {
     if (menuSourceMeta(activePlanSource).key !== "own") return;
@@ -2717,6 +2803,17 @@ export default function MenuPlan() {
         {loading ? <LoadingState /> : null}
         {error ? <ErrorState message={error} onRetry={() => loadWeek(weekStart)} /> : null}
 
+        {!loading && !error && weekData && manualCompletionSummary.show ? (
+          <ManualDayCompletionBanner
+            active={manualCompletionSummary.active}
+            completed={manualCompletionSummary.completed}
+            total={manualCompletionSummary.total}
+            disabled={saving}
+            onStart={() => loadManualCompletionPreview(manualCompletionSummary)}
+            onOpenTracking={() => navigate(`/app/tracking?date=${encodeURIComponent(manualCompletionSummary.row.date)}`)}
+          />
+        ) : null}
+
         {!loading && !error && weekData ? (
           isMobileLayout ? (
             mobileView === "detail" ? (
@@ -2965,6 +3062,22 @@ export default function MenuPlan() {
         />
       ) : null}
 
+      {manualCompletionPrompt ? (
+        <ManualDayCompletionDialog
+          state={manualCompletionPrompt}
+          saving={saving}
+          onCancel={() => {
+            if (!saving) setManualCompletionPrompt(null);
+          }}
+          onRetry={() => loadManualCompletionPreview({
+            row: manualCompletionPrompt.row,
+            completed: manualCompletionPrompt.completed,
+            total: manualCompletionPrompt.total,
+          })}
+          onConfirm={confirmManualDayCompletion}
+        />
+      ) : null}
+
     </div>
   );
 }
@@ -3072,7 +3185,7 @@ function TrackingOnlyConfirmModal({ saving, onCancel, onConfirm }) {
             </span>
             <div className="min-w-0">
               <span className="text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">Planificacion activa</span>
-              <h3 id="tracking-only-confirm-title" className="mt-1 text-xl font-black leading-tight text-white">Usar solo Tracking</h3>
+              <h3 id="tracking-only-confirm-title" className="mt-1 text-xl font-black leading-tight text-white">Desactivar menú activo</h3>
               <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-300">
                 Tu menu seguira guardado, pero dejara de mostrarse como planificacion activa. Podras volver a activarlo mas adelante.
               </p>
@@ -3111,7 +3224,7 @@ function TrackingOnlyConfirmModal({ saving, onCancel, onConfirm }) {
             disabled={saving}
             className="min-h-12 rounded-2xl border border-amber-300/35 bg-amber-300/15 px-4 text-sm font-black text-[#FFE8A3] disabled:opacity-60"
           >
-            {saving ? "Desactivando..." : "Usar solo Tracking"}
+            {saving ? "Desactivando..." : "Desactivar menú"}
           </button>
         </footer>
       </div>
@@ -3605,6 +3718,7 @@ function FlexibleMarginSlotCard({
           </div>
         </div>
       ) : null}
+
     </section>
   );
 }
@@ -4136,7 +4250,7 @@ function MobileMenuOptionsDrawer({
                   onClick={onUseTrackingOnly}
                   className="mt-1 flex min-h-12 items-center justify-between rounded-[1.05rem] border border-amber-300/25 bg-amber-300/[0.075] px-4 text-sm font-black text-amber-100 disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-amber-300/15"
                 >
-                  <span className="inline-flex items-center gap-2"><Utensils size={17} /> Usar solo Tracking</span>
+                  <span className="inline-flex items-center gap-2"><Utensils size={17} /> Desactivar menú activo</span>
                   <ChevronRight size={17} />
                 </button>
               </>

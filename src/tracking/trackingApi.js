@@ -32,6 +32,30 @@ export async function addFoodLog(payload) {
   });
 }
 
+export async function addCalculatedFoodLogs(payload) {
+  return await apiFetch("/api/tracking/day/logs/calculated", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 18000,
+  });
+}
+
+export async function updateManualDayCompletion(date, payload = {}) {
+  return await apiFetch(`/api/usuarios/me/menu-tracking/day/${encodeURIComponent(date)}/completion`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 14000,
+  });
+}
+
+export async function calculateTrackingQuantities(payload = {}) {
+  return await apiFetch("/api/tracking/day/calculate-quantities", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 18000,
+  });
+}
+
 export async function updateTrackingMealsConfig(payload) {
   return await apiFetch("/api/tracking/day/meals", {
     method: "PATCH",

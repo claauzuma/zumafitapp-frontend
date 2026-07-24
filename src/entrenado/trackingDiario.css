@@ -1904,3 +1904,655 @@
     font-size: 13px;
   }
 }
+
+/* Manual completion: menu-to-tracking context and temporary Pro planning. */
+.td-manualCompletionCard {
+  --td-manual-accent: #8dd9ff;
+  display: grid;
+  gap: 13px;
+  margin-top: 14px;
+  border: 1px solid color-mix(in srgb, var(--td-manual-accent) 28%, transparent);
+  border-radius: 22px;
+  background:
+    radial-gradient(520px 180px at 0 0, color-mix(in srgb, var(--td-manual-accent) 15%, transparent), transparent 62%),
+    rgba(7, 15, 23, 0.92);
+  padding: clamp(14px, 2.5vw, 18px);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.td-manualCompletionCard.is-reached {
+  --td-manual-accent: #86efac;
+}
+
+.td-manualCompletionCard.is-exceeded {
+  --td-manual-accent: #f6ad78;
+}
+
+.td-manualCompletionCard.is-missing {
+  --td-manual-accent: #d4c5a4;
+}
+
+.td-manualCompletionTop {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.td-manualCompletionIcon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--td-manual-accent) 32%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--td-manual-accent) 11%, transparent);
+  color: var(--td-manual-accent);
+}
+
+.td-cardEyebrow {
+  color: color-mix(in srgb, var(--td-manual-accent) 82%, white);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.td-manualCompletionTop h2 {
+  margin: 2px 0 0;
+  color: #fff;
+  font-size: clamp(17px, 3.2vw, 21px);
+  line-height: 1.14;
+  font-weight: 1000;
+}
+
+.td-manualCompletionTop p {
+  margin: 5px 0 0;
+  color: #ced8e3;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 760;
+}
+
+.td-manualCompletionKcal {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.td-manualCompletionKcal > span {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px 11px;
+}
+
+.td-manualCompletionKcal small,
+.td-manualCompletionKcal strong {
+  display: block;
+}
+
+.td-manualCompletionKcal small {
+  overflow: hidden;
+  color: #8f9dab;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.td-manualCompletionKcal strong {
+  margin-top: 3px;
+  color: #f6f9fc;
+  font-size: clamp(15px, 3vw, 18px);
+  font-weight: 1000;
+}
+
+.td-manualCompletionBar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.td-manualCompletionBar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--td-manual-accent), #f5d76e);
+  transition: width 180ms ease;
+}
+
+.td-manualCompletionMacros {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.td-manualCompletionMacros > span {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.td-manualCompletionMacros small {
+  color: var(--td-manual-accent);
+  font-size: 10px;
+  font-weight: 1000;
+}
+
+.td-manualCompletionMacros strong {
+  color: #eff4f8;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.td-manualCompletionNoMacros,
+.td-manualCompletionHint,
+.td-autoQuantityFootnote {
+  margin: 0;
+  color: #8493a2;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 720;
+}
+
+.td-manualCompletionMissing {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px 12px;
+  color: #bec8d2;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 760;
+}
+
+.td-manualCompletionPlanState,
+.td-manualCompletionOptional,
+.td-manualCompletionProNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: 15px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 780;
+}
+
+.td-manualCompletionPlanState {
+  border: 1px solid rgba(245, 215, 110, 0.16);
+  background: rgba(245, 215, 110, 0.055);
+  padding: 9px 10px;
+  color: #ecd98c;
+}
+
+.td-manualCompletionActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.td-manualCompletionActions .td-primaryBtn,
+.td-manualCompletionActions .td-secondaryBtn {
+  min-height: 46px;
+  margin: 0;
+  border-radius: 15px;
+  font-size: 12px;
+}
+
+.td-manualCompletionProNote {
+  border: 1px solid rgba(245, 215, 110, 0.18);
+  background: rgba(245, 215, 110, 0.055);
+  padding: 10px 11px;
+  color: #d9c785;
+}
+
+.td-manualCompletionProNote > span {
+  display: grid;
+  gap: 1px;
+}
+
+.td-manualCompletionProNote strong {
+  color: #ffe88c;
+}
+
+.td-manualCompletionOptional {
+  margin-top: 12px;
+  border: 1px solid rgba(134, 239, 172, 0.2);
+  background: rgba(134, 239, 172, 0.07);
+  padding: 11px 12px;
+  color: #a9bdb1;
+}
+
+.td-manualCompletionOptional strong {
+  display: block;
+  color: #baf3ce;
+}
+
+.td-manualMomentStatus {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(245, 215, 110, 0.2);
+  border-radius: 999px;
+  background: rgba(245, 215, 110, 0.07);
+  padding: 0 7px;
+  color: #eadb9c;
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.td-manualMomentStatus.consumed {
+  border-color: rgba(134, 239, 172, 0.2);
+  background: rgba(134, 239, 172, 0.07);
+  color: #baf3ce;
+}
+
+.td-manualMomentCalcBtn {
+  display: flex;
+  width: calc(100% - 28px);
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  margin: -1px 14px 12px;
+  border: 1px solid rgba(245, 215, 110, 0.18);
+  border-radius: 14px;
+  background: rgba(245, 215, 110, 0.055);
+  padding: 0 12px;
+  color: #f3df8d;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.td-manualMomentCalcBtn svg:last-child {
+  margin-left: auto;
+}
+
+.td-bottomSheet {
+  z-index: 130;
+}
+
+.td-dialogBackdropButton {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.td-planMomentsModal,
+.td-autoQuantityModal {
+  position: relative;
+  width: min(620px, 100%);
+}
+
+.td-planMomentsCopy {
+  margin: 16px 0 0;
+  color: #e8eef4;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 850;
+}
+
+.td-planMomentOptions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.td-planMomentOptions button {
+  display: grid;
+  min-height: 78px;
+  place-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #bdc7d1;
+  cursor: pointer;
+}
+
+.td-planMomentOptions button.active {
+  border-color: rgba(245, 215, 110, 0.42);
+  background: rgba(245, 215, 110, 0.1);
+  color: #ffe66e;
+  box-shadow: inset 0 0 0 1px rgba(245, 215, 110, 0.08);
+}
+
+.td-planMomentOptions strong {
+  font-size: 22px;
+  font-weight: 1000;
+}
+
+.td-planMomentOptions span {
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.td-planMomentsHint {
+  margin: 12px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 11px;
+  color: #98a5b2;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 720;
+}
+
+.td-autoQuantityModal {
+  width: min(680px, 100%);
+}
+
+.td-autoQuantityModal .td-modalTop p {
+  margin: 4px 0 0;
+  color: #8f9ca9;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.td-autoQuantitySearch {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0 12px;
+  color: #8d9aa7;
+}
+
+.td-autoQuantitySearch input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f5f8fb;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.td-autoQuantityResults {
+  display: grid;
+  max-height: 230px;
+  gap: 6px;
+  margin-top: 9px;
+  overflow-y: auto;
+}
+
+.td-autoQuantityResults button {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  min-height: 52px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.028);
+  padding: 6px 10px 6px 6px;
+  color: #dbe2e9;
+  cursor: pointer;
+  text-align: left;
+}
+
+.td-autoQuantityResults button.selected {
+  border-color: rgba(245, 215, 110, 0.3);
+  background: rgba(245, 215, 110, 0.07);
+  color: #ffe98f;
+}
+
+.td-autoQuantityResults img {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  object-fit: cover;
+}
+
+.td-autoQuantityResults span,
+.td-autoQuantityProposal article > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.td-autoQuantityResults strong,
+.td-autoQuantityResults small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-autoQuantityResults strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.td-autoQuantityResults small {
+  color: #83909d;
+  font-size: 9px;
+  font-weight: 730;
+}
+
+.td-autoQuantitySelected {
+  margin-top: 10px;
+}
+
+.td-autoQuantitySelected > span {
+  color: #8b98a5;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.td-autoQuantitySelected > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.td-autoQuantitySelected button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(245, 215, 110, 0.2);
+  border-radius: 999px;
+  background: rgba(245, 215, 110, 0.065);
+  padding: 0 9px;
+  color: #eadb9b;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.td-calculateQuantityBtn {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 11px;
+  border: 1px solid rgba(245, 215, 110, 0.27);
+  border-radius: 15px;
+  background: rgba(245, 215, 110, 0.09);
+  color: #ffe581;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.td-calculateQuantityBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.td-autoQuantityMessage {
+  margin: 9px 0 0;
+  color: #9cabb8;
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 720;
+}
+
+.td-autoQuantityProposal {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.td-autoQuantityProposal article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 7px 9px 7px 11px;
+}
+
+.td-autoQuantityProposal article strong {
+  color: #f2f6f9;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.td-autoQuantityProposal article small {
+  color: #84919e;
+  font-size: 9px;
+  font-weight: 740;
+}
+
+.td-autoQuantityProposal label {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(245, 215, 110, 0.18);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.17);
+}
+
+.td-autoQuantityProposal input {
+  width: 68px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 0 7px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.td-autoQuantityProposal label span {
+  padding-right: 8px;
+  color: #9aa7b3;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.td-autoQuantityTotals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 14px;
+  background: rgba(134, 239, 172, 0.065);
+  padding: 9px 11px;
+  color: #b8eec9;
+}
+
+.td-autoQuantityTotals strong {
+  font-size: 14px;
+  font-weight: 1000;
+}
+
+.td-autoQuantityTotals span {
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.td-autoQuantityFootnote {
+  margin-top: 9px;
+  text-align: center;
+}
+
+.td-manualCompletionActions button:focus-visible,
+.td-manualMomentCalcBtn:focus-visible,
+.td-planMomentOptions button:focus-visible,
+.td-autoQuantityResults button:focus-visible,
+.td-autoQuantitySelected button:focus-visible,
+.td-calculateQuantityBtn:focus-visible,
+.td-autoQuantityProposal input:focus-visible {
+  outline: 2px solid #ffe581;
+  outline-offset: 3px;
+}
+
+.td-autoQuantitySearch:focus-within,
+.td-autoQuantityProposal label:focus-within {
+  border-color: rgba(255, 229, 129, 0.62);
+  box-shadow: 0 0 0 3px rgba(255, 229, 129, 0.1);
+}
+
+@media (max-width: 560px) {
+  .td-manualCompletionActions,
+  .td-manualCompletionKcal {
+    grid-template-columns: 1fr;
+  }
+
+  .td-planMomentOptions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .td-planMomentOptions button {
+    min-height: 62px;
+  }
+
+  .td-autoQuantityTotals {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .td-bottomSheet .td-modal {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-manualCompletionBar > span,
+  .td-manualCompletionCard *,
+  .td-planMomentsModal *,
+  .td-autoQuantityModal * {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

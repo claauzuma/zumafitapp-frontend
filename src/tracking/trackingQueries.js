@@ -3,11 +3,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { buildMenuItemSnapshot, getFoodImageUrl } from "../nutricion/nutricionUtils.js";
 import { STALE_TIMES, invalidateTrackingDay, queryClient, queryKeys } from "../queryClient.js";
 import {
+  addCalculatedFoodLogs,
   addFoodLog,
   deleteFoodLog,
   deleteTrackingMeal,
   getMenuTrackingWeek,
   getTrackingDay,
+  updateManualDayCompletion,
   updateFoodLog,
   updateTrackingMealsConfig,
 } from "./trackingApi.js";
@@ -27,6 +29,31 @@ export function useMenuTrackingWeek(start) {
     queryFn: () => getMenuTrackingWeek(start),
     enabled: Boolean(start),
     staleTime: STALE_TIMES.trackingDay,
+  });
+}
+
+export function useUpdateManualDayCompletion() {
+  return useMutation({
+    mutationFn: ({ date, ...payload }) => updateManualDayCompletion(date, payload),
+    onSuccess: async (data, variables) => {
+      const date = data?.record?.date || variables?.date;
+      const tracking = data?.record?.tracking;
+      if (date && tracking) {
+        queryClient.setQueriesData({ queryKey: ["menuTrackingWeek"] }, (current) => {
+          if (!current?.days) return current;
+          return {
+            ...current,
+            days: current.days.map((day) => (
+              day.date === date ? { ...day, tracking: { ...(day.tracking || {}), ...tracking } } : day
+            )),
+          };
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["menuTrackingWeek"] }),
+        date ? invalidateTrackingDay(date) : Promise.resolve(),
+      ]);
+    },
   });
 }
 
@@ -61,6 +88,17 @@ export function useAddFoodLog() {
     onError: (_error, _variables, context) => {
       restoreTrackingDay(context);
     },
+    onSuccess: async (data, variables) => {
+      const date = data?.date || variables?.date;
+      if (date) queryClient.setQueryData(queryKeys.trackingDay(date), data);
+      await invalidateTrackingDay(date);
+    },
+  });
+}
+
+export function useAddCalculatedFoodLogs() {
+  return useMutation({
+    mutationFn: addCalculatedFoodLogs,
     onSuccess: async (data, variables) => {
       const date = data?.date || variables?.date;
       if (date) queryClient.setQueryData(queryKeys.trackingDay(date), data);
