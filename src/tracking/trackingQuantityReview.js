@@ -8,6 +8,9 @@ const REVIEW_FIELDS = [
 ];
 
 const CALORIE_CEILING_EPSILON = 1e-6;
+// Sólo controla la presentación. Hasta 0,5 g coincide con el estado "exacto"
+// del contrato del motor y no cambia cantidades, ranking ni policy.
+const PROTEIN_WARNING_EPSILON = 0.5;
 
 function isConfigured(configured = {}, key, target) {
   if (configured?.[key] === true) return true;
@@ -29,6 +32,7 @@ export function buildTrackingQuantityReview({
   target = {},
   proposal = {},
   configured = {},
+  optimization = null,
 } = {}) {
   const normalizedTarget = preciseNutritionTotals(target);
   const normalizedProposal = preciseNutritionTotals(proposal);
@@ -47,7 +51,7 @@ export function buildTrackingQuantityReview({
   const proteinDeficit = rowByKey.proteina.configured
     ? Math.max(0, rowByKey.proteina.target - rowByKey.proteina.proposed)
     : 0;
-  const proteinLevel = proteinDeficit > 0.05
+  const proteinLevel = proteinDeficit > PROTEIN_WARNING_EPSILON
     ? proteinDeficit <= 10 ? "near" : "high"
     : null;
   const calorieExcess = rowByKey.kcal.configured
@@ -56,6 +60,10 @@ export function buildTrackingQuantityReview({
   const secondaryMacroRows = [rowByKey.carbs, rowByKey.grasas].filter(
     (row) => row.configured && Math.abs(row.difference) > 0.5
   );
+  const outOfNormalCalorieZone = optimization?.normalCalorieZoneReached === false;
+  const requiresCalorieZoneWarning = outOfNormalCalorieZone &&
+    optimization?.maxConstraintsLimited !== true &&
+    proteinLevel === null;
 
   return {
     rows,
@@ -65,6 +73,8 @@ export function buildTrackingQuantityReview({
     requiresProteinConfirmation: proteinLevel !== null,
     calorieExcess,
     respectsCalorieCeiling: calorieExcess <= CALORIE_CEILING_EPSILON,
+    outOfNormalCalorieZone,
+    requiresCalorieZoneWarning,
     secondaryMacroRows,
     canContinue: calorieExcess <= CALORIE_CEILING_EPSILON,
   };

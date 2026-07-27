@@ -60,7 +60,9 @@ import {
   isTrackingDraftAutomatic,
   markTrackingDraftAutomatic,
   markTrackingDraftManual,
+  trackingDateDraftTotals,
   trackingDraftCalculationPayload,
+  trackingDraftKey,
   trackingDraftProposals,
   trackingDraftsNutritionTotals,
   trackingDraftsReadyToConfirm,
@@ -109,6 +111,9 @@ export default function TrackingDiario() {
   const [autoQuantitySaving, setAutoQuantitySaving] = useState(false);
   const [toast, setToast] = useState(null);
   const autoQuantityRequestRef = useRef(new Map());
+  const activeDateRef = useRef(date);
+  const deleteMealDialogRef = useRef(null);
+  const foodPickerDialogRef = useRef(null);
 
   const weekStart = useMemo(() => mondayOfWeek(date), [date]);
   const trackingQuery = useTrackingDay(date);
@@ -126,6 +131,15 @@ export default function TrackingDiario() {
     staleTime: CLIENT_PLAN_CAPABILITIES_STALE_TIME,
     refetchOnWindowFocus: false,
     retry: false,
+  });
+
+  useTrackingDialogKeyboard(deleteMealDialogRef, Boolean(deleteMealCandidate), {
+    onClose: () => setDeleteMealCandidate(null),
+    disabled: deleteMealMutation.isPending || manualCompletionMutation.isPending,
+  });
+  useTrackingDialogKeyboard(foodPickerDialogRef, Boolean(modalMeal), {
+    onClose: closeFoodPicker,
+    disabled: addMutation.isPending,
   });
 
   const isSaving =
@@ -147,6 +161,14 @@ export default function TrackingDiario() {
   );
   const menuConsumedTotals = useMemo(() => menuTrackingConsumedTotals(menuTrackingDay), [menuTrackingDay]);
   const totals = useMemo(() => addTotals(trackedTotals, menuConsumedTotals), [menuConsumedTotals, trackedTotals]);
+  const pendingDraftTotals = useMemo(
+    () => trackingDateDraftTotals(trackingFoodDrafts, date),
+    [date, trackingFoodDrafts]
+  );
+  const projectedTotals = useMemo(
+    () => addTotals(totals, pendingDraftTotals),
+    [pendingDraftTotals, totals]
+  );
   const menuObjective = useMemo(() => objectiveFromMenuTrackingDay(menuTrackingDay), [menuTrackingDay]);
   const objective = hasConfiguredNutritionTarget(menuObjective) ? menuObjective : tracking.objetivo || null;
   const remaining = remainingTotals(objective, totals);
@@ -221,6 +243,18 @@ export default function TrackingDiario() {
   useEffect(() => {
     if (requestedDate !== date) setDate(requestedDate);
   }, [date, requestedDate]);
+
+  useEffect(() => {
+    if (activeDateRef.current === date) return;
+    activeDateRef.current = date;
+    setModalMeal("");
+    setQuantityPlannerMeal(null);
+    setSettingsOpen(false);
+    setAddMealOpen(false);
+    setGoalMealId("");
+    setDeleteMealCandidate(null);
+    setOpenMealMenu("");
+  }, [date]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 260);
@@ -428,10 +462,12 @@ export default function TrackingDiario() {
   }
 
   function clearMeal(mealId, items = []) {
-    if (!items.length || deleteMutation.isPending) {
+    const draftCount = (trackingFoodDrafts[trackingDraftKey(date, mealId)] || []).length;
+    if ((!items.length && !draftCount) || deleteMutation.isPending) {
       setToast({ type: "warning", message: "No hay alimentos para vaciar." });
       return;
     }
+    if (draftCount) clearTrackingMealDrafts(mealId);
     items.forEach((item) => {
       if (item?.id) deleteMutation.mutate({ logId: item.id, date });
     });
@@ -529,7 +565,20 @@ export default function TrackingDiario() {
 
   function requestDeleteMeal(meal, items = []) {
     setOpenMealMenu("");
-    setDeleteMealCandidate({ meal, itemsCount: items.length });
+    const draftsCount = (trackingFoodDrafts[trackingDraftKey(date, meal.id)] || []).length;
+    setDeleteMealCandidate({ meal, itemsCount: items.length, draftsCount });
+  }
+
+  function clearTrackingMealDrafts(mealId) {
+    const draftKey = trackingDraftKey(date, mealId);
+    setTrackingFoodDrafts((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
+    autoQuantityRequestRef.current.delete(draftKey);
+    if (quantityPlannerMeal?.id === mealId) setQuantityPlannerMeal(null);
   }
 
   function confirmDeleteMeal() {
@@ -553,6 +602,7 @@ export default function TrackingDiario() {
         },
         {
           onSuccess: () => {
+            clearTrackingMealDrafts(meal.id);
             setDeleteMealCandidate(null);
             setToast({
               type: "success",
@@ -578,6 +628,7 @@ export default function TrackingDiario() {
       },
       {
         onSuccess: () => {
+          clearTrackingMealDrafts(meal.id);
           setDeleteMealCandidate(null);
           setToast({ type: "success", message: `${meal.label} eliminada del dia.` });
         },
@@ -682,6 +733,7 @@ export default function TrackingDiario() {
 
     setQuantityPlannerMeal({
       ...meal,
+      calculationDate: date,
       calculationTarget: resolution.target,
       calculationConfigured: resolution.configured,
       calculationTargetSource: resolution.source,
@@ -708,6 +760,12 @@ export default function TrackingDiario() {
       ...current,
       [draftKey]: (current[draftKey] || []).filter((draft) => draft.id !== draftId),
     }));
+  }
+
+  function discardTrackingDrafts(meal) {
+    if (!meal?.id || autoQuantitySaving) return;
+    clearTrackingMealDrafts(meal.id);
+    setToast({ type: "info", message: `Se descartó únicamente el borrador de ${meal.label}.` });
   }
 
   function toggleTrackingDraftMode(mealId, draftId) {
@@ -812,33 +870,35 @@ export default function TrackingDiario() {
               {diaryStatusText}
             </div>
             <h1>Tracking diario</h1>
-            <p>Registra lo que comiste y compara tus macros reales contra tu objetivo diario.</p>
+            <p>Registrá lo que comiste y compará tus macros reales contra tu objetivo diario.</p>
           </div>
         </header>
 
-        <div className="td-dateNav" aria-label="Selector de fecha">
-          <button type="button" onClick={() => shiftDate(-1)} aria-label="Dia anterior">
-            <ChevronLeft size={21} strokeWidth={2.6} aria-hidden="true" />
-          </button>
-          <div className="td-date">
-            <CalendarDays size={18} strokeWidth={2.4} aria-hidden="true" />
-            <span>{formatDateLabel(date)}</span>
+        <div className="td-toolbar">
+          <div className="td-dateNav" aria-label="Selector de fecha">
+            <button type="button" onClick={() => shiftDate(-1)} aria-label="Día anterior">
+              <ChevronLeft size={21} strokeWidth={2.6} aria-hidden="true" />
+            </button>
+            <div className="td-date">
+              <CalendarDays size={18} strokeWidth={2.4} aria-hidden="true" />
+              <span>{formatDateLabel(date)}</span>
+            </div>
+            <button type="button" onClick={() => shiftDate(1)} aria-label="Día siguiente">
+              <ChevronRight size={21} strokeWidth={2.6} aria-hidden="true" />
+            </button>
           </div>
-          <button type="button" onClick={() => shiftDate(1)} aria-label="Dia siguiente">
-            <ChevronRight size={21} strokeWidth={2.6} aria-hidden="true" />
+
+          <button type="button" className="td-actionRow" onClick={openSettings} aria-label="Abrir ajustes del día">
+            <span className="td-actionIcon">
+              <SlidersHorizontal size={20} strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <span className="td-actionCopy">
+              <strong>Ajustes del día</strong>
+              <small>Organizá tus comidas y metas</small>
+            </span>
+            <ChevronRight className="td-actionChevron" size={22} strokeWidth={2.4} aria-hidden="true" />
           </button>
         </div>
-
-        <button type="button" className="td-actionRow" onClick={openSettings}>
-          <span className="td-actionIcon">
-            <SlidersHorizontal size={20} strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <span className="td-actionCopy">
-            <strong>Ajustes del día</strong>
-            <small>Organizá tus comidas y metas</small>
-          </span>
-          <ChevronRight size={22} strokeWidth={2.4} aria-hidden="true" />
-        </button>
 
         {trackingQuery.error ? (
           <div className="td-error">No se pudo cargar el tracking diario.</div>
@@ -848,6 +908,8 @@ export default function TrackingDiario() {
           <ManualCompletionTrackingCard
             progress={manualProgress}
             organizationCount={manualOrganizationCount}
+            pendingTotals={pendingDraftTotals}
+            projectedTotals={projectedTotals}
           />
         ) : null}
 
@@ -860,6 +922,8 @@ export default function TrackingDiario() {
             objective={objective}
             remaining={remaining || emptyTotals()}
             totals={totals}
+            pendingTotals={pendingDraftTotals}
+            projectedTotals={projectedTotals}
           />
         ) : null}
 
@@ -971,22 +1035,22 @@ export default function TrackingDiario() {
                           <small>
                             P {formatNumber(item.proteina, 1)}g · C {formatNumber(item.carbs, 1)}g · G {formatNumber(item.grasas, 1)}g
                           </small>
-                          <b className="td-foodStateBadge is-registered">Registrado</b>
                         </div>
                         <div className="td-foodActions">
+                          <b className="td-foodStateBadge is-registered">Registrado</b>
                           <label>
                             <input
                               key={`${item.id}-${item.cantidad}`}
                               defaultValue={item.cantidad}
                               onBlur={(event) => updateQuantity(meal, item, event.target.value)}
-                              aria-label="Cantidad"
+                              aria-label={`Cantidad de ${item.nombreSnapshot}`}
                             />
                             <span>{item.unidad}</span>
                           </label>
                           <button
                             type="button"
                             onClick={() => removeFood(item)}
-                            aria-label="Eliminar alimento"
+                            aria-label={`Eliminar ${item.nombreSnapshot}`}
                             disabled={deleteMutation.isPending}
                           >
                             <Trash2 size={15} strokeWidth={2.4} aria-hidden="true" />
@@ -1003,6 +1067,8 @@ export default function TrackingDiario() {
                           <div className="td-foodMain">
                             <strong>{draft.name}</strong>
                             <span>{hasQuantity ? `${formatNumber(draft.quantity, 1)} ${draft.unit}` : "Sin cantidad"}</span>
+                          </div>
+                          <div className="td-foodActions td-foodDraftControls">
                             <b className={`td-foodStateBadge ${
                               draft.status === "calculated"
                                 ? "is-calculated"
@@ -1011,11 +1077,9 @@ export default function TrackingDiario() {
                               {automatic
                                 ? draft.status === "calculated"
                                   ? "Calculado"
-                                  : hasQuantity ? "Automático · A recalcular" : "Automático · A calcular"
-                                : "Manual · Fijo"}
+                                  : "Auto"
+                                : "Fijo"}
                             </b>
-                          </div>
-                          <div className="td-foodActions td-foodDraftControls">
                             <label>
                               <input
                                 value={draft.quantity}
@@ -1081,6 +1145,17 @@ export default function TrackingDiario() {
                     {mealDrafts.length ? (
                       <button
                         type="button"
+                        className="td-secondaryBtn td-discardDraftBtn"
+                        onClick={() => discardTrackingDrafts(meal)}
+                        disabled={autoQuantitySaving}
+                      >
+                        <Trash2 size={17} aria-hidden="true" />
+                        Descartar borrador
+                      </button>
+                    ) : null}
+                    {mealDrafts.length ? (
+                      <button
+                        type="button"
                         className="td-primaryBtn"
                         onClick={() => confirmTrackingDrafts(meal)}
                         disabled={autoQuantitySaving || !trackingDraftsReadyToConfirm(mealDrafts)}
@@ -1128,21 +1203,22 @@ export default function TrackingDiario() {
                 <strong>Agregar comida</strong>
                 <small>Creá otra sección para registrar lo que comas hoy.</small>
               </span>
+              <ChevronRight className="td-addMealChevron" size={24} strokeWidth={2.6} aria-hidden="true" />
             </button>
           ) : null}
         </section>
       </section>
 
       {deleteMealCandidate ? (
-        <div className="td-modalBackdrop">
-          <div className="td-modal td-compactModal">
+        <div className="td-modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-delete-meal-title">
+          <div className="td-modal td-compactModal" ref={deleteMealDialogRef} tabIndex={-1}>
             <div className="td-modalTop">
               <div>
                 <span className="td-kicker">
                   <Trash2 size={14} strokeWidth={2.4} aria-hidden="true" />
                   Eliminar comida
                 </span>
-                <h3>{deleteMealCandidate.meal?.label}</h3>
+                <h3 id="td-delete-meal-title">{deleteMealCandidate.meal?.label}</h3>
               </div>
               <button type="button" className="td-iconBtn" onClick={() => setDeleteMealCandidate(null)} aria-label="Cerrar">
                 <X size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -1152,10 +1228,12 @@ export default function TrackingDiario() {
               {manualCompletionActive && deleteMealCandidate.itemsCount
                 ? "Para eliminar esta comida, primero eliminá o mové sus alimentos."
                 : deleteMealCandidate.meal?.manualCompletionMoment
-                  ? "Se eliminará esta comida de la organización del día y el restante se redistribuirá entre las comidas disponibles."
+                  ? `Se eliminará esta comida de la organización del día y el restante se redistribuirá entre las comidas disponibles.${deleteMealCandidate.draftsCount ? " También se descartará únicamente su borrador temporal." : ""}`
                   : deleteMealCandidate.itemsCount
-                    ? `Esta comida tiene ${deleteMealCandidate.itemsCount} alimento${deleteMealCandidate.itemsCount > 1 ? "s" : ""}. Se van a borrar la card, su meta y sus alimentos del día.`
-                    : "Se va a borrar la card y su meta de este día."}
+                    ? `Esta comida tiene ${deleteMealCandidate.itemsCount} alimento${deleteMealCandidate.itemsCount > 1 ? "s" : ""}. Se van a borrar la card, su meta y sus alimentos del día.${deleteMealCandidate.draftsCount ? " También se descartará su borrador temporal." : ""}`
+                    : deleteMealCandidate.draftsCount
+                      ? "Se van a borrar la card, su meta y únicamente los borradores temporales de esta comida."
+                      : "Se va a borrar la card y su meta de este día."}
             </p>
             <div className="td-modalActions">
               <button type="button" className="td-secondaryBtn" onClick={() => setDeleteMealCandidate(null)}>
@@ -1184,15 +1262,15 @@ export default function TrackingDiario() {
       ) : null}
 
       {modalMeal ? (
-        <div className="td-modalBackdrop td-foodPickerBackdrop">
-          <div className="td-modal td-foodPickerModal">
+        <div className="td-modalBackdrop td-foodPickerBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-food-picker-title">
+          <div className="td-modal td-foodPickerModal" ref={foodPickerDialogRef} tabIndex={-1}>
             <div className="td-modalTop">
               <div>
                 <span className="td-kicker">
                   <Utensils size={14} strokeWidth={2.3} aria-hidden="true" />
                   Agregar alimento
                 </span>
-                <h3>{meals.find((meal) => meal.id === modalMeal)?.label}</h3>
+                <h3 id="td-food-picker-title">{meals.find((meal) => meal.id === modalMeal)?.label}</h3>
               </div>
               <button type="button" className="td-iconBtn" onClick={closeFoodPicker} aria-label="Cerrar">
                 <X size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -1220,7 +1298,13 @@ export default function TrackingDiario() {
             <div className="td-addGrid">
               <label className="td-search">
                 <Search size={16} strokeWidth={2.2} aria-hidden="true" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar arroz, pollo, yogur..." />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar arroz, pollo, yogur..."
+                  aria-label="Buscar alimento"
+                  data-dialog-initial-focus
+                />
               </label>
             </div>
 
@@ -1307,7 +1391,11 @@ export default function TrackingDiario() {
           manualCompletion={manualCompletionActive}
           canPlan={canPlanRemainingIntake}
           saving={updateMealsMutation.isPending || manualCompletionMutation.isPending}
-          itemCounts={Object.fromEntries(meals.map((meal) => [meal.id, (log[meal.id] || []).length]))}
+          itemCounts={Object.fromEntries(meals.map((meal) => [
+            meal.id,
+            (log[meal.id] || []).length +
+              (trackingFoodDrafts[trackingDraftKey(date, meal.id)] || []).length,
+          ]))}
           onBlocked={(message) => setToast({ type: "info", message })}
           onChange={setSettingsDraft}
           onClose={() => setSettingsOpen(false)}
@@ -1334,7 +1422,7 @@ export default function TrackingDiario() {
         />
       ) : null}
 
-      {quantityPlannerMeal ? (
+      {quantityPlannerMeal?.calculationDate === date ? (
         <AutoQuantityPlannerDialog
           date={date}
           meal={quantityPlannerMeal}
@@ -1418,6 +1506,8 @@ function MealOptionsMenu({
 function AddMealTypeModal({ onClose, onCreate }) {
   const [selectedType, setSelectedType] = useState("snack");
   const [customName, setCustomName] = useState("");
+  const panelRef = useRef(null);
+  useTrackingDialogKeyboard(panelRef, true, { onClose });
   const selectedLabel = mealTypeLabel(selectedType);
 
   function confirmCreate() {
@@ -1425,15 +1515,15 @@ function AddMealTypeModal({ onClose, onCreate }) {
   }
 
   return (
-    <div className="td-modalBackdrop">
-      <div className="td-modal td-compactModal">
+    <div className="td-modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-add-meal-title">
+      <div className="td-modal td-compactModal" ref={panelRef} tabIndex={-1}>
         <div className="td-modalTop">
           <div>
             <span className="td-kicker">
               <Plus size={14} strokeWidth={2.4} aria-hidden="true" />
               Nueva comida
             </span>
-            <h3>Agregar comida</h3>
+            <h3 id="td-add-meal-title">Agregar comida</h3>
           </div>
           <button type="button" className="td-iconBtn" onClick={onClose} aria-label="Cerrar">
             <X size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -1447,6 +1537,7 @@ function AddMealTypeModal({ onClose, onCreate }) {
               className={selectedType === option.value ? "active" : ""}
               key={option.value}
               onClick={() => setSelectedType(option.value)}
+              aria-pressed={selectedType === option.value}
             >
               <MealTypeBadge type={option.value} />
               <span>{option.label}</span>
@@ -1473,6 +1564,8 @@ function AddMealTypeModal({ onClose, onCreate }) {
 }
 
 function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRemove }) {
+  const panelRef = useRef(null);
+  useTrackingDialogKeyboard(panelRef, true, { onClose });
   const title = meal?.label || "Comida";
   const macroKcal = macroCaloriesFromTotals(draft || {});
   const hasMacroDraft = macroKcal > 0;
@@ -1490,15 +1583,15 @@ function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRe
   }
 
   return (
-    <div className="td-modalBackdrop">
-      <div className="td-modal td-compactModal">
+    <div className="td-modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-meal-goal-title">
+      <div className="td-modal td-compactModal" ref={panelRef} tabIndex={-1}>
         <div className="td-modalTop">
           <div>
             <span className="td-kicker">
               <Flag size={14} strokeWidth={2.4} aria-hidden="true" />
               Meta por comida
             </span>
-            <h3>{title}</h3>
+            <h3 id="td-meal-goal-title">{title}</h3>
           </div>
           <button type="button" className="td-iconBtn" onClick={onClose} aria-label="Cerrar">
             <X size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -1527,7 +1620,7 @@ function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRe
         ) : null}
 
         {exceedsRemaining ? (
-          <div className="td-goalWarning">
+          <div className="td-goalWarning" role="alert">
             <AlertTriangle size={16} strokeWidth={2.4} aria-hidden="true" />
             <span>
               Esta meta supera las kcal restantes del dia: {displayCompactKcal(remainingKcal)} disponibles.
@@ -1607,7 +1700,17 @@ function DraftFoodThumb({ draft = {} }) {
   );
 }
 
-function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), menuAdherence = null, objective, totals, remaining }) {
+function DailySummaryCard({
+  expanded,
+  onToggle,
+  menuTotals = emptyTotals(),
+  menuAdherence = null,
+  objective,
+  totals,
+  remaining,
+  pendingTotals = emptyTotals(),
+  projectedTotals = emptyTotals(),
+}) {
   if (!objective) {
     return (
       <section className="td-objectivePending" aria-label="Meta diaria pendiente">
@@ -1627,6 +1730,7 @@ function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), menu
   const consumed = totals || emptyTotals();
   const rest = remaining || emptyTotals();
   const hasMenuTotals = hasPositiveTotals(menuTotals);
+  const hasPendingTotals = Number(pendingTotals?.kcal) > 0;
   const progress = macroProgressPct(consumed.kcal, target.kcal);
   const progressLabel = Math.round(progress);
   const hasKcalTarget = Number(target.kcal) > 0;
@@ -1675,6 +1779,12 @@ function DailySummaryCard({ expanded, onToggle, menuTotals = emptyTotals(), menu
               <small>Consumidos</small>
               <strong>{macroLineCurrent(consumed)}</strong>
             </span>
+            {hasPendingTotals ? (
+              <span className="pending" role="status">
+                <small>+ {displayCompactKcal(pendingTotals.kcal)} por confirmar</small>
+                <strong>Total proyectado {displayCompactKcal(projectedTotals.kcal)} · {macroLineCurrent(projectedTotals)}</strong>
+              </span>
+            ) : null}
             {hasKcalTarget ? (
               <span>
                 <small>Restantes</small>
@@ -1764,6 +1874,8 @@ function MealSettingsDrawer({
   onClose,
   onSave,
 }) {
+  const panelRef = useRef(null);
+  useTrackingDialogKeyboard(panelRef, true, { onClose, disabled: saving });
   const normalized = normalizeMealSettings(settings);
   const count = normalized.length;
   const advancedManualSettings = !manualCompletion || canPlan;
@@ -1805,15 +1917,15 @@ function MealSettingsDrawer({
   }
 
   return (
-    <div className="td-modalBackdrop">
-      <div className="td-modal td-settingsModal">
+    <div className="td-modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-settings-title">
+      <div className="td-modal td-settingsModal" ref={panelRef} tabIndex={-1}>
         <div className="td-modalTop">
           <div>
             <span className="td-kicker">
               <SlidersHorizontal size={14} strokeWidth={2.3} aria-hidden="true" />
               Ajustes del diario
             </span>
-            <h3>Comidas y metas</h3>
+            <h3 id="td-settings-title">Comidas y metas</h3>
             <p>Organizá cómo vas a registrar el resto del día.</p>
           </div>
           <button type="button" className="td-iconBtn" onClick={onClose} aria-label="Cerrar">
@@ -2398,6 +2510,51 @@ function createWriteRequestId(date = "", mealId = "") {
   return `manual-completion:${date}:${String(mealId || "moment").slice(0, 60)}:${randomPart}`;
 }
 
-function trackingDraftKey(date = "", mealId = "") {
-  return `${date}:${String(mealId)}`;
+function useTrackingDialogKeyboard(panelRef, open, { onClose, disabled = false } = {}) {
+  const openerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const disabledRef = useRef(disabled);
+  onCloseRef.current = onClose;
+  disabledRef.current = disabled;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const initialFocus = panelRef.current?.querySelector(
+      "[data-dialog-initial-focus]:not([disabled]), button:not([disabled]), input:not([disabled])"
+    );
+    (initialFocus || panelRef.current)?.focus?.();
+
+    function onKeyDown(event) {
+      if (event.key === "Escape" && !disabledRef.current) {
+        event.preventDefault();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )];
+      if (!focusable.length) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (openerRef.current?.isConnected) openerRef.current.focus?.();
+    };
+  }, [open, panelRef]);
 }

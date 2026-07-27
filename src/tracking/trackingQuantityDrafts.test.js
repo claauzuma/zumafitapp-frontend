@@ -10,6 +10,9 @@ import {
   markTrackingDraftAutomatic,
   markTrackingDraftManual,
   trackingDraftCalculationPayload,
+  trackingDateDrafts,
+  trackingDateDraftTotals,
+  trackingDraftKey,
   trackingDraftsNutritionTotals,
   trackingDraftProposals,
   trackingDraftsReadyToConfirm,
@@ -58,6 +61,7 @@ test("permite alternar una cantidad existente entre fija y automatica", () => {
   assert.equal(payload.fixedFoods.length, 0);
   assert.equal(payload.pendingFoods.length, 1);
   assert.equal(payload.pendingFoods[0].currentQuantity, 100);
+  assert.equal(trackingDraftsNutritionTotals([automatic]).kcal, 0);
   assert.equal(trackingDraftsReadyToConfirm([automatic]), false);
   assert.equal(markTrackingDraftManual(automatic).mode, "manual");
 });
@@ -115,4 +119,89 @@ test("conserva la unidad original del alimento al preparar el snapshot final", (
   assert.equal(proposals.length, 1);
   assert.equal(proposals[0].quantity, 2);
   assert.equal(proposals[0].unit, "unidad");
+});
+
+test("dos homónimos simultáneos se emparejan por ID y nunca por conveniencia de nombre", () => {
+  const byUnit = { id: "same-unit", nombre: "Tostadita igual", unidad: "Unid", kcal: 10 };
+  const byGrams = { id: "same-grams", nombre: "Tostadita igual", unidad: "Grs", kcal: 2 };
+  const drafts = [
+    createTrackingFoodDraft(byUnit, "", "draft-unit"),
+    createTrackingFoodDraft(byGrams, "", "draft-grams"),
+  ];
+  const proposals = trackingDraftProposals(drafts, [
+    { foodId: "same-grams", nombre: "Tostadita igual", quantity: 20, unit: "Grs" },
+    { foodId: "same-unit", nombre: "Tostadita igual", quantity: 2, unit: "Unid" },
+  ]);
+
+  assert.equal(proposals.length, 2);
+  assert.equal(proposals[0].food.id, "same-unit");
+  assert.equal(proposals[0].quantity, 2);
+  assert.equal(proposals[0].unit, "Unid");
+  assert.equal(proposals[1].food.id, "same-grams");
+  assert.equal(proposals[1].quantity, 20);
+  assert.equal(proposals[1].unit, "Grs");
+
+  const mismatched = trackingDraftProposals(
+    [createTrackingFoodDraft(byUnit, "", "draft-mismatch")],
+    [{ foodId: "different-id", nombre: "Tostadita igual", quantity: 99, unit: "Unid" }]
+  );
+  assert.deepEqual(mismatched, []);
+});
+
+test("conserva la precisión real de macros por unidad en el payload de cálculo", () => {
+  const almonds = {
+    id: "almonds",
+    nombre: "Almendras",
+    unidad: "Unid",
+    macroBasis: "perUnit",
+    kcal: 7.15,
+    proteina: 0.26,
+    carbs: 0.155,
+    grasas: 0.61,
+    porcionMin: 1,
+    porcionMax: 3,
+    multiplo: 1,
+  };
+  const payload = trackingDraftCalculationPayload([
+    createTrackingFoodDraft(almonds, "", "draft-almonds"),
+  ]);
+
+  assert.deepEqual(payload.pendingFoods[0], {
+    foodId: "almonds",
+    name: "Almendras",
+    unit: "Unid",
+    source: "pending",
+    currentQuantity: null,
+    kcalPerUnitOrGram: 7.15,
+    proteinPerUnitOrGram: 0.26,
+    carbsPerUnitOrGram: 0.155,
+    fatPerUnitOrGram: 0.61,
+    categoria: "",
+    minGramos: 1,
+    maxGramos: 3,
+    stepGramos: 1,
+  });
+});
+
+test("aísla borradores por fecha y comida y calcula el proyectado una sola vez", () => {
+  const firstDate = "2026-07-26";
+  const secondDate = "2026-07-27";
+  const breakfastRice = createTrackingFoodDraft(rice, 100, "rice-breakfast");
+  const dinnerChicken = createTrackingFoodDraft(chicken, 100, "chicken-dinner");
+  const tomorrowBanana = createTrackingFoodDraft(banana, 100, "banana-tomorrow");
+  const draftsByMeal = {
+    [trackingDraftKey(firstDate, "breakfast")]: [breakfastRice],
+    [trackingDraftKey(firstDate, "dinner")]: [dinnerChicken],
+    [trackingDraftKey(secondDate, "breakfast")]: [tomorrowBanana],
+  };
+
+  assert.deepEqual(trackingDateDrafts(draftsByMeal, firstDate), [breakfastRice, dinnerChicken]);
+  assert.deepEqual(trackingDateDraftTotals(draftsByMeal, firstDate), {
+    kcal: 505,
+    proteina: 38,
+    carbs: 76,
+    grasas: 4.6,
+  });
+  assert.equal(trackingDateDraftTotals(draftsByMeal, secondDate).kcal, 89);
+  assert.equal(trackingDateDraftTotals(draftsByMeal, "2026-07-28").kcal, 0);
 });

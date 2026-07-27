@@ -1,4 +1,4 @@
-import { buildMenuItemSnapshot } from "../nutricion/nutricionUtils.js";
+import { buildMenuItemSnapshot, inferMacroBasis } from "../nutricion/nutricionUtils.js";
 import { addNutritionTotals, nutritionTotals } from "./manualDayCompletion.js";
 
 function draftQuantity(value) {
@@ -23,6 +23,28 @@ function foodName(food = {}) {
 
 function foodUnit(food = {}) {
   return String(food.unidad || food.unit || "g");
+}
+
+function exactMacrosPerUnitOrGram(food = {}, unit = foodUnit(food)) {
+  const normalizedUnit = String(unit || "").trim().toLowerCase();
+  const gramBased = ["g", "gr", "grs", "gramo", "gramos", "ml", "mililitro", "mililitros"]
+    .includes(normalizedUnit);
+  const basis = food.macroBasis || inferMacroBasis(unit, food.raw || food);
+  const divisor = basis === "per100" && gramBased ? 100 : 1;
+  const number = (...values) => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === "") continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed / divisor;
+    }
+    return 0;
+  };
+  return {
+    kcal: number(food.kcal, food.calorias, food.kcalUnidad),
+    proteina: number(food.proteina, food.protein, food.proteinaUnidad),
+    carbs: number(food.carbs, food.carbohidratos, food.carbohidratosUnidad),
+    grasas: number(food.grasas, food.fat, food.grasasUnidad),
+  };
 }
 
 function draftSnapshot(draft = {}) {
@@ -124,6 +146,9 @@ export function markTrackingDraftManual(draft = {}) {
 }
 
 export function trackingDraftNutritionTotals(draft = {}) {
+  if (isTrackingDraftAutomatic(draft) && !isTrackingDraftCalculated(draft)) {
+    return nutritionTotals();
+  }
   return nutritionTotals(draftSnapshot(draft) || {});
 }
 
@@ -132,6 +157,21 @@ export function trackingDraftsNutritionTotals(drafts = []) {
     (totals, draft) => addNutritionTotals(totals, trackingDraftNutritionTotals(draft)),
     nutritionTotals()
   );
+}
+
+export function trackingDraftKey(date = "", mealId = "") {
+  return `${String(date)}:${String(mealId)}`;
+}
+
+export function trackingDateDrafts(draftsByMeal = {}, date = "") {
+  const prefix = `${String(date)}:`;
+  return Object.entries(draftsByMeal || {}).reduce((drafts, [key, entries]) => (
+    key.startsWith(prefix) && Array.isArray(entries) ? [...drafts, ...entries] : drafts
+  ), []);
+}
+
+export function trackingDateDraftTotals(draftsByMeal = {}, date = "") {
+  return trackingDraftsNutritionTotals(trackingDateDrafts(draftsByMeal, date));
 }
 
 export function trackingDraftCalculationPayload(drafts = []) {
@@ -159,19 +199,17 @@ export function trackingDraftCalculationPayload(drafts = []) {
   });
   const pendingFoods = pendingDrafts.map((draft) => {
     const unit = draft.unit || "g";
-    const gramBased = ["g", "gr", "gramo", "gramos", "ml"].includes(unit.toLowerCase());
-    const baseQuantity = gramBased ? 100 : 1;
-    const snapshot = buildMenuItemSnapshot(draft.food || {}, baseQuantity, unit);
+    const macros = exactMacrosPerUnitOrGram(draft.food || {}, unit);
     return {
       foodId: draft.foodId,
       name: draft.name,
       unit,
       source: "pending",
       currentQuantity: hasTrackingDraftQuantity(draft) ? Number(draft.quantity) : null,
-      kcalPerUnitOrGram: (Number(snapshot.kcal) || 0) / baseQuantity,
-      proteinPerUnitOrGram: (Number(snapshot.proteina) || 0) / baseQuantity,
-      carbsPerUnitOrGram: (Number(snapshot.carbs) || 0) / baseQuantity,
-      fatPerUnitOrGram: (Number(snapshot.grasas) || 0) / baseQuantity,
+      kcalPerUnitOrGram: macros.kcal,
+      proteinPerUnitOrGram: macros.proteina,
+      carbsPerUnitOrGram: macros.carbs,
+      fatPerUnitOrGram: macros.grasas,
       categoria: draft.food?.categoria || draft.food?.fuente || draft.food?.source || "",
       minGramos: Number(draft.food?.porcionMin ?? draft.food?.minGramos) || undefined,
       maxGramos: Number(draft.food?.porcionMax ?? draft.food?.maxGramos) || undefined,
@@ -199,7 +237,7 @@ export function trackingDraftProposals(drafts = [], generatedFoods = []) {
   return (Array.isArray(drafts) ? drafts : []).map((draft) => {
     const matchIndex = available.findIndex((generated) => {
       const generatedId = generatedFoodId(generated);
-      if (generatedId && draft.foodId && generatedId === draft.foodId) return true;
+      if (generatedId && draft.foodId) return generatedId === draft.foodId;
       return generatedFoodName(generated) === draft.name.trim().toLowerCase();
     });
     const generated = matchIndex >= 0
@@ -230,7 +268,7 @@ export function applyTrackingDraftProposals(drafts = [], proposals = []) {
     const matchIndex = available.findIndex((proposal) => {
       const proposalFood = proposal.food || proposal.generated || {};
       const proposalId = foodId(proposalFood);
-      if (proposalId && draft.foodId && proposalId === draft.foodId) return true;
+      if (proposalId && draft.foodId) return proposalId === draft.foodId;
       return foodName(proposalFood).trim().toLowerCase() === draft.name.trim().toLowerCase();
     });
     if (matchIndex < 0) return draft;

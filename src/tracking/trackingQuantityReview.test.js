@@ -40,6 +40,40 @@ test("clasifica el deficit proteico hasta 10 g y mayor a 10 g", () => {
   assert.ok(high.proteinDeficit > 31.6);
 });
 
+test("no convierte una diferencia visual de 0,3 g en alerta proteica", () => {
+  const review = buildTrackingQuantityReview({
+    target: { kcal: 610, proteina: 60.3, carbs: 0, grasas: 40.4 },
+    proposal: { kcal: 492, proteina: 60, carbs: 0, grasas: 28 },
+    configured,
+    optimization: {
+      normalCalorieZoneReached: false,
+      maxConstraintsLimited: true,
+    },
+  });
+
+  assert.ok(Math.abs(review.proteinDeficit - 0.3) < 1e-9);
+  assert.equal(review.proteinLevel, null);
+  assert.equal(review.requiresProteinConfirmation, false);
+  assert.equal(review.outOfNormalCalorieZone, true);
+  assert.equal(review.requiresCalorieZoneWarning, false);
+});
+
+test("muestra la salida de zona como alerta sólo cuando no hay otra limitación principal", () => {
+  const review = buildTrackingQuantityReview({
+    target: { kcal: 800, proteina: 60, carbs: 90, grasas: 22 },
+    proposal: { kcal: 492, proteina: 60, carbs: 0, grasas: 28 },
+    configured,
+    optimization: {
+      normalCalorieZoneReached: false,
+      maxConstraintsLimited: false,
+    },
+  });
+
+  assert.equal(review.proteinLevel, null);
+  assert.equal(review.outOfNormalCalorieZone, true);
+  assert.equal(review.requiresCalorieZoneWarning, true);
+});
+
 test("C y G son informativos y el exceso calorico bloquea continuar", () => {
   const review = buildTrackingQuantityReview({
     target: { kcal: 500, proteina: 30, carbs: 50, grasas: 20 },

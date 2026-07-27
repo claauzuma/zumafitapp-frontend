@@ -187,10 +187,10 @@ export function buildQuantityGenerationPayload(meal = {}) {
         unit: item.unidad || "g",
         source: quantitySourceOf(item),
         currentQuantity: isQuantityAutomatic(item) ? toNumber(item.cantidad, 0) : null,
-        kcalPerUnitOrGram: round(toNumber(base.kcal, 0) / baseQty),
-        proteinPerUnitOrGram: round(toNumber(base.proteina, 0) / baseQty),
-        carbsPerUnitOrGram: round(toNumber(base.carbs, 0) / baseQty),
-        fatPerUnitOrGram: round(toNumber(base.grasas, 0) / baseQty),
+        kcalPerUnitOrGram: toNumber(base.kcal, 0) / baseQty,
+        proteinPerUnitOrGram: toNumber(base.proteina, 0) / baseQty,
+        carbsPerUnitOrGram: toNumber(base.carbs, 0) / baseQty,
+        fatPerUnitOrGram: toNumber(base.grasas, 0) / baseQty,
       };
     });
 

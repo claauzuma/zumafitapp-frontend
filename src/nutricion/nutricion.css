@@ -675,7 +675,7 @@
 .nf-tableHead,
 .nf-foodRow{
   display:grid;
-  grid-template-columns:minmax(220px,1.4fr) 130px repeat(4, minmax(78px,.55fr));
+  grid-template-columns:minmax(220px,1.4fr) 120px minmax(160px,.9fr) repeat(4, minmax(72px,.5fr));
   gap:10px;
   align-items:center;
 }
@@ -720,6 +720,26 @@
 .nf-macro{
   color:#f4f7fb;
   font-weight:950;
+}
+
+.nf-foodQuantity{
+  display:grid;
+  min-width:0;
+  gap:3px;
+  color:#f4f7fb;
+}
+
+.nf-foodQuantity strong{
+  font-size:13px;
+  font-weight:950;
+}
+
+.nf-foodQuantity small{
+  color:#9dacbf;
+  font-size:10px;
+  font-weight:750;
+  line-height:1.35;
+  overflow-wrap:anywhere;
 }
 
 .nf-cardGrid{

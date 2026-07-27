@@ -111,7 +111,7 @@ export default function AdminAlimentos() {
               <div className="nf-tableHead">
                 <span>Alimento</span>
                 <span>Categoría</span>
-                <span>Unidad</span>
+                <span>Cantidad</span>
                 <span>Kcal</span>
                 <span>Proteína</span>
                 <span>Carbs</span>
@@ -162,7 +162,7 @@ function FoodRow({ food }) {
         <small>{food.source || "Sin fuente"}</small>
       </div>
       <span className="nf-pill">{food.macroGroup}</span>
-      <span className="nf-macro">{food.unit}</span>
+      <QuantityRule food={food} />
       <span className="nf-macro">{formatNumber(food.kcal, 2)}</span>
       <span className="nf-macro">{formatNumber(food.protein, 2)} g</span>
       <span className="nf-macro">{formatNumber(food.carbs, 2)} g</span>
@@ -178,7 +178,7 @@ function FoodCard({ food }) {
         <h3>{food.name}</h3>
         <span className="nf-pill">{food.macroGroup}</span>
       </div>
-      <p>{food.source || "Alimento de la base maestra"} · unidad: {food.unit}</p>
+      <p>{food.source || "Alimento de la base maestra"} · <QuantityRuleText food={food} /></p>
       <div className="nf-macroGrid">
         <Macro label="Kcal" value={formatNumber(food.kcal, 2)} />
         <Macro label="Prot." value={`${formatNumber(food.protein, 2)} g`} />
@@ -196,6 +196,30 @@ function Macro({ label, value }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function QuantityRule({ food }) {
+  return (
+    <span className="nf-foodQuantity">
+      <strong>{food.unit}</strong>
+      <small><QuantityRuleText food={food} compact /></small>
+    </span>
+  );
+}
+
+function QuantityRuleText({ food, compact = false }) {
+  const suggested = Number(food.porcionSugerida);
+  const min = Number(food.porcionMin);
+  const max = Number(food.porcionMax);
+  const step = Number(food.multiplo);
+  const parts = [];
+  if (Number.isFinite(suggested) && suggested > 0) parts.push(`sugerida ${formatNumber(suggested, 1)}`);
+  if (Number.isFinite(min) && min > 0 && Number.isFinite(max) && max > 0) {
+    parts.push(`${compact ? "rango" : "rango de cálculo"} ${formatNumber(min, 1)}–${formatNumber(max, 1)}`);
+  }
+  if (Number.isFinite(step) && step > 0) parts.push(`paso ${formatNumber(step, 1)}`);
+  if (compact) return parts.length ? parts.join(" · ") : "sin límites explícitos";
+  return `${food.unit}${parts.length ? ` · ${parts.join(" · ")}` : " · sin límites explícitos"}`;
 }
 
 function SkeletonGrid() {

@@ -22,16 +22,20 @@ import {
 
 function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
   const openerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const disabledRef = useRef(disabled);
+  onCloseRef.current = onClose;
+  disabledRef.current = disabled;
 
   useEffect(() => {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const first = panelRef.current?.querySelector("button:not([disabled]), input:not([disabled])");
-    first?.focus?.();
+    const first = panelRef.current?.querySelector("[data-dialog-initial-focus]:not([disabled]), button:not([disabled]), input:not([disabled])");
+    (first || panelRef.current)?.focus?.();
 
     function onKeyDown(event) {
-      if (event.key === "Escape" && !disabled) {
+      if (event.key === "Escape" && !disabledRef.current) {
         event.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== "Tab" || !panelRef.current) return;
@@ -53,16 +57,16 @@ function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      openerRef.current?.focus?.();
+      if (openerRef.current?.isConnected) openerRef.current.focus?.();
     };
-  }, [disabled, onClose, panelRef]);
+  }, [panelRef]);
 }
 
 function statusTone(status = "") {
   if (status === "exceeded") return "is-exceeded";
   if (status === "reached" || status === "near") return "is-reached";
   if (status === "missing_target") return "is-missing";
-  return "is-remaining";
+  return "";
 }
 
 function macroItems(progress = {}) {
@@ -75,16 +79,11 @@ function macroItems(progress = {}) {
   ].filter((item) => progress?.configured?.[item.key]);
 }
 
-function registeredProgressTone(percent = 0) {
-  if (percent > 105) return "is-exceeded";
-  if (percent >= 90) return "is-positive";
-  if (percent > 0) return "is-progress";
-  return "is-empty";
-}
-
 export function ManualCompletionTrackingCard({
   progress,
   organizationCount = 0,
+  pendingTotals = {},
+  projectedTotals = {},
 }) {
   if (!progress) return null;
   const macros = macroItems(progress);
@@ -95,48 +94,63 @@ export function ManualCompletionTrackingCard({
   const registeredPercent = availableKcal > 0
     ? Math.max(0, Math.round((registeredKcal / availableKcal) * 100))
     : 0;
+  const ringPercent = Math.min(100, registeredPercent);
+  const pendingKcal = Math.max(0, Number(pendingTotals?.kcal) || 0);
 
   return (
     <section className={`td-manualCompletionCard ${statusTone(progress.status)}`}>
       <div className="td-manualCompletionTop">
         <span className="td-manualCompletionIcon" aria-hidden="true">
-          <Target size={21} strokeWidth={2.25} />
+          <Target size={23} strokeWidth={2.2} />
         </span>
-        <div>
+
+        <div className="td-manualCompletionCopy">
           <span className="td-cardEyebrow">Modo del día</span>
           <h2>Resto del día por tu cuenta</h2>
           <p>{manualDayStatusText(progress)}</p>
+          {progress.configured?.kcal ? (
+            <small className="td-manualCompletionConsumedLine">
+              {formatNumber(registeredKcal, 0)} de {formatNumber(availableKcal, 0)} kcal registradas
+            </small>
+          ) : null}
+          {pendingKcal > 0 ? (
+            <small className="td-manualCompletionPendingLine" role="status">
+              + {formatNumber(pendingKcal, 0)} kcal por confirmar · Total diario proyectado {formatNumber(projectedTotals?.kcal, 0)} kcal
+            </small>
+          ) : null}
         </div>
-      </div>
 
-      {progress.configured?.kcal ? (
-        <>
-          <div className="td-manualCompletionKcal">
-            <span>
-              <span className="td-manualCompletionMetricLabel">
-                <small>Registrado en Tracking</small>
-                <b className={`td-manualCompletionPercent ${registeredProgressTone(registeredPercent)}`}>
-                  {registeredPercent}%
-                </b>
-              </span>
-              <strong>{formatNumber(registeredKcal, 0)} / {formatNumber(availableKcal, 0)} kcal</strong>
-            </span>
-            <span>
+        {progress.configured?.kcal ? (
+          <div className="td-manualCompletionStatus">
+            <span className="td-manualCompletionRemaining">
               <small>{remainingKcal < 0 ? "Excedente" : "Restante actual"}</small>
               <strong>{formatNumber(Math.abs(remainingKcal), 0)} kcal</strong>
             </span>
+            <span
+              className="td-manualCompletionRing"
+              style={{ "--td-progress": `${ringPercent * 3.6}deg` }}
+              aria-label={`${registeredPercent}% del objetivo disponible`}
+            >
+              <span>
+                <strong>{registeredPercent}%</strong>
+                <small>del objetivo</small>
+              </span>
+            </span>
           </div>
-          <div
-            className="td-manualCompletionBar"
-            role="progressbar"
-            aria-label="Calorías registradas respecto del objetivo disponible"
-            aria-valuemin="0"
-            aria-valuemax={Math.max(1, Math.round(availableKcal))}
-            aria-valuenow={Math.min(Math.max(0, Math.round(registeredKcal)), Math.max(1, Math.round(availableKcal)))}
-          >
-            <span style={{ width: `${availableKcal > 0 ? Math.min(100, registeredKcal / availableKcal * 100) : 0}%` }} />
-          </div>
-        </>
+        ) : null}
+      </div>
+
+      {progress.configured?.kcal ? (
+        <div
+          className="td-manualCompletionBar"
+          role="progressbar"
+          aria-label="Calorías registradas respecto del objetivo disponible"
+          aria-valuemin="0"
+          aria-valuemax={Math.max(1, Math.round(availableKcal))}
+          aria-valuenow={Math.min(Math.max(0, Math.round(registeredKcal)), Math.max(1, Math.round(availableKcal)))}
+        >
+          <span style={{ width: `${availableKcal > 0 ? Math.min(100, registeredKcal / availableKcal * 100) : 0}%` }} />
+        </div>
       ) : (
         <div className="td-manualCompletionMissing">
           Podés seguir registrando alimentos. Configurá un objetivo diario para ver el restante.
@@ -145,26 +159,34 @@ export function ManualCompletionTrackingCard({
 
       {macros.length ? (
         <div className="td-manualCompletionMacros" aria-label="Macros registradas respecto del objetivo disponible">
-          {macros.map((item) => (
-            <span key={item.key}>
-              <small>{item.short}</small>
-              <strong>
-                {formatNumber(Math.max(0, item.consumed), 1)}
-                <i aria-hidden="true">/</i>
-                {formatNumber(Math.max(0, item.target), 1)} g
-              </strong>
-              <span className="sr-only">{item.label}: registrado sobre objetivo disponible</span>
-            </span>
-          ))}
+          {macros.map((item) => {
+            const target = Math.max(0, Number(item.target) || 0);
+            const consumed = Math.max(0, Number(item.consumed) || 0);
+            const percent = target > 0 ? Math.min(100, consumed / target * 100) : 0;
+            return (
+              <article className={item.key === "carbs" ? "is-carbs" : item.key === "grasas" ? "is-grasas" : undefined} key={item.key}>
+                <span className="td-manualCompletionMacroTop">
+                  <small>{item.short}</small>
+                  <strong>
+                    {formatNumber(consumed, 1)} <i aria-hidden="true">/</i> {formatNumber(target, 1)} g
+                  </strong>
+                </span>
+                <span className="td-manualCompletionMacroBar" aria-hidden="true">
+                  <span style={{ width: `${percent}%` }} />
+                </span>
+                <span className="sr-only">{item.label}: registrado sobre objetivo disponible</span>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <p className="td-manualCompletionNoMacros">No hay objetivos de macros configurados.</p>
       )}
 
-      {mealCount ? (
+      {mealCount > 1 ? (
         <div className="td-manualCompletionPlanState">
           <Sparkles size={15} aria-hidden="true" />
-          Organizado en {mealCount} comida{mealCount === 1 ? "" : "s"} flexible{mealCount === 1 ? "" : "s"}.
+          Organizado en {mealCount} comidas flexibles.
         </div>
       ) : null}
 
@@ -231,9 +253,19 @@ export function AutoQuantityPlannerDialog({
     (Number(target?.kcal) || 0) - (Number(calculationInput.fixedTotals?.kcal) || 0)
   );
   const review = useMemo(
-    () => buildTrackingQuantityReview({ target, proposal: totals, configured }),
-    [configured, target, totals]
+    () => buildTrackingQuantityReview({
+      target,
+      proposal: totals,
+      configured,
+      optimization: calculationResult?.optimization,
+    }),
+    [calculationResult?.optimization, configured, target, totals]
   );
+  const maxConstraintsLimited = calculationResult?.optimization?.maxConstraintsLimited === true;
+  const visibleWarnings = (calculationResult?.warnings || []).filter((warning) => !(
+    maxConstraintsLimited &&
+    warning === "Las cantidades máximas configuradas para algunos alimentos limitan esta propuesta."
+  ));
 
   const calculate = useCallback(async () => {
     if (!calculationInput.pendingFoods.length) {
@@ -247,6 +279,7 @@ export function AutoQuantityPlannerDialog({
     setCalculating(true);
     setError("");
     setMessage("");
+    setProposals([]);
     setCalculationResult(null);
     try {
       const response = await calculateTrackingQuantities({
@@ -256,7 +289,7 @@ export function AutoQuantityPlannerDialog({
         generationType: "selectedOnly",
         fixedFoods: calculationInput.fixedFoods,
         pendingFoods: calculationInput.pendingFoods,
-        options: { redondear: true, usarMinMax: true, trackingPriority: true },
+        options: { redondear: true, usarMinMax: true },
       });
       if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
         throw new Error(response?.message || "No se encontró una combinación razonable.");
@@ -284,7 +317,7 @@ export function AutoQuantityPlannerDialog({
   return (
     <section className="td-modalBackdrop td-bottomSheet td-autoQuantityBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-auto-quantity-title">
       <button type="button" className="td-dialogBackdropButton" onClick={saving || calculating ? undefined : onClose} aria-label="Cerrar" />
-      <div className="td-modal td-autoQuantityModal" ref={panelRef}>
+      <div className="td-modal td-autoQuantityModal" ref={panelRef} tabIndex={-1}>
         <div className="td-modalTop">
           <div>
             <span className="td-kicker">
@@ -319,7 +352,7 @@ export function AutoQuantityPlannerDialog({
                 </small>
               </span>
               <b className={isTrackingDraftAutomatic(draft) ? "is-pending" : "is-fixed"}>
-                {isTrackingDraftAutomatic(draft) ? "A calcular" : "Fijo"}
+                {isTrackingDraftAutomatic(draft) ? "Auto" : "Fijo"}
               </b>
             </div>
           ))}
@@ -340,6 +373,54 @@ export function AutoQuantityPlannerDialog({
 
         {error ? <div className="td-error" role="alert">{error}</div> : null}
         {message ? <p className="td-autoQuantityMessage">{message}</p> : null}
+
+        {calculationResult?.optimization ? (
+          <div className="td-autoQuantityPolicy" role="status">
+            <span>
+              <strong>
+                {calculationResult.optimization.normalCalorieZoneReached
+                  ? `Zona calórica ${formatNumber(calculationResult.optimization.calorieZoneFloor, 0)}–${formatNumber(calculationResult.optimization.calorieCeiling, 0)} kcal`
+                  : `Mejor nivel calórico alcanzable: ${formatNumber(calculationResult.optimization.bestReachableCalories, 0)} kcal`}
+              </strong>
+              <small>El techo de {formatNumber(calculationResult.optimization.calorieCeiling, 0)} kcal nunca se supera.</small>
+            </span>
+            {calculationResult.optimization.constraints?.length ? (
+              <ul aria-label="Restricciones aplicadas">
+                {calculationResult.optimization.constraints.map((constraint, index) => {
+                  const draft = drafts.find((entry) => (
+                    String(entry.name || foodName(entry.food)).trim().toLowerCase() ===
+                    String(constraint.name || "").trim().toLowerCase()
+                  ));
+                  const unit = draft?.unit || "g";
+                  return (
+                    <li key={`${constraint.name}-${index}`}>
+                      <strong>{constraint.name}</strong>: {formatNumber(constraint.min, 1)}–{formatNumber(constraint.max, 1)} {unit}, paso {formatNumber(constraint.step, 1)}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {maxConstraintsLimited ? (
+              <div className="td-autoQuantityConstraintWarning" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>
+                  <strong>Las cantidades máximas configuradas para algunos alimentos limitan esta propuesta.</strong>
+                  <small>
+                    {(calculationResult.optimization.limitingConstraints || []).map((constraint) => {
+                      const draft = drafts.find((entry) => (
+                        String(entry.name || foodName(entry.food)).trim().toLowerCase() ===
+                        String(constraint.name || "").trim().toLowerCase()
+                      ));
+                      const unit = draft?.unit || "g";
+                      const targets = (constraint.targets || []).join(" y ");
+                      return `${constraint.name}: máximo ${formatNumber(constraint.max, 1)} ${unit}${targets ? `; limita ${targets}` : ""}`;
+                    }).join(". ")}
+                  </small>
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {proposals.length ? (
           <div className="td-autoQuantityProposal">
@@ -394,8 +475,20 @@ export function AutoQuantityPlannerDialog({
                 </span>
               </div>
             ) : null}
+            {review.requiresCalorieZoneWarning ? (
+              <div className="td-autoQuantityCalorieWarning" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>
+                  <strong>Esta selección no alcanza la zona calórica esperada.</strong>
+                  <small>
+                    El mejor nivel disponible es {formatNumber(calculationResult?.optimization?.bestReachableCalories, 0)} kcal.
+                    Podés agregar o reemplazar un alimento antes de continuar.
+                  </small>
+                </span>
+              </div>
+            ) : null}
             {review.proteinLevel ? (
-              <div className={`td-autoQuantityProteinWarning is-${review.proteinLevel}`} role="alert">
+              <div className={`td-autoQuantityProteinWarning ${review.proteinLevel === "near" ? "is-near" : "is-high"}`} role="alert">
                 <AlertTriangle size={19} aria-hidden="true" />
                 <span>
                   <strong>
@@ -419,8 +512,8 @@ export function AutoQuantityPlannerDialog({
                 )).join(" · ")}
               </p>
             ) : null}
-            {calculationResult?.warnings?.length ? (
-              <p className="td-autoQuantityWarnings">{calculationResult.warnings.join(" ")}</p>
+            {visibleWarnings.length ? (
+              <p className="td-autoQuantityWarnings">{visibleWarnings.join(" ")}</p>
             ) : null}
           </div>
         ) : null}
@@ -470,7 +563,7 @@ export function ManualMomentStatus({ meal, totals }) {
   if (!meal?.manualCompletionMoment) return null;
   const consumed = Number(totals?.kcal) > 0;
   return (
-    <span className={`td-manualMomentStatus ${consumed ? "consumed" : "planned"}`}>
+    <span className={`td-manualMomentStatus ${consumed ? "consumed" : ""}`}>
       {consumed ? <CheckCircle2 size={13} aria-hidden="true" /> : <Target size={13} aria-hidden="true" />}
       {consumed ? "Consumido" : "Planificado"}
     </span>
