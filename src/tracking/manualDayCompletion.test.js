@@ -192,6 +192,21 @@ test("calcula contra la meta restante de la comida", () => {
   assert.equal(result.configured.proteina, true);
 });
 
+test("recupera del objetivo de comida el consumo que sera reemplazado", () => {
+  const result = resolveTrackingMealCalculationTarget({
+    meal: { id: "snack", target: { kcal: 1242, proteina: 180 } },
+    meals: [{ id: "snack", target: { kcal: 1242, proteina: 180 } }],
+    consumedByMeal: { snack: { kcal: 1238, proteina: 171 } },
+    dayRemaining: { kcal: 4, proteina: 9 },
+    dayConfigured: { kcal: true, proteina: true },
+    replacedConsumption: { kcal: 899, proteina: 163.4 },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.source, "meal");
+  assert.deepEqual(result.target, { kcal: 903, proteina: 172.4, carbs: 0, grasas: 0 });
+});
+
 test("usa el restante diario para la unica comida libre", () => {
   const result = resolveTrackingMealCalculationTarget({
     meal: { id: "registro_manual", target: {} },
@@ -204,6 +219,26 @@ test("usa el restante diario para la unica comida libre", () => {
   assert.equal(result.source, "day");
   assert.equal(result.target.kcal, 792);
   assert.equal(result.configured.proteina, true);
+});
+
+test("recupera el consumo reemplazado al calcular contra el restante diario", () => {
+  const result = resolveTrackingMealCalculationTarget({
+    meal: { id: "snack", target: {} },
+    meals: [{ id: "snack", target: {} }],
+    consumedByMeal: { snack: { kcal: 1238, proteina: 171 } },
+    dayRemaining: { kcal: 4, proteina: 9, carbs: 38.4, grasas: 0 },
+    dayConfigured: { kcal: true, proteina: true, carbs: true, grasas: true },
+    replacedConsumption: { kcal: 899, proteina: 163.4, carbs: 0, grasas: 60 },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.source, "day");
+  assert.deepEqual(result.target, {
+    kcal: 903,
+    proteina: 172.4,
+    carbs: 38.4,
+    grasas: 60,
+  });
 });
 
 test("usa el restante diario solo para la ultima comida libre pendiente", () => {

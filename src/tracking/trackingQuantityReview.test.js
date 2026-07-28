@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTrackingQuantityReview } from "./trackingQuantityReview.js";
+import {
+  buildTrackingQuantityInlineFeedback,
+  buildTrackingQuantityReview,
+  trackingQuantityCaloriePrecisionKind,
+  trackingQuantityInvalidFoods,
+  trackingQuantityInvalidFoodsMessage,
+  trackingQuantitySecondaryMacroLimitations,
+} from "./trackingQuantityReview.js";
 
 const configured = { kcal: true, proteina: true, carbs: true, grasas: true };
 
@@ -58,6 +65,26 @@ test("no convierte una diferencia visual de 0,3 g en alerta proteica", () => {
   assert.equal(review.requiresCalorieZoneWarning, false);
 });
 
+test("un déficit proteico mínimo y proporcional no exige confirmación fuerte", () => {
+  const minimal = buildTrackingQuantityReview({
+    target: { kcal: 500, proteina: 60 },
+    proposal: { kcal: 499, proteina: 59.4 },
+    configured,
+  });
+  const relevant = buildTrackingQuantityReview({
+    target: { kcal: 500, proteina: 60 },
+    proposal: { kcal: 499, proteina: 58.7 },
+    configured,
+  });
+
+  assert.ok(Math.abs(minimal.proteinDeficit - 0.6) < 1e-9);
+  assert.equal(minimal.proteinWarningTolerance, 1.2);
+  assert.equal(minimal.proteinLevel, null);
+  assert.equal(minimal.requiresProteinConfirmation, false);
+  assert.equal(relevant.proteinLevel, "near");
+  assert.equal(relevant.requiresProteinConfirmation, true);
+});
+
 test("muestra la salida de zona como alerta sólo cuando no hay otra limitación principal", () => {
   const review = buildTrackingQuantityReview({
     target: { kcal: 800, proteina: 60, carbs: 90, grasas: 22 },
@@ -110,4 +137,115 @@ test("distingue un macro no configurado de un restante configurado en cero", () 
   assert.equal(review.rowByKey.proteina.configured, true);
   assert.equal(review.proteinLevel, null);
   assert.equal(review.secondaryMacroRows.length, 0);
+});
+
+test("expone el alimento inválido con un error específico aunque no haya propuesta", () => {
+  const optimization = {
+    policy: "tracking_calorie_fill_v1",
+    invalidFoods: [
+      { foodId: "zero", name: "Agua sin datos", unit: "ml", reason: "invalid_calories" },
+    ],
+  };
+
+  assert.equal(trackingQuantityInvalidFoods(optimization).length, 1);
+  assert.equal(
+    trackingQuantityInvalidFoodsMessage(optimization),
+    "No se pudo calcular una cantidad para Agua sin datos porque no tiene información calórica válida."
+  );
+});
+
+test("no duplica la limitación proteica fuerte dentro de la información secundaria", () => {
+  const optimization = {
+    macroLimitations: [
+      { macro: "proteina", deficit: 18 },
+      { macro: "carbs", deficit: 22 },
+      { macro: "grasas", deficit: 7 },
+    ],
+  };
+
+  assert.deepEqual(
+    trackingQuantitySecondaryMacroLimitations(optimization, true).map((item) => item.macro),
+    ["carbs", "grasas"]
+  );
+  assert.equal(trackingQuantitySecondaryMacroLimitations(optimization, false).length, 3);
+  assert.deepEqual(
+    trackingQuantitySecondaryMacroLimitations(
+      { ...optimization, proteinReached: true },
+      false
+    ).map((item) => item.macro),
+    ["carbs", "grasas"]
+  );
+});
+
+test("clasifica la granularidad física como información y prioriza unidades discretas", () => {
+  assert.equal(
+    trackingQuantityCaloriePrecisionKind({ granularityLimited: true }),
+    "granularity"
+  );
+  assert.equal(
+    trackingQuantityCaloriePrecisionKind({ discreteLimited: true }),
+    "discrete"
+  );
+  assert.equal(
+    trackingQuantityCaloriePrecisionKind({
+      discreteLimited: true,
+      granularityLimited: true,
+    }),
+    "discrete"
+  );
+  assert.equal(trackingQuantityCaloriePrecisionKind({}), "");
+});
+
+test("el cálculo inline no agrega ruido cuando calorías y macros quedaron bien", () => {
+  const feedback = buildTrackingQuantityInlineFeedback({
+    target: { kcal: 500, proteina: 45, carbs: 55, grasas: 11 },
+    proposal: { kcal: 499.95, proteina: 45.44, carbs: 55.12, grasas: 10.86 },
+    configured,
+    optimization: {
+      calorieTolerance: 1,
+      calorieTargetCompleted: true,
+      macroLimitations: [],
+    },
+  });
+
+  assert.equal(feedback, null);
+});
+
+test("el cálculo inline resume únicamente las limitaciones relevantes de macros", () => {
+  const feedback = buildTrackingQuantityInlineFeedback({
+    target: { kcal: 903, proteina: 58.5, carbs: 38.4, grasas: 56.1 },
+    proposal: { kcal: 902.79, proteina: 179.74, carbs: 0, grasas: 20.43 },
+    configured,
+    optimization: {
+      calorieTolerance: 1,
+      calorieTargetCompleted: true,
+      macroLimitations: [
+        { macro: "carbohidratos", deficit: 38.4 },
+        { macro: "grasas", deficit: 35.67 },
+      ],
+    },
+  });
+
+  assert.equal(feedback.type, "warning");
+  assert.equal(feedback.title, "Calorías completas, macros limitados");
+  assert.match(feedback.message, /C 38,4 g/);
+  assert.match(feedback.message, /G 35,7 g/);
+  assert.doesNotMatch(feedback.message, /P /);
+});
+
+test("el cálculo inline explica el déficit causado por unidades discretas", () => {
+  const feedback = buildTrackingQuantityInlineFeedback({
+    target: { kcal: 500, proteina: 40 },
+    proposal: { kcal: 483, proteina: 42 },
+    configured: { kcal: true, proteina: true },
+    optimization: {
+      calorieTolerance: 1,
+      discreteLimited: true,
+      macroLimitations: [],
+    },
+  });
+
+  assert.equal(feedback.title, "Revisá la propuesta");
+  assert.match(feedback.message, /17 kcal/);
+  assert.match(feedback.message, /unidades enteras/);
 });

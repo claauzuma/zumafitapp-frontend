@@ -1,4 +1,10 @@
-.td-page {
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tracking before</title>
+<style>.td-page {
   min-width: 0;
   color: #eef3f8;
 }
@@ -929,38 +935,37 @@
   font-weight: 750;
 }
 
-.td-foodActions .td-foodStateToggle {
+.td-foodStateBadge {
   display: inline-flex;
-  width: auto;
-  min-width: 52px;
-  min-height: 32px;
+  width: fit-content;
+  min-height: 20px;
   align-items: center;
-  justify-content: center;
   margin-top: 5px;
-  border: 1px solid transparent;
   border-radius: 999px;
   padding: 0 7px;
   font-size: 8px;
   font-weight: 950;
   letter-spacing: 0.02em;
-  cursor: pointer;
 }
 
-.td-foodActions .td-foodStateToggle.is-manual {
-  border-color: rgba(134, 239, 172, 0.2);
+.td-foodStateBadge.is-registered {
   background: rgba(134, 239, 172, 0.1);
   color: #acebc1;
 }
 
-.td-foodActions .td-foodStateToggle.is-automatic {
-  border-color: rgba(245, 215, 110, 0.22);
+.td-foodStateBadge.is-fixed {
+  background: rgba(141, 217, 255, 0.1);
+  color: #bfeaff;
+}
+
+.td-foodStateBadge.is-automatic {
   background: rgba(245, 215, 110, 0.1);
   color: #ffe581;
 }
 
-.td-foodActions .td-foodStateToggle:focus-visible {
-  outline: 2px solid #ffe581;
-  outline-offset: 2px;
+.td-foodStateBadge.is-calculated {
+  background: rgba(167, 139, 250, 0.14);
+  color: #d8c8ff;
 }
 
 .td-foodDraft {
@@ -1042,6 +1047,24 @@
 
 .td-foodDraftControls input {
   width: 54px;
+}
+
+.td-foodActions .td-draftModeBtn {
+  width: auto;
+  min-width: 48px;
+  height: 44px;
+  border-color: rgba(141, 217, 255, 0.18);
+  background: rgba(141, 217, 255, 0.075);
+  padding: 0 8px;
+  color: #bfeaff;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.td-foodActions .td-draftModeBtn.is-automatic {
+  border-color: rgba(245, 215, 110, 0.22);
+  background: rgba(245, 215, 110, 0.085);
+  color: #ffe581;
 }
 
 .td-mealInlineActions {
@@ -2329,10 +2352,6 @@
   cursor: default;
 }
 
-.td-dialogBackdropButton:disabled {
-  cursor: wait;
-}
-
 .td-autoQuantityModal {
   position: relative;
   width: min(680px, 100%);
@@ -2416,8 +2435,8 @@
 }
 
 .td-autoQuantityDraftRow b.is-fixed {
-  background: rgba(141, 217, 255, 0.1);
-  color: #bfeaff;
+  background: rgba(134, 239, 172, 0.09);
+  color: #abe9bf;
 }
 
 .td-autoQuantityDraftRow b.is-pending {
@@ -2533,6 +2552,11 @@
   font-size: 12px;
   font-weight: 900;
   text-align: right;
+}
+
+.td-autoQuantityProposal input:read-only {
+  color: #a7e9be;
+  cursor: default;
 }
 
 .td-autoQuantityProposal label span {
@@ -2686,6 +2710,10 @@
   text-align: center;
 }
 
+.td-autoQuantityDecisionActions.has-protein-warning {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .td-autoQuantityWarnings {
   margin: 0;
   border-radius: 12px;
@@ -2722,7 +2750,8 @@
     padding-inline: 7px;
   }
 
-  .td-autoQuantityDecisionActions {
+  .td-autoQuantityDecisionActions,
+  .td-autoQuantityDecisionActions.has-protein-warning {
     grid-template-columns: 1fr;
   }
 
@@ -3248,9 +3277,7 @@
   gap: 8px;
 }
 
-.td-foodActions .td-foodStateToggle {
-  width: auto;
-  min-width: 62px;
+.td-foodStateBadge {
   min-height: 28px;
   margin: 0;
   padding: 0 10px;
@@ -3273,6 +3300,12 @@
 
 .td-foodActions button {
   width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.td-foodActions .td-draftModeBtn {
+  min-width: 52px;
   height: 42px;
   border-radius: 13px;
 }
@@ -3499,7 +3532,7 @@
     padding-left: 58px;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodStateBadge {
     margin-right: auto;
   }
 
@@ -3631,7 +3664,7 @@
     padding-left: 0;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodStateBadge {
     min-height: 25px;
     padding-inline: 8px;
     font-size: 8px;
@@ -3797,315 +3830,10 @@
   outline-offset: 3px;
 }
 
-/* Dos métodos de cálculo: selector, feedback y revisión compacta. */
-.td-autoQuantityHeader {
-  position: sticky;
-  top: -18px;
-  z-index: 4;
-  margin: -18px -18px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(9, 16, 24, 0.97);
-  padding: 14px 18px 11px;
-  backdrop-filter: blur(12px);
-}
-
-.td-quantityModeSelector {
-  min-width: 0;
-  margin: 12px 0 0;
-  border: 0;
-  padding: 0;
-}
-
-.td-quantityModeSelector legend {
-  margin-bottom: 6px;
-  padding: 0;
-  color: #bdc9d3;
-  font-size: 9px;
-  font-weight: 950;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.td-quantityModeSelector:disabled {
-  opacity: 0.64;
-}
-
-.td-quantityModeSegments {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  min-width: 0;
-  border: 1px solid rgba(86, 214, 223, 0.2);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.22);
-  padding: 4px;
-}
-
-.td-quantityModeSegments label {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  min-height: 44px;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: #94a5b2;
-  cursor: pointer;
-  text-align: center;
-}
-
-.td-quantityModeSegments label.is-active {
-  border-color: rgba(245, 215, 110, 0.34);
-  background: rgba(245, 215, 110, 0.1);
-  color: #ffe581;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-}
-
-.td-quantityModeSegments input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  opacity: 0;
-}
-
-.td-quantityModeSegments span {
-  padding: 5px 8px;
-  font-size: 10.5px;
-  font-weight: 950;
-  line-height: 1.15;
-}
-
-.td-quantityModeSegments label:focus-within {
-  outline: 2px solid #ffe581;
-  outline-offset: 2px;
-}
-
-.td-quantityModeSelector > p,
-.td-autoQuantityModeStatus,
-.td-autoQuantityModeReminder {
-  margin: 6px 2px 0;
-  color: #8fa2ae;
-  font-size: 9px;
-  font-weight: 760;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.td-autoQuantityModeStatus,
-.td-autoQuantityModeReminder {
-  border: 1px solid rgba(86, 214, 223, 0.16);
-  border-radius: 11px;
-  background: rgba(86, 214, 223, 0.055);
-  padding: 7px 9px;
-  color: #b8dce3;
-}
-
-.td-autoQuantityFeedback {
-  display: grid;
-  gap: 7px;
-  margin-top: 9px;
-}
-
-.td-autoQuantityCalorieSuccess,
-.td-autoQuantityDiscreteInfo,
-.td-autoQuantityMacroInfo,
-.td-autoQuantityInvalidFoods {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  border: 1px solid rgba(134, 239, 172, 0.24);
-  border-radius: 13px;
-  background: rgba(134, 239, 172, 0.07);
-  padding: 9px 10px;
-  color: #baf3ce;
-}
-
-.td-autoQuantityDiscreteInfo,
-.td-autoQuantityMacroInfo {
-  border-color: rgba(86, 214, 223, 0.2);
-  background: rgba(86, 214, 223, 0.055);
-  color: #bfeff2;
-}
-
-.td-autoQuantityInvalidFoods {
-  border-color: rgba(251, 113, 133, 0.3);
-  background: rgba(251, 113, 133, 0.1);
-  color: #ffc3cd;
-}
-
-.td-autoQuantityCalorieSuccess > span,
-.td-autoQuantityDiscreteInfo > span,
-.td-autoQuantityMacroInfo > span,
-.td-autoQuantityInvalidFoods > span {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.td-autoQuantityCalorieSuccess strong,
-.td-autoQuantityDiscreteInfo strong,
-.td-autoQuantityMacroInfo strong,
-.td-autoQuantityInvalidFoods strong {
-  font-size: 10px;
-  font-weight: 950;
-  line-height: 1.35;
-}
-
-.td-autoQuantityCalorieSuccess small,
-.td-autoQuantityDiscreteInfo small,
-.td-autoQuantityMacroInfo small,
-.td-autoQuantityInvalidFoods small {
-  color: #aebdc6;
-  font-size: 8.5px;
-  font-weight: 740;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.td-autoQuantityInfoDetails,
-.td-autoQuantityConstraintDetails {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid rgba(245, 215, 110, 0.18);
-  border-radius: 12px;
-  background: rgba(245, 215, 110, 0.045);
-}
-
-.td-autoQuantityInfoDetails summary,
-.td-autoQuantityConstraintDetails summary,
-.td-autoQuantityComparison summary {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 9px;
-  color: #d8ca8d;
-  cursor: pointer;
-  font-size: 9px;
-  font-weight: 900;
-  list-style: none;
-}
-
-.td-autoQuantityInfoDetails summary::-webkit-details-marker,
-.td-autoQuantityConstraintDetails summary::-webkit-details-marker,
-.td-autoQuantityComparison summary::-webkit-details-marker {
-  display: none;
-}
-
-.td-autoQuantityInfoDetails summary svg:last-child,
-.td-autoQuantityConstraintDetails summary svg:last-child,
-.td-autoQuantityComparison summary svg:last-child {
-  margin-left: auto;
-  transition: transform 160ms ease;
-}
-
-.td-autoQuantityInfoDetails[open] summary svg:last-child,
-.td-autoQuantityConstraintDetails[open] summary svg:last-child,
-.td-autoQuantityComparison[open] summary svg:last-child {
-  transform: rotate(180deg);
-}
-
-.td-autoQuantityInfoDetails p {
-  margin: 0;
-  padding: 0 9px 6px;
-  color: #9e9370;
-  font-size: 8.5px;
-  line-height: 1.4;
-}
-
-.td-autoQuantityInfoDetails ul {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0 9px 9px 24px;
-  color: #b9aa72;
-  font-size: 8.5px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.td-autoQuantityConstraintDetails summary {
-  color: #b8dce3;
-}
-
-.td-unlimitedCaloriesCta {
-  width: fit-content;
-  min-height: 44px;
-  margin-top: 7px;
-  border: 1px solid rgba(245, 215, 110, 0.32);
-  border-radius: 11px;
-  background: rgba(245, 215, 110, 0.11);
-  padding: 0 11px;
-  color: #ffe581;
-  cursor: pointer;
-  font: inherit;
-  font-size: 9px;
-  font-weight: 950;
-}
-
-.td-autoQuantityComparison > summary {
-  color: #c8d4dc;
-}
-
-.td-autoQuantityComparison[open] > summary {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
-}
-
-.td-autoQuantityFooter {
-  margin-top: 10px;
-}
-
-.td-autoQuantityDecisionActions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.td-autoQuantityDecisionActions button {
-  min-width: 0;
-  min-height: 44px;
-  padding: 7px 8px;
-  font-size: 10px;
-  line-height: 1.15;
-}
-
-.td-mealInlineActions.has-confirm {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.td-foodMain strong {
-  display: -webkit-box;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-
-.td-foodMain > span {
-  max-width: 100%;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.td-autoQuantityFeedback,
-.td-autoQuantityInfoDetails,
-.td-autoQuantityConstraintDetails,
-.td-autoQuantityModeStatus,
-.td-autoQuantityModeReminder,
-.td-autoQuantityInvalidFoods {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
 @media (max-width: 720px) {
   .td-foodActions label,
   .td-foodActions button,
+  .td-foodActions .td-draftModeBtn,
   .td-modalActions button,
   .td-calculateQuantityBtn {
     min-height: 44px;
@@ -4117,51 +3845,9 @@
     height: 44px;
   }
 
-  .td-food {
-    min-height: 0;
-    row-gap: 5px;
-    padding: 8px 9px;
-  }
-
-  .td-foodActions {
-    gap: 4px;
-    padding-left: 58px;
-  }
-
-  .td-foodActions label {
-    min-width: 0;
-    padding-inline: 7px;
-  }
-
-  .td-foodActions input {
-    width: 44px;
-  }
-
-  .td-foodActions .td-foodStateToggle {
-    flex: 0 0 auto;
+  .td-foodActions .td-draftModeBtn {
+    min-width: 54px;
     height: 44px;
-    min-height: 44px;
-    margin-right: auto;
-    white-space: nowrap;
-  }
-
-  .td-autoQuantityFooter {
-    position: sticky;
-    bottom: -18px;
-    z-index: 3;
-    margin: 10px -18px -18px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(7, 12, 18, 0.97);
-    padding: 8px 18px max(18px, env(safe-area-inset-bottom));
-    backdrop-filter: blur(14px);
-  }
-
-  .td-autoQuantityDecisionActions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .td-autoQuantityDecisionActions .td-primaryBtn {
-    grid-column: 1 / -1;
   }
 
   .td-foodPickerModal,
@@ -4185,530 +3871,199 @@
   .td-foodActions {
     max-width: 100%;
     flex-wrap: wrap;
-    padding-left: 0;
   }
 
-  .td-foodDraftControls .td-foodStateToggle {
-    flex: 0 0 auto;
-    margin-right: auto;
-  }
-
-  .td-quantityModeSegments span {
-    padding-inline: 5px;
-    font-size: 9.5px;
+  .td-foodDraftControls .td-foodStateBadge {
+    flex: 1 0 100%;
+    margin-right: 0;
   }
 }
-
-/* Cálculo directo: la propuesta vive en la comida; las opciones avanzadas quedan compactas. */
-.td-inlineQuantityTools {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.td-inlineQuantityMode {
-  display: inline-flex;
-  min-width: 0;
-  min-height: 38px;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(141, 217, 255, 0.16);
-  border-radius: 12px;
-  background: rgba(141, 217, 255, 0.045);
-  padding: 0 10px;
-  color: #a9dff8;
-}
-
-.td-inlineQuantityMode select {
-  min-width: 0;
-  max-width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #d9effa;
-  font: inherit;
-  font-size: 10px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.td-inlineQuantityMode option {
-  background: #0b1219;
-  color: #eaf7ff;
-}
-
-.td-inlineQuantityMode:focus-within {
-  outline: 2px solid rgba(141, 217, 255, 0.62);
-  outline-offset: 2px;
-}
-
-.td-inlineQuantityStatus {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  color: #9fcde2;
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.td-mealCalculationNotice {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 9px;
-  margin-top: 10px;
-  border: 1px solid rgba(248, 203, 92, 0.24);
-  border-radius: 14px;
-  background: rgba(248, 203, 92, 0.075);
-  padding: 10px 11px;
-  color: #ffe18a;
-  overflow-wrap: anywhere;
-}
-
-.td-mealCalculationNotice.is-error {
-  border-color: rgba(255, 110, 125, 0.28);
-  background: rgba(255, 88, 110, 0.085);
-  color: #ffc0c9;
-}
-
-.td-mealCalculationNotice > svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
-.td-mealCalculationNotice > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.td-mealCalculationNotice strong,
-.td-mealCalculationNotice small {
-  display: block;
-  line-height: 1.35;
-}
-
-.td-mealCalculationNotice strong {
-  font-size: 11px;
-  font-weight: 950;
-}
-
-.td-mealCalculationNotice small {
-  color: currentColor;
-  font-size: 10px;
-  font-weight: 750;
-  opacity: 0.82;
-}
-
-.td-mealInlineActions .td-calculateInlineBtn.is-iconOnly {
-  width: 58px;
-  min-width: 58px;
-  justify-self: end;
-  padding: 0;
-  border-color: rgba(89, 184, 255, 0.38);
-  background: rgba(43, 126, 191, 0.1);
-}
-
-@media (max-width: 720px) {
-  .td-inlineQuantityMode {
-    min-height: 44px;
-  }
-
-  .td-mealInlineActions .td-calculateInlineBtn.is-iconOnly {
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    border-radius: 14px;
-  }
-}
-
-/* Densidad mobile: más alimentos visibles sin achicar las áreas táctiles. */
-@media (max-width: 720px) {
-  .td-shell {
-    padding: 12px 11px 24px;
-  }
-
-  .td-hero h1 {
-    font-size: 29px;
-    line-height: 1.02;
-  }
-
-  .td-hero p {
-    max-width: 36rem;
-    margin-top: 6px;
-    font-size: 13px;
-    line-height: 1.32;
-  }
-
-  .td-toolbar {
-    gap: 7px;
-    margin-top: 14px;
-  }
-
-  .td-dateNav {
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
-    gap: 6px;
-  }
-
-  .td-dateNav button,
-  .td-date,
-  .td-actionRow {
-    height: 46px;
-    min-height: 46px;
-  }
-
-  .td-dateNav button {
-    width: 44px;
-    border-radius: 13px;
-  }
-
-  .td-date,
-  .td-actionRow {
-    border-radius: 13px;
-  }
-
-  .td-date {
-    font-size: 13px;
-  }
-
-  .td-manualCompletionCard {
-    gap: 10px;
-    margin-top: 16px;
-    border-radius: 19px;
-    padding: 13px;
-  }
-
-  .td-manualCompletionTop {
-    grid-template-columns: 42px minmax(0, 1fr) 56px;
-    gap: 9px;
-  }
-
-  .td-manualCompletionIcon {
-    width: 42px;
-    height: 42px;
-    flex-basis: 42px;
-  }
-
-  .td-cardEyebrow {
-    font-size: 8px;
-  }
-
-  .td-manualCompletionTop h2 {
-    margin-top: 2px;
-    font-size: 15.5px;
-    line-height: 1.08;
-  }
-
-  .td-manualCompletionRing {
-    width: 56px;
-    height: 56px;
-    flex-basis: 56px;
-  }
-
-  .td-manualCompletionRing strong {
-    font-size: 15px;
-  }
-
-  .td-manualCompletionRing small {
-    margin-top: 2px;
-    font-size: 6px;
-  }
-
-  .td-manualCompletionBar {
-    height: 6px;
-  }
-
-  .td-manualCompletionMacros {
-    gap: 5px;
-  }
-
-  .td-manualCompletionMacros > article {
-    gap: 6px;
-    border-radius: 12px;
-    padding: 7px 5px;
-  }
-
-  .td-manualCompletionMacroTop strong {
-    font-size: 9.5px;
-  }
-
-  .td-manualCompletionMacroBar {
-    height: 5px;
-  }
-
-  .td-manualCompletionPlanState {
-    margin-top: 0;
-  }
-
-  .td-manualCompletionHint {
-    font-size: 9px;
-    line-height: 1.35;
-  }
-
-  .td-trackingMealsHeader {
-    gap: 10px;
-    margin-top: 20px;
-  }
-
-  .td-trackingMealsHeader strong {
-    font-size: 20px;
-  }
-
-  .td-trackingMealsHeader + .td-meals {
-    margin-top: 10px;
-  }
-
-  .td-meals {
-    gap: 12px;
-  }
-
-  .td-meal {
-    border-radius: 18px;
-    padding: 10px;
-  }
-
-  .td-mealHead {
-    padding: 0 1px 9px;
-  }
-
-  .td-mealTitleRow {
-    gap: 9px;
-  }
-
-  .td-mealBadge {
-    width: 42px;
-    height: 42px;
-  }
-
-  .td-meal h2 {
-    font-size: 18px;
-    line-height: 1.08;
-  }
-
-  .td-meal p {
-    margin-top: 3px;
-    font-size: 11px;
-    line-height: 1.25;
-  }
-
-  .td-mealMeta {
-    margin-top: 4px;
-  }
-
-  .td-mealMeta span {
-    min-height: 19px;
-    padding-inline: 6px;
-    font-size: 8px;
-  }
-
-  .td-iconBtn.menu {
-    width: 44px;
-    height: 44px;
-    border-radius: 13px;
-  }
-
-  .td-foodList {
-    border-radius: 14px;
-  }
-
-  .td-food {
-    grid-template-columns: 42px minmax(0, 1fr);
-    column-gap: 8px;
-    row-gap: 3px;
-    padding: 8px;
-  }
-
-  .td-foodThumb {
-    width: 42px;
-    height: 42px;
-    align-self: start;
-  }
-
-  .td-foodMain strong {
-    font-size: 14px;
-    line-height: 1.15;
-  }
-
-  .td-foodMain > span {
-    margin-top: 2px;
-    font-size: 10.5px;
-    line-height: 1.25;
-  }
-
-  .td-foodMain small {
-    margin-top: 3px;
-    font-size: 9px;
-    line-height: 1.25;
-  }
-
-  .td-foodActions,
-  .td-foodDraftControls {
-    display: flex;
-    min-width: 0;
-    grid-column: 2;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 4px;
-    padding-left: 0;
-    flex-wrap: nowrap;
-  }
-
-  .td-foodActions .td-foodStateToggle {
-    width: auto;
-    min-width: 54px;
-    height: 44px;
-    min-height: 44px;
-    flex: 0 0 auto;
-    margin: 0 auto 0 0;
-    padding-inline: 7px;
-    font-size: 8px;
-  }
-
-  .td-foodActions label {
-    min-width: 0;
-    min-height: 44px;
-    flex: 0 1 auto;
-    padding-inline: 6px;
-  }
-
-  .td-foodActions input {
-    width: 38px;
-    height: 40px;
-    font-size: 11.5px;
-  }
-
-  .td-foodActions label > span {
-    font-size: 9.5px;
-  }
-
-  .td-foodActions > button:last-child {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-  }
-
-  .td-inlineQuantityTools,
-  .td-mealCalculationNotice {
-    margin-top: 8px;
-  }
-
-  .td-mealInlineActions {
-    gap: 6px;
-    margin-top: 10px;
-  }
-
-  .td-mealInlineActions button {
-    min-height: 48px;
-    border-radius: 13px;
-    padding-inline: 7px;
-    font-size: 10.5px;
-  }
-
-  .td-mealDraftHint {
-    margin-top: 7px;
-    font-size: 9px;
-  }
-
-  .td-addMealCard {
-    min-height: 72px;
-    gap: 10px;
-    border-radius: 17px;
-    padding: 10px 12px;
-  }
-
-  .td-addMealIcon {
-    width: 44px;
-    height: 44px;
-  }
-
-  .td-addMealCard strong {
-    font-size: 15px;
-  }
-
-  .td-addMealCard small {
-    font-size: 10px;
-  }
-}
-
-@media (max-width: 430px) {
-  .td-hero h1 {
-    font-size: 27px;
-  }
-
-  .td-hero p {
-    font-size: 12px;
-  }
-
-  .td-manualCompletionCard {
-    padding: 11px;
-  }
-
-  .td-manualCompletionTop {
-    grid-template-columns: 40px minmax(0, 1fr) 52px;
-    gap: 7px;
-  }
-
-  .td-manualCompletionIcon {
-    width: 40px;
-    height: 40px;
-  }
-
-  .td-manualCompletionTop h2 {
-    font-size: 14.5px;
-  }
-
-  .td-manualCompletionRing {
-    width: 52px;
-    height: 52px;
-    flex-basis: 52px;
-  }
-
-  .td-trackingMealsHeader strong {
-    font-size: 19px;
-  }
-
-  .td-meal {
-    padding: 8px;
-  }
-
-  .td-mealBadge {
-    width: 40px;
-    height: 40px;
-  }
-
-  .td-meal h2 {
-    font-size: 17px;
-  }
-
-  .td-food {
-    grid-template-columns: 40px minmax(0, 1fr);
-    column-gap: 7px;
-    padding: 7px;
-  }
-
-  .td-foodThumb {
-    width: 40px;
-    height: 40px;
-  }
-
-  .td-foodMain strong {
-    font-size: 13.5px;
-  }
-
-  .td-foodMain > span {
-    font-size: 10px;
-  }
-
-  .td-foodActions .td-foodStateToggle {
-    min-width: 52px;
-    padding-inline: 6px;
-  }
-
-  .td-foodActions input {
-    width: 34px;
-  }
-}
+</style>
+<style>
+  html, body { margin: 0; min-height: 100%; background: #05090d; color: #eef9fb; }
+  * { box-sizing: border-box; }
+  body.visual-meal .td-autoQuantityBackdrop { display: none !important; }
+  body.visual-modal .td-page { min-height: 110vh; }
+  .visual-label { position: fixed; z-index: 9999; top: 4px; left: 4px; padding: 4px 7px; border-radius: 6px; background: #020508dd; color: #7ee9f8; font: 700 10px/1 system-ui; }
+  #visual-metrics { display: none; }
+</style>
+</head>
+<body>
+<span class="visual-label">ANTES · fixture CSS</span>
+
+  <div class="td-page">
+    <section class="td-shell">
+      <div class="td-trackingMealsHeader">
+        <strong>Comidas del tracking</strong>
+        <span>Propuesta local: el total real cambia al confirmar.</span>
+      </div>
+      <section class="td-meals">
+        <article class="td-meal">
+          <div class="td-mealHead">
+            <div class="td-mealTitleRow">
+              <span class="td-mealBadge almuerzo">A</span>
+              <div>
+                <h2>Almuerzo</h2>
+                <p>339 kcal · P 8 · C 75,5 · G 0,5</p>
+                <small class="td-mealDraftTotal">+ 564 kcal por confirmar</small>
+                <div class="td-mealMeta"><span>Almuerzo</span><span class="goal">Meta 903 kcal · P58,5 C38,4 G56,1</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="td-foodList" aria-label="Alimentos de Almuerzo">
+            
+    <div class="td-food ">
+      <div class="td-foodThumb fallback" aria-hidden="true">A</div>
+      <div class="td-foodMain">
+        <strong>Arroz</strong>
+        <span>339 kcal · P 8 · C 75,5 · G 0,5</span>
+      </div>
+      <div class="td-foodActions ">
+        <b class="td-foodStateBadge is-registered">Registrado</b>
+        <label><input value="100" aria-label="Cantidad de Arroz"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Arroz">×</button>
+      </div>
+    </div>
+            
+    <div class="td-food td-foodDraft">
+      <div class="td-foodThumb fallback" aria-hidden="true">P</div>
+      <div class="td-foodMain">
+        <strong>Pechuga de pollo con piel</strong>
+        <span>199 kcal · P 32 · C 0 · G 8</span>
+      </div>
+      <div class="td-foodActions td-foodDraftControls">
+        <b class="td-foodStateBadge is-calculated">Calculado</b>
+        <label><input value="160" aria-label="Cantidad de Pechuga de pollo con piel"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Pechuga de pollo con piel">×</button>
+      </div>
+    </div>
+            
+    <div class="td-food td-foodDraft">
+      <div class="td-foodThumb fallback" aria-hidden="true">Q</div>
+      <div class="td-foodMain">
+        <strong>Queso cremoso</strong>
+        <span>703 kcal · P 27,6 · C 2 · G 65</span>
+      </div>
+      <div class="td-foodActions td-foodDraftControls">
+        <b class="td-foodStateBadge is-calculated">Calculado</b>
+        <label><input value="197" aria-label="Cantidad de Queso cremoso"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Queso cremoso">×</button>
+      </div>
+    </div>
+            
+    <div class="td-food td-foodDraft">
+      <div class="td-foodThumb fallback" aria-hidden="true">A</div>
+      <div class="td-foodMain">
+        <strong>Aceite de oliva extra virgen de descripción deliberadamente extensa</strong>
+        <span>0 kcal · P 0 · C 0 · G 0</span>
+      </div>
+      <div class="td-foodActions td-foodDraftControls">
+        <b class="td-foodStateBadge is-automatic">Auto</b>
+        <label><input value="—" aria-label="Cantidad de Aceite de oliva extra virgen de descripción deliberadamente extensa"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa">×</button>
+      </div>
+    </div>
+            
+    <div class="td-food td-foodDraft">
+      <div class="td-foodThumb fallback" aria-hidden="true">P</div>
+      <div class="td-foodMain">
+        <strong>Papas</strong>
+        <span>173 kcal · P 3,1 · C 34,2 · G 2,7</span>
+      </div>
+      <div class="td-foodActions td-foodDraftControls">
+        <b class="td-foodStateBadge is-fixed">Fijo</b>
+        <label><input value="180" aria-label="Cantidad de Papas"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Papas">×</button>
+      </div>
+    </div>
+            
+    <div class="td-food td-foodDraft">
+      <div class="td-foodThumb fallback" aria-hidden="true">P</div>
+      <div class="td-foodMain">
+        <strong>Palta</strong>
+        <span>95 kcal · P 1,2 · C 2,5 · G 9</span>
+      </div>
+      <div class="td-foodActions td-foodDraftControls">
+        <b class="td-foodStateBadge is-fixed">Fijo</b>
+        <label><input value="60" aria-label="Cantidad de Palta"><span>g</span></label>
+        <button type="button" aria-label="Eliminar Palta">×</button>
+      </div>
+    </div>
+          </div>
+          <div class="td-mealInlineActions has-confirm">
+            <button class="td-secondaryBtn">Calcular cantidades</button>
+            <button class="td-primaryBtn">Confirmar consumo</button>
+          </div>
+        </article>
+      </section>
+    </section>
+  </div>
+
+  <section class="td-modalBackdrop td-bottomSheet td-autoQuantityBackdrop" role="dialog" aria-modal="true">
+    <button class="td-dialogBackdropButton" aria-label="Cerrar"></button>
+    <div class="td-modal td-autoQuantityModal" tabindex="-1">
+      <div class="td-modalTop td-autoQuantityHeader">
+        <div><span class="td-kicker">Herramienta Pro</span><h3>Calcular cantidades</h3><p>Almuerzo · objetivo disponible 903 kcal</p></div>
+        <button class="td-iconBtn" aria-label="Cerrar">×</button>
+      </div>
+      
+      <div class="td-autoQuantityDrafts">
+        <div class="td-autoQuantityDraftsTop"><strong>Alimentos a preparar</strong><span>1 fijo · 2 pendientes</span></div>
+        <div class="td-autoQuantityDraftRow"><span><strong>Pechuga de pollo con piel</strong><small>160 g · se recalculará</small></span><b class="is-pending">Auto</b></div>
+        <div class="td-autoQuantityDraftRow"><span><strong>Queso cremoso</strong><small>197 g · cantidad fija</small></span><b class="is-fixed">Fijo</b></div>
+        <div class="td-autoQuantityDraftRow"><span><strong>Aceite de oliva</strong><small>Cantidad pendiente</small></span><b class="is-pending">Auto</b></div>
+      </div>
+      <div class="td-autoQuantityFeedback">
+        <div class="td-autoQuantityCalorieSuccess"><span aria-hidden="true">✓</span><span><strong>Objetivo calórico completado.</strong><small>La propuesta queda a 0,9 kcal del objetivo sin superar el techo.</small></span></div>
+        <details class="td-autoQuantityInfoDetails"><summary>ⓘ Porciones recomendadas superadas</summary><p>Es intencional en este método. Revisá las cantidades antes de confirmar.</p></details>
+        <div class="td-autoQuantityMacroInfo"><span aria-hidden="true">ⓘ</span><span><strong>No es posible acercarse a todos los macronutrientes con estos alimentos.</strong><small>C: faltan 36,4 g · G: excede 16,9 g porque la selección no contiene una fuente de carbohidratos.</small></span></div>
+      </div>
+      <div class="td-autoQuantityProposal">
+        <article><span><strong>Pechuga de pollo con piel</strong><small>199 kcal sugeridas</small></span><label><input value="160" aria-label="Cantidad de Pechuga"><span>g</span></label></article>
+        <article><span><strong>Queso cremoso</strong><small>Cantidad manual respetada</small></span><label><input value="197" aria-label="Cantidad de Queso"><span>g</span></label></article>
+        <div class="td-autoQuantityTotals"><strong>902 kcal</strong><span>P 59,6 · C 2 · G 73</span></div>
+        <details class="td-autoQuantityComparison"><summary>Ver detalle nutricional</summary></details>
+      </div>
+      <div class="td-autoQuantityFooter">
+        <button class="td-calculateQuantityBtn">Recalcular restante</button>
+        <p class="td-autoQuantityProposalNotice">Esta es una propuesta local. El total real cambia recién al confirmar.</p>
+        <div class="td-modalActions td-autoQuantityDecisionActions">
+          <button class="td-secondaryBtn">Agregar alimento</button>
+          <button class="td-secondaryBtn">Volver al borrador</button>
+          <button class="td-primaryBtn">Usar esta propuesta</button>
+        </div>
+      </div>
+    </div>
+  </section>
+<script>
+  const view = new URLSearchParams(location.search).get("view") || "modal";
+  document.body.classList.add("visual-" + view);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const rows = [...document.querySelectorAll(".td-food")];
+    const actions = [...document.querySelectorAll("button")].filter((button) => {
+      const style = getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    });
+    const modal = document.querySelector(".td-autoQuantityModal");
+    const rowHeights = rows.map((row) => Number(row.getBoundingClientRect().height.toFixed(2)));
+    const buttonRects = actions.map((button) => ({
+      label: button.getAttribute("aria-label") || button.textContent.trim(),
+      width: Number(button.getBoundingClientRect().width.toFixed(2)),
+      height: Number(button.getBoundingClientRect().height.toFixed(2)),
+    }));
+    const metrics = {
+      variant: "before", view,
+      viewport: { width: innerWidth, height: innerHeight },
+      document: { clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth },
+      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      rows: { count: rows.length, heights: rowHeights, min: Math.min(...rowHeights), max: Math.max(...rowHeights), average: rowHeights.reduce((a,b)=>a+b,0)/Math.max(1,rowHeights.length) },
+      visibleRows: rows.filter((row) => { const rect=row.getBoundingClientRect(); return rect.top < innerHeight && rect.bottom > 0; }).length,
+      buttons: { count: buttonRects.length, minWidth: Math.min(...buttonRects.map(x=>x.width)), minHeight: Math.min(...buttonRects.map(x=>x.height)), rects: buttonRects },
+      modal: modal ? { clientHeight: modal.clientHeight, scrollHeight: modal.scrollHeight, internalScroll: modal.scrollHeight > modal.clientHeight + 1 } : null,
+    };
+    document.getElementById("visual-metrics").textContent = JSON.stringify(metrics);
+  }));
+</script>
+<script id="visual-metrics" type="application/json"></script>
+</body></html>

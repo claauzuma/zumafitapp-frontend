@@ -150,9 +150,18 @@ export function resolveTrackingMealCalculationTarget({
   consumedByMeal = {},
   dayRemaining = {},
   dayConfigured = {},
+  replacedConsumption = {},
 } = {}) {
   const mealId = String(meal?.id || "");
-  const consumed = nutritionTotals(consumedByMeal?.[mealId] || {});
+  const replaced = nutritionTotals(replacedConsumption);
+  const consumed = positiveNutritionTotals(subtractNutritionTotals(
+    consumedByMeal?.[mealId] || {},
+    replaced
+  ));
+  const effectiveConsumedByMeal = {
+    ...(consumedByMeal || {}),
+    [mealId]: consumed,
+  };
   const configuredTarget = configuredNutritionTarget(meal?.target || {});
   const configuredKeys = NUTRITION_KEYS.filter((key) => configuredTarget.configured[key]);
 
@@ -182,7 +191,7 @@ export function resolveTrackingMealCalculationTarget({
     return !NUTRITION_KEYS.some((key) => target.configured[key]);
   });
   const pendingFreeMeals = freeMeals.filter((entry) => (
-    !hasNutritionConsumption(consumedByMeal?.[String(entry?.id || "")] || {})
+    !hasNutritionConsumption(effectiveConsumedByMeal?.[String(entry?.id || "")] || {})
   ));
   const isOnlyFreeMeal = freeMeals.length === 1 && String(freeMeals[0]?.id || "") === mealId;
   const isLastPendingFreeMeal =
@@ -198,7 +207,7 @@ export function resolveTrackingMealCalculationTarget({
     };
   }
 
-  const remaining = nutritionTotals(dayRemaining);
+  const remaining = addNutritionTotals(dayRemaining, replaced);
   const configuredDayKeys = NUTRITION_KEYS.filter((key) => dayConfigured?.[key] === true);
   if (!configuredDayKeys.length) {
     return {

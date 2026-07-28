@@ -17,6 +17,7 @@ import {
   MoreVertical,
   MoonStar,
   Plus,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   Sun,
@@ -45,6 +46,8 @@ import {
   useUpdateFoodLog,
   useUpdateTrackingMealsConfig,
 } from "../tracking/trackingQueries.js";
+import { calculateTrackingQuantities } from "../tracking/trackingApi.js";
+import { getCachedUser } from "../authCache.js";
 import {
   buildRemainingMomentTargets,
   calculateManualDayProgress,
@@ -55,24 +58,45 @@ import {
 } from "../tracking/manualDayCompletion.js";
 import {
   applyTrackingDraftProposals,
+  buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
+  createTrackingRegisteredReplacementDraft,
   hasTrackingDraftQuantity,
+  isTrackingFoodQuantityPhysicallyValid,
   isTrackingDraftAutomatic,
+  isTrackingDraftCalculated,
+  isTrackingRegisteredReplacementDraft,
   markTrackingDraftAutomatic,
   markTrackingDraftManual,
-  trackingDateDraftTotals,
+  partitionTrackingDraftConfirmations,
+  loadTrackingDraftState,
+  saveTrackingDraftState,
+  trackingDraftNutritionTotals,
+  trackingDraftConfirmationRequestId,
+  trackingDateDraftProjectedDelta,
   trackingDraftCalculationPayload,
   trackingDraftKey,
   trackingDraftProposals,
+  trackingDraftsQuantityMode,
   trackingDraftsNutritionTotals,
+  trackingDraftsProjectedDelta,
+  trackingDraftsReplacedTotals,
   trackingDraftsReadyToConfirm,
+  trackingDraftStorageOwner,
+  TRACKING_QUANTITY_MODE_OPTIONS,
+  trackingFoodRequiresWholeQuantity,
   updateTrackingFoodDraftQuantity,
+  updateTrackingDraftsQuantityMode,
+  withoutTrackingMealDrafts,
 } from "../tracking/trackingQuantityDrafts.js";
 import {
-  AutoQuantityPlannerDialog,
   ManualCompletionTrackingCard,
   ManualMomentStatus,
 } from "../tracking/ManualCompletionTracking.jsx";
+import {
+  buildTrackingQuantityInlineFeedback,
+  trackingQuantityInvalidFoodsMessage,
+} from "../tracking/trackingQuantityReview.js";
 import "./trackingDiario.css";
 
 const TRACKING_MEAL_TYPES = ["desayuno", "almuerzo", "merienda", "cena", "snack", "otra"];
@@ -106,11 +130,21 @@ export default function TrackingDiario() {
   const [goalMealId, setGoalMealId] = useState("");
   const [goalDraft, setGoalDraft] = useState(() => emptyTotals());
   const [deleteMealCandidate, setDeleteMealCandidate] = useState(null);
-  const [quantityPlannerMeal, setQuantityPlannerMeal] = useState(null);
-  const [trackingFoodDrafts, setTrackingFoodDrafts] = useState({});
+  const [trackingDraftOwner] = useState(() => trackingDraftStorageOwner(getCachedUser() || {}));
+  const [restoredTrackingDraftState] = useState(() => loadTrackingDraftState(
+    trackingDraftBrowserStorage(),
+    trackingDraftOwner
+  ));
+  const [trackingFoodDrafts, setTrackingFoodDrafts] = useState(
+    () => restoredTrackingDraftState.draftsByMeal
+  );
   const [autoQuantitySaving, setAutoQuantitySaving] = useState(false);
+  const [autoQuantityCalculatingDraftKey, setAutoQuantityCalculatingDraftKey] = useState("");
+  const [autoQuantityConfirmingDraftKey, setAutoQuantityConfirmingDraftKey] = useState("");
+  const [quantityCalculationFeedback, setQuantityCalculationFeedback] = useState(
+    () => restoredTrackingDraftState.feedbackByMeal
+  );
   const [toast, setToast] = useState(null);
-  const autoQuantityRequestRef = useRef(new Map());
   const activeDateRef = useRef(date);
   const deleteMealDialogRef = useRef(null);
   const foodPickerDialogRef = useRef(null);
@@ -149,7 +183,8 @@ export default function TrackingDiario() {
     updateMealsMutation.isPending ||
     deleteMealMutation.isPending ||
     manualCompletionMutation.isPending ||
-    autoQuantitySaving;
+    autoQuantitySaving ||
+    Boolean(autoQuantityCalculatingDraftKey);
   const tracking = trackingQuery.data || emptyTrackingDay(date);
   const configuredMeals = useMemo(() => normalizeMealSettings(tracking.mealsConfig || []), [tracking.mealsConfig]);
   const log = useMemo(() => normalizeMeals(tracking.meals, configuredMeals), [tracking.meals, configuredMeals]);
@@ -162,7 +197,7 @@ export default function TrackingDiario() {
   const menuConsumedTotals = useMemo(() => menuTrackingConsumedTotals(menuTrackingDay), [menuTrackingDay]);
   const totals = useMemo(() => addTotals(trackedTotals, menuConsumedTotals), [menuConsumedTotals, trackedTotals]);
   const pendingDraftTotals = useMemo(
-    () => trackingDateDraftTotals(trackingFoodDrafts, date),
+    () => trackingDateDraftProjectedDelta(trackingFoodDrafts, date),
     [date, trackingFoodDrafts]
   );
   const projectedTotals = useMemo(
@@ -228,7 +263,11 @@ export default function TrackingDiario() {
     if (!selectedFood) return null;
     const selectedQuantity = Number(quantity);
     if (!Number.isFinite(selectedQuantity) || selectedQuantity <= 0) return null;
-    return buildMenuItemSnapshot(selectedFood, selectedQuantity, selectedFood.unidad || selectedFood.unit || "g");
+    const selectedUnit = selectedFood.unidad || selectedFood.unit || "g";
+    if (!isTrackingFoodQuantityPhysicallyValid(selectedFood, selectedUnit, selectedQuantity)) {
+      return null;
+    }
+    return buildMenuItemSnapshot(selectedFood, selectedQuantity, selectedUnit);
   }, [quantity, selectedFood]);
   const projectedIssues = useMemo(() => {
     if (!selectedPreview) return [];
@@ -236,6 +275,8 @@ export default function TrackingDiario() {
   }, [objective, selectedPreview, totals]);
   const diaryStatusText = trackingQuery.isLoading
     ? "Cargando diario"
+    : autoQuantityCalculatingDraftKey
+      ? "Calculando cantidades"
     : isSaving
       ? "Guardando cambios"
       : "Diario guardado";
@@ -245,10 +286,16 @@ export default function TrackingDiario() {
   }, [date, requestedDate]);
 
   useEffect(() => {
+    saveTrackingDraftState(trackingDraftBrowserStorage(), trackingDraftOwner, {
+      draftsByMeal: trackingFoodDrafts,
+      feedbackByMeal: quantityCalculationFeedback,
+    });
+  }, [quantityCalculationFeedback, trackingDraftOwner, trackingFoodDrafts]);
+
+  useEffect(() => {
     if (activeDateRef.current === date) return;
     activeDateRef.current = date;
     setModalMeal("");
-    setQuantityPlannerMeal(null);
     setSettingsOpen(false);
     setAddMealOpen(false);
     setGoalMealId("");
@@ -367,18 +414,38 @@ export default function TrackingDiario() {
       setToast({ type: "warning", message: "Ingresa una cantidad valida." });
       return;
     }
+    const selectedUnit = selectedFood.unidad || selectedFood.unit || "g";
+    if (hasEnteredQuantity && !isTrackingFoodQuantityPhysicallyValid(
+      selectedFood,
+      selectedUnit,
+      quantityValue
+    )) {
+      setToast({
+        type: "warning",
+        message: `${selectedFood.nombre || selectedFood.name || "Este alimento"} se mide en unidades enteras.`,
+      });
+      return;
+    }
 
     if (canAutoCalculateTrackingQuantities) {
       const draftKey = trackingDraftKey(date, selectedMeal.id);
+      const currentMealDrafts = trackingFoodDrafts[draftKey] || [];
       const draft = createTrackingFoodDraft(
         selectedFood,
         hasEnteredQuantity ? quantityValue : "",
-        createWriteRequestId(date, `${selectedMeal.id}-draft`)
+        createWriteRequestId(date, `${selectedMeal.id}-draft`),
+        trackingDraftsQuantityMode(currentMealDrafts)
       );
       setTrackingFoodDrafts((current) => ({
         ...current,
         [draftKey]: [...(current[draftKey] || []), draft],
       }));
+      setQuantityCalculationFeedback((current) => {
+        if (!current[draftKey]) return current;
+        const next = { ...current };
+        delete next[draftKey];
+        return next;
+      });
       closeFoodPicker();
       return;
     }
@@ -433,6 +500,13 @@ export default function TrackingDiario() {
       setToast({ type: "warning", message: "Ingresa una cantidad valida." });
       return;
     }
+    if (!isTrackingFoodQuantityPhysicallyValid(item, item.unidad || "g", quantityValue)) {
+      setToast({
+        type: "warning",
+        message: `${item.nombreSnapshot || "Este alimento"} se mide en unidades enteras.`,
+      });
+      return;
+    }
 
     updateMutation.mutate(
       {
@@ -448,6 +522,39 @@ export default function TrackingDiario() {
         onError: (error) => setToast({ type: "error", message: error?.message || "No se pudo actualizar." }),
       }
     );
+  }
+
+  function markRegisteredFoodAutomatic(meal, item) {
+    if (!meal?.id || autoQuantitySaving || autoQuantityCalculatingDraftKey) return;
+    const draftKey = trackingDraftKey(date, meal.id);
+    const currentDrafts = trackingFoodDrafts[draftKey] || [];
+    if (currentDrafts.some((draft) => (
+      String(draft.replacesLogId || "") === String(item?.id || "")
+    ))) return;
+
+    const draft = createTrackingRegisteredReplacementDraft(
+      item,
+      `registered-${item?.id || item?._id || Date.now()}`,
+      trackingDraftsQuantityMode(currentDrafts)
+    );
+    if (!draft) {
+      setToast({
+        type: "error",
+        message: "No pudimos preparar este alimento para recalcularlo.",
+      });
+      return;
+    }
+
+    setTrackingFoodDrafts((current) => ({
+      ...current,
+      [draftKey]: [draft, ...(current[draftKey] || [])],
+    }));
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
   function removeFood(item) {
@@ -577,8 +684,12 @@ export default function TrackingDiario() {
       delete next[draftKey];
       return next;
     });
-    autoQuantityRequestRef.current.delete(draftKey);
-    if (quantityPlannerMeal?.id === mealId) setQuantityPlannerMeal(null);
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
   function confirmDeleteMeal() {
@@ -672,7 +783,7 @@ export default function TrackingDiario() {
     );
   }
 
-  function openAutomaticQuantityCalculator(meal) {
+  async function calculateAutomaticQuantities(meal) {
     if (!canAutoCalculateTrackingQuantities) return false;
     const draftKey = trackingDraftKey(date, meal.id);
     const drafts = trackingFoodDrafts[draftKey] || [];
@@ -696,6 +807,7 @@ export default function TrackingDiario() {
       consumedByMeal,
       dayRemaining: manualProgress?.remaining || remaining || emptyTotals(),
       dayConfigured: manualProgress?.configured || configuredNutritionTarget(objective || {}).configured,
+      replacedConsumption: trackingDraftsReplacedTotals(drafts),
     });
     if (resolution.status === "ambiguous") {
       setToast({
@@ -731,19 +843,90 @@ export default function TrackingDiario() {
       return false;
     }
 
-    setQuantityPlannerMeal({
-      ...meal,
-      calculationDate: date,
-      calculationTarget: resolution.target,
-      calculationConfigured: resolution.configured,
-      calculationTargetSource: resolution.source,
-      calculationDrafts: drafts,
+    const trackingQuantityMode = trackingDraftsQuantityMode(drafts);
+    setAutoQuantityCalculatingDraftKey(draftKey);
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
     });
-    return true;
+
+    try {
+      const response = await calculateTrackingQuantities(buildTrackingQuantityCalculationRequest({
+        date,
+        target: resolution.target,
+        trackingQuantityMode,
+        fixedFoods: calculationInput.fixedFoods,
+        pendingFoods: calculationInput.pendingFoods,
+      }));
+      const invalidFoodsMessage = trackingQuantityInvalidFoodsMessage(response?.optimization);
+      if (invalidFoodsMessage) throw new Error(invalidFoodsMessage);
+      if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
+        throw new Error(response?.message || "No se encontró una combinación razonable.");
+      }
+
+      const proposals = trackingDraftProposals(drafts, response.foods);
+      if (proposals.length !== drafts.length) {
+        throw new Error("No se pudo obtener una cantidad válida para todos los alimentos pendientes.");
+      }
+      const responseMode = response?.optimization?.policy === "tracking_calorie_fill_v1"
+        ? "calorie_fill"
+        : trackingQuantityMode;
+      const nextDrafts = applyTrackingDraftProposals(drafts, proposals, responseMode);
+      if (!trackingDraftsReadyToConfirm(nextDrafts)) {
+        throw new Error("No se pudo calcular una cantidad válida para todos los alimentos Auto.");
+      }
+
+      setTrackingFoodDrafts((current) => ({
+        ...current,
+        [draftKey]: nextDrafts,
+      }));
+      const feedback = buildTrackingQuantityInlineFeedback({
+        target: resolution.target,
+        configured: resolution.configured,
+        proposal: trackingDraftsNutritionTotals(nextDrafts),
+        optimization: response?.optimization || null,
+      });
+      if (feedback) {
+        setQuantityCalculationFeedback((current) => ({ ...current, [draftKey]: feedback }));
+      }
+      return true;
+    } catch (calculationError) {
+      const message = trackingQuantityInvalidFoodsMessage(calculationError?.optimization)
+        || calculationError?.message
+        || "No se pudieron calcular las cantidades.";
+      setQuantityCalculationFeedback((current) => ({
+        ...current,
+        [draftKey]: {
+          type: "error",
+          title: "No pudimos calcular las cantidades",
+          message,
+        },
+      }));
+      return false;
+    } finally {
+      setAutoQuantityCalculatingDraftKey((current) => current === draftKey ? "" : current);
+    }
   }
 
   function updateTrackingDraft(mealId, draftId, nextQuantity) {
     const draftKey = trackingDraftKey(date, mealId);
+    const selectedDraft = (trackingFoodDrafts[draftKey] || []).find(
+      (draft) => draft.id === draftId
+    );
+    if (selectedDraft && !isTrackingFoodQuantityPhysicallyValid(
+      selectedDraft.food || selectedDraft,
+      selectedDraft.unit,
+      nextQuantity,
+      { allowEmpty: true }
+    )) {
+      setToast({
+        type: "warning",
+        message: `${selectedDraft.name || "Este alimento"} se mide en unidades enteras.`,
+      });
+      return;
+    }
     setTrackingFoodDrafts((current) => ({
       ...current,
       [draftKey]: (current[draftKey] || []).map((draft) => (
@@ -752,6 +935,12 @@ export default function TrackingDiario() {
           : draft
       )),
     }));
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
   function removeTrackingDraft(mealId, draftId) {
@@ -760,6 +949,12 @@ export default function TrackingDiario() {
       ...current,
       [draftKey]: (current[draftKey] || []).filter((draft) => draft.id !== draftId),
     }));
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
   function discardTrackingDrafts(meal) {
@@ -770,67 +965,125 @@ export default function TrackingDiario() {
 
   function toggleTrackingDraftMode(mealId, draftId) {
     const draftKey = trackingDraftKey(date, mealId);
-    const selectedDraft = (trackingFoodDrafts[draftKey] || []).find((draft) => draft.id === draftId);
-    if (selectedDraft && isTrackingDraftAutomatic(selectedDraft) && !hasTrackingDraftQuantity(selectedDraft)) {
-      setToast({
-        type: "info",
-        message: "Ingresá una cantidad para dejar este alimento como fijo.",
-      });
-      return;
-    }
     setTrackingFoodDrafts((current) => ({
       ...current,
       [draftKey]: (current[draftKey] || []).map((draft) => {
         if (draft.id !== draftId) return draft;
         if (!isTrackingDraftAutomatic(draft)) return markTrackingDraftAutomatic(draft);
+        if (isTrackingRegisteredReplacementDraft(draft) && !hasTrackingDraftQuantity(draft)) {
+          return updateTrackingFoodDraftQuantity(
+            markTrackingDraftManual(draft),
+            draft.registeredQuantity
+          );
+        }
         return markTrackingDraftManual(draft);
       }),
     }));
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
-  function requestIdForDraftMeal(meal) {
-    const draftKey = trackingDraftKey(date, meal.id);
-    if (!autoQuantityRequestRef.current.has(draftKey)) {
-      autoQuantityRequestRef.current.set(draftKey, createWriteRequestId(date, meal.id));
-    }
-    return autoQuantityRequestRef.current.get(draftKey);
+  function changeTrackingMealQuantityMode(mealId, nextMode) {
+    const draftKey = trackingDraftKey(date, mealId);
+    setTrackingFoodDrafts((current) => ({
+      ...current,
+      [draftKey]: updateTrackingDraftsQuantityMode(
+        (current[draftKey] || []).map((draft) => (
+          isTrackingDraftAutomatic(draft)
+            ? { ...markTrackingDraftAutomatic(draft), quantity: "" }
+            : draft
+        )),
+        nextMode
+      ),
+    }));
+    setQuantityCalculationFeedback((current) => {
+      if (!current[draftKey]) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
   }
 
   async function persistTrackingDrafts(meal, proposals = []) {
     if (!meal?.id || !proposals.length || autoQuantitySaving) return;
     const draftKey = trackingDraftKey(date, meal.id);
+    const draftsBeingConfirmed = trackingFoodDrafts[draftKey] || [];
+    const appliedReplacementEntries = [];
+    setAutoQuantityConfirmingDraftKey(draftKey);
     setAutoQuantitySaving(true);
     try {
-      const items = proposals.map((proposal) => {
+      const {
+        replacements: replacementEntries,
+        additions: newEntries,
+      } = partitionTrackingDraftConfirmations(draftsBeingConfirmed, proposals);
+
+      for (const { draft, proposal } of replacementEntries) {
+        await updateMutation.mutateAsync({
+          logId: draft.replacesLogId,
+          date,
+          mealId: meal.id,
+          mealType: meal.type || "otra",
+          cantidad: Number(proposal.quantity),
+          unidad: proposal.unit || draft.unit || "g",
+        });
+        appliedReplacementEntries.push({ draft, proposal });
+      }
+
+      const items = newEntries.map(({ proposal }) => {
         const unit = proposal.unit || proposal.food?.unidad || "g";
         return buildMenuItemSnapshot(proposal.food, Number(proposal.quantity), unit);
       });
-      await addCalculatedMutation.mutateAsync({
-        requestId: requestIdForDraftMeal(meal),
-        date,
-        mealId: meal.id,
-        mealType: meal.type || "otra",
-        mealName: meal.label,
-        items,
-      });
-      setQuantityPlannerMeal(null);
-      setTrackingFoodDrafts((current) => {
+      if (items.length) {
+        await addCalculatedMutation.mutateAsync({
+          requestId: trackingDraftConfirmationRequestId(
+            date,
+            meal.id,
+            newEntries.map(({ draft }) => draft)
+          ),
+          date,
+          mealId: meal.id,
+          mealType: meal.type || "otra",
+          mealName: meal.label,
+          items,
+        });
+      }
+      setTrackingFoodDrafts((current) => withoutTrackingMealDrafts(current, draftKey));
+      setQuantityCalculationFeedback((current) => {
+        if (!current[draftKey]) return current;
         const next = { ...current };
         delete next[draftKey];
         return next;
       });
-      autoQuantityRequestRef.current.delete(draftKey);
       setToast({
         type: "success",
-        message: `${proposals.length} alimento${proposals.length === 1 ? "" : "s"} confirmado${proposals.length === 1 ? "" : "s"} como consumido${proposals.length === 1 ? "" : "s"}.`,
+        message: `${proposals.length} alimento${proposals.length === 1 ? "" : "s"} confirmado${proposals.length === 1 ? "" : "s"}.`,
       });
     } catch (confirmationError) {
+      for (const { draft } of [...appliedReplacementEntries].reverse()) {
+        try {
+          await updateMutation.mutateAsync({
+            logId: draft.replacesLogId,
+            date,
+            mealId: meal.id,
+            mealType: meal.type || "otra",
+            cantidad: Number(draft.registeredQuantity),
+            unidad: draft.registeredUnit || draft.unit || "g",
+          });
+        } catch {
+          // El borrador persiste y permite reintentar aunque el rollback de red falle.
+        }
+      }
       setToast({
         type: "error",
         message: confirmationError?.message || "No se pudieron guardar todas las cantidades.",
       });
     } finally {
       setAutoQuantitySaving(false);
+      setAutoQuantityConfirmingDraftKey("");
     }
   }
 
@@ -844,20 +1097,6 @@ export default function TrackingDiario() {
       return;
     }
     void persistTrackingDrafts(meal, trackingDraftProposals(drafts, []));
-  }
-
-  function applyAutomaticQuantities(proposals = []) {
-    if (!quantityPlannerMeal) return;
-    const draftKey = trackingDraftKey(date, quantityPlannerMeal.id);
-    setTrackingFoodDrafts((current) => ({
-      ...current,
-      [draftKey]: applyTrackingDraftProposals(current[draftKey] || [], proposals),
-    }));
-    setQuantityPlannerMeal(null);
-    setToast({
-      type: "success",
-      message: "Propuesta aplicada. Revisala y tocá Confirmar consumo para registrarla.",
-    });
   }
 
   return (
@@ -971,9 +1210,25 @@ export default function TrackingDiario() {
         <section className={`td-meals ${meals.length ? "" : "is-empty"}`}>
           {meals.length ? meals.map((meal) => {
             const items = log[meal.id] || [];
-            const mealDrafts = trackingFoodDrafts[trackingDraftKey(date, meal.id)] || [];
+            const mealDraftKey = trackingDraftKey(date, meal.id);
+            const mealDrafts = trackingFoodDrafts[mealDraftKey] || [];
+            const mealDraftConfirming = autoQuantitySaving &&
+              autoQuantityConfirmingDraftKey === mealDraftKey;
+            const mealDraftCalculating = autoQuantityCalculatingDraftKey === mealDraftKey;
+            const mealCalculationFeedback = quantityCalculationFeedback[mealDraftKey] || null;
+            const mealHasCalculatedAuto = mealDrafts.some((draft) => (
+              isTrackingDraftAutomatic(draft) && isTrackingDraftCalculated(draft)
+            ));
+            const mealHasAutomaticDrafts = mealDrafts.some(isTrackingDraftAutomatic);
+            const mealQuantityMode = trackingDraftsQuantityMode(mealDrafts);
+            const mealHasRows = items.length || mealDrafts.length || mealDraftConfirming;
             const mealTotals = totalItems(items);
             const mealDraftTotals = trackingDraftsNutritionTotals(mealDrafts);
+            const mealDraftDelta = trackingDraftsProjectedDelta(mealDrafts);
+            const mealHasReplacement = mealDrafts.some(isTrackingRegisteredReplacementDraft);
+            const replacedLogIds = new Set(mealDrafts
+              .map((draft) => String(draft.replacesLogId || ""))
+              .filter(Boolean));
             const mealMenuOpen = openMealMenu === meal.id;
             const mealHasTarget = hasMealTarget(meal.target);
             return (
@@ -984,9 +1239,10 @@ export default function TrackingDiario() {
                     <div>
                       <h2>{meal.label}</h2>
                       <p>{macroLine(mealTotals)}</p>
-                      {mealDraftTotals.kcal > 0 ? (
+                      {Math.abs(mealDraftDelta.kcal) > 0.5 ? (
                         <small className="td-mealDraftTotal">
-                          + {formatNumber(mealDraftTotals.kcal, 0)} kcal por confirmar
+                          {mealDraftDelta.kcal > 0 ? "+ " : "− "}
+                          {formatNumber(Math.abs(mealDraftDelta.kcal), 0)} kcal por confirmar
                         </small>
                       ) : null}
                       <div className="td-mealMeta">
@@ -1024,24 +1280,34 @@ export default function TrackingDiario() {
                   </div>
                 </div>
 
-                {items.length || mealDrafts.length ? (
+                {mealHasRows ? (
                   <div className="td-foodList" aria-label={`Alimentos de ${meal.label}`}>
-                    {items.map((item) => (
+                    {items.filter((item) => !replacedLogIds.has(String(item.id))).map((item) => (
                       <div className="td-food" key={item.id}>
                         <FoodLogThumb item={item} />
                         <div className="td-foodMain">
                           <strong>{item.nombreSnapshot}</strong>
-                          <span>{formatNumber(item.kcal)} kcal</span>
-                          <small>
-                            P {formatNumber(item.proteina, 1)}g · C {formatNumber(item.carbs, 1)}g · G {formatNumber(item.grasas, 1)}g
-                          </small>
+                          <span>
+                            {formatNumber(item.kcal)} kcal · P {formatNumber(item.proteina, 1)} · C {formatNumber(item.carbs, 1)} · G {formatNumber(item.grasas, 1)}
+                          </span>
                         </div>
                         <div className="td-foodActions">
-                          <b className="td-foodStateBadge is-registered">Registrado</b>
+                          <button
+                            type="button"
+                            className="td-foodStateToggle is-manual"
+                            onClick={() => markRegisteredFoodAutomatic(meal, item)}
+                            disabled={autoQuantitySaving || Boolean(autoQuantityCalculatingDraftKey)}
+                            aria-label={`Pasar ${item.nombreSnapshot} de Manual a Auto`}
+                            title="Incluir en el próximo recálculo"
+                          >
+                            Manual
+                          </button>
                           <label>
                             <input
                               key={`${item.id}-${item.cantidad}`}
                               defaultValue={item.cantidad}
+                              inputMode="decimal"
+                              step={trackingFoodRequiresWholeQuantity(item, item.unidad || "g") ? "1" : "any"}
                               onBlur={(event) => updateQuantity(meal, item, event.target.value)}
                               aria-label={`Cantidad de ${item.nombreSnapshot}`}
                             />
@@ -1061,52 +1327,70 @@ export default function TrackingDiario() {
                     {mealDrafts.map((draft) => {
                       const hasQuantity = hasTrackingDraftQuantity(draft);
                       const automatic = isTrackingDraftAutomatic(draft);
+                      const quantityResolved = !automatic || isTrackingDraftCalculated(draft);
+                      const draftNutrition = trackingDraftNutritionTotals(draft);
                       return (
                         <div className="td-food td-foodDraft" key={draft.id}>
                           <DraftFoodThumb draft={draft} />
                           <div className="td-foodMain">
                             <strong>{draft.name}</strong>
-                            <span>{hasQuantity ? `${formatNumber(draft.quantity, 1)} ${draft.unit}` : "Sin cantidad"}</span>
+                            <span>
+                              {hasQuantity && quantityResolved
+                                ? `${formatNumber(draftNutrition.kcal, 0)} kcal · P ${formatNumber(draftNutrition.proteina, 1)} · C ${formatNumber(draftNutrition.carbs, 1)} · G ${formatNumber(draftNutrition.grasas, 1)}`
+                                : "Pendiente"}
+                            </span>
+                            {isTrackingRegisteredReplacementDraft(draft) ? (
+                              <small>
+                                Reemplaza {formatNumber(draft.registeredQuantity, 0)} {draft.registeredUnit}
+                                {draft.status === "calculated" ? " · Cantidad calculada" : ""}
+                              </small>
+                            ) : draft.status === "calculated" ? (
+                              <small>Cantidad calculada</small>
+                            ) : null}
                           </div>
                           <div className="td-foodActions td-foodDraftControls">
-                            <b className={`td-foodStateBadge ${
-                              draft.status === "calculated"
-                                ? "is-calculated"
-                                : automatic ? "is-automatic" : "is-fixed"
-                            }`}>
-                              {automatic
-                                ? draft.status === "calculated"
-                                  ? "Calculado"
-                                  : "Auto"
-                                : "Fijo"}
-                            </b>
+                            <button
+                              type="button"
+                              className={`td-foodStateToggle ${automatic ? "is-automatic" : "is-manual"}`}
+                              onClick={() => toggleTrackingDraftMode(meal.id, draft.id)}
+                              disabled={autoQuantitySaving || mealDraftCalculating}
+                              aria-pressed={automatic}
+                              aria-label={automatic
+                                ? `Pasar ${draft.name} de Auto a Manual`
+                                : `Pasar ${draft.name} de Manual a Auto`}
+                            >
+                              {automatic ? "Auto" : "Manual"}
+                            </button>
                             <label>
                               <input
                                 value={draft.quantity}
                                 inputMode="decimal"
+                                step={trackingFoodRequiresWholeQuantity(
+                                  draft.food || draft,
+                                  draft.unit
+                                ) ? "1" : "any"}
                                 placeholder="—"
                                 onChange={(event) => updateTrackingDraft(meal.id, draft.id, event.target.value)}
-                                disabled={autoQuantitySaving}
+                                disabled={autoQuantitySaving || mealDraftCalculating}
+                                aria-invalid={hasQuantity && !isTrackingFoodQuantityPhysicallyValid(
+                                  draft.food || draft,
+                                  draft.unit,
+                                  draft.quantity
+                                )}
                                 aria-label={`Cantidad de ${draft.name}`}
                               />
                               <span>{draft.unit}</span>
                             </label>
                             <button
                               type="button"
-                              className={`td-draftModeBtn ${automatic ? "is-automatic" : "is-fixed"}`}
-                              onClick={() => toggleTrackingDraftMode(meal.id, draft.id)}
-                              disabled={autoQuantitySaving}
-                              aria-label={automatic
-                                ? `Dejar ${draft.name} como cantidad fija`
-                                : `Calcular automáticamente la cantidad de ${draft.name}`}
-                            >
-                              {automatic ? "Auto" : "Fijo"}
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => removeTrackingDraft(meal.id, draft.id)}
-                              disabled={autoQuantitySaving}
-                              aria-label={`Quitar ${draft.name}`}
+                              disabled={autoQuantitySaving || mealDraftCalculating}
+                              aria-label={isTrackingRegisteredReplacementDraft(draft)
+                                ? `Restaurar la cantidad anterior de ${draft.name}`
+                                : `Quitar ${draft.name}`}
+                              title={isTrackingRegisteredReplacementDraft(draft)
+                                ? "Restaurar cantidad anterior"
+                                : undefined}
                             >
                               <X size={15} aria-hidden="true" />
                             </button>
@@ -1114,6 +1398,17 @@ export default function TrackingDiario() {
                         </div>
                       );
                     })}
+                    {mealDraftConfirming ? (
+                      <div className="td-food td-foodDraft" role="status">
+                        <span className="td-foodThumb fallback" aria-hidden="true">
+                          <Loader2 size={18} className="td-spin" />
+                        </span>
+                        <div className="td-foodMain">
+                          <strong>Confirmando consumo</strong>
+                          <span>Guardando los alimentos de esta comida…</span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <button type="button" className="td-emptyMeal" onClick={() => openAdd(meal.id)}>
@@ -1123,23 +1418,74 @@ export default function TrackingDiario() {
                   </button>
                 )}
 
-                {items.length || mealDrafts.length ? (
+                {canAutoCalculateTrackingQuantities && mealHasAutomaticDrafts && !mealDraftConfirming ? (
+                  <div className="td-inlineQuantityTools">
+                    <label className="td-inlineQuantityMode">
+                      <SlidersHorizontal size={14} aria-hidden="true" />
+                      <span className="sr-only">Método de cálculo para {meal.label}</span>
+                      <select
+                        value={mealQuantityMode}
+                        onChange={(event) => changeTrackingMealQuantityMode(meal.id, event.target.value)}
+                        disabled={autoQuantitySaving || mealDraftCalculating}
+                        aria-label={`Método de cálculo para ${meal.label}`}
+                      >
+                        {TRACKING_QUANTITY_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {mealDraftCalculating ? (
+                      <span className="td-inlineQuantityStatus" role="status">
+                        <Loader2 size={14} className="td-spin" aria-hidden="true" />
+                        Calculando…
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {mealCalculationFeedback && !mealDraftConfirming ? (
+                  <div
+                    className={`td-mealCalculationNotice is-${mealCalculationFeedback.type}`}
+                    role={mealCalculationFeedback.type === "error" ? "alert" : "status"}
+                  >
+                    <AlertTriangle size={17} aria-hidden="true" />
+                    <span>
+                      <strong>{mealCalculationFeedback.title}</strong>
+                      <small>{mealCalculationFeedback.message}</small>
+                    </span>
+                  </div>
+                ) : null}
+
+                {mealHasRows && !mealDraftConfirming ? (
                   <div className={`td-mealInlineActions ${
                     mealDrafts.length ? "has-confirm" : canAutoCalculateTrackingQuantities ? "has-two" : "has-one"
                   }`}>
-                    <button type="button" className="td-secondaryBtn" onClick={() => openAdd(meal.id)}>
+                    <button
+                      type="button"
+                      className="td-secondaryBtn"
+                      onClick={() => openAdd(meal.id)}
+                      disabled={autoQuantitySaving || mealDraftCalculating}
+                    >
                       <Plus size={17} aria-hidden="true" />
                       Agregar alimento
                     </button>
-                    {canAutoCalculateTrackingQuantities ? (
+                    {canAutoCalculateTrackingQuantities && mealHasAutomaticDrafts ? (
                       <button
                         type="button"
-                        className="td-secondaryBtn td-calculateInlineBtn"
-                        onClick={() => openAutomaticQuantityCalculator(meal)}
-                        disabled={autoQuantitySaving}
+                        className={`td-secondaryBtn td-calculateInlineBtn ${mealHasCalculatedAuto ? "is-iconOnly" : ""}`}
+                        onClick={() => void calculateAutomaticQuantities(meal)}
+                        disabled={autoQuantitySaving || Boolean(autoQuantityCalculatingDraftKey)}
+                        aria-label={mealHasCalculatedAuto
+                          ? `Recalcular alimentos automáticos de ${meal.label}`
+                          : `Calcular cantidades automáticas de ${meal.label}`}
+                        title={mealHasCalculatedAuto ? "Recalcular alimentos Auto" : undefined}
                       >
-                        <Calculator size={17} aria-hidden="true" />
-                        Calcular cantidades automáticas
+                        {mealDraftCalculating
+                          ? <Loader2 size={17} className="td-spin" aria-hidden="true" />
+                          : mealHasCalculatedAuto
+                            ? <RefreshCw size={18} aria-hidden="true" />
+                            : <Calculator size={17} aria-hidden="true" />}
+                        {!mealHasCalculatedAuto ? "Calcular cantidades" : null}
                       </button>
                     ) : null}
                     {mealDrafts.length ? (
@@ -1147,7 +1493,7 @@ export default function TrackingDiario() {
                         type="button"
                         className="td-secondaryBtn td-discardDraftBtn"
                         onClick={() => discardTrackingDrafts(meal)}
-                        disabled={autoQuantitySaving}
+                        disabled={autoQuantitySaving || mealDraftCalculating}
                       >
                         <Trash2 size={17} aria-hidden="true" />
                         Descartar borrador
@@ -1158,7 +1504,7 @@ export default function TrackingDiario() {
                         type="button"
                         className="td-primaryBtn"
                         onClick={() => confirmTrackingDrafts(meal)}
-                        disabled={autoQuantitySaving || !trackingDraftsReadyToConfirm(mealDrafts)}
+                        disabled={autoQuantitySaving || mealDraftCalculating || !trackingDraftsReadyToConfirm(mealDrafts)}
                       >
                         {autoQuantitySaving
                           ? <Loader2 size={17} className="td-spin" aria-hidden="true" />
@@ -1169,10 +1515,16 @@ export default function TrackingDiario() {
                   </div>
                 ) : null}
 
-                {mealDrafts.length ? (
+                {mealDraftConfirming ? (
+                  <p className="td-mealDraftHint" role="status">
+                    Confirmando consumo. Si ocurre un error, el borrador se restaurará sin perder cambios.
+                  </p>
+                ) : mealDrafts.length ? (
                   <p className="td-mealDraftHint">
                     {trackingDraftsReadyToConfirm(mealDrafts)
-                      ? `Al confirmar, se sumarán ${formatNumber(mealDraftTotals.kcal, 0)} kcal al total superior del Tracking.`
+                      ? mealHasReplacement
+                        ? `Al confirmar, las cantidades reemplazarán las anteriores y el total cambiará ${mealDraftDelta.kcal >= 0 ? "+" : "−"}${formatNumber(Math.abs(mealDraftDelta.kcal), 0)} kcal.`
+                        : `Al confirmar, se sumarán ${formatNumber(mealDraftTotals.kcal, 0)} kcal al total superior del Tracking.`
                       : "Completá las cantidades manuales o calculá los alimentos marcados como Auto."}
                   </p>
                 ) : null}
@@ -1358,6 +1710,15 @@ export default function TrackingDiario() {
                     value={quantity}
                     onChange={(event) => setQuantity(event.target.value)}
                     inputMode="decimal"
+                    step={trackingFoodRequiresWholeQuantity(
+                      selectedFood,
+                      selectedFood.unidad || selectedFood.unit || "g"
+                    ) ? "1" : "any"}
+                    aria-invalid={String(quantity).trim() !== "" && !isTrackingFoodQuantityPhysicallyValid(
+                      selectedFood,
+                      selectedFood.unidad || selectedFood.unit || "g",
+                      quantity
+                    )}
                     placeholder={canAutoCalculateTrackingQuantities ? "Pendiente" : undefined}
                   />
                   <small>{selectedFood.unidad || selectedFood.unit || "g"}</small>
@@ -1419,28 +1780,6 @@ export default function TrackingDiario() {
           onClose={() => setGoalMealId("")}
           onSave={saveMealGoal}
           onRemove={() => removeMealGoal(goalMealId)}
-        />
-      ) : null}
-
-      {quantityPlannerMeal?.calculationDate === date ? (
-        <AutoQuantityPlannerDialog
-          date={date}
-          meal={quantityPlannerMeal}
-          target={quantityPlannerMeal.calculationTarget || emptyTotals()}
-          configured={quantityPlannerMeal.calculationConfigured || {}}
-          drafts={quantityPlannerMeal.calculationDrafts || []}
-          saving={autoQuantitySaving}
-          onClose={() => {
-            if (!autoQuantitySaving) {
-              setQuantityPlannerMeal(null);
-            }
-          }}
-          onApply={applyAutomaticQuantities}
-          onAddFood={() => {
-            const mealId = quantityPlannerMeal.id;
-            setQuantityPlannerMeal(null);
-            openAdd(mealId);
-          }}
         />
       ) : null}
 
@@ -2508,6 +2847,14 @@ function createWriteRequestId(date = "", mealId = "") {
     ? globalThis.crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `manual-completion:${date}:${String(mealId || "moment").slice(0, 60)}:${randomPart}`;
+}
+
+function trackingDraftBrowserStorage() {
+  try {
+    return globalThis.window?.localStorage || null;
+  } catch {
+    return null;
+  }
 }
 
 function useTrackingDialogKeyboard(panelRef, open, { onClose, disabled = false } = {}) {

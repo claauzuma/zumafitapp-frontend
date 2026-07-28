@@ -1,0 +1,1922 @@
+[
+  {
+    "screenshot": "before-meal-mobile-360x800.png",
+    "variant": "before",
+    "view": "meal",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "document": {
+      "clientWidth": 360,
+      "scrollWidth": 360
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 4,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 306,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 306,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-modal-mobile-360x800.png",
+    "variant": "before",
+    "view": "modal",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "document": {
+      "clientWidth": 360,
+      "scrollWidth": 360
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 4,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 306,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 306,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 360,
+          "height": 800
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 302,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 302,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 302,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 302,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 770,
+      "scrollHeight": 901,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "before-meal-mobile-390x844.png",
+    "variant": "before",
+    "view": "meal",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "document": {
+      "clientWidth": 390,
+      "scrollWidth": 390
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 5,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 336,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 336,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-modal-mobile-390x844.png",
+    "variant": "before",
+    "view": "modal",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "document": {
+      "clientWidth": 390,
+      "scrollWidth": 390
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 5,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 336,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 336,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 390,
+          "height": 844
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 332,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 332,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 332,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 332,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 814,
+      "scrollHeight": 901,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "before-meal-mobile-430x932.png",
+    "variant": "before",
+    "view": "meal",
+    "viewport": {
+      "width": 430,
+      "height": 932
+    },
+    "document": {
+      "clientWidth": 430,
+      "scrollWidth": 430
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 5,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 376,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 376,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-modal-mobile-430x932.png",
+    "variant": "before",
+    "view": "modal",
+    "viewport": {
+      "width": 430,
+      "height": 932
+    },
+    "document": {
+      "clientWidth": 430,
+      "scrollWidth": 430
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        127,
+        160,
+        160,
+        160,
+        160,
+        159
+      ],
+      "min": 127,
+      "max": 160,
+      "average": 154.33333333333334
+    },
+    "visibleRows": 5,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 376,
+          "height": 54
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 376,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 430,
+          "height": 932
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 372,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 372,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 372,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 372,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 883,
+      "scrollHeight": 883,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-meal-tablet-768x1024.png",
+    "variant": "before",
+    "view": "meal",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "document": {
+      "clientWidth": 768,
+      "scrollWidth": 768
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        85,
+        85,
+        85,
+        85,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 85,
+      "average": 84.83333333333333
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 220.64,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 220.64,
+          "height": 58
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-modal-tablet-768x1024.png",
+    "variant": "before",
+    "view": "modal",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "document": {
+      "clientWidth": 768,
+      "scrollWidth": 768
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        85,
+        85,
+        85,
+        85,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 85,
+      "average": 84.83333333333333
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 220.64,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 220.64,
+          "height": 58
+        },
+        {
+          "label": "Cerrar",
+          "width": 768,
+          "height": 1024
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 642,
+          "height": 46
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 252.8,
+          "height": 52
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 379.2,
+          "height": 52
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 252.8,
+          "height": 52
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 758,
+      "scrollHeight": 806,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "before-meal-desktop-1440x900.png",
+    "variant": "before",
+    "view": "meal",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        99,
+        85,
+        99,
+        85,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 99,
+      "average": 89.5
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 121,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 121,
+          "height": 58
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "before-modal-desktop-1440x900.png",
+    "variant": "before",
+    "view": "modal",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        99,
+        85,
+        99,
+        85,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 99,
+      "average": 89.5
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 121,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 121,
+          "height": 58
+        },
+        {
+          "label": "Cerrar",
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 642,
+          "height": 46
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 252.8,
+          "height": 52
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 379.2,
+          "height": 52
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 252.8,
+          "height": 52
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 758,
+      "scrollHeight": 806,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "after-meal-mobile-360x800.png",
+    "variant": "after",
+    "view": "meal",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "document": {
+      "clientWidth": 360,
+      "scrollWidth": 360
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 147,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 147,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "after-modal-mobile-360x800.png",
+    "variant": "after",
+    "view": "modal",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "document": {
+      "clientWidth": 360,
+      "scrollWidth": 360
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 147,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 147,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 360,
+          "height": 800
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 302,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 147.5,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 147.5,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 302,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 770,
+      "scrollHeight": 1060,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "after-meal-mobile-390x844.png",
+    "variant": "after",
+    "view": "meal",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "document": {
+      "clientWidth": 390,
+      "scrollWidth": 390
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 162,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 162,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "after-modal-mobile-390x844.png",
+    "variant": "after",
+    "view": "modal",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "document": {
+      "clientWidth": 390,
+      "scrollWidth": 390
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 162,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 162,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 390,
+          "height": 844
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 332,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 162.5,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 162.5,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 332,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 814,
+      "scrollHeight": 1060,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "after-meal-mobile-430x932.png",
+    "variant": "after",
+    "view": "meal",
+    "viewport": {
+      "width": 430,
+      "height": 932
+    },
+    "document": {
+      "clientWidth": 430,
+      "scrollWidth": 430
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 182,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 182,
+          "height": 54
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "after-modal-mobile-430x932.png",
+    "variant": "after",
+    "view": "modal",
+    "viewport": {
+      "width": 430,
+      "height": 932
+    },
+    "document": {
+      "clientWidth": 430,
+      "scrollWidth": 430
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        114,
+        114,
+        114,
+        120.89,
+        114,
+        113
+      ],
+      "min": 113,
+      "max": 120.89,
+      "average": 114.98166666666667
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 44,
+      "minHeight": 44,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 182,
+          "height": 66
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 182,
+          "height": 54
+        },
+        {
+          "label": "Cerrar",
+          "width": 430,
+          "height": 932
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 372,
+          "height": 44
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 182.5,
+          "height": 44
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 182.5,
+          "height": 44
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 372,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 902,
+      "scrollHeight": 1047,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "after-meal-tablet-768x1024.png",
+    "variant": "after",
+    "view": "meal",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "document": {
+      "clientWidth": 768,
+      "scrollWidth": 768
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        85,
+        85,
+        85,
+        87.89,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 87.89,
+      "average": 85.315
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 336.97,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 336.97,
+          "height": 58
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "after-modal-tablet-768x1024.png",
+    "variant": "after",
+    "view": "modal",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "document": {
+      "clientWidth": 768,
+      "scrollWidth": 768
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        85,
+        85,
+        85,
+        87.89,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 87.89,
+      "average": 85.315
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 336.97,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 336.97,
+          "height": 58
+        },
+        {
+          "label": "Cerrar",
+          "width": 768,
+          "height": 1024
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 642,
+          "height": 46
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 209.33,
+          "height": 56
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 209.33,
+          "height": 56
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 209.33,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 758,
+      "scrollHeight": 962,
+      "internalScroll": true
+    }
+  },
+  {
+    "screenshot": "after-meal-desktop-1440x900.png",
+    "variant": "after",
+    "view": "meal",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        101.67,
+        104.78,
+        121.67,
+        104.78,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 121.67,
+      "average": 100.31666666666666
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 8,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 187.5,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 187.5,
+          "height": 58
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 0,
+      "scrollHeight": 0,
+      "internalScroll": false
+    }
+  },
+  {
+    "screenshot": "after-modal-desktop-1440x900.png",
+    "variant": "after",
+    "view": "modal",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440
+    },
+    "horizontalOverflow": false,
+    "rows": {
+      "count": 6,
+      "heights": [
+        101.67,
+        104.78,
+        121.67,
+        104.78,
+        85,
+        84
+      ],
+      "min": 84,
+      "max": 121.67,
+      "average": 100.31666666666666
+    },
+    "visibleRows": 6,
+    "buttons": {
+      "count": 14,
+      "minWidth": 42,
+      "minHeight": 42,
+      "rects": [
+        {
+          "label": "Eliminar Arroz",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Pechuga de pollo con piel",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Queso cremoso",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Aceite de oliva extra virgen de descripción deliberadamente extensa",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Papas",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Eliminar Palta",
+          "width": 42,
+          "height": 42
+        },
+        {
+          "label": "Calcular cantidades",
+          "width": 187.5,
+          "height": 70
+        },
+        {
+          "label": "Confirmar consumo",
+          "width": 187.5,
+          "height": 58
+        },
+        {
+          "label": "Cerrar",
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "label": "Cerrar",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "label": "Recalcular restante",
+          "width": 642,
+          "height": 46
+        },
+        {
+          "label": "Agregar alimento",
+          "width": 209.33,
+          "height": 56
+        },
+        {
+          "label": "Volver al borrador",
+          "width": 209.33,
+          "height": 56
+        },
+        {
+          "label": "Usar esta propuesta",
+          "width": 209.33,
+          "height": 44
+        }
+      ]
+    },
+    "modal": {
+      "clientHeight": 758,
+      "scrollHeight": 962,
+      "internalScroll": true
+    }
+  }
+]

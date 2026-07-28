@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   Calculator,
   CheckCircle2,
+  ChevronDown,
+  Info,
   Loader2,
   Plus,
   Sparkles,
@@ -13,11 +15,28 @@ import {
 import { formatNumber } from "../nutricion/nutricionUtils.js";
 import { calculateTrackingQuantities } from "./trackingApi.js";
 import { manualDayStatusText, nutritionTotals } from "./manualDayCompletion.js";
-import { buildTrackingQuantityReview } from "./trackingQuantityReview.js";
 import {
+  buildTrackingQuantityReview,
+  trackingQuantityCaloriePrecisionKind,
+  trackingQuantityInvalidFoods,
+  trackingQuantityInvalidFoodsMessage,
+  trackingQuantitySecondaryMacroLimitations,
+} from "./trackingQuantityReview.js";
+import {
+  buildTrackingQuantityCalculationRequest,
+  hasTrackingDraftQuantity,
+  isTrackingFoodQuantityPhysicallyValid,
   isTrackingDraftAutomatic,
+  isTrackingDraftCalculated,
+  normalizeTrackingQuantityMode,
+  TRACKING_QUANTITY_MODE_CALORIE_FILL,
+  TRACKING_QUANTITY_MODE_OPTIONS,
   trackingDraftCalculationPayload,
   trackingDraftProposals,
+  trackingDraftsQuantityMode,
+  trackingFoodRequiresWholeQuantity,
+  updateTrackingDraftsQuantityMode,
+  updateTrackingFoodDraftQuantity,
 } from "./trackingQuantityDrafts.js";
 
 function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
@@ -29,7 +48,7 @@ function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
 
   useEffect(() => {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const first = panelRef.current?.querySelector("[data-dialog-initial-focus]:not([disabled]), button:not([disabled]), input:not([disabled])");
+    const first = panelRef.current?.querySelector("[data-dialog-initial-focus]:not(:disabled), button:not(:disabled), input:not(:disabled)");
     (first || panelRef.current)?.focus?.();
 
     function onKeyDown(event) {
@@ -40,8 +59,8 @@ function useDialogKeyboard(panelRef, { onClose, disabled = false } = {}) {
       }
       if (event.key !== "Tab" || !panelRef.current) return;
       const focusable = [...panelRef.current.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )];
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      )].filter((element) => element.tabIndex >= 0);
       if (!focusable.length) return;
       const firstFocusable = focusable[0];
       const lastFocusable = focusable[focusable.length - 1];
@@ -95,7 +114,8 @@ export function ManualCompletionTrackingCard({
     ? Math.max(0, Math.round((registeredKcal / availableKcal) * 100))
     : 0;
   const ringPercent = Math.min(100, registeredPercent);
-  const pendingKcal = Math.max(0, Number(pendingTotals?.kcal) || 0);
+  const pendingKcal = Number(pendingTotals?.kcal) || 0;
+  const hasPendingKcalChange = Math.abs(pendingKcal) > 0.5;
 
   return (
     <section className={`td-manualCompletionCard ${statusTone(progress.status)}`}>
@@ -113,9 +133,10 @@ export function ManualCompletionTrackingCard({
               {formatNumber(registeredKcal, 0)} de {formatNumber(availableKcal, 0)} kcal registradas
             </small>
           ) : null}
-          {pendingKcal > 0 ? (
+          {hasPendingKcalChange ? (
             <small className="td-manualCompletionPendingLine" role="status">
-              + {formatNumber(pendingKcal, 0)} kcal por confirmar · Total diario proyectado {formatNumber(projectedTotals?.kcal, 0)} kcal
+              {pendingKcal > 0 ? "+ " : "− "}
+              {formatNumber(Math.abs(pendingKcal), 0)} kcal por confirmar · Total diario proyectado {formatNumber(projectedTotals?.kcal, 0)} kcal
             </small>
           ) : null}
         </div>
@@ -224,6 +245,14 @@ function signedNutritionValue(value, digits = 1) {
   return `${number > 0 ? "+" : ""}${formatNumber(number, digits)}`;
 }
 
+function macroShortLabel(macro = "") {
+  const normalized = String(macro).trim().toLowerCase();
+  if (["p", "protein", "proteina", "proteína"].includes(normalized)) return "P";
+  if (["c", "carbs", "carbohidratos"].includes(normalized)) return "C";
+  if (["g", "fat", "grasas"].includes(normalized)) return "G";
+  return String(macro || "Macro");
+}
+
 export function AutoQuantityPlannerDialog({
   date,
   meal,
@@ -234,19 +263,43 @@ export function AutoQuantityPlannerDialog({
   onClose,
   onApply,
   onAddFood,
+  onDraftsChange,
 }) {
-  const [proposals, setProposals] = useState([]);
+  const initialNeedsCalculationRef = useRef(
+    drafts.some((draft) => isTrackingDraftAutomatic(draft) && !isTrackingDraftCalculated(draft))
+  );
+  const [workingDrafts, setWorkingDrafts] = useState(() => drafts);
+  const [trackingQuantityMode, setTrackingQuantityMode] = useState(
+    () => trackingDraftsQuantityMode(drafts)
+  );
+  const [proposals, setProposals] = useState(() => (
+    initialNeedsCalculationRef.current ? [] : trackingDraftProposals(drafts, [])
+  ));
   const [calculationResult, setCalculationResult] = useState(null);
-  const [calculating, setCalculating] = useState(true);
+  const [calculatedMode, setCalculatedMode] = useState(() => {
+    const calculatedDraft = drafts.find(isTrackingDraftCalculated);
+    if (!calculatedDraft) return null;
+    return normalizeTrackingQuantityMode(
+      calculatedDraft.calculatedWithTrackingQuantityMode,
+      trackingDraftsQuantityMode(drafts)
+    );
+  });
+  const [calculating, setCalculating] = useState(initialNeedsCalculationRef.current);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => (
+    initialNeedsCalculationRef.current
+      ? ""
+      : "El borrador conserva la última propuesta. Recalculá sólo si querés redistribuir el restante."
+  ));
+  const [interactionStatus, setInteractionStatus] = useState("");
+  const [proposalManuallyEdited, setProposalManuallyEdited] = useState(false);
   const panelRef = useRef(null);
   const autoStartedRef = useRef(false);
   useDialogKeyboard(panelRef, { onClose, disabled: saving || calculating });
   const totals = useMemo(() => proposalTotals(proposals), [proposals]);
   const calculationInput = useMemo(
-    () => trackingDraftCalculationPayload(drafts),
-    [drafts]
+    () => trackingDraftCalculationPayload(workingDrafts),
+    [workingDrafts]
   );
   const targetAfterFixed = Math.max(
     0,
@@ -261,11 +314,107 @@ export function AutoQuantityPlannerDialog({
     }),
     [calculationResult?.optimization, configured, target, totals]
   );
-  const maxConstraintsLimited = calculationResult?.optimization?.maxConstraintsLimited === true;
-  const visibleWarnings = (calculationResult?.warnings || []).filter((warning) => !(
-    maxConstraintsLimited &&
-    warning === "Las cantidades máximas configuradas para algunos alimentos limitan esta propuesta."
-  ));
+  const optimization = calculationResult?.optimization || null;
+  const resultMode = optimization?.policy === "tracking_calorie_fill_v1"
+    ? TRACKING_QUANTITY_MODE_CALORIE_FILL
+    : calculatedMode || trackingQuantityMode;
+  const calorieFillResult = resultMode === TRACKING_QUANTITY_MODE_CALORIE_FILL;
+  const modeNeedsRecalculation = Boolean(
+    calculatedMode && calculatedMode !== trackingQuantityMode
+  );
+  const calorieDeficit = Math.max(0, (Number(target?.kcal) || 0) - totals.kcal);
+  const calorieTolerance = calorieFillResult
+    ? Math.max(0, Number(optimization?.calorieTolerance) || 1)
+    : 0;
+  const calorieTargetCompleted = calorieFillResult &&
+    review.respectsCalorieCeiling &&
+    (
+      (!proposalManuallyEdited && optimization?.calorieTargetCompleted === true) ||
+      calorieDeficit <= calorieTolerance + 1e-6
+    );
+  const maxConstraintsLimited = !calorieFillResult && optimization?.maxConstraintsLimited === true;
+  const exceededRecommendedPortions = calorieFillResult &&
+    !proposalManuallyEdited &&
+    Array.isArray(optimization?.exceededRecommendedPortions)
+    ? optimization.exceededRecommendedPortions
+    : [];
+  const invalidFoods = calorieFillResult
+    ? trackingQuantityInvalidFoods(optimization)
+    : [];
+  const macroLimitations = calorieFillResult && !proposalManuallyEdited
+    ? trackingQuantitySecondaryMacroLimitations(optimization, review.proteinLevel !== null)
+    : [];
+  const caloriePrecisionKind = calorieFillResult && !proposalManuallyEdited
+    ? trackingQuantityCaloriePrecisionKind(optimization)
+    : "";
+  const discreteLimited = caloriePrecisionKind === "discrete";
+  const granularityLimited = caloriePrecisionKind === "granularity";
+  const selectedModeOption = TRACKING_QUANTITY_MODE_OPTIONS.find(
+    (option) => option.value === trackingQuantityMode
+  ) || TRACKING_QUANTITY_MODE_OPTIONS[0];
+  const visibleWarnings = (calculationResult?.warnings || []).filter((warning) => {
+    if (
+      maxConstraintsLimited &&
+      warning === "Las cantidades máximas configuradas para algunos alimentos limitan esta propuesta."
+    ) return false;
+    if (calorieFillResult && /m[aá]xim|porci[oó]n recomendada/i.test(warning)) return false;
+    if (review.proteinLevel && /prote[ií]na/i.test(warning)) return false;
+    if (macroLimitations.length && /macro|carbohidrato|grasa/i.test(warning)) return false;
+    if (discreteLimited && /unidad(?:es)? entera/i.test(warning)) return false;
+    if (granularityLimited && /granular|precisi[oó]n|paso f[ií]sico/i.test(warning)) return false;
+    if (invalidFoods.length && /informaci[oó]n cal[oó]rica|kcal.*inv[aá]lid/i.test(warning)) return false;
+    return true;
+  });
+
+  const replaceWorkingDrafts = useCallback((nextDrafts) => {
+    setWorkingDrafts(nextDrafts);
+    onDraftsChange?.(nextDrafts);
+  }, [onDraftsChange]);
+
+  const changeTrackingQuantityMode = useCallback((nextMode) => {
+    const normalizedMode = normalizeTrackingQuantityMode(nextMode);
+    if (normalizedMode === trackingQuantityMode) return;
+    replaceWorkingDrafts(updateTrackingDraftsQuantityMode(workingDrafts, normalizedMode));
+    setTrackingQuantityMode(normalizedMode);
+    setError("");
+    setInteractionStatus(
+      normalizedMode === calculatedMode
+        ? "La propuesta visible corresponde nuevamente al método seleccionado."
+        : "Método cambiado. Conservamos alimentos y cantidades; tocá Recalcular restante para actualizar la propuesta."
+    );
+  }, [calculatedMode, replaceWorkingDrafts, trackingQuantityMode, workingDrafts]);
+
+  const editProposalQuantity = useCallback((proposalIndex, nextQuantity) => {
+    const editedProposal = proposals[proposalIndex];
+    if (editedProposal && !isTrackingFoodQuantityPhysicallyValid(
+      editedProposal.food || {},
+      editedProposal.unit,
+      nextQuantity,
+      { allowEmpty: true }
+    )) {
+      setInteractionStatus(
+        `${foodName(editedProposal.food)} se mide en unidades enteras. Ingresá un número entero.`
+      );
+      return;
+    }
+    setProposals((current) => current.map((proposal, index) => (
+      index === proposalIndex
+        ? { ...proposal, quantity: nextQuantity, fixed: Number(nextQuantity) > 0 }
+        : proposal
+    )));
+    setProposalManuallyEdited(true);
+    if (!(Number(nextQuantity) > 0) || !editedProposal) return;
+
+    const nextDrafts = workingDrafts.map((draft) => (
+      draft.id === editedProposal.draftId
+        ? updateTrackingFoodDraftQuantity(draft, nextQuantity)
+        : draft
+    ));
+    replaceWorkingDrafts(nextDrafts);
+    setInteractionStatus(
+      `${foodName(editedProposal.food)} quedó como Manual. Recalculá para distribuir únicamente el restante entre los alimentos Auto.`
+    );
+  }, [proposals, replaceWorkingDrafts, workingDrafts]);
 
   const calculate = useCallback(async () => {
     if (!calculationInput.pendingFoods.length) {
@@ -273,52 +422,113 @@ export function AutoQuantityPlannerDialog({
       setError("");
       setMessage("Todos los alimentos ya tienen una cantidad. Podés confirmarlos sin recalcular.");
       setCalculationResult(null);
-      setProposals(trackingDraftProposals(drafts, []));
+      setCalculatedMode(trackingQuantityMode);
+      setProposals(trackingDraftProposals(workingDrafts, []));
       return;
     }
     setCalculating(true);
     setError("");
     setMessage("");
-    setProposals([]);
-    setCalculationResult(null);
+    setInteractionStatus("");
     try {
-      const response = await calculateTrackingQuantities({
+      const response = await calculateTrackingQuantities(buildTrackingQuantityCalculationRequest({
         date,
         target,
-        mode: "kcalProteina",
-        generationType: "selectedOnly",
+        trackingQuantityMode,
         fixedFoods: calculationInput.fixedFoods,
         pendingFoods: calculationInput.pendingFoods,
-        options: { redondear: true, usarMinMax: true },
-      });
+      }));
+      const responseMode = response?.optimization?.policy === "tracking_calorie_fill_v1"
+        ? TRACKING_QUANTITY_MODE_CALORIE_FILL
+        : normalizeTrackingQuantityMode(
+            response?.optimization?.requestedMode,
+            trackingQuantityMode
+          );
+      const invalidFoodsMessage = trackingQuantityInvalidFoodsMessage(response?.optimization);
+      if (invalidFoodsMessage) {
+        const validProposals = Array.isArray(response?.foods)
+          ? trackingDraftProposals(workingDrafts, response.foods)
+          : [];
+        setProposals(validProposals);
+        setProposalManuallyEdited(false);
+        setCalculationResult(response);
+        setCalculatedMode(responseMode);
+        setMessage("");
+        setError("");
+        return;
+      }
       if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
         throw new Error(response?.message || "No se encontró una combinación razonable.");
       }
-      const nextProposals = trackingDraftProposals(drafts, response.foods);
-      if (nextProposals.length !== drafts.length) {
+      const nextProposals = trackingDraftProposals(workingDrafts, response.foods);
+      if (nextProposals.length !== workingDrafts.length) {
         throw new Error("No se pudo obtener una cantidad válida para todos los alimentos pendientes.");
       }
       setProposals(nextProposals);
+      setProposalManuallyEdited(false);
       setCalculationResult(response);
-      setMessage(response.message || "Propuesta calculada. Podés ajustar las cantidades antes de confirmar.");
+      setCalculatedMode(responseMode);
+      setMessage("Propuesta calculada. Podés ajustar las cantidades antes de confirmar.");
     } catch (calculationError) {
-      setError(calculationError?.message || "No se pudieron calcular las cantidades.");
+      const errorOptimization = calculationError?.optimization || null;
+      const specificInvalidFoodsMessage = trackingQuantityInvalidFoodsMessage(errorOptimization);
+      if (errorOptimization) {
+        const errorResponse = {
+          status: calculationError?.status || "error",
+          message: calculationError?.message || "",
+          warnings: Array.isArray(calculationError?.warnings) ? calculationError.warnings : [],
+          foods: Array.isArray(calculationError?.foods) ? calculationError.foods : [],
+          optimization: errorOptimization,
+        };
+        setCalculationResult(errorResponse);
+        setCalculatedMode(
+          errorOptimization.policy === "tracking_calorie_fill_v1"
+            ? TRACKING_QUANTITY_MODE_CALORIE_FILL
+            : trackingQuantityMode
+        );
+        setProposals(trackingDraftProposals(workingDrafts, errorResponse.foods));
+        setProposalManuallyEdited(false);
+      }
+      setError(specificInvalidFoodsMessage
+        ? ""
+        : calculationError?.message || "No se pudieron calcular las cantidades.");
     } finally {
       setCalculating(false);
     }
-  }, [calculationInput, date, drafts, target]);
+  }, [calculationInput, date, target, trackingQuantityMode, workingDrafts]);
 
   useEffect(() => {
     if (autoStartedRef.current) return;
     autoStartedRef.current = true;
-    void calculate();
+    if (initialNeedsCalculationRef.current) void calculate();
   }, [calculate]);
+
+  const hasInvalidProposal = proposals.some((proposal) => (
+    !(Number(proposal.quantity) > 0) ||
+    !isTrackingFoodQuantityPhysicallyValid(
+      proposal.food || {},
+      proposal.unit,
+      proposal.quantity
+    )
+  ));
+  const proposalCoversAllDrafts = proposals.length === workingDrafts.length;
+  const hasPreviousProposalOrFixed = proposals.length > 0 ||
+    workingDrafts.some(hasTrackingDraftQuantity);
+  const calculateLabel = hasPreviousProposalOrFixed
+    ? "Recalcular restante"
+    : error ? "Reintentar cálculo" : "Calcular cantidades";
 
   return (
     <section className="td-modalBackdrop td-bottomSheet td-autoQuantityBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-auto-quantity-title">
-      <button type="button" className="td-dialogBackdropButton" onClick={saving || calculating ? undefined : onClose} aria-label="Cerrar" />
+      <button
+        type="button"
+        className="td-dialogBackdropButton"
+        onClick={onClose}
+        disabled={saving || calculating}
+        aria-label="Cerrar"
+      />
       <div className="td-modal td-autoQuantityModal" ref={panelRef} tabIndex={-1}>
-        <div className="td-modalTop">
+        <div className="td-modalTop td-autoQuantityHeader">
           <div>
             <span className="td-kicker">
               <Calculator size={14} aria-hidden="true" />
@@ -332,6 +542,37 @@ export function AutoQuantityPlannerDialog({
           </button>
         </div>
 
+        <fieldset className="td-quantityModeSelector" disabled={saving || calculating}>
+          <legend>Método de cálculo</legend>
+          <div className="td-quantityModeSegments">
+            {TRACKING_QUANTITY_MODE_OPTIONS.map((option) => (
+              <label
+                className={trackingQuantityMode === option.value ? "is-active" : ""}
+                key={option.value}
+              >
+                <input
+                  type="radio"
+                  name={`tracking-quantity-mode-${meal?.id || "meal"}`}
+                  value={option.value}
+                  checked={trackingQuantityMode === option.value}
+                  tabIndex={trackingQuantityMode === option.value ? 0 : -1}
+                  onChange={(event) => changeTrackingQuantityMode(event.target.value)}
+                  aria-describedby="td-quantity-mode-description"
+                  data-dialog-initial-focus={trackingQuantityMode === option.value ? "true" : undefined}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+          <p id="td-quantity-mode-description">
+            {selectedModeOption.description}
+          </p>
+        </fieldset>
+
+        {interactionStatus ? (
+          <p className="td-autoQuantityModeStatus" role="status">{interactionStatus}</p>
+        ) : null}
+
         <div className="td-autoQuantityDrafts" aria-label="Alimentos de esta comida">
           <div className="td-autoQuantityDraftsTop">
             <strong>Alimentos a preparar</strong>
@@ -339,7 +580,7 @@ export function AutoQuantityPlannerDialog({
               {calculationInput.fixedFoods.length} fijos · {calculationInput.pendingFoods.length} pendientes
             </span>
           </div>
-          {drafts.map((draft) => (
+          {workingDrafts.map((draft) => (
             <div className="td-autoQuantityDraftRow" key={draft.id}>
               <span>
                 <strong>{draft.name || foodName(draft.food)}</strong>
@@ -352,7 +593,7 @@ export function AutoQuantityPlannerDialog({
                 </small>
               </span>
               <b className={isTrackingDraftAutomatic(draft) ? "is-pending" : "is-fixed"}>
-                {isTrackingDraftAutomatic(draft) ? "Auto" : "Fijo"}
+                {isTrackingDraftAutomatic(draft) ? "Auto" : "Manual"}
               </b>
             </div>
           ))}
@@ -374,48 +615,149 @@ export function AutoQuantityPlannerDialog({
         {error ? <div className="td-error" role="alert">{error}</div> : null}
         {message ? <p className="td-autoQuantityMessage">{message}</p> : null}
 
-        {calculationResult?.optimization ? (
-          <div className="td-autoQuantityPolicy" role="status">
-            <span>
-              <strong>
-                {calculationResult.optimization.normalCalorieZoneReached
-                  ? `Zona calórica ${formatNumber(calculationResult.optimization.calorieZoneFloor, 0)}–${formatNumber(calculationResult.optimization.calorieCeiling, 0)} kcal`
-                  : `Mejor nivel calórico alcanzable: ${formatNumber(calculationResult.optimization.bestReachableCalories, 0)} kcal`}
-              </strong>
-              <small>El techo de {formatNumber(calculationResult.optimization.calorieCeiling, 0)} kcal nunca se supera.</small>
-            </span>
-            {calculationResult.optimization.constraints?.length ? (
-              <ul aria-label="Restricciones aplicadas">
-                {calculationResult.optimization.constraints.map((constraint, index) => {
-                  const draft = drafts.find((entry) => (
-                    String(entry.name || foodName(entry.food)).trim().toLowerCase() ===
-                    String(constraint.name || "").trim().toLowerCase()
-                  ));
-                  const unit = draft?.unit || "g";
-                  return (
-                    <li key={`${constraint.name}-${index}`}>
-                      <strong>{constraint.name}</strong>: {formatNumber(constraint.min, 1)}–{formatNumber(constraint.max, 1)} {unit}, paso {formatNumber(constraint.step, 1)}
+        {optimization && calorieFillResult ? (
+          <div className="td-autoQuantityFeedback" aria-label="Resultado del método Completar calorías">
+            {calorieTargetCompleted ? (
+              <div className="td-autoQuantityCalorieSuccess" role="status">
+                <CheckCircle2 size={18} aria-hidden="true" />
+                <span>
+                  <strong>Objetivo calórico completado.</strong>
+                  <small>La propuesta queda a {formatNumber(calorieDeficit, 1)} kcal del objetivo sin superar el techo.</small>
+                </span>
+              </div>
+            ) : discreteLimited ? (
+              <div className="td-autoQuantityDiscreteInfo" role="status">
+                <Info size={18} aria-hidden="true" />
+                <span>
+                  <strong>Quedan aproximadamente {formatNumber(calorieDeficit, 0)} kcal.</strong>
+                  <small>Con las unidades enteras seleccionadas no es posible acercarse más.</small>
+                </span>
+              </div>
+            ) : granularityLimited ? (
+              <div className="td-autoQuantityDiscreteInfo" role="status">
+                <Info size={18} aria-hidden="true" />
+                <span>
+                  <strong>Quedan aproximadamente {formatNumber(calorieDeficit, 1)} kcal.</strong>
+                  <small>Con la precisión física disponible no es posible acercarse más sin superar el techo.</small>
+                </span>
+              </div>
+            ) : calorieDeficit > calorieTolerance && !invalidFoods.length ? (
+              <div className="td-autoQuantityCalorieWarning" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>
+                  <strong>Todavía faltan aproximadamente {formatNumber(calorieDeficit, 0)} kcal.</strong>
+                  <small>Revisá los alimentos sin información válida o agregá otra opción antes de continuar.</small>
+                </span>
+              </div>
+            ) : null}
+
+            {exceededRecommendedPortions.length ? (
+              <details className="td-autoQuantityInfoDetails">
+                <summary>
+                  <Info size={17} aria-hidden="true" />
+                  Porciones recomendadas superadas
+                  <ChevronDown size={16} aria-hidden="true" />
+                </summary>
+                <p>Es intencional en este método. Revisá las cantidades antes de confirmar.</p>
+                <ul>
+                  {exceededRecommendedPortions.map((portion, index) => (
+                    <li key={`${portion.foodId || portion.name}-${index}`}>
+                      <strong>{portion.name || "Alimento"}</strong>: {formatNumber(portion.proposedQuantity, 1)} {portion.unit || ""}
+                      {Number(portion.recommendedMax) > 0
+                        ? ` (porción recomendada hasta ${formatNumber(portion.recommendedMax, 1)} ${portion.unit || ""})`
+                        : ""}
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+
+            {macroLimitations.length ? (
+              <div className="td-autoQuantityMacroInfo" role="status">
+                <Info size={18} aria-hidden="true" />
+                <span>
+                  <strong>No es posible acercarse a todos los macronutrientes con estos alimentos.</strong>
+                  <small>
+                    {macroLimitations.map((limitation) => (
+                      `${macroShortLabel(limitation.macro)}: faltan ${formatNumber(limitation.deficit, 1)} g`
+                    )).join(" · ")}
+                  </small>
+                </span>
+              </div>
+            ) : null}
+
+            {invalidFoods.length ? (
+              <div className="td-autoQuantityInvalidFoods" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>
+                  <strong>No se pudo calcular una cantidad para algunos alimentos.</strong>
+                  <small>
+                    {invalidFoods.map((food) => (
+                      `${food.name || "Alimento"}: no tiene información calórica válida`
+                    )).join(". ")}
+                  </small>
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {optimization && !calorieFillResult ? (
+          <div className="td-autoQuantityPolicy">
+            <span role="status">
+              <strong>
+                {optimization.normalCalorieZoneReached
+                  ? `Zona calórica ${formatNumber(optimization.calorieZoneFloor, 0)}–${formatNumber(optimization.calorieCeiling, 0)} kcal`
+                  : `Todavía faltan aproximadamente ${formatNumber(calorieDeficit, 0)} kcal para completar esta comida.`}
+              </strong>
+              <small>El techo de {formatNumber(optimization.calorieCeiling, 0)} kcal nunca se supera.</small>
+            </span>
+            {optimization.constraints?.length ? (
+              <details className="td-autoQuantityConstraintDetails" open>
+                <summary>
+                  Restricciones aplicadas
+                  <ChevronDown size={16} aria-hidden="true" />
+                </summary>
+                <ul aria-label="Restricciones aplicadas">
+                  {optimization.constraints.map((constraint, index) => {
+                    const draft = workingDrafts.find((entry) => (
+                      String(entry.name || foodName(entry.food)).trim().toLowerCase() ===
+                      String(constraint.name || "").trim().toLowerCase()
+                    ));
+                    const unit = constraint.unit || draft?.unit || "g";
+                    return (
+                      <li key={`${constraint.foodId || constraint.name}-${index}`}>
+                        <strong>{constraint.name}</strong>: {formatNumber(constraint.min, 1)}–{formatNumber(constraint.max, 1)} {unit}, paso {formatNumber(constraint.step, 1)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
             ) : null}
             {maxConstraintsLimited ? (
               <div className="td-autoQuantityConstraintWarning" role="alert">
                 <AlertTriangle size={18} aria-hidden="true" />
                 <span>
-                  <strong>Las cantidades máximas configuradas para algunos alimentos limitan esta propuesta.</strong>
+                  <strong>Los alimentos seleccionados alcanzaron sus cantidades máximas configuradas.</strong>
                   <small>
-                    {(calculationResult.optimization.limitingConstraints || []).map((constraint) => {
-                      const draft = drafts.find((entry) => (
+                    {(optimization.limitingConstraints || []).map((constraint) => {
+                      const draft = workingDrafts.find((entry) => (
                         String(entry.name || foodName(entry.food)).trim().toLowerCase() ===
                         String(constraint.name || "").trim().toLowerCase()
                       ));
-                      const unit = draft?.unit || "g";
-                      const targets = (constraint.targets || []).join(" y ");
-                      return `${constraint.name}: máximo ${formatNumber(constraint.max, 1)} ${unit}${targets ? `; limita ${targets}` : ""}`;
+                      const unit = constraint.unit || draft?.unit || "g";
+                      return `${constraint.name}: máximo ${formatNumber(constraint.max, 1)} ${unit}`;
                     }).join(". ")}
                   </small>
+                  {trackingQuantityMode !== TRACKING_QUANTITY_MODE_CALORIE_FILL ? (
+                    <button
+                      type="button"
+                      className="td-unlimitedCaloriesCta"
+                      onClick={() => changeTrackingQuantityMode(TRACKING_QUANTITY_MODE_CALORIE_FILL)}
+                    >
+                      Completar calorías sin límites
+                    </button>
+                  ) : null}
                 </span>
               </div>
             ) : null}
@@ -436,11 +778,14 @@ export function AutoQuantityPlannerDialog({
                   <input
                     value={proposal.quantity}
                     inputMode="decimal"
-                    readOnly={proposal.fixed}
+                    step={trackingFoodRequiresWholeQuantity(proposal.food, proposal.unit) ? "1" : "any"}
+                    aria-invalid={!isTrackingFoodQuantityPhysicallyValid(
+                      proposal.food || {},
+                      proposal.unit,
+                      proposal.quantity
+                    )}
                     aria-label={`Cantidad de ${foodName(proposal.food)}`}
-                    onChange={(event) => setProposals((current) => current.map((entry, entryIndex) => (
-                      entryIndex === index ? { ...entry, quantity: event.target.value } : entry
-                    )))}
+                    onChange={(event) => editProposalQuantity(index, event.target.value)}
                   />
                   <span>{proposal.unit}</span>
                 </label>
@@ -450,7 +795,11 @@ export function AutoQuantityPlannerDialog({
               <strong>{formatNumber(totals.kcal, 0)} kcal</strong>
               <span>P {formatNumber(totals.proteina, 1)} · C {formatNumber(totals.carbs, 1)} · G {formatNumber(totals.grasas, 1)}</span>
             </div>
-            <div className="td-autoQuantityComparison" aria-label="Comparación entre objetivo y propuesta">
+            <details className="td-autoQuantityComparison">
+              <summary>
+                Ver detalle nutricional
+                <ChevronDown size={16} aria-hidden="true" />
+              </summary>
               <div className="td-autoQuantityComparisonHead">
                 <strong>Resultado nutricional</strong>
                 <span>Objetivo</span>
@@ -465,7 +814,7 @@ export function AutoQuantityPlannerDialog({
                   <b>{signedNutritionValue(row.difference, row.key === "kcal" ? 0 : 1)} {row.unit}</b>
                 </div>
               ))}
-            </div>
+            </details>
             {!review.respectsCalorieCeiling ? (
               <div className="td-autoQuantityCalorieWarning" role="alert">
                 <AlertTriangle size={18} aria-hidden="true" />
@@ -475,7 +824,7 @@ export function AutoQuantityPlannerDialog({
                 </span>
               </div>
             ) : null}
-            {review.requiresCalorieZoneWarning ? (
+            {!calorieFillResult && review.requiresCalorieZoneWarning && !maxConstraintsLimited ? (
               <div className="td-autoQuantityCalorieWarning" role="alert">
                 <AlertTriangle size={18} aria-hidden="true" />
                 <span>
@@ -518,41 +867,54 @@ export function AutoQuantityPlannerDialog({
           </div>
         ) : null}
 
-        {!calculating && calculationInput.pendingFoods.length ? (
-          <button type="button" className="td-calculateQuantityBtn" onClick={calculate} disabled={saving}>
-            <Calculator size={18} aria-hidden="true" />
-            {proposals.length ? "Recalcular propuesta" : "Reintentar cálculo"}
-          </button>
-        ) : null}
+        <div className="td-autoQuantityFooter">
+          {!calculating && calculationInput.pendingFoods.length ? (
+            <button
+              type="button"
+              className="td-calculateQuantityBtn"
+              onClick={calculate}
+              disabled={saving || hasInvalidProposal}
+            >
+              <Calculator size={18} aria-hidden="true" />
+              {calculateLabel}
+            </button>
+          ) : null}
 
-        <p className="td-autoQuantityProposalNotice">
-          Esta es una propuesta. El total superior del Tracking se actualizará recién cuando confirmes el consumo desde la comida.
-        </p>
-        <div className={`td-modalActions td-autoQuantityDecisionActions ${review.proteinLevel ? "has-protein-warning" : ""}`}>
-          {review.proteinLevel ? (
+          {modeNeedsRecalculation ? (
+            <p className="td-autoQuantityModeReminder" role="status">
+              La propuesta visible pertenece al método anterior. Recalculá el restante para usar {trackingQuantityMode === TRACKING_QUANTITY_MODE_CALORIE_FILL ? "Completar calorías" : "Respetar porciones"}.
+            </p>
+          ) : null}
+
+          <p className="td-autoQuantityProposalNotice">
+            Esta es una propuesta local. El total real del Tracking cambia recién al tocar Confirmar consumo desde la comida.
+          </p>
+          <div className="td-modalActions td-autoQuantityDecisionActions">
             <button type="button" className="td-secondaryBtn" onClick={onAddFood} disabled={saving || calculating}>
               <Plus size={17} aria-hidden="true" />
               Agregar otro alimento
             </button>
-          ) : null}
-          <button type="button" className="td-secondaryBtn" onClick={onClose} disabled={saving || calculating}>
-            Revisar selección
-          </button>
-          <button
-            type="button"
-            className="td-primaryBtn"
-            onClick={() => onApply(proposals)}
-            disabled={
-              saving ||
-              calculating ||
-              !review.canContinue ||
-              !proposals.length ||
-              proposals.some((proposal) => !(Number(proposal.quantity) > 0))
-            }
-          >
-            <CheckCircle2 size={17} aria-hidden="true" />
-            {review.proteinLevel ? "Continuar igualmente" : "Usar esta propuesta"}
-          </button>
+            <button type="button" className="td-secondaryBtn" onClick={onClose} disabled={saving || calculating}>
+              Volver al borrador
+            </button>
+            <button
+              type="button"
+              className="td-primaryBtn"
+              onClick={() => onApply(proposals, trackingQuantityMode)}
+              disabled={
+                saving ||
+                calculating ||
+                modeNeedsRecalculation ||
+                !review.canContinue ||
+                !proposals.length ||
+                !proposalCoversAllDrafts ||
+                hasInvalidProposal
+              }
+            >
+              <CheckCircle2 size={17} aria-hidden="true" />
+              {review.proteinLevel ? "Continuar igualmente" : "Usar esta propuesta"}
+            </button>
+          </div>
         </div>
       </div>
     </section>
