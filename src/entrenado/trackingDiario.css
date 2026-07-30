@@ -3,6 +3,460 @@
   color: #eef3f8;
 }
 
+/* Resumen diario pro y metas de comida compactas. */
+.td-dailyMetric.remaining {
+  border-color: rgba(255, 226, 94, 0.34);
+  background:
+    radial-gradient(120px 60px at 100% 0, rgba(255, 226, 94, 0.2), transparent 64%),
+    rgba(255, 226, 94, 0.075);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 94, 0.035), 0 0 20px rgba(255, 226, 94, 0.07);
+}
+
+.td-dailyMetric.remaining strong {
+  color: #fff1a8;
+  text-shadow: 0 0 14px rgba(255, 226, 94, 0.16);
+}
+
+.td-dailyMetric.remaining span {
+  color: #e2cf78;
+}
+
+.td-dailyMetric.remaining.over {
+  border-color: rgba(255, 113, 133, 0.34);
+  background: rgba(255, 113, 133, 0.09);
+}
+
+.td-dailyMetric.remaining.over strong,
+.td-dailyMetric.remaining.over span {
+  color: #ffc1cb;
+}
+
+.td-dailySummaryMacroPills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.td-dailySummaryMacroPills > .td-dailyMacroRow {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  border: 1px solid rgba(126, 231, 184, 0.16);
+  border-radius: 13px;
+  background:
+    linear-gradient(120deg, rgba(126, 231, 184, 0.065), rgba(82, 199, 255, 0.035)),
+    rgba(2, 8, 14, 0.3);
+  padding: 7px 8px;
+}
+
+.td-dailySummaryMacroPills > .td-dailyMacroRow.remaining {
+  order: 2;
+  border-color: rgba(255, 226, 94, 0.3);
+  background:
+    radial-gradient(150px 60px at 100% 0, rgba(255, 226, 94, 0.15), transparent 70%),
+    rgba(255, 226, 94, 0.065);
+}
+
+.td-dailySummaryMacroPills > .pending {
+  order: 3;
+  grid-column: 1 / -1;
+}
+
+.td-dailySummaryMacroPills > .menu {
+  order: 4;
+  grid-column: 1 / -1;
+}
+
+.td-dailyMacroRow > small {
+  color: #9bb4c8;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.055em;
+}
+
+.td-dailyMacroRow.remaining > small {
+  color: #e7d884;
+}
+
+.td-dailyMacroValues {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.td-dailyMacroValue {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 9px;
+  background: rgba(3, 9, 15, 0.45);
+  padding: 4px 5px;
+}
+
+.td-dailyMacroValue b {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 1000;
+}
+
+.td-dailyMacroValue strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f5f8fb;
+  font-size: 10.5px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-dailyMacroValue.protein b {
+  background: rgba(126, 231, 184, 0.14);
+  color: #7ee7b8;
+}
+
+.td-dailyMacroValue.carbs b {
+  background: rgba(82, 199, 255, 0.14);
+  color: #63d2ff;
+}
+
+.td-dailyMacroValue.fat b {
+  background: rgba(255, 210, 74, 0.14);
+  color: #ffd24a;
+}
+
+.td-summaryMetric.protein .td-summaryBar span { background: #7ee7b8; }
+.td-summaryMetric.carbs .td-summaryBar span { background: #63d2ff; }
+.td-summaryMetric.fat .td-summaryBar span { background: #ffd24a; }
+.td-summaryMetric.protein .td-summaryMetricName::before {
+  background: #7ee7b8;
+  box-shadow: 0 0 10px rgba(126, 231, 184, 0.3);
+}
+.td-summaryMetric.carbs .td-summaryMetricName::before {
+  background: #63d2ff;
+  box-shadow: 0 0 10px rgba(99, 210, 255, 0.3);
+}
+.td-summaryMetric.fat .td-summaryMetricName::before {
+  background: #ffd24a;
+  box-shadow: 0 0 10px rgba(255, 210, 74, 0.3);
+}
+
+.td-goalBudget {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid rgba(82, 199, 255, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(220px 90px at 100% 0, rgba(82, 199, 255, 0.1), transparent 68%),
+    rgba(4, 11, 18, 0.58);
+  padding: 10px;
+}
+
+.td-goalBudgetCopy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.td-goalBudgetCopy small {
+  color: #8fb1d2;
+  font-size: 9px;
+  font-weight: 1000;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.td-goalBudgetCopy strong {
+  color: #f7fbff;
+  font-size: 13px;
+  font-weight: 1000;
+  line-height: 1.2;
+}
+
+.td-goalBudgetCopy span {
+  color: #8f9eae;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.td-goalDistributeBtn {
+  display: grid;
+  min-height: 46px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 226, 94, 0.27);
+  border-radius: 13px;
+  background: rgba(255, 226, 94, 0.075);
+  color: #ffe780;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.td-goalDistributeBtn > span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.td-goalDistributeBtn strong {
+  font-size: 11.5px;
+  font-weight: 1000;
+}
+
+.td-goalDistributeBtn small {
+  color: #b8c1cc;
+  font-size: 9.5px;
+  font-weight: 750;
+}
+
+.td-goalDistributeBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.td-goalAllocation {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(82, 199, 255, 0.12);
+  padding-top: 9px;
+}
+
+.td-goalAllocationHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.td-goalAllocationHead span {
+  color: #dce8f4;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.td-goalAllocationHead strong {
+  color: #ffe780;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.td-percentPresets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.td-percentPresets button {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #c8d3df;
+  cursor: pointer;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 950;
+}
+
+.td-percentPresets button.active {
+  border-color: rgba(255, 226, 94, 0.54);
+  background: rgba(255, 226, 94, 0.14);
+  color: #fff0a3;
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 94, 0.08);
+}
+
+.td-percentPresets button:disabled,
+.td-percentCustom input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.td-percentCustom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: center;
+  gap: 8px;
+  color: #9eacbb;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.td-percentCustom > span:last-child {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid rgba(255, 226, 94, 0.2);
+  border-radius: 11px;
+  background: rgba(3, 9, 15, 0.55);
+  padding-right: 9px;
+}
+
+.td-percentCustom input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: #fff5c7;
+  outline: none;
+  padding: 0 4px 0 10px;
+  font: inherit;
+  font-weight: 1000;
+}
+
+.td-percentCustom b {
+  color: #dacb7d;
+  font-size: 11px;
+}
+
+.td-goalAllocation > small {
+  color: #94a5b6;
+  font-size: 9.5px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.td-goalAllocationPreview {
+  border-radius: 10px;
+  background: rgba(126, 231, 184, 0.09);
+  color: #9bf0c7;
+  padding: 7px 9px;
+  font-size: 10.5px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.td-goalProteinNote,
+.td-settingsProteinWarning,
+.td-settingsProteinOk {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 210, 74, 0.24);
+  border-radius: 13px;
+  background: rgba(255, 210, 74, 0.075);
+  color: #f5dda0;
+  padding: 9px 10px;
+  font-size: 10.5px;
+  font-weight: 780;
+  line-height: 1.35;
+}
+
+.td-goalProteinNote svg,
+.td-settingsProteinWarning svg,
+.td-settingsProteinOk svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.td-goalProteinNote > div {
+  display: grid;
+  gap: 2px;
+}
+
+.td-goalProteinNote strong {
+  color: #ffe780;
+  font-weight: 1000;
+}
+
+.td-settingsProteinOk {
+  border-color: rgba(126, 231, 184, 0.2);
+  background: rgba(126, 231, 184, 0.07);
+  color: #9cebc7;
+}
+
+.td-goalWarning > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.td-goalWarning strong,
+.td-goalWarning span {
+  overflow-wrap: anywhere;
+}
+
+.td-goalOverride {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  border-top: 1px solid rgba(255, 196, 196, 0.15);
+  padding-top: 6px;
+  cursor: pointer;
+}
+
+.td-goalOverride input {
+  width: 18px;
+  height: 18px;
+  accent-color: #ffe25e;
+}
+
+.td-goalOverride span {
+  color: #ffe1e1;
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+@media (max-width: 720px) {
+  .td-dailySummaryContent {
+    gap: 9px;
+  }
+
+  .td-dailySummaryMacroPills {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .td-dailySummaryMacroPills > .td-dailyMacroRow,
+  .td-dailySummaryMacroPills > .pending,
+  .td-dailySummaryMacroPills > .menu {
+    grid-column: 1;
+    padding: 6px 7px;
+  }
+
+  .td-dailyMacroRow {
+    gap: 4px;
+  }
+
+  .td-dailyMacroValue {
+    gap: 3px;
+    padding: 3px 4px;
+  }
+
+  .td-dailyMacroValue strong {
+    font-size: 10px;
+  }
+
+  .td-modal .td-goalGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .td-compactModal .td-modalActions {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 8px;
+  }
+
+}
+
 .td-shell {
   width: min(1080px, 100%);
   margin: 0 auto;
@@ -929,7 +1383,7 @@
   font-weight: 750;
 }
 
-.td-foodActions .td-foodStateToggle {
+.td-foodStateToggle {
   display: inline-flex;
   width: auto;
   min-width: 52px;
@@ -946,21 +1400,26 @@
   cursor: pointer;
 }
 
-.td-foodActions .td-foodStateToggle.is-manual {
+.td-foodStateToggle.is-manual {
   border-color: rgba(134, 239, 172, 0.2);
   background: rgba(134, 239, 172, 0.1);
   color: #acebc1;
 }
 
-.td-foodActions .td-foodStateToggle.is-automatic {
+.td-foodStateToggle.is-automatic {
   border-color: rgba(245, 215, 110, 0.22);
   background: rgba(245, 215, 110, 0.1);
   color: #ffe581;
 }
 
-.td-foodActions .td-foodStateToggle:focus-visible {
+.td-foodStateToggle:focus-visible {
   outline: 2px solid #ffe581;
   outline-offset: 2px;
+}
+
+.td-foodStateToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .td-foodDraft {
@@ -992,7 +1451,6 @@
 .td-search input,
 .td-settingMeal input,
 .td-settingMeal select,
-.td-settingsIntro select,
 .td-targetInput input {
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1331,8 +1789,7 @@
 
 .td-qty span,
 .td-settingMeal label span,
-.td-targetInput span,
-.td-settingsIntro span {
+.td-targetInput span {
   color: #9fb0c3;
   font-size: 11px;
   font-weight: 950;
@@ -1525,14 +1982,6 @@
   margin-top: 14px;
 }
 
-.td-targetInput input[readonly] {
-  border-color: rgba(245, 215, 110, 0.2);
-  background:
-    linear-gradient(180deg, rgba(245, 215, 110, 0.075), rgba(245, 215, 110, 0.025)),
-    #091017;
-  color: #fff0a7;
-}
-
 .td-goalAutoNote,
 .td-goalWarning {
   margin-top: 12px;
@@ -1619,26 +2068,6 @@
   font-size: 13px;
   font-weight: 800;
   line-height: 1.4;
-}
-
-.td-settingsIntro {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
-  gap: 12px;
-  align-items: center;
-  margin-top: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 17px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 12px;
-}
-
-.td-settingsIntro strong {
-  display: block;
-  margin-top: 3px;
-  color: #fff8db;
-  font-size: 20px;
-  font-weight: 1000;
 }
 
 .td-settingsList {
@@ -2000,7 +2429,6 @@
   }
 
   .td-selectedFood,
-  .td-settingsIntro,
   .td-settingGrid {
     grid-template-columns: 1fr;
   }
@@ -3248,7 +3676,7 @@
   gap: 8px;
 }
 
-.td-foodActions .td-foodStateToggle {
+.td-foodStateToggle {
   width: auto;
   min-width: 62px;
   min-height: 28px;
@@ -3499,7 +3927,7 @@
     padding-left: 58px;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodStateToggle {
     margin-right: auto;
   }
 
@@ -3631,7 +4059,7 @@
     padding-left: 0;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodStateToggle {
     min-height: 25px;
     padding-inline: 8px;
     font-size: 8px;
@@ -4137,7 +4565,7 @@
     width: 44px;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodStateToggle {
     flex: 0 0 auto;
     height: 44px;
     min-height: 44px;
@@ -4188,7 +4616,7 @@
     padding-left: 0;
   }
 
-  .td-foodDraftControls .td-foodStateToggle {
+  .td-foodStateToggle {
     flex: 0 0 auto;
     margin-right: auto;
   }
@@ -4329,7 +4757,7 @@
 /* Densidad mobile: más alimentos visibles sin achicar las áreas táctiles. */
 @media (max-width: 720px) {
   .td-shell {
-    padding: 12px 11px 24px;
+    padding: 12px 7px 24px;
   }
 
   .td-hero h1 {
@@ -4512,20 +4940,30 @@
   }
 
   .td-foodList {
-    border-radius: 14px;
+    overflow: visible;
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0;
+    background: transparent;
   }
 
   .td-food {
-    grid-template-columns: 42px minmax(0, 1fr);
-    column-gap: 8px;
-    row-gap: 3px;
-    padding: 8px;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 7px;
+    row-gap: 0;
+    padding: 9px 2px;
   }
 
   .td-foodThumb {
     width: 42px;
     height: 42px;
-    align-self: start;
+    align-self: center;
+  }
+
+  .td-foodMain {
+    min-width: 0;
+    align-self: center;
   }
 
   .td-foodMain strong {
@@ -4545,11 +4983,46 @@
     line-height: 1.25;
   }
 
+  .td-foodMain .td-foodStateToggle {
+    position: relative;
+    z-index: 0;
+    width: auto;
+    min-width: 54px;
+    height: 44px;
+    min-height: 44px;
+    margin: -1px 0 -6px;
+    border-color: transparent;
+    background: transparent;
+    padding-inline: 7px;
+    font-size: 8px;
+    isolation: isolate;
+  }
+
+  .td-foodMain .td-foodStateToggle::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 9px 0;
+    border: 1px solid transparent;
+    border-radius: 999px;
+  }
+
+  .td-foodMain .td-foodStateToggle.is-manual::before {
+    border-color: rgba(134, 239, 172, 0.2);
+    background: rgba(134, 239, 172, 0.1);
+  }
+
+  .td-foodMain .td-foodStateToggle.is-automatic::before {
+    border-color: rgba(245, 215, 110, 0.22);
+    background: rgba(245, 215, 110, 0.1);
+  }
+
   .td-foodActions,
   .td-foodDraftControls {
     display: flex;
     min-width: 0;
-    grid-column: 2;
+    grid-column: 3;
+    grid-row: 1;
     align-items: center;
     justify-content: flex-end;
     gap: 4px;
@@ -4557,22 +5030,32 @@
     flex-wrap: nowrap;
   }
 
-  .td-foodActions .td-foodStateToggle {
-    width: auto;
-    min-width: 54px;
-    height: 44px;
-    min-height: 44px;
-    flex: 0 0 auto;
-    margin: 0 auto 0 0;
-    padding-inline: 7px;
-    font-size: 8px;
-  }
-
   .td-foodActions label {
+    position: relative;
+    z-index: 0;
     min-width: 0;
     min-height: 44px;
     flex: 0 1 auto;
+    border-color: transparent;
+    background: transparent;
     padding-inline: 6px;
+    isolation: isolate;
+  }
+
+  .td-foodActions label::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 3px 0;
+    border: 1px solid rgba(118, 234, 168, 0.3);
+    border-radius: 12px;
+    background: rgba(118, 234, 168, 0.055);
+  }
+
+  .td-foodActions label:focus-within {
+    outline: 2px solid rgba(118, 234, 168, 0.7);
+    outline-offset: 1px;
+    border-radius: 12px;
   }
 
   .td-foodActions input {
@@ -4586,9 +5069,29 @@
   }
 
   .td-foodActions > button:last-child {
+    position: relative;
+    z-index: 0;
     width: 44px;
     min-width: 44px;
     height: 44px;
+    border-color: transparent;
+    background: transparent;
+    isolation: isolate;
+  }
+
+  .td-foodActions > button:last-child::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 3px;
+    border: 1px solid rgba(255, 95, 95, 0.24);
+    border-radius: 11px;
+    background: rgba(255, 95, 95, 0.08);
+  }
+
+  .td-foodActions > button:last-child:focus-visible {
+    outline: 2px solid #ff9aaa;
+    outline-offset: 1px;
   }
 
   .td-inlineQuantityTools,
@@ -4635,6 +5138,10 @@
 }
 
 @media (max-width: 430px) {
+  .td-shell {
+    padding-inline: 4px;
+  }
+
   .td-hero h1 {
     font-size: 27px;
   }
@@ -4672,7 +5179,7 @@
   }
 
   .td-meal {
-    padding: 8px;
+    padding: 8px 7px;
   }
 
   .td-mealBadge {
@@ -4685,9 +5192,9 @@
   }
 
   .td-food {
-    grid-template-columns: 40px minmax(0, 1fr);
-    column-gap: 7px;
-    padding: 7px;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    column-gap: 6px;
+    padding: 8px 1px;
   }
 
   .td-foodThumb {
@@ -4703,12 +5210,508 @@
     font-size: 10px;
   }
 
-  .td-foodActions .td-foodStateToggle {
+  .td-foodMain .td-foodStateToggle {
     min-width: 52px;
     padding-inline: 6px;
   }
 
   .td-foodActions input {
     width: 34px;
+  }
+}
+
+/* Mantiene las refinaciones por encima de las reglas base y responsive previas. */
+.td-dailySummary .td-dailySummaryMacroPills {
+  display: grid;
+}
+
+.td-dailySummary .td-dailySummaryMacroPills .td-dailyMacroRow > small {
+  color: #9bb4c8;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.td-dailySummary .td-dailySummaryMacroPills .td-dailyMacroRow.remaining > small {
+  color: #e7d884;
+}
+
+.td-dailySummary .td-summaryMetric.protein .td-summaryBar span { background: #7ee7b8; }
+.td-dailySummary .td-summaryMetric.carbs .td-summaryBar span { background: #63d2ff; }
+.td-dailySummary .td-summaryMetric.fat .td-summaryBar span { background: #ffd24a; }
+.td-dailySummary .td-summaryMetric.protein .td-summaryMetricName::before { background: #7ee7b8; }
+.td-dailySummary .td-summaryMetric.carbs .td-summaryMetricName::before { background: #63d2ff; }
+.td-dailySummary .td-summaryMetric.fat .td-summaryMetricName::before { background: #ffd24a; }
+
+@media (max-width: 720px) {
+  .td-modal .td-goalIntro {
+    margin-top: 9px;
+    font-size: 11.5px;
+  }
+
+  .td-modal .td-goalAutoNote,
+  .td-modal .td-goalWarning {
+    margin-top: 9px;
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 390px) {
+  .td-dailySummary .td-dailySummaryToggle {
+    grid-template-columns: minmax(0, 1fr) 50px;
+    gap: 6px;
+    padding-inline: 9px;
+  }
+
+  .td-dailySummary .td-dailySummarySide {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+  }
+
+  .td-dailySummary .td-dailySummaryPct {
+    width: 48px;
+    height: 48px;
+  }
+
+  .td-dailySummary .td-dailySummaryPct > span {
+    width: 38px;
+    height: 38px;
+  }
+
+  .td-dailySummary .td-dailySummaryPct strong {
+    font-size: 12px;
+  }
+
+  .td-dailySummary .td-dailySummaryChevron {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+/* Ajustes de comidas: filas compactas y metas optativas. */
+.td-settingsOverview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid rgba(82, 199, 255, 0.18);
+  border-radius: 15px;
+  background:
+    radial-gradient(180px 70px at 100% 0, rgba(82, 199, 255, 0.1), transparent 68%),
+    rgba(4, 11, 18, 0.62);
+  padding: 10px;
+}
+
+.td-settingsOverview > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.td-settingsOverview small {
+  color: #8fb1d2;
+  font-size: 8.5px;
+  font-weight: 1000;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.td-settingsOverview > div:first-child strong {
+  color: #fff1a8;
+  font-size: 16px;
+  font-weight: 1000;
+}
+
+.td-settingsOverviewStats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.td-settingsOverviewStats span {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #9eacba;
+  padding: 0 7px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.td-settingsOverviewStats b {
+  color: #f4f8fc;
+  font-size: 10px;
+  font-weight: 1000;
+}
+
+.td-settingsOverviewStats span.over,
+.td-settingsOverviewStats span.over b {
+  border-color: rgba(255, 95, 95, 0.24);
+  color: #ffaaaa;
+}
+
+.td-settingsEmpty {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  border: 1px dashed rgba(126, 231, 184, 0.3);
+  border-radius: 17px;
+  background: rgba(126, 231, 184, 0.045);
+  padding: 18px 14px;
+  text-align: center;
+}
+
+.td-settingsEmptyIcon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(126, 231, 184, 0.1);
+  color: #7ee7b8;
+}
+
+.td-settingsEmpty strong {
+  color: #f4f8fc;
+  font-size: 14px;
+  font-weight: 1000;
+}
+
+.td-settingsEmpty p {
+  margin: 3px 0 0;
+  color: #98a8b8;
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.td-settingsEmpty button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(126, 231, 184, 0.36);
+  border-radius: 12px;
+  background: rgba(126, 231, 184, 0.1);
+  color: #86efbd;
+  cursor: pointer;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.td-settingsModal .td-settingsList {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.td-settingsModal .td-settingMeal {
+  overflow: hidden;
+  border-color: rgba(120, 170, 230, 0.15);
+  border-radius: 15px;
+  background: rgba(6, 13, 20, 0.82);
+  padding: 0;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.td-settingsModal .td-settingMeal.has-target {
+  border-color: rgba(255, 226, 94, 0.3);
+  background:
+    radial-gradient(220px 90px at 100% 0, rgba(255, 226, 94, 0.08), transparent 70%),
+    rgba(6, 13, 20, 0.9);
+}
+
+.td-settingMealTop {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+}
+
+.td-settingMealTop .td-mealBadge {
+  width: 38px;
+  height: 38px;
+}
+
+.td-settingMealTitle {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.td-settingMealTitle > strong,
+.td-settingMealTitle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-settingMealTitle > strong {
+  color: #f5f8fb;
+  font-size: 13.5px;
+  font-weight: 1000;
+}
+
+.td-settingMealTitle > span {
+  color: #91a2b3;
+  font-size: 9.5px;
+  font-weight: 780;
+}
+
+.td-targetSwitch {
+  display: grid;
+  min-width: 91px;
+  min-height: 44px;
+  grid-template-columns: 29px auto;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #9eacbb;
+  cursor: pointer;
+  padding: 0 8px 0 6px;
+  font: inherit;
+}
+
+.td-targetSwitch > span {
+  display: block;
+  width: 29px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 2px;
+  transition: background 160ms ease;
+}
+
+.td-targetSwitch i {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #9ba7b4;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.td-targetSwitch strong {
+  font-size: 9.5px;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.td-targetSwitch.active {
+  border-color: rgba(255, 226, 94, 0.4);
+  background: rgba(255, 226, 94, 0.1);
+  color: #ffe780;
+}
+
+.td-targetSwitch.active > span {
+  background: rgba(255, 226, 94, 0.34);
+}
+
+.td-targetSwitch.active i {
+  transform: translateX(11px);
+  background: #ffe25e;
+}
+
+.td-targetSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.td-settingNoTarget {
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #8493a2;
+  padding: 7px 10px;
+  font-size: 9.5px;
+  font-weight: 720;
+  line-height: 1.3;
+}
+
+.td-settingTargetPanel {
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid rgba(255, 226, 94, 0.14);
+  padding: 9px;
+}
+
+.td-settingPercentEditor {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(82, 199, 255, 0.14);
+  border-radius: 13px;
+  background: rgba(4, 11, 18, 0.62);
+  padding: 8px;
+}
+
+.td-settingPercentHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.td-settingPercentHead > div {
+  display: grid;
+  gap: 1px;
+}
+
+.td-settingPercentHead small {
+  color: #8fb1d2;
+  font-size: 8.5px;
+  font-weight: 1000;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.td-settingPercentHead strong {
+  color: #f7fbff;
+  font-size: 11.5px;
+  font-weight: 1000;
+}
+
+.td-settingPercentHead > span {
+  color: #d9c975;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.td-settingPercentControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: end;
+  gap: 7px;
+}
+
+.td-settingPercentEditor .td-percentPresets {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.td-settingPercentEditor > small {
+  color: #8495a5;
+  font-size: 9px;
+  font-weight: 720;
+  line-height: 1.3;
+}
+
+.td-settingTargetDivider {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #8291a0;
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.td-settingTargetDivider::before,
+.td-settingTargetDivider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.td-settingTargetInfo {
+  border-radius: 10px;
+  background: rgba(82, 199, 255, 0.07);
+  color: #a9c9e6;
+  padding: 7px 8px;
+  font-size: 9.5px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.td-settingIdentity {
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.td-settingIdentity summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8fa1b2;
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 9.5px;
+  font-weight: 850;
+  list-style: none;
+}
+
+.td-settingIdentity summary::-webkit-details-marker {
+  display: none;
+}
+
+.td-settingIdentity[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.td-settingIdentity .td-settingGrid {
+  padding: 0 9px 9px;
+}
+
+@media (max-width: 720px) {
+  .td-settingsOverview {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .td-settingsOverviewStats {
+    justify-content: flex-start;
+  }
+
+  .td-settingPercentControls {
+    grid-template-columns: 1fr;
+  }
+
+  .td-settingPercentControls .td-percentCustom {
+    grid-template-columns: minmax(0, 1fr) 92px;
+  }
+
+  .td-settingPercentEditor .td-percentPresets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .td-settingsModal .td-targetGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 390px) {
+  .td-settingMealTop {
+    grid-template-columns: 34px minmax(0, 1fr) 86px;
+    gap: 7px;
+    padding-inline: 7px;
+  }
+
+  .td-settingMealTop .td-mealBadge {
+    width: 34px;
+    height: 34px;
+  }
+
+  .td-targetSwitch {
+    min-width: 86px;
+    padding-right: 6px;
+  }
+
+  .td-targetSwitch strong {
+    font-size: 9px;
   }
 }

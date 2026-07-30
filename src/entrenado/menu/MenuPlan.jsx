@@ -59,6 +59,10 @@ import {
   clientPlanCapabilitiesKey,
   fetchClientPlanCapabilities,
 } from "../../clientPlans/clientPlanQueries.js";
+import {
+  resolveSelectedMenuDate,
+  useCurrentLocalDate,
+} from "../../hooks/useCurrentLocalDate.js";
 import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
 import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
 import { getTrackingDay, updateManualDayCompletion } from "../../tracking/trackingApi.js";
@@ -67,6 +71,8 @@ import {
   ManualDayCompletionAction,
   ManualDayCompletionDialog,
 } from "./ManualDayCompletion.jsx";
+import EquivalentMealBuilder from "./EquivalentMealBuilder.jsx";
+import { resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
 
 const EMPTY_DAYS = [];
 const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -628,12 +634,18 @@ function trackingListTotals(list = []) {
 
 function localConsumedTotals(row = {}) {
   const tracking = row?.tracking || {};
+  const completedIds = completedMealIdSet(row);
+  const consumedReplacements = (entries = []) => (Array.isArray(entries) ? entries : [])
+    .filter((entry) => {
+      const replacedIds = Array.isArray(entry?.replacesMealIds) ? entry.replacesMealIds.map(String) : [];
+      return !replacedIds.length || replacedIds.some((id) => completedIds.has(id));
+    });
   return sumTotals([
     completedMenuMealsTotals(row),
     trackingListTotals(tracking.manualEntries),
     trackingListTotals(tracking.generatedRemainingMeals),
-    trackingListTotals(tracking.mealReplacements),
-    trackingListTotals(tracking.foodReplacements),
+    trackingListTotals(consumedReplacements(tracking.mealReplacements)),
+    trackingListTotals(consumedReplacements(tracking.foodReplacements)),
   ]);
 }
 
@@ -805,6 +817,9 @@ function normalizeMealFood(item = {}, index = 0) {
     imagen: safeItem.imagen || source.imagen || null,
     imageUrl: safeItem.imagenUrl || source.imagenUrl || getFoodImageUrl(imageSource),
     imageAlt: safeItem.imagen?.alt || source.imagen?.alt || safeItem.imagenAlt || source.imagenAlt || name,
+    source: safeItem.source || source.source || "",
+    quantityMode: safeItem.quantityMode || safeItem.mode || safeItem.status || source.quantityMode || "manual",
+    suggested: safeItem.suggested === true || safeItem.source === "addedCandidate" || source.suggested === true,
     raw: safeItem,
   };
 }
@@ -932,7 +947,7 @@ function savedMealItemFromMenuFood(food = {}) {
   };
 }
 
-function savedMealPayloadFromMenuMeal(meal = {}, mealIndex = 0) {
+function savedMealPayloadFromMenuMeal(meal = {}, mealIndex = 0, options = {}) {
   const items = mealFoods(meal).map(savedMealItemFromMenuFood);
   const tipoComida = savedMealTipoFromMenuMeal(meal, mealIndex);
   return {
@@ -942,6 +957,8 @@ function savedMealPayloadFromMenuMeal(meal = {}, mealIndex = 0) {
     origen: "guardadaDesdeMenu",
     tags: ["menu"],
     items,
+    favorita: options.favorite === true,
+    ...(options.equivalenceReference ? { equivalenceReference: options.equivalenceReference } : {}),
   };
 }
 
@@ -1750,6 +1767,30 @@ function trackingFoodFromFood(food = {}, index = 0) {
     category: food.category || food.categoria || food.categoriaSnapshot || "",
     imagen: image,
     imageUrl: food.imagenUrl || food.imageUrl || getFoodImageUrl({ ...food, imagen: image }),
+    source: food.source || "",
+    quantityMode: food.quantityMode || food.mode || food.status || "manual",
+    suggested: food.suggested === true || food.source === "addedCandidate",
+  };
+}
+
+function equivalentBuilderSeedFood(food = {}, index = 0) {
+  const quantity = quantityFromMenuFood(food);
+  const totals = totalFromLike(food?.totals || food);
+  const divisor = quantity > 0 ? quantity : 1;
+  return {
+    ...food,
+    id: String(food.alimentoId || food.foodId || food.id || `food-${index + 1}`),
+    alimentoId: food.alimentoId || food.foodId || food.id || null,
+    nombre: food.name || food.nombre || food.nombreSnapshot || `Alimento ${index + 1}`,
+    unidad: unitFromMenuFood(food),
+    cantidad: quantity,
+    macroBasis: "perUnit",
+    kcal: totals.kcal / divisor,
+    proteina: totals.proteina / divisor,
+    carbs: totals.carbs / divisor,
+    grasas: totals.grasas / divisor,
+    quantityMode: food.quantityMode || food.mode || food.status || "manual",
+    suggested: food.suggested === true || food.source === "addedCandidate",
   };
 }
 
@@ -1766,6 +1807,8 @@ function mealWithTrackingReplacements(row = {}, meal = {}, mealIndex = 0) {
       replacementMeta: {
         type: "meal",
         originalName: mealName(meal, mealIndex),
+        approvalStatus: mealEntry.approvalStatus || "approved",
+        approvalReason: mealEntry.approvalReason || "",
       },
       foods,
       items: foods,
@@ -1810,6 +1853,18 @@ function buildMealReplacementEntry(row = {}, originalMeal = {}, replacementMeal 
     id: `${mealReplacementPrefix(row, mealIndex)}-${trackingIdPart(mealId(originalMeal, mealIndex))}`.slice(0, 100),
     name: replacementName,
     source: "client_meal_replacement",
+    mode: replacementMeal?.replacementMode || null,
+    creationType: replacementMeal?.creationType || "full_meal_equivalent",
+    strategy: replacementMeal?.strategy || "selected_only",
+    requestId: replacementMeal?.requestId || null,
+    menuId: replacementMeal?.menuId || null,
+    menuVersion: replacementMeal?.menuVersion || null,
+    originalMealId: replacementMeal?.originalMealId || mealId(originalMeal, mealIndex),
+    originalMealName: replacementMeal?.originalMealName || mealName(originalMeal, mealIndex),
+    warnings: replacementMeal?.warnings || [],
+    favoriteOriginId: replacementMeal?.favoriteOriginId || null,
+    date: row?.date || null,
+    replacesMealIds: [mealId(originalMeal, mealIndex)],
     target: originalTotals,
     foods: mealFoods(replacementMeal).map(trackingFoodFromFood),
     totals: subtractTotals(replacementTotals, originalTotals),
@@ -1823,6 +1878,14 @@ function buildFoodReplacementEntry(row = {}, meal = {}, mealIndex = 0, food = {}
     id: `${foodReplacementPrefix(row, mealIndex, foodIndex)}-${trackingIdPart(food.id || food.name)}`.slice(0, 100),
     name: `${mealName(meal, mealIndex)} - reemplazo de ${food.name || "alimento"}`,
     source: "client_food_replacement",
+    creationType: "food_equivalent",
+    strategy: "selected_only",
+    date: row?.date || null,
+    originalMealId: mealId(meal, mealIndex),
+    originalMealName: mealName(meal, mealIndex),
+    originalFoodId: String(food.alimentoId || food.id || food.foodId || ""),
+    originalFoodIndex: foodIndex,
+    replacesMealIds: [mealId(meal, mealIndex)],
     target: originalTotals,
     foods: [trackingFoodFromFood(replacement, 0)],
     totals: subtractTotals(replacementTotals, originalTotals),
@@ -1983,7 +2046,8 @@ export default function MenuPlan() {
   const navigate = useNavigate();
   const location = useLocation();
   const requestedDate = useMemo(() => dateKeyFromSearch(location.search), [location.search]);
-  const initialSelectedDate = requestedDate || todayIso();
+  const currentDate = useCurrentLocalDate();
+  const initialSelectedDate = requestedDate || currentDate;
   const initialWeek = useMemo(() => {
     const start = mondayOfWeek(initialSelectedDate);
     return { start, data: getCachedMenuWeek(start) };
@@ -2001,6 +2065,7 @@ export default function MenuPlan() {
   const [mealDrawer, setMealDrawer] = useState(null);
   const [foodDrawer, setFoodDrawer] = useState(null);
   const [quickMealEditor, setQuickMealEditor] = useState(null);
+  const [equivalentMealBuilder, setEquivalentMealBuilder] = useState(null);
   const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
   const [trackingOnlyConfirmOpen, setTrackingOnlyConfirmOpen] = useState(false);
   const [manualCompletionPrompt, setManualCompletionPrompt] = useState(null);
@@ -2009,6 +2074,7 @@ export default function MenuPlan() {
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState("");
   const isMobileLayout = useIsMobileMenuLayout();
+  const dateContextRef = useRef({ currentDate, requestedDate });
 
   async function loadWeek(start = weekStart, options = {}) {
     const silent = !!options.silent;
@@ -2070,17 +2136,30 @@ export default function MenuPlan() {
   }, [weekStart]);
 
   useEffect(() => {
-    if (!requestedDate) return;
-    const nextWeek = mondayOfWeek(requestedDate);
-    if (nextWeek !== weekStart) setWeekStart(nextWeek);
-    if (selectedDate !== requestedDate) setSelectedDate(requestedDate);
+    const previousContext = dateContextRef.current;
+    const nextDate = resolveSelectedMenuDate({
+      currentDate,
+      previousCurrentDate: previousContext.currentDate,
+      selectedDate,
+      requestedDate,
+      previousRequestedDate: previousContext.requestedDate,
+    });
+    dateContextRef.current = { currentDate, requestedDate };
+
+    if (nextDate === selectedDate) return;
+    const nextWeek = mondayOfWeek(nextDate);
+    setSelectedDate(nextDate);
     setMobileView("overview");
-  }, [requestedDate, selectedDate, weekStart]);
+    setManualCompletionPrompt(null);
+    if (nextWeek !== weekStart) {
+      setWeekStart(nextWeek);
+    }
+  }, [currentDate, requestedDate, selectedDate, weekStart]);
 
   const days = Array.isArray(weekData?.days) ? weekData.days : EMPTY_DAYS;
   const todayRow = useMemo(
-    () => days.find((day) => day.date === todayIso()) || days[0] || null,
-    [days]
+    () => days.find((day) => day.date === currentDate) || days[0] || null,
+    [currentDate, days]
   );
   const selectedRow = useMemo(
     () => days.find((day) => day.date === selectedDate) || todayRow,
@@ -2090,13 +2169,12 @@ export default function MenuPlan() {
     () => rowWithActiveGeneratedMeals(selectedRow, days),
     [selectedRow, days]
   );
-  const permissions = weekData?.permissions || {};
+  const permissions = useMemo(() => weekData?.permissions || {}, [weekData?.permissions]);
   const activePlan = weekData?.activePlan || {};
   const activePlanSource = activePlan?.source || "none";
   const canQuickEditActiveMenu = menuSourceMeta(activePlanSource).key === "own";
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
-  const canTrackFoods = permissions.canTrackFoods !== false;
   const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
   const canUseManualDayCompletion = permissions.canUseManualDayCompletion !== false;
   const canPlanRemainingIntake = permissions.canPlanRemainingIntake === true;
@@ -2107,9 +2185,13 @@ export default function MenuPlan() {
     refetchOnWindowFocus: false,
     retry: false,
   });
+  const equivalentMealAccess = useMemo(() => resolveEquivalentMealAccess({
+    permissions,
+    capabilities: capabilitiesQuery.data || {},
+  }), [capabilitiesQuery.data, permissions]);
   const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
   const historyOldestDate = Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
-    ? addDays(todayIso(), -(trackingHistoryDays - 1))
+    ? addDays(currentDate, -(trackingHistoryDays - 1))
     : "";
 
   function canNavigateToMenuDate(date = "") {
@@ -2366,15 +2448,17 @@ export default function MenuPlan() {
   }
 
   async function submitTracking(payload, message = "Registro guardado.") {
-    if (!payload?.date) return;
+    if (!payload?.date) return false;
     setSaving(true);
     try {
       await saveMenuTrackingDay(payload);
       await loadWeek(weekStart, { silent: true });
       setToast(message);
       window.setTimeout(() => setToast(""), 2600);
+      return true;
     } catch (err) {
       setToast(err?.message || "No se pudo guardar el registro.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -2439,9 +2523,9 @@ export default function MenuPlan() {
     );
   }
 
-  async function saveMenuMealAsSavedMeal(meal, mealIndex = 0) {
+  async function saveMenuMealAsSavedMeal(meal, mealIndex = 0, options = {}) {
     if (!meal || saving) return;
-    const payload = savedMealPayloadFromMenuMeal(meal, mealIndex);
+    const payload = savedMealPayloadFromMenuMeal(meal, mealIndex, options);
     if (!payload.items.length) {
       setToast("Esta comida no tiene alimentos para guardar.");
       window.setTimeout(() => setToast(""), 2600);
@@ -2701,10 +2785,10 @@ export default function MenuPlan() {
     }
   }
 
-  function applyMealReplacement({ row, originalMeal, replacementMeal, mealIndex }) {
+  function applyMealReplacement({ row, originalMeal, replacementMeal, mealIndex, markCompleted = true }) {
     const replacementEntry = buildMealReplacementEntry(row, originalMeal, replacementMeal, mealIndex);
     const completedIds = new Set(trackingPayloadBase(row).completedMenuMealIds.map(String));
-    completedIds.add(mealId(originalMeal, mealIndex));
+    if (markCompleted) completedIds.add(mealId(originalMeal, mealIndex));
     const currentMealReplacements = Array.isArray(row?.tracking?.mealReplacements) ? row.tracking.mealReplacements : [];
     const currentFoodReplacements = Array.isArray(row?.tracking?.foodReplacements) ? row.tracking.foodReplacements : [];
     const nextMealReplacements = [
@@ -2738,11 +2822,31 @@ export default function MenuPlan() {
     );
   }
 
-  function applyFoodReplacement({ row, meal, mealIndex, food, originalFood, foodIndex, replacement }) {
+  async function applyEquivalentMeal({ saveTemplate = false, ...replacement } = {}) {
+    const saved = await applyMealReplacement({ ...replacement, markCompleted: false });
+    if (!saved) throw new Error("No se pudo guardar el reemplazo para este dia.");
+    if (saveTemplate) {
+      await saveMenuMealAsSavedMeal(replacement.replacementMeal, replacement.mealIndex, {
+        favorite: true,
+        equivalenceReference: replacement.replacementMeal?.equivalenceReference || null,
+      });
+    }
+    setEquivalentMealBuilder(null);
+  }
+
+  async function applyFoodReplacement({
+    row,
+    meal,
+    mealIndex,
+    food,
+    originalFood,
+    foodIndex,
+    replacement,
+    recalculateOtherAutos = false,
+  }) {
     const sourceFood = originalFood || food;
     const replacementEntry = buildFoodReplacementEntry(row, meal, mealIndex, sourceFood, foodIndex, replacement);
     const completedIds = new Set(trackingPayloadBase(row).completedMenuMealIds.map(String));
-    completedIds.add(mealId(meal, mealIndex));
     const current = Array.isArray(row?.tracking?.foodReplacements) ? row.tracking.foodReplacements : [];
     const prefix = `${foodReplacementPrefix(row, mealIndex, foodIndex)}-`;
     const nextFoodReplacements = [
@@ -2754,7 +2858,6 @@ export default function MenuPlan() {
       foodReplacements: nextFoodReplacements,
     });
     const effectiveMeal = mealWithTrackingReplacements(optimisticRow, meal, mealIndex);
-    setFoodDrawer(null);
     setWeekData((currentData) => currentData ? {
       ...currentData,
       days: (currentData.days || []).map((day) => day.date === optimisticRow.date ? optimisticRow : day),
@@ -2770,13 +2873,37 @@ export default function MenuPlan() {
       meal: effectiveMeal,
       mealIndex,
     });
-    return submitTracking(
+    const saved = await submitTracking(
       trackingPayloadBase(row, {
         completedMenuMealIds: [...completedIds],
         foodReplacements: nextFoodReplacements,
       }),
       "Reemplazo de alimento guardado."
     );
+    if (!saved) return false;
+    setFoodDrawer(null);
+    if (recalculateOtherAutos) {
+      const seedFoods = mealFoods(effectiveMeal).map((entry, index) => {
+        const seed = equivalentBuilderSeedFood(entry, index);
+        return index === foodIndex ? { ...seed, quantityMode: "manual", suggested: false } : seed;
+      });
+      const hasOtherAutos = seedFoods.some((entry, index) => (
+        index !== foodIndex && String(entry.quantityMode || "").toLowerCase() === "automatic"
+      ));
+      if (hasOtherAutos) {
+        setEquivalentMealBuilder({
+          row: optimisticRow,
+          baseMeal: meal,
+          meal: effectiveMeal,
+          mealIndex,
+          seedFoods,
+        });
+      } else {
+        setToast("Reemplazo aplicado. No habia otros alimentos Auto para recalcular.");
+        window.setTimeout(() => setToast(""), 3200);
+      }
+    }
+    return true;
   }
 
   function markDayMissed(row) {
@@ -3011,7 +3138,12 @@ export default function MenuPlan() {
           }}
           canMarkMeals={canMarkMeals}
           canReplaceMeals={canUseMenuAlternatives}
-          canReplaceFoods={canTrackFoods}
+          canCreateEquivalentMeal={equivalentMealAccess.canCreate}
+          onCreateEquivalentMeal={(context) => {
+            setMealDrawer(null);
+            setEquivalentMealBuilder(context);
+          }}
+          canReplaceFoods={equivalentMealAccess.canReplaceFoods}
           readOnlyProfessionalMenu={menuSourceMeta(activePlanSource).key === "coach"}
           onApplyMealReplacement={applyMealReplacement}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
@@ -3023,10 +3155,22 @@ export default function MenuPlan() {
       {foodDrawer ? (
         <FoodActionDrawer
           context={foodDrawer}
-          canReplaceFoods={canTrackFoods}
+          canReplaceFoods={equivalentMealAccess.canReplaceFoods}
           saving={saving}
           onApplyReplacement={applyFoodReplacement}
           onClose={() => setFoodDrawer(null)}
+        />
+      ) : null}
+
+      {equivalentMealBuilder ? (
+        <EquivalentMealBuilder
+          key={`${equivalentMealBuilder.row?.date || "day"}-${equivalentMealBuilder.mealIndex || 0}`}
+          context={equivalentMealBuilder}
+          canAuto={equivalentMealAccess.canAuto}
+          maxFoods={equivalentMealAccess.maxFoods}
+          saving={saving}
+          onClose={() => setEquivalentMealBuilder(null)}
+          onApply={applyEquivalentMeal}
         />
       ) : null}
 
@@ -7579,6 +7723,8 @@ function MobileMealDetailDrawer({
   onQuickEditMeal,
   canMarkMeals,
   canReplaceMeals,
+  canCreateEquivalentMeal = false,
+  onCreateEquivalentMeal,
   canReplaceFoods,
   readOnlyProfessionalMenu = false,
   onApplyMealReplacement,
@@ -7726,6 +7872,16 @@ function MobileMealDetailDrawer({
                   Solo cambia tu tracking de hoy. El menú profesional del coach permanece intacto.
                 </p>
               ) : null}
+              {meal.replacementMeta?.approvalStatus === "pending_review" ? (
+                <div className="mt-2 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[11px] font-black text-amber-100" role="status">
+                  Pendiente de aprobacion del coach. Todavia no se puede marcar como consumida.
+                </div>
+              ) : null}
+              {meal.replacementMeta?.approvalStatus === "rejected" ? (
+                <div className="mt-2 rounded-xl border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-[11px] font-black text-rose-100" role="alert">
+                  Rechazada por el coach{meal.replacementMeta.approvalReason ? `: ${meal.replacementMeta.approvalReason}` : ". Podes duplicarla y corregirla."}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -7737,6 +7893,14 @@ function MobileMealDetailDrawer({
               options={replacementOptions}
               saving={saving}
               onApply={onApplyMealReplacement}
+              canCreateEquivalentMeal={canCreateEquivalentMeal}
+              onCreateEquivalentMeal={() => onCreateEquivalentMeal?.({
+                ...context,
+                row,
+                meal,
+                baseMeal,
+                mealIndex,
+              })}
             />
           ) : null}
 
@@ -7765,7 +7929,16 @@ function MobileMealDetailDrawer({
   );
 }
 
-function MobileMealReplacementPanel({ row, meal, mealIndex, options = [], saving, onApply }) {
+function MobileMealReplacementPanel({
+  row,
+  meal,
+  mealIndex,
+  options = [],
+  saving,
+  onApply,
+  canCreateEquivalentMeal = false,
+  onCreateEquivalentMeal,
+}) {
   const [selected, setSelected] = useState(null);
   const originalTotals = mealTotals(meal);
 
@@ -7782,6 +7955,21 @@ function MobileMealReplacementPanel({ row, meal, mealIndex, options = [], saving
           {options.length} opciones
         </span>
       </div>
+
+      {canCreateEquivalentMeal ? (
+        <button
+          type="button"
+          onClick={onCreateEquivalentMeal}
+          disabled={saving}
+          className="mt-3 flex min-h-11 w-full items-center justify-between rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-left text-sm font-black text-emerald-100 disabled:opacity-50"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Sparkles size={16} className="shrink-0" />
+            <span className="truncate">Crear mi comida equivalente</span>
+          </span>
+          <ChevronRight size={17} className="shrink-0" />
+        </button>
+      ) : null}
 
       {options.length ? (
         <div className="mt-3 grid gap-2">
@@ -8063,10 +8251,18 @@ function FoodActionDrawer({ context, canReplaceFoods, saving, onApplyReplacement
             <button
               type="button"
               disabled={!selected || !canReplaceFoods || saving}
-              onClick={() => onApplyReplacement?.({ ...context, replacement: selected })}
+              onClick={() => onApplyReplacement?.({ ...context, replacement: selected, recalculateOtherAutos: false })}
               className="rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 py-3 text-sm font-black text-[#FFE8A3] disabled:opacity-45"
             >
-              {saving ? "Guardando..." : "Aplicar reemplazo"}
+              {saving ? "Guardando..." : "Reemplazar"}
+            </button>
+            <button
+              type="button"
+              disabled={!selected || !canReplaceFoods || saving}
+              onClick={() => onApplyReplacement?.({ ...context, replacement: selected, recalculateOtherAutos: true })}
+              className="col-span-2 min-h-11 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-black text-emerald-100 disabled:opacity-45"
+            >
+              Reemplazar y recalcular los demas Auto
             </button>
           </div>
         </footer>

@@ -7,6 +7,83 @@
   color: #f7fbff;
 }
 
+/* Editor de menus propios: metas opcionales sin alterar las cards del menu publicado. */
+.client-own-meal-target{
+  display:grid;
+  gap:10px;
+  margin-top:12px;
+  padding:12px;
+  border:1px solid rgba(82,229,184,.15);
+  border-radius:16px;
+  background:rgba(4,16,22,.55);
+}
+
+.client-own-meal-target-head,
+.client-own-meal-target-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.client-own-meal-target-head strong,
+.client-own-meal-target-head span{display:block}
+
+.client-own-meal-target-head span{
+  margin-top:2px;
+  color:#8294a5;
+  font-size:11px;
+  font-weight:750;
+}
+
+.client-own-meal-target button{
+  min-height:44px;
+  padding:0 12px;
+  border:1px solid rgba(82,229,184,.22);
+  border-radius:12px;
+  background:rgba(82,229,184,.08);
+  color:#aaf4d9;
+  font-size:11px;
+  font-weight:900;
+}
+
+.client-own-meal-target button:disabled{opacity:.4}
+
+.client-own-meal-target-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px;
+}
+
+.client-own-meal-target-grid label{min-width:0}
+
+.client-own-meal-target-grid span{
+  display:block;
+  margin:0 0 4px 2px;
+  color:#8294a5;
+  font-size:10px;
+  font-weight:950;
+}
+
+.client-own-meal-target-grid input{
+  width:100%;
+  min-height:44px;
+  padding:0 8px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:11px;
+  background:rgba(0,0,0,.22);
+  color:#f8fafc;
+  font-size:13px;
+  font-weight:850;
+  outline:none;
+}
+
+@media (max-width:560px){
+  .client-own-meal-target-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .client-own-meal-target-actions{align-items:stretch;flex-direction:column}
+  .client-own-meal-target-actions button{width:100%}
+}
+
 .nl-shell {
   width: min(1180px, 100%);
   margin: 0 auto;

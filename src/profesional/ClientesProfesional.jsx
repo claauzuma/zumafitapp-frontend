@@ -55,6 +55,11 @@ const EMPTY_INVITE_FORM = {
       canUseSemiAutomaticMenu: false,
       canRequestMenuChanges: true,
     },
+    tracking: {
+      canTrackFoods: true,
+      canUseMenuAlternatives: true,
+      canCreateEquivalentMeals: true,
+    },
     routine: {
       canViewRoutine: true,
       canLogWorkout: true,
@@ -1062,6 +1067,18 @@ function InviteClientDialog({
                   label="Pedir cambios"
                   checked={form.clientPermissions.menu.canRequestMenuChanges}
                   onChange={(value) => onPermission("menu", "canRequestMenuChanges", value)}
+                />
+                <PermissionToggle
+                  label="Usar alternativas del coach"
+                  checked={form.clientPermissions.tracking.canUseMenuAlternatives}
+                  onChange={(value) => onPermission("tracking", "canUseMenuAlternatives", value)}
+                />
+                <PermissionToggle
+                  label="Crear comidas equivalentes propias"
+                  checked={form.clientPermissions.tracking.canCreateEquivalentMeals}
+                  disabled={!form.clientPermissions.tracking.canUseMenuAlternatives}
+                  hint={!form.clientPermissions.tracking.canUseMenuAlternatives ? "Primero habilita las alternativas" : "No modifica el menu profesional"}
+                  onChange={(value) => onPermission("tracking", "canCreateEquivalentMeals", value)}
                 />
               </PermissionSection>
             ) : null}

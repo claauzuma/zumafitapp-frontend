@@ -31,6 +31,7 @@ import { buildMenuItemSnapshot, formatNumber } from "../nutricion/nutricionUtils
 import { listAlimentos } from "../nutricion/nutricionApi.js";
 import { createNavigationPrefetchHandlers } from "../routes/routePrefetch.js";
 import { createSavedMeal } from "../savedMeals/savedMealsApi.js";
+import EquivalentMealBuilder from "../entrenado/menu/EquivalentMealBuilder.jsx";
 import {
   activateClientMenu,
   createClientMenu,
@@ -110,6 +111,7 @@ function emptyMeal(type = "almuerzo", overrides = {}) {
     tipoComida: type,
     orden: 1,
     items: [],
+    target: null,
     ...overrides,
   };
 }
@@ -216,6 +218,7 @@ function normalizeMenuForDraft(menu = {}, capabilities = {}, user = {}) {
     tipoComida: meal.tipoComida || "otra",
     orden: meal.orden || index + 1,
     items: normalizeItems(meal.items || meal.alimentos || []),
+    target: meal.target || meal.meta || null,
   }));
 
   return {
@@ -847,6 +850,7 @@ function MenuEditor({
   const [missingOpen, setMissingOpen] = useState(false);
   const [nameEditing, setNameEditing] = useState(Boolean(initialDraft.focusName));
   const [descriptionOpen, setDescriptionOpen] = useState(Boolean(initialDraft.descripcion));
+  const [mealBuilder, setMealBuilder] = useState(null);
   const totals = useMemo(() => menuTotals(draft), [draft]);
   const target = useMemo(() => nutritionTargetFromUser(user), [user]);
   const missing = useMemo(() => missingFromTarget(totals, target), [target, totals]);
@@ -911,6 +915,52 @@ function MenuEditor({
       next.splice(nextIndex, 0, item);
       return { ...current, comidas: next.map((meal, mealIndex) => ({ ...meal, orden: mealIndex + 1 })) };
     });
+  }
+
+  function distributedTargetForMeal() {
+    const count = Math.max(1, draft.comidas?.length || 1);
+    if (!target) return null;
+    return {
+      kcal: Math.round((toNumber(target.kcal) / count) * 10) / 10,
+      proteina: Math.round((toNumber(target.proteina) / count) * 10) / 10,
+      carbs: Math.round((toNumber(target.carbs) / count) * 10) / 10,
+      grasas: Math.round((toNumber(target.grasas) / count) * 10) / 10,
+    };
+  }
+
+  function openMealBuilder(meal) {
+    const mealTarget = meal.target || distributedTargetForMeal();
+    if (!mealTarget?.kcal) return;
+    if (!meal.target) updateMeal(meal.id, { target: mealTarget });
+    setMealBuilder({
+      row: { date: localIsoDate(), tracking: { menuId: draft.id || "new-own-menu" } },
+      baseMeal: { ...meal, target: mealTarget, totals: mealTarget, totales: mealTarget },
+      meal: { ...meal, target: mealTarget, totals: mealTarget, totales: mealTarget },
+      mealIndex: Math.max(0, draft.comidas.findIndex((entry) => entry.id === meal.id)),
+      menuId: draft.id || "new-own-menu",
+      menuVersion: String(initialDraft.updatedAt || "draft-1"),
+    });
+  }
+
+  async function applyBuiltMeal({ replacementMeal, saveTemplate = false } = {}) {
+    const originalId = mealBuilder?.baseMeal?.id;
+    if (!originalId || !replacementMeal) return;
+    updateMeal(originalId, {
+      items: normalizeItems(replacementMeal.items || replacementMeal.foods || []),
+      target: mealBuilder.baseMeal.target || null,
+    });
+    if (saveTemplate) {
+      await createSavedMeal({
+        nombre: replacementMeal.nombre || replacementMeal.name || "Mi comida equivalente",
+        descripcion: "Guardada desde mi menu",
+        tipoComida: replacementMeal.mealType || mealBuilder.baseMeal.tipoComida || "otro",
+        origen: "menuPropioEquivalente",
+        favorita: true,
+        items: replacementMeal.items || [],
+        equivalenceReference: replacementMeal.equivalenceReference || null,
+      });
+    }
+    setMealBuilder(null);
   }
 
   function toggleDay(dayKey) {
@@ -1051,6 +1101,10 @@ function MenuEditor({
                   onMoveUp={() => moveMeal(meal.id, -1)}
                   onMoveDown={() => moveMeal(meal.id, 1)}
                   onSaveMeal={() => onSaveMeal?.(meal)}
+                  dailyTarget={target}
+                  mealCount={draft.comidas.length}
+                  canAuto={capabilities?.canAutoCalculateTrackingQuantities === true}
+                  onOpenBuilder={() => openMealBuilder(meal)}
                 />
               ))}
             </div>
@@ -1146,6 +1200,17 @@ function MenuEditor({
           </div>
         </footer>
       </div>
+      {mealBuilder ? (
+        <EquivalentMealBuilder
+          key={`${mealBuilder.menuId}-${mealBuilder.baseMeal?.id}`}
+          context={mealBuilder}
+          canAuto={capabilities?.canAutoCalculateTrackingQuantities === true}
+          maxFoods={Math.max(1, Number(capabilities?.limits?.equivalentMealFoods) || 6)}
+          saving={saving}
+          onClose={() => setMealBuilder(null)}
+          onApply={applyBuiltMeal}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1199,7 +1264,20 @@ function SummaryBar({ label, value, target, color }) {
   );
 }
 
-function MealEditor({ meal, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp, onMoveDown, onSaveMeal }) {
+function MealEditor({
+  meal,
+  canMoveUp,
+  canMoveDown,
+  onChange,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  onSaveMeal,
+  dailyTarget,
+  mealCount = 1,
+  canAuto = false,
+  onOpenBuilder,
+}) {
   const totals = itemTotals(meal.items || []);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -1298,6 +1376,24 @@ function MealEditor({ meal, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp
     focusAfterPaint(menuButtonRef);
   }
 
+  function updateTarget(field, value) {
+    const next = { ...(meal.target || {}), [field]: clampPositive(value) };
+    onChange({ target: Object.values(next).some((entry) => toNumber(entry) > 0) ? next : null });
+  }
+
+  function distributeDailyTarget() {
+    const count = Math.max(1, Number(mealCount) || 1);
+    if (!dailyTarget) return;
+    onChange({
+      target: {
+        kcal: Math.round((toNumber(dailyTarget.kcal) / count) * 10) / 10,
+        proteina: Math.round((toNumber(dailyTarget.proteina) / count) * 10) / 10,
+        carbs: Math.round((toNumber(dailyTarget.carbs) / count) * 10) / 10,
+        grasas: Math.round((toNumber(dailyTarget.grasas) / count) * 10) / 10,
+      },
+    });
+  }
+
   return (
     <article className={`client-meal-editor pro ${expanded ? "expanded" : ""} ${hasItems ? "ready" : "empty"}`}>
       <div className="client-meal-collapsed">
@@ -1390,6 +1486,28 @@ function MealEditor({ meal, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp
               </button>
             ) : null}
           </div>
+
+          <section className="client-own-meal-target" aria-label={`Meta de ${meal.nombre || "la comida"}`}>
+            <div className="client-own-meal-target-head">
+              <div>
+                <strong>Meta de esta comida</strong>
+                <span>{meal.target ? "Orienta el calculo; no registra consumo." : "Opcional: la comida empieza sin meta."}</span>
+              </div>
+              <button type="button" onClick={() => onChange({ target: null })} disabled={!meal.target}>Sin meta</button>
+            </div>
+            <div className="client-own-meal-target-grid">
+              {[["kcal", "kcal"], ["proteina", "P"], ["carbs", "C"], ["grasas", "G"]].map(([field, label]) => (
+                <label key={field}>
+                  <span>{label}</span>
+                  <input type="number" min="0" step="0.1" value={meal.target?.[field] || ""} onChange={(event) => updateTarget(field, event.target.value)} placeholder="Libre" aria-label={`${label} objetivo de ${meal.nombre || "la comida"}`} />
+                </label>
+              ))}
+            </div>
+            <div className="client-own-meal-target-actions">
+              <button type="button" onClick={distributeDailyTarget} disabled={!dailyTarget}>Distribuir objetivo diario</button>
+              {canAuto ? <button type="button" onClick={onOpenBuilder} disabled={!meal.target?.kcal && !dailyTarget?.kcal}>Calcular o buscar equivalente</button> : null}
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -1428,6 +1546,11 @@ function MealEditor({ meal, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp
       ) : null}
     </article>
   );
+}
+
+function localIsoDate(date = new Date()) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function MealOptionsSheet({

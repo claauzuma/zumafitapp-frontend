@@ -37,6 +37,8 @@ import {
 import { Avatar, Metric } from "./profesionalPieces.jsx";
 import { fmtDate, fmtKcal, fullName, goalLabel, planLabel, specialtyLabel } from "./profesionalFormat.js";
 import {
+  getProfessionalClientEquivalentActivity,
+  reviewProfessionalClientEquivalent,
   updateProfessionalClientMenu,
   updateProfessionalClientNutrition,
   updateProfessionalClientProgress,
@@ -78,11 +80,14 @@ export default function ClienteDetalleProfesional() {
   const [editingProfileSection, setEditingProfileSection] = useState("");
   const [editingProgressCheckin, setEditingProgressCheckin] = useState(false);
   const [pendingNutritionSave, setPendingNutritionSave] = useState(null);
+  const [equivalentActivity, setEquivalentActivity] = useState({ activity: [], notifications: [], weeklyDigest: [], total: 0 });
+  const [equivalentActivityLoading, setEquivalentActivityLoading] = useState(false);
   const detailQuery = useProfessionalClientDetail(clientId);
   const loading = detailQuery.isLoading;
   const loadErr = detailQuery.error?.message || "";
   const coach = detailQuery.data?.coach || null;
   const client = detailQuery.data?.client || null;
+  const access = useMemo(() => getCoachAccess(coach), [coach]);
 
   const [nutritionDraft, setNutritionDraft] = useState(() => createNutritionDraft(null));
   const [menuDraft, setMenuDraft] = useState(() => createMenuDraft(null));
@@ -99,7 +104,25 @@ export default function ClienteDetalleProfesional() {
     setPendingNutritionSave(null);
   }, [client]);
 
-  const access = useMemo(() => getCoachAccess(coach), [coach]);
+  useEffect(() => {
+    if (activeTab !== "menu" || !clientId || !access?.nutrition) return undefined;
+    let active = true;
+    setEquivalentActivityLoading(true);
+    getProfessionalClientEquivalentActivity(clientId, { limit: 40 })
+      .then((data) => {
+        if (active) setEquivalentActivity(data);
+      })
+      .catch(() => {
+        if (active) setEquivalentActivity({ activity: [], notifications: [], weeklyDigest: [], total: 0 });
+      })
+      .finally(() => {
+        if (active) setEquivalentActivityLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [access?.nutrition, activeTab, clientId]);
+
   const nutritionAssignmentImpact = useMemo(
     () => buildNutritionAssignmentImpact(client, nutritionDraft),
     [client, nutritionDraft]
@@ -338,6 +361,64 @@ export default function ClienteDetalleProfesional() {
     setNutritionDraft((draft) => ({ ...draft, dailyTargets: {} }));
   }
 
+  async function saveEquivalentMealPermission() {
+    try {
+      setSaving("menu-permissions");
+      setErr("");
+      setOk("");
+      const data = await updateProfessionalClientMenu(clientId, {
+        menu: {
+          mode: {
+            type: preferredAllowedMode(access.menuModes, menuDraft.modeType),
+            lockedByCoach: menuDraft.lockedByCoach,
+          },
+          coachNotes: menuDraft.coachNotes,
+        },
+        clientPermissions: {
+          tracking: {
+            canUseMenuAlternatives: menuDraft.canUseMenuAlternatives,
+            canCreateEquivalentMeals: menuDraft.canCreateEquivalentMeals,
+            equivalentNotificationMode: menuDraft.equivalentNotificationMode,
+            equivalentNotifyImportantImmediately: menuDraft.equivalentNotifyImportantImmediately,
+            equivalentApprovalMode: menuDraft.equivalentApprovalMode,
+          },
+        },
+      });
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
+      setOk(!menuDraft.canUseMenuAlternatives
+        ? "El menu queda sin cambios para el cliente."
+        : menuDraft.canCreateEquivalentMeals
+          ? "El cliente puede usar tus alternativas y crear equivalencias propias."
+          : "El cliente queda limitado a las alternativas que vos asignes.");
+    } catch (error) {
+      setErr(error?.message || "No se pudo actualizar el permiso de equivalencias");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function reviewEquivalent(activity, action) {
+    const date = activity?.metadata?.date;
+    const entryId = activity?.metadata?.equivalenceId;
+    if (!date || !entryId || saving) return;
+    const reason = action === "reject"
+      ? window.prompt("Motivo opcional para que el cliente pueda corregirla:", "") || ""
+      : "";
+    try {
+      setSaving(`equivalent-${entryId}`);
+      setErr("");
+      await reviewProfessionalClientEquivalent(clientId, date, entryId, action, reason);
+      const data = await getProfessionalClientEquivalentActivity(clientId, { limit: 40 });
+      setEquivalentActivity(data);
+      setOk(action === "approve" ? "Equivalencia aprobada." : "Equivalencia rechazada; el historial queda conservado.");
+    } catch (error) {
+      setErr(error?.message || "No se pudo revisar la equivalencia.");
+    } finally {
+      setSaving("");
+    }
+  }
+
   function recalculateNutritionWeek() {
     setNutritionDraft((draft) => ({ ...draft }));
     setOk("Semana recalculada con los días generales ajustados.");
@@ -508,6 +589,116 @@ export default function ClienteDetalleProfesional() {
             locked={!access.nutrition}
             lockedText="No disponible: tu especialidad o plan efectivo no permite gestionar menús."
           >
+            <section className="prof-panel">
+              <div className="prof-titleRow">
+                <div>
+                  <strong>Autonomia sobre el menu</strong>
+                  <p className="prof-muted">Define cuanto puede adaptar el cliente. El menu que asignaste siempre sigue siendo de solo lectura.</p>
+                </div>
+                <ShieldCheck size={20} aria-hidden="true" />
+              </div>
+              <label className="prof-field compact">
+                <span>Nivel de autonomia</span>
+                <select
+                  value={!menuDraft.canUseMenuAlternatives
+                    ? "locked"
+                    : menuDraft.canCreateEquivalentMeals ? "own_and_coach" : "coach_only"}
+                  onChange={(event) => setMenuDraft((draft) => ({
+                    ...draft,
+                    canUseMenuAlternatives: event.target.value !== "locked",
+                    canCreateEquivalentMeals: event.target.value === "own_and_coach",
+                  }))}
+                  aria-label="Nivel de autonomia del cliente sobre el menu"
+                >
+                  <option value="own_and_coach">Alternativas + equivalencias propias</option>
+                  <option value="coach_only">Solo alternativas del coach</option>
+                  <option value="locked">Sin cambios: solo ver el menu</option>
+                </select>
+              </label>
+              <div className="prof-grid">
+                <label className="prof-field compact">
+                  <span>Uso de equivalencias</span>
+                  <select
+                    value={menuDraft.equivalentApprovalMode}
+                    onChange={(event) => setMenuDraft((draft) => ({ ...draft, equivalentApprovalMode: event.target.value }))}
+                    aria-label="Aprobacion requerida para equivalencias"
+                  >
+                    <option value="immediate">Uso inmediato</option>
+                    <option value="required">Requiere mi aprobacion</option>
+                  </select>
+                </label>
+                <label className="prof-field compact">
+                  <span>Avisos de equivalencias</span>
+                  <select
+                    value={menuDraft.equivalentNotificationMode}
+                    onChange={(event) => setMenuDraft((draft) => ({ ...draft, equivalentNotificationMode: event.target.value }))}
+                    aria-label="Frecuencia de avisos de equivalencias"
+                  >
+                    <option value="weekly_digest">Resumen semanal</option>
+                    <option value="important_only">Solo casos importantes</option>
+                    <option value="all_consumed">Cada equivalencia consumida</option>
+                    <option value="all_created">Cada equivalencia creada</option>
+                    <option value="none">Sin avisos</option>
+                  </select>
+                </label>
+              </div>
+              <label className="prof-check">
+                <input
+                  type="checkbox"
+                  checked={menuDraft.equivalentNotifyImportantImmediately}
+                  onChange={(event) => setMenuDraft((draft) => ({ ...draft, equivalentNotifyImportantImmediately: event.target.checked }))}
+                />
+                <span>Avisarme de inmediato si necesita atencion</span>
+              </label>
+              <div className="prof-actions compact">
+                <button
+                  type="button"
+                  className="prof-btn primary"
+                  onClick={saveEquivalentMealPermission}
+                  disabled={saving === "menu-permissions"}
+                >
+                  {saving === "menu-permissions" ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
+                  Guardar permiso
+                </button>
+              </div>
+            </section>
+
+            <section className="prof-panel">
+              <div className="prof-titleRow">
+                <div>
+                  <strong>Actividad de equivalencias</strong>
+                  <p className="prof-muted">Los borradores y las busquedas no generan avisos. Aca aparecen creaciones, consumos, alertas y revisiones.</p>
+                </div>
+                <Activity size={20} aria-hidden="true" />
+              </div>
+              {equivalentActivityLoading ? (
+                <p className="prof-muted">Cargando actividad...</p>
+              ) : equivalentActivity.activity.length ? (
+                <div className="prof-stack">
+                  {equivalentActivity.activity.slice(0, 8).map((item) => {
+                    const pending = item.event === "client_equivalent_pending_approval";
+                    return (
+                      <article key={item.id} className="prof-card compact">
+                        <strong>{equivalentEventLabel(item.event)}</strong>
+                        <p className="prof-muted">{item.metadata?.date || "Sin fecha"} · {item.metadata?.mealName || "Comida"}</p>
+                        {pending ? (
+                          <div className="prof-actions compact">
+                            <button type="button" className="prof-btn primary" disabled={!!saving} onClick={() => reviewEquivalent(item, "approve")}>Aprobar</button>
+                            <button type="button" className="prof-btn secondary" disabled={!!saving} onClick={() => reviewEquivalent(item, "reject")}>Rechazar</button>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                  {equivalentActivity.weeklyDigest[0] ? (
+                    <p className="prof-muted">Resumen {equivalentActivity.weeklyDigest[0].weekStart} a {equivalentActivity.weeklyDigest[0].weekEnd}: {equivalentActivity.weeklyDigest[0].total} eventos.</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="prof-muted">Todavia no hay actividad de equivalencias para este cliente.</p>
+              )}
+            </section>
+
             <WeeklyClientMenuPlanner
               clientId={clientId}
               client={client}
@@ -1775,7 +1966,27 @@ function createMenuDraft(client) {
     snackLibreKcal: valueOrEmpty(menu?.mealConfig?.snackLibreKcal),
     mealsByDay: normalizeMealsByDay(menu?.weeklyPlan?.mealsByDay),
     coachNotes: menu?.coachNotes || "",
+    canUseMenuAlternatives: client?.clientPermissions?.tracking?.canUseMenuAlternatives !== false,
+    canCreateEquivalentMeals: client?.clientPermissions?.tracking?.canCreateEquivalentMeals !== false,
+    equivalentNotificationMode: ["none", "important_only", "weekly_digest", "all_consumed", "all_created"].includes(client?.clientPermissions?.tracking?.equivalentNotificationMode)
+      ? client.clientPermissions.tracking.equivalentNotificationMode
+      : "weekly_digest",
+    equivalentNotifyImportantImmediately: client?.clientPermissions?.tracking?.equivalentNotifyImportantImmediately !== false,
+    equivalentApprovalMode: client?.clientPermissions?.tracking?.equivalentApprovalMode === "required" ? "required" : "immediate",
   };
+}
+
+function equivalentEventLabel(event = "") {
+  return ({
+    client_equivalent_created: "Equivalencia creada",
+    client_equivalent_favorited: "Equivalencia guardada como favorita",
+    client_equivalent_consumed: "Equivalencia consumida",
+    client_equivalent_needs_attention: "Equivalencia que necesita atencion",
+    client_equivalent_pending_approval: "Equivalencia pendiente de aprobacion",
+    client_equivalent_rejected: "Equivalencia rechazada",
+    client_equivalent_approved: "Equivalencia aprobada",
+    client_equivalent_recalculated_after_target_change: "Equivalencia recalculada por cambio de meta",
+  })[event] || "Actividad de equivalencia";
 }
 
 function createRoutineDraft(client) {

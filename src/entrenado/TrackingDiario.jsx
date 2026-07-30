@@ -29,6 +29,7 @@ import {
 
 import { listAlimentos } from "../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, formatNumber, getFoodImageUrl } from "../nutricion/nutricionUtils.js";
+import { useCurrentLocalDate } from "../hooks/useCurrentLocalDate.js";
 import AppToast from "../ui/AppToast.jsx";
 import {
   CLIENT_PLAN_CAPABILITIES_STALE_TIME,
@@ -97,6 +98,15 @@ import {
   buildTrackingQuantityInlineFeedback,
   trackingQuantityInvalidFoodsMessage,
 } from "../tracking/trackingQuantityReview.js";
+import {
+  allocateTrackingRemainingBySelectedPercent,
+  distributeTrackingRemainingTargets,
+  pendingTrackingTargetMeals,
+  trackingPendingProteinShortfall,
+  trackingTargetFromRemainingPercent,
+  trackingMealTargetBudget,
+  trackingMealTargetOverages,
+} from "../tracking/trackingMealTargets.js";
 import "./trackingDiario.css";
 
 const TRACKING_MEAL_TYPES = ["desayuno", "almuerzo", "merienda", "cena", "snack", "otra"];
@@ -112,7 +122,8 @@ const MEAL_TYPE_OPTIONS = [
 
 export default function TrackingDiario() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedDate = validDateKey(searchParams.get("date")) || todayLocalString();
+  const currentDate = useCurrentLocalDate();
+  const requestedDate = validDateKey(searchParams.get("date")) || currentDate;
   const [date, setDate] = useState(requestedDate);
   const [modalMeal, setModalMeal] = useState("");
   const [search, setSearch] = useState("");
@@ -248,14 +259,17 @@ export default function TrackingDiario() {
   const issues = useMemo(() => trackingIssues(objective, totals), [objective, totals]);
   const canAutoCompleteRemainingMeals = capabilitiesQuery.data?.canAutoCompleteRemainingMeals === true;
   const canPlanRemainingIntake = capabilitiesQuery.data?.canPlanRemainingIntake === true;
+  const canDistributeMealTargets = Boolean(objective) && (
+    manualCompletionActive ? canPlanRemainingIntake : canAutoCompleteRemainingMeals
+  );
   const canAutoCalculateTrackingQuantities =
     capabilitiesQuery.data?.canAutoCalculateTrackingQuantities === true;
   const trackingHistoryDays = Number(capabilitiesQuery.data?.limits?.trackingHistoryDays);
   const historyOldestDate = useMemo(
     () => Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
-      ? addDays(todayLocalString(), -(trackingHistoryDays - 1))
+      ? addDays(currentDate, -(trackingHistoryDays - 1))
       : "",
-    [trackingHistoryDays]
+    [currentDate, trackingHistoryDays]
   );
 
   const searchReady = debouncedSearch.trim().length >= 2;
@@ -280,6 +294,26 @@ export default function TrackingDiario() {
     : isSaving
       ? "Guardando cambios"
       : "Diario guardado";
+  const goalMeal = meals.find((meal) => meal.id === goalMealId) || null;
+  const goalBudget = trackingMealTargetBudget({
+    objective,
+    consumed: totals,
+    meals,
+    consumedByMeal,
+    mealId: goalMealId,
+  });
+  const targetPlanningMeals = manualCompletionActive ? normalizeMealSettings(meals) : configuredMeals;
+  const goalDistributionCount = pendingTrackingTargetMeals(targetPlanningMeals, consumedByMeal).length;
+  const positiveRemainingTargets = positiveTotals(
+    manualCompletionActive ? manualProgress?.remaining : remaining
+  );
+  const goalProteinShortfall = trackingPendingProteinShortfall({
+    remaining: positiveRemainingTargets,
+    meals: targetPlanningMeals.map((meal) => (
+      meal.id === goalMealId ? { ...meal, target: sanitizeTotals(goalDraft) } : meal
+    )),
+    consumedByMeal,
+  });
 
   useEffect(() => {
     if (requestedDate !== date) setDate(requestedDate);
@@ -480,8 +514,21 @@ export default function TrackingDiario() {
     setSettingsOpen(true);
   }
 
-  async function saveSettings() {
+  async function saveSettings({ allowOverage = false } = {}) {
     const next = normalizeMealSettings(settingsDraft);
+    const plannedTotals = pendingTrackingTargetMeals(next, consumedByMeal)
+      .reduce((sum, meal) => addTotals(sum, sanitizeTotals(meal?.target)), emptyTotals());
+    const settingsOverages = trackingMealTargetOverages(plannedTotals, {
+      configured: configuredNutritionTarget(objective || {}).configured,
+      maximum: positiveRemainingTargets,
+    });
+    if (settingsOverages.length && !allowOverage) {
+      setToast({
+        type: "warning",
+        message: "Las metas de las comidas superan el restante del día. Revisalas o aceptá la excepción.",
+      });
+      return false;
+    }
     const saved = await persistMealsConfig(
       next,
       "Ajustes de comidas guardados para este día.",
@@ -583,7 +630,7 @@ export default function TrackingDiario() {
   }
 
   function editableTrackingMeals() {
-    if (!manualCompletionActive) return normalizeMealSettings(configuredMeals);
+    if (!manualCompletionActive) return normalizeMealSettings(meals);
     if (manualCompletionPlan) return normalizeMealSettings(meals);
     const current = normalizeMealSettings(configuredMeals);
     return current.length ? current : normalizeMealSettings([manualTrackingBaseMeal()]);
@@ -644,17 +691,81 @@ export default function TrackingDiario() {
     setGoalDraft(sanitizeTotals(meal.target || {}));
   }
 
-  function saveMealGoal() {
-    const target = sanitizeTotals(autofillMealGoalCalories(goalDraft));
-    const next = editableTrackingMeals().map((meal) => (
+  function applyMealGoalPercentage(selectedPercent) {
+    if (!canDistributeMealTargets) return;
+    const distribution = allocateTrackingRemainingBySelectedPercent({
+      remaining: positiveRemainingTargets,
+      meals: editableTrackingMeals(),
+      consumedByMeal,
+      selectedMealId: goalMealId,
+      selectedPercent,
+    });
+    const selected = distribution.find((entry) => entry.mealId === String(goalMealId));
+    if (!selected) {
+      setToast({ type: "warning", message: "No pudimos aplicar ese porcentaje a esta comida." });
+      return;
+    }
+    setGoalDraft(sanitizeTotals(selected.target));
+  }
+
+  async function saveMealGoal({ allowOverage = false, allocationPercent = null } = {}) {
+    const target = sanitizeTotals(goalDraft);
+    const usesPercentage = allocationPercent !== null && Number.isFinite(Number(allocationPercent));
+    const budget = trackingMealTargetBudget({
+      objective,
+      consumed: totals,
+      meals,
+      consumedByMeal,
+      mealId: goalMealId,
+    });
+    const overages = trackingMealTargetOverages(target, budget);
+    if (!usesPercentage && overages.length && !allowOverage) {
+      setToast({
+        type: "warning",
+        message: "La meta supera el restante disponible. Revisala o acepta la excepcion antes de guardar.",
+      });
+      return false;
+    }
+    const currentMeals = editableTrackingMeals();
+    let next = currentMeals.map((meal) => (
       meal.id === goalMealId ? { ...meal, target } : meal
     ));
-    setGoalMealId("");
-    void persistMealsConfig(
+    let successMessage = hasMealTarget(target) ? "Meta de comida guardada." : "Meta de comida quitada.";
+    let operation = manualCompletionActive ? "configure_manual_completion_meals" : "";
+
+    if (usesPercentage) {
+      const distribution = allocateTrackingRemainingBySelectedPercent({
+        remaining: positiveRemainingTargets,
+        meals: currentMeals,
+        consumedByMeal,
+        selectedMealId: goalMealId,
+        selectedPercent: allocationPercent,
+      });
+      if (!distribution.length) {
+        setToast({ type: "warning", message: "No hay comidas pendientes para aplicar el porcentaje." });
+        return false;
+      }
+      const targetsByMealId = new Map(distribution.map((entry) => [entry.mealId, entry.target]));
+      next = currentMeals.map((meal) => (
+        targetsByMealId.has(String(meal.id))
+          ? { ...meal, target: targetsByMealId.get(String(meal.id)) }
+          : meal
+      ));
+      const effectivePercent = distribution.length === 1 ? 100 : Math.round(Number(allocationPercent));
+      successMessage = distribution.length === 1
+        ? `Todo el restante fue asignado a ${goalMeal?.label || "esta comida"}.`
+        : `${effectivePercent}% asignado a ${goalMeal?.label || "esta comida"}; el resto se repartio entre las demas.`;
+      operation = manualCompletionActive
+        ? "configure_manual_completion_meals"
+        : "auto_complete_remaining_meals";
+    }
+    const saved = await persistMealsConfig(
       next,
-      hasMealTarget(target) ? "Meta de comida guardada." : "Meta de comida quitada.",
-      { operation: manualCompletionActive ? "configure_manual_completion_meals" : "" }
+      successMessage,
+      { operation }
     );
+    if (saved) setGoalMealId("");
+    return saved;
   }
 
   function removeMealGoal(mealId) {
@@ -748,39 +859,48 @@ export default function TrackingDiario() {
     );
   }
 
-  function calculateRemainingTargets() {
-    if (!canAutoCompleteRemainingMeals) return;
+  async function calculateRemainingTargets({ closeGoal = false } = {}) {
+    if (!canDistributeMealTargets) return;
     if (!objective) {
       setToast({ type: "warning", message: "No hay una meta diaria para calcular el restante." });
       return;
     }
 
-    const positiveRemaining = positiveTotals(remaining || emptyTotals());
+    const positiveRemaining = positiveRemainingTargets;
     if (!hasPositiveTotals(positiveRemaining)) {
       setToast({ type: "info", message: "No queda restante para distribuir." });
       return;
     }
 
-    const emptyMeals = meals.filter((meal) => !(log[meal.id] || []).length);
-    const targetMeals = emptyMeals.length ? emptyMeals : meals.filter((meal) => !hasMealTarget(meal.target));
-    if (!targetMeals.length) {
+    const currentMeals = editableTrackingMeals();
+    const targetMeals = pendingTrackingTargetMeals(currentMeals, consumedByMeal);
+    const distribution = distributeTrackingRemainingTargets({
+      remaining: positiveRemaining,
+      meals: currentMeals,
+      consumedByMeal,
+    });
+    if (!targetMeals.length || !distribution.length) {
       setToast({ type: "warning", message: "No hay comidas pendientes para calcular el restante." });
       return;
     }
 
-    const distribution = distributeRemainingTarget(positiveRemaining, targetMeals.length);
-    const targetsByMealId = new Map(targetMeals.map((meal, index) => [meal.id, distribution[index] || emptyTotals()]));
-    const next = normalizeMealSettings(configuredMeals).map((meal) => (
+    const targetsByMealId = new Map(distribution.map((entry) => [entry.mealId, entry.target]));
+    const next = currentMeals.map((meal) => (
       targetsByMealId.has(meal.id) ? { ...meal, target: targetsByMealId.get(meal.id) } : meal
     ));
 
-    persistMealsConfig(
+    const saved = await persistMealsConfig(
       next,
       targetMeals.length === 1
         ? `Restante asignado a ${targetMeals[0].label}.`
         : `Restante distribuido en ${targetMeals.length} comidas.`,
-      { operation: "auto_complete_remaining_meals" }
+      {
+        operation: manualCompletionActive
+          ? "configure_manual_completion_meals"
+          : "auto_complete_remaining_meals",
+      }
     );
+    if (saved && closeGoal) setGoalMealId("");
   }
 
   async function calculateAutomaticQuantities(meal) {
@@ -1290,8 +1410,6 @@ export default function TrackingDiario() {
                           <span>
                             {formatNumber(item.kcal)} kcal · P {formatNumber(item.proteina, 1)} · C {formatNumber(item.carbs, 1)} · G {formatNumber(item.grasas, 1)}
                           </span>
-                        </div>
-                        <div className="td-foodActions">
                           <button
                             type="button"
                             className="td-foodStateToggle is-manual"
@@ -1302,6 +1420,8 @@ export default function TrackingDiario() {
                           >
                             Manual
                           </button>
+                        </div>
+                        <div className="td-foodActions">
                           <label>
                             <input
                               key={`${item.id}-${item.cantidad}`}
@@ -1347,8 +1467,6 @@ export default function TrackingDiario() {
                             ) : draft.status === "calculated" ? (
                               <small>Cantidad calculada</small>
                             ) : null}
-                          </div>
-                          <div className="td-foodActions td-foodDraftControls">
                             <button
                               type="button"
                               className={`td-foodStateToggle ${automatic ? "is-automatic" : "is-manual"}`}
@@ -1361,6 +1479,8 @@ export default function TrackingDiario() {
                             >
                               {automatic ? "Auto" : "Manual"}
                             </button>
+                          </div>
+                          <div className="td-foodActions td-foodDraftControls">
                             <label>
                               <input
                                 value={draft.quantity}
@@ -1751,15 +1871,17 @@ export default function TrackingDiario() {
           settings={settingsDraft}
           manualCompletion={manualCompletionActive}
           canPlan={canPlanRemainingIntake}
+          hasDailyTarget={Boolean(objective)}
+          remaining={positiveRemainingTargets}
+          consumedByMeal={consumedByMeal}
+          targetConfigured={configuredNutritionTarget(objective || {}).configured}
           saving={updateMealsMutation.isPending || manualCompletionMutation.isPending}
-          itemCounts={Object.fromEntries(meals.map((meal) => [
-            meal.id,
-            (log[meal.id] || []).length +
-              (trackingFoodDrafts[trackingDraftKey(date, meal.id)] || []).length,
-          ]))}
-          onBlocked={(message) => setToast({ type: "info", message })}
           onChange={setSettingsDraft}
           onClose={() => setSettingsOpen(false)}
+          onAddMeal={() => {
+            setSettingsOpen(false);
+            setAddMealOpen(true);
+          }}
           onSave={saveSettings}
         />
       ) : null}
@@ -1773,13 +1895,20 @@ export default function TrackingDiario() {
 
       {goalMealId ? (
         <MealGoalModal
-          meal={meals.find((meal) => meal.id === goalMealId)}
+          meal={goalMeal}
           draft={goalDraft}
-          remaining={remaining || emptyTotals()}
+          budget={goalBudget}
+          canDistribute={canDistributeMealTargets}
+          distributionCount={goalDistributionCount}
+          remaining={positiveRemainingTargets}
+          proteinShortfall={goalProteinShortfall}
+          saving={updateMealsMutation.isPending || manualCompletionMutation.isPending}
           setDraft={setGoalDraft}
           onClose={() => setGoalMealId("")}
           onSave={saveMealGoal}
           onRemove={() => removeMealGoal(goalMealId)}
+          onApplyPercentage={applyMealGoalPercentage}
+          onDistribute={() => calculateRemainingTargets({ closeGoal: true })}
         />
       ) : null}
 
@@ -1902,23 +2031,64 @@ function AddMealTypeModal({ onClose, onCreate }) {
   );
 }
 
-function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRemove }) {
+function MealGoalModal({
+  meal,
+  draft,
+  budget,
+  canDistribute = false,
+  distributionCount = 0,
+  remaining = emptyTotals(),
+  proteinShortfall = 0,
+  saving = false,
+  setDraft,
+  onClose,
+  onSave,
+  onRemove,
+  onApplyPercentage,
+  onDistribute,
+}) {
   const panelRef = useRef(null);
-  useTrackingDialogKeyboard(panelRef, true, { onClose });
+  const [overageAccepted, setOverageAccepted] = useState(false);
+  const [allocationPercent, setAllocationPercent] = useState(null);
+  useTrackingDialogKeyboard(panelRef, true, { onClose, disabled: saving });
   const title = meal?.label || "Comida";
   const macroKcal = macroCaloriesFromTotals(draft || {});
   const hasMacroDraft = macroKcal > 0;
-  const kcalValue = hasMacroDraft ? inputNumber(macroKcal) : draft?.kcal;
-  const remainingKcal = Number(remaining?.kcal) || 0;
-  const exceedsRemaining = remainingKcal > 0 && Number(kcalValue) > remainingKcal;
+  const overages = trackingMealTargetOverages(draft, budget);
+  const exceedsRemaining = overages.length > 0;
+  const requiresOverageAcceptance = allocationPercent === null && exceedsRemaining;
+  const budgetLine = mealTargetBudgetLine(budget);
+  const currentSharePercent = Number(remaining?.kcal) > 0 && Number(draft?.kcal) > 0
+    ? Math.max(0, Math.min(100, Math.round(Number(draft.kcal) * 100 / Number(remaining.kcal))))
+    : null;
+  const displayedPercent = allocationPercent ?? currentSharePercent;
 
   function update(key, value) {
+    setOverageAccepted(false);
+    setAllocationPercent(null);
     setDraft((current) => ({
-      ...autofillMealGoalCalories({
-        ...(current || emptyTotals()),
-        [key]: value,
-      }),
+      ...(current || emptyTotals()),
+      [key]: value,
     }));
+  }
+
+  function save() {
+    if (requiresOverageAcceptance && !overageAccepted) return;
+    void onSave({
+      allowOverage: requiresOverageAcceptance && overageAccepted,
+      allocationPercent,
+    });
+  }
+
+  function applyPercentage(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    const nextPercent = distributionCount === 1
+      ? 100
+      : Math.max(1, Math.min(100, Math.round(parsed)));
+    setOverageAccepted(false);
+    setAllocationPercent(nextPercent);
+    onApplyPercentage?.(nextPercent);
   }
 
   return (
@@ -1937,15 +2107,91 @@ function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRe
           </button>
         </div>
 
-        <p className="td-goalIntro">Defini una meta sutil para esta comida. Si queda vacia, no se muestra nada en la card.</p>
+        <p className="td-goalIntro">DefinÃ­ una meta para orientar el cÃ¡lculo automÃ¡tico. Las kcal tienen prioridad y los macros se ajustan lo mÃ¡s posible.</p>
+
+        <div className="td-goalBudget">
+          <div className="td-goalBudgetCopy">
+            <small>Disponible para esta comida</small>
+            <strong>{budgetLine || "Sin lÃ­mites diarios configurados"}</strong>
+            <span>Ya descuenta lo consumido y las metas pendientes de otras comidas.</span>
+          </div>
+          {canDistribute ? (
+            <>
+              <div className="td-goalAllocation">
+                <div className="td-goalAllocationHead">
+                  <span>Porcentaje del restante</span>
+                  <strong>{displayedPercent === null ? "Elegir" : `${displayedPercent}%`}</strong>
+                </div>
+                <div className="td-percentPresets" aria-label="Porcentaje para esta comida">
+                  {(distributionCount === 1 ? [100] : [25, 50, 75, 90, 100]).map((percent) => (
+                    <button
+                      type="button"
+                      key={percent}
+                      className={displayedPercent === percent ? "active" : ""}
+                      aria-pressed={displayedPercent === percent}
+                      disabled={saving}
+                      onClick={() => applyPercentage(percent)}
+                    >
+                      {percent}%
+                    </button>
+                  ))}
+                </div>
+                {distributionCount > 1 ? (
+                  <label className="td-percentCustom">
+                    <span>Otro porcentaje</span>
+                    <span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        inputMode="numeric"
+                        value={displayedPercent ?? ""}
+                        onChange={(event) => applyPercentage(event.target.value)}
+                        placeholder="Ej. 60"
+                        aria-label={`Porcentaje del restante para ${title}`}
+                      />
+                      <b>%</b>
+                    </span>
+                  </label>
+                ) : null}
+                <small>
+                  {distributionCount === 1
+                    ? "Es la única comida pendiente: recibe todo el restante."
+                    : `Lo que no uses acá se reparte entre las otras ${distributionCount - 1} comidas pendientes.`}
+                </small>
+                {displayedPercent !== null && Number(remaining?.kcal) > 0 ? (
+                  <div className="td-goalAllocationPreview">
+                    {formatNumber(Number(remaining.kcal) * displayedPercent / 100, 0)} kcal para {title}
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                className="td-goalDistributeBtn"
+                onClick={onDistribute}
+                disabled={saving || distributionCount < 1}
+              >
+                <Crosshair size={16} strokeWidth={2.3} aria-hidden="true" />
+                <span>
+                  <strong>Aplicar reparto sugerido</strong>
+                  <small>
+                    {distributionCount === 1
+                      ? "Guardar todo en la comida pendiente"
+                      : `Guardar un reparto equilibrado entre ${distributionCount} comidas`}
+                  </small>
+                </span>
+              </button>
+            </>
+          ) : null}
+        </div>
 
         <div className="td-goalGrid">
           <TargetInput
             label="Kcal"
-            value={kcalValue}
+            value={draft?.kcal}
             onChange={(value) => update("kcal", value)}
-            placeholder={hasMacroDraft ? "Auto" : "Libre"}
-            readOnly={hasMacroDraft}
+            placeholder="Libre"
           />
           <TargetInput label="Proteina" value={draft?.proteina} onChange={(value) => update("proteina", value)} />
           <TargetInput label="Carbs" value={draft?.carbs} onChange={(value) => update("carbs", value)} />
@@ -1954,27 +2200,53 @@ function MealGoalModal({ meal, draft, remaining, setDraft, onClose, onSave, onRe
 
         {hasMacroDraft ? (
           <div className="td-goalAutoNote">
-            Kcal calculadas desde macros: P x4 + C x4 + G x9.
+            Estos macros equivalen aproximadamente a {displayCompactKcal(macroKcal)}. PodÃ©s definir las kcal por separado.
           </div>
         ) : null}
 
-        {exceedsRemaining ? (
+        {allocationPercent === null && Number(proteinShortfall) > 0 ? (
+          <div className="td-goalProteinNote" role="status">
+            <AlertTriangle size={16} strokeWidth={2.4} aria-hidden="true" />
+            <div>
+              <strong>Queda proteína sin asignar</strong>
+              <span>
+                Faltan {formatNumber(proteinShortfall, 1)} g en las metas pendientes. Podés aumentar la proteína de esta comida, repartir el restante o elegir luego una fuente proteica.
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {requiresOverageAcceptance ? (
           <div className="td-goalWarning" role="alert">
             <AlertTriangle size={16} strokeWidth={2.4} aria-hidden="true" />
-            <span>
-              Esta meta supera las kcal restantes del dia: {displayCompactKcal(remainingKcal)} disponibles.
-            </span>
+            <div>
+              <strong>Esta meta supera el disponible</strong>
+              <span>{mealTargetOverageLine(overages)}</span>
+              <label className="td-goalOverride">
+                <input
+                  type="checkbox"
+                  checked={overageAccepted}
+                  onChange={(event) => setOverageAccepted(event.target.checked)}
+                />
+                <span>Entiendo el exceso y quiero guardar esta excepciÃ³n.</span>
+              </label>
+            </div>
           </div>
         ) : null}
 
         <div className="td-modalActions">
-          <button type="button" className="td-secondaryBtn" onClick={onRemove}>
+          <button type="button" className="td-secondaryBtn" onClick={onRemove} disabled={saving}>
             <X size={16} strokeWidth={2.4} />
             Quitar meta
           </button>
-          <button type="button" className="td-primaryBtn" onClick={onSave}>
+          <button
+            type="button"
+            className="td-primaryBtn"
+            onClick={save}
+            disabled={saving || (requiresOverageAcceptance && !overageAccepted)}
+          >
             <CheckCircle2 size={17} />
-            Guardar meta
+            {saving ? "Guardando..." : requiresOverageAcceptance ? "Guardar excepciÃ³n" : "Guardar meta"}
           </button>
         </div>
       </div>
@@ -2088,7 +2360,7 @@ function DailySummaryCard({
     {
       label: "Restante",
       value: hasKcalTarget ? displayCompactKcal(rest.kcal) : "-",
-      tone: "remaining",
+      tone: Number(rest.kcal) < 0 ? "remaining over" : "remaining",
     },
   ];
 
@@ -2114,10 +2386,7 @@ function DailySummaryCard({
             ))}
           </span>
           <span className="td-dailySummaryMacroPills">
-            <span>
-              <small>Consumidos</small>
-              <strong>{macroLineCurrent(consumed)}</strong>
-            </span>
+            <DailyMacroRow label="Consumidos" totals={consumed} tone="consumed" />
             {hasPendingTotals ? (
               <span className="pending" role="status">
                 <small>+ {displayCompactKcal(pendingTotals.kcal)} por confirmar</small>
@@ -2125,10 +2394,7 @@ function DailySummaryCard({
               </span>
             ) : null}
             {hasKcalTarget ? (
-              <span>
-                <small>Restantes</small>
-                <strong>{macroLineCurrent(rest)}</strong>
-              </span>
+              <DailyMacroRow label="Restantes" totals={rest} tone="remaining" />
             ) : null}
             {hasMenuTotals ? (
               <span className="menu">
@@ -2172,6 +2438,32 @@ function DailySummaryCard({
   );
 }
 
+function DailyMacroRow({ label, totals = {}, tone = "" }) {
+  const macros = [
+    { key: "proteina", short: "P", label: "Proteina", tone: "protein" },
+    { key: "carbs", short: "C", label: "Carbohidratos", tone: "carbs" },
+    { key: "grasas", short: "G", label: "Grasas", tone: "fat" },
+  ];
+
+  return (
+    <span className={`td-dailyMacroRow ${tone}`}>
+      <small>{label}</small>
+      <span className="td-dailyMacroValues">
+        {macros.map((macro) => (
+          <span
+            className={`td-dailyMacroValue ${macro.tone}`}
+            key={macro.key}
+            aria-label={`${macro.label}: ${formatNumber(totals?.[macro.key], 1)} gramos`}
+          >
+            <b>{macro.short}</b>
+            <strong>{formatNumber(totals?.[macro.key], 1)}</strong>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 function MacroProgress({ label, value, target, suffix = "", tone }) {
   const pct = macroProgressPct(value, target);
 
@@ -2202,45 +2494,120 @@ function TrackingIssueList({ issues = [], compact = false }) {
   );
 }
 
+function MealTargetPercentageEditor({
+  meal,
+  target = emptyTotals(),
+  remaining = emptyTotals(),
+  disabled = false,
+  onApply,
+}) {
+  const available = positiveTotals(remaining);
+  const currentPercent = available.kcal > 0 && Number(target?.kcal) > 0
+    ? Math.max(0, Math.min(100, Math.round(Number(target.kcal) * 100 / available.kcal)))
+    : 0;
+
+  function apply(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    onApply(Math.max(0, Math.min(100, parsed)));
+  }
+
+  return (
+    <div className="td-settingPercentEditor">
+      <div className="td-settingPercentHead">
+        <div>
+          <small>Porcentaje del restante</small>
+          <strong>{currentPercent}% · {formatNumber(Number(target?.kcal) || 0, 0)} kcal</strong>
+        </div>
+        <span>{formatNumber(available.kcal, 0)} kcal disponibles</span>
+      </div>
+      <div className="td-settingPercentControls">
+        <div className="td-percentPresets" aria-label={`Porcentaje para ${meal.label}`}>
+          {[10, 25, 50, 75, 90, 100].map((percent) => (
+            <button
+              type="button"
+              key={percent}
+              className={currentPercent === percent ? "active" : ""}
+              aria-pressed={currentPercent === percent}
+              disabled={disabled || available.kcal <= 0}
+              onClick={() => apply(percent)}
+            >
+              {percent}%
+            </button>
+          ))}
+        </div>
+        <label className="td-percentCustom">
+          <span>Exacto</span>
+          <span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              inputMode="numeric"
+              value={currentPercent}
+              onChange={(event) => apply(event.target.value)}
+              disabled={disabled || available.kcal <= 0}
+              aria-label={`Porcentaje exacto del restante para ${meal.label}`}
+            />
+            <b>%</b>
+          </span>
+        </label>
+      </div>
+      <small>
+        Aplica el mismo porcentaje a kcal y macros. Después podés ajustar los valores manualmente.
+      </small>
+    </div>
+  );
+}
+
 function MealSettingsDrawer({
   settings,
   manualCompletion = false,
   canPlan = false,
+  hasDailyTarget = false,
+  remaining = emptyTotals(),
+  consumedByMeal = {},
+  targetConfigured = {},
   saving = false,
-  itemCounts = {},
-  onBlocked,
   onChange,
   onClose,
+  onAddMeal,
   onSave,
 }) {
   const panelRef = useRef(null);
+  const [overageAccepted, setOverageAccepted] = useState(false);
+  const [enabledMealIds, setEnabledMealIds] = useState(() => new Set(
+    normalizeMealSettings(settings)
+      .filter((meal) => hasMealTarget(meal.target))
+      .map((meal) => String(meal.id))
+  ));
   useTrackingDialogKeyboard(panelRef, true, { onClose, disabled: saving });
   const normalized = normalizeMealSettings(settings);
-  const count = normalized.length;
   const advancedManualSettings = !manualCompletion || canPlan;
-  const minCount = manualCompletion ? 1 : 0;
-  const maxCount = manualCompletion ? 4 : 8;
+  const enabledMeals = normalized.filter((meal) => enabledMealIds.has(String(meal.id)));
+  const assignedKcal = enabledMeals.reduce((sum, meal) => sum + (Number(meal.target?.kcal) || 0), 0);
+  const assignedPercent = Number(remaining?.kcal) > 0
+    ? Math.round(assignedKcal * 100 / Number(remaining.kcal))
+    : 0;
+  const plannedTotals = pendingTrackingTargetMeals(normalized, consumedByMeal)
+    .reduce((sum, meal) => addTotals(sum, sanitizeTotals(meal?.target)), emptyTotals());
+  const settingsOverages = trackingMealTargetOverages(plannedTotals, {
+    configured: targetConfigured,
+    maximum: positiveTotals(remaining),
+  });
+  const proteinShortfall = trackingPendingProteinShortfall({
+    remaining,
+    meals: normalized,
+    consumedByMeal,
+  });
 
-  function setCount(nextCount) {
-    if (!advancedManualSettings) return;
-    const safeCount = Math.max(minCount, Math.min(maxCount, Number(nextCount) || minCount));
-    const removedWithFoods = normalized
-      .slice(safeCount)
-      .some((meal) => Number(itemCounts?.[meal.id]) > 0);
-    if (removedWithFoods) {
-      onBlocked?.("Para quitar una comida, primero eliminá o mové sus alimentos.");
-      return;
-    }
-    const next = [...normalized];
-    while (next.length < safeCount) {
-      const type = nextAvailableMealType(next);
-      next.push(createMealConfig(type, "", next));
-    }
-    onChange(next.slice(0, safeCount));
+  function changeSettings(next) {
+    setOverageAccepted(false);
+    onChange(next);
   }
 
   function updateMeal(index, patch) {
-    onChange(normalized.map((meal, mealIndex) => (
+    changeSettings(normalized.map((meal, mealIndex) => (
       mealIndex === index ? { ...meal, ...patch } : meal
     )));
   }
@@ -2252,6 +2619,28 @@ function MealSettingsDrawer({
         ...(meal.target || emptyTotals()),
         [key]: value,
       },
+    });
+  }
+
+  function toggleMealTarget(index) {
+    const meal = normalized[index];
+    if (!meal?.id || !advancedManualSettings) return;
+    const id = String(meal.id);
+    const enabled = enabledMealIds.has(id);
+    setEnabledMealIds((current) => {
+      const next = new Set(current);
+      if (enabled) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (enabled) updateMeal(index, { target: emptyTotals() });
+  }
+
+  function applyMealPercent(index, percent) {
+    const meal = normalized[index];
+    if (!meal?.id || !enabledMealIds.has(String(meal.id))) return;
+    updateMeal(index, {
+      target: trackingTargetFromRemainingPercent(remaining, percent),
     });
   }
 
@@ -2272,21 +2661,20 @@ function MealSettingsDrawer({
           </button>
         </div>
 
-        <section className="td-settingsIntro">
+        <section className="td-settingsOverview">
           <div>
-            <span>Cantidad de comidas</span>
-            <strong>{count}</strong>
+            <small>Restante para organizar</small>
+            <strong>{hasDailyTarget ? `${formatNumber(remaining.kcal, 0)} kcal` : "Sin objetivo diario"}</strong>
           </div>
-          <select
-            value={count}
-            onChange={(event) => setCount(event.target.value)}
-            disabled={!advancedManualSettings || saving}
-            aria-label="Cantidad de comidas"
-          >
-            {Array.from({ length: maxCount - minCount + 1 }, (_, index) => index + minCount).map((value) => (
-              <option key={value} value={value}>{value} comida{value > 1 ? "s" : ""}</option>
-            ))}
-          </select>
+          <div className="td-settingsOverviewStats">
+            <span><b>{normalized.length}</b> comidas</span>
+            <span><b>{enabledMeals.length}</b> con meta</span>
+            {hasDailyTarget ? (
+              <span className={assignedPercent > 100 ? "over" : ""}>
+                <b>{assignedPercent}%</b> asignado
+              </span>
+            ) : null}
+          </div>
         </section>
 
         {manualCompletion && !canPlan ? (
@@ -2295,47 +2683,150 @@ function MealSettingsDrawer({
           </div>
         ) : null}
 
-        <div className="td-settingsList">
-          {normalized.map((meal, index) => (
-            <article className="td-settingMeal" key={meal.id || index}>
-              <div className="td-settingGrid">
-                <label>
-                  <span>Nombre</span>
-                  <input
-                    value={meal.label}
-                    onChange={(event) => updateMeal(index, { label: event.target.value })}
-                    placeholder={`Comida ${index + 1}`}
-                  />
-                </label>
-                <label>
-                  <span>Tipo</span>
-                  <select value={meal.type || "otra"} onChange={(event) => updateMeal(index, { type: event.target.value })}>
-                    {MEAL_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+        {!normalized.length ? (
+          <div className="td-settingsEmpty">
+            <span className="td-settingsEmptyIcon" aria-hidden="true"><Utensils size={22} /></span>
+            <div>
+              <strong>Todavía no agregaste comidas</strong>
+              <p>Creá la primera para registrar alimentos y, si querés, asignarle una meta.</p>
+            </div>
+            <button type="button" onClick={onAddMeal} disabled={saving}>
+              <Plus size={17} strokeWidth={2.5} aria-hidden="true" />
+              Agregar comida
+            </button>
+          </div>
+        ) : null}
 
-              {advancedManualSettings ? (
-                <div className="td-targetGrid">
-                  <TargetInput label="Kcal" value={meal.target?.kcal} onChange={(value) => updateTarget(index, "kcal", value)} />
-                  <TargetInput label="P" value={meal.target?.proteina} onChange={(value) => updateTarget(index, "proteina", value)} />
-                  <TargetInput label="C" value={meal.target?.carbs} onChange={(value) => updateTarget(index, "carbs", value)} />
-                  <TargetInput label="G" value={meal.target?.grasas} onChange={(value) => updateTarget(index, "grasas", value)} />
+        <div className="td-settingsList">
+          {normalized.map((meal, index) => {
+            const targetEnabled = enabledMealIds.has(String(meal.id));
+            return (
+              <article className={`td-settingMeal ${targetEnabled ? "has-target" : ""}`} key={meal.id || index}>
+                <div className="td-settingMealTop">
+                  <MealTypeBadge type={meal.type} />
+                  <div className="td-settingMealTitle">
+                    <strong>{meal.label || `Comida ${index + 1}`}</strong>
+                    <span>
+                      {targetEnabled && hasMealTarget(meal.target)
+                        ? mealTargetLine(meal.target)
+                        : mealTypeLabel(meal.type)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`td-targetSwitch ${targetEnabled ? "active" : ""}`}
+                    role="switch"
+                    aria-checked={targetEnabled}
+                    aria-label={`${targetEnabled ? "Quitar" : "Activar"} meta para ${meal.label}`}
+                    disabled={!advancedManualSettings || saving}
+                    onClick={() => toggleMealTarget(index)}
+                  >
+                    <span aria-hidden="true"><i /></span>
+                    <strong>{targetEnabled ? "Con meta" : "Sin meta"}</strong>
+                  </button>
                 </div>
-              ) : null}
-            </article>
-          ))}
+
+                {targetEnabled && advancedManualSettings ? (
+                  <div className="td-settingTargetPanel">
+                    <MealTargetPercentageEditor
+                      meal={meal}
+                      target={meal.target}
+                      remaining={remaining}
+                      disabled={saving || !hasDailyTarget}
+                      onApply={(percent) => applyMealPercent(index, percent)}
+                    />
+                    {!hasDailyTarget ? (
+                      <div className="td-settingTargetInfo">
+                        Configurá un objetivo diario para poder usar porcentajes. La meta manual sigue disponible.
+                      </div>
+                    ) : null}
+                    <div className="td-settingTargetDivider"><span>O ajustar manualmente</span></div>
+                    <div className="td-targetGrid">
+                      <TargetInput label="Kcal" value={meal.target?.kcal} onChange={(value) => updateTarget(index, "kcal", value)} />
+                      <TargetInput label="P" value={meal.target?.proteina} onChange={(value) => updateTarget(index, "proteina", value)} />
+                      <TargetInput label="C" value={meal.target?.carbs} onChange={(value) => updateTarget(index, "carbs", value)} />
+                      <TargetInput label="G" value={meal.target?.grasas} onChange={(value) => updateTarget(index, "grasas", value)} />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="td-settingNoTarget">
+                    No condiciona el cálculo automático. Activala sólo si querés orientar esta comida.
+                  </p>
+                )}
+
+                <details className="td-settingIdentity">
+                  <summary>
+                    <span>Editar nombre y tipo</span>
+                    <ChevronDown size={16} strokeWidth={2.3} aria-hidden="true" />
+                  </summary>
+                  <div className="td-settingGrid">
+                    <label>
+                      <span>Nombre</span>
+                      <input
+                        value={meal.label}
+                        onChange={(event) => updateMeal(index, { label: event.target.value })}
+                        placeholder={`Comida ${index + 1}`}
+                      />
+                    </label>
+                    <label>
+                      <span>Tipo</span>
+                      <select value={meal.type || "otra"} onChange={(event) => updateMeal(index, { type: event.target.value })}>
+                        {MEAL_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </details>
+              </article>
+            );
+          })}
         </div>
 
         {advancedManualSettings ? (
           <div className="td-settingsHint">
-            Dejá una meta vacía para que esa comida quede libre. El control importante sigue siendo la meta total del día.
+            Las comidas “Sin meta” quedan libres. En las que actives, podés usar un porcentaje del restante o escribir los valores exactos.
           </div>
         ) : null}
 
-        <button type="button" className="td-primaryBtn" onClick={onSave} disabled={saving}>
+        {enabledMeals.length > 0 && proteinShortfall > 0 ? (
+          <div className="td-settingsProteinWarning" role="status">
+            <AlertTriangle size={15} strokeWidth={2.4} aria-hidden="true" />
+            <span>
+              Con estas metas todavía quedan {formatNumber(proteinShortfall, 1)} g de proteína sin asignar. Podés ajustar una comida o elegir fuentes proteicas al cargar alimentos.
+            </span>
+          </div>
+        ) : enabledMeals.length > 0 ? (
+          <div className="td-settingsProteinOk" role="status">
+            <CheckCircle2 size={15} strokeWidth={2.4} aria-hidden="true" />
+            La proteína restante quedó contemplada en las metas activas.
+          </div>
+        ) : null}
+
+        {settingsOverages.length ? (
+          <div className="td-goalWarning" role="alert">
+            <AlertTriangle size={16} strokeWidth={2.4} aria-hidden="true" />
+            <div>
+              <strong>Las metas superan el restante</strong>
+              <span>{mealTargetOverageLine(settingsOverages)}</span>
+              <label className="td-goalOverride">
+                <input
+                  type="checkbox"
+                  checked={overageAccepted}
+                  onChange={(event) => setOverageAccepted(event.target.checked)}
+                />
+                <span>Entiendo el exceso y quiero guardar esta excepción.</span>
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className="td-primaryBtn"
+          onClick={() => onSave({ allowOverage: settingsOverages.length > 0 && overageAccepted })}
+          disabled={saving || (settingsOverages.length > 0 && !overageAccepted)}
+        >
           {saving ? <Loader2 size={17} className="td-spin" /> : <CheckCircle2 size={17} />}
           {saving ? "Guardando..." : "Guardar ajustes"}
         </button>
@@ -2344,7 +2835,7 @@ function MealSettingsDrawer({
   );
 }
 
-function TargetInput({ label, value, onChange, placeholder = "Libre", readOnly = false }) {
+function TargetInput({ label, value, onChange, placeholder = "Libre" }) {
   return (
     <label className="td-targetInput">
       <span>{label}</span>
@@ -2353,7 +2844,6 @@ function TargetInput({ label, value, onChange, placeholder = "Libre", readOnly =
         onChange={(event) => onChange(event.target.value)}
         inputMode="decimal"
         placeholder={placeholder}
-        readOnly={readOnly}
       />
     </label>
   );
@@ -2601,62 +3091,20 @@ function macroCaloriesFromTotals(value = {}) {
   return round((totals.proteina || 0) * 4 + (totals.carbs || 0) * 4 + (totals.grasas || 0) * 9);
 }
 
-function autofillMealGoalCalories(value = {}) {
-  const next = { ...(value || {}) };
-  const macroKcal = macroCaloriesFromTotals(next);
-  if (macroKcal > 0) next.kcal = inputNumber(macroKcal);
-  return next;
+function mealTargetBudgetLine(budget = {}) {
+  const values = budget?.maximum || {};
+  return [
+    Number.isFinite(values.kcal) ? `${formatNumber(values.kcal, 0)} kcal` : "",
+    Number.isFinite(values.proteina) ? `P ${formatNumber(values.proteina, 1)}` : "",
+    Number.isFinite(values.carbs) ? `C ${formatNumber(values.carbs, 1)}` : "",
+    Number.isFinite(values.grasas) ? `G ${formatNumber(values.grasas, 1)}` : "",
+  ].filter(Boolean).join(" · ");
 }
 
-function distributeRemainingTarget(remaining = {}, count = 1) {
-  const safeCount = Math.max(1, Number(count) || 1);
-  const base = balancedRemainingTarget(remaining);
-  const keys = ["kcal", "proteina", "carbs", "grasas"];
-  const rows = Array.from({ length: safeCount }, () => emptyTotals());
-
-  keys.forEach((key) => {
-    const values = splitNumber(base[key], safeCount);
-    values.forEach((value, index) => {
-      rows[index][key] = value;
-    });
-  });
-
-  return rows.map((row) => autofillMealGoalCalories(row));
-}
-
-function balancedRemainingTarget(remaining = {}) {
-  const positive = positiveTotals(remaining);
-  const macroKcal = macroCaloriesFromTotals(positive);
-
-  if (macroKcal > 0) {
-    const factor = positive.kcal > 0 && macroKcal > positive.kcal ? positive.kcal / macroKcal : 1;
-    const scaled = {
-      kcal: 0,
-      proteina: round(positive.proteina * factor),
-      carbs: round(positive.carbs * factor),
-      grasas: round(positive.grasas * factor),
-    };
-    return {
-      ...scaled,
-      kcal: macroCaloriesFromTotals(scaled),
-    };
-  }
-
-  return {
-    kcal: positive.kcal,
-    proteina: 0,
-    carbs: 0,
-    grasas: 0,
-  };
-}
-
-function splitNumber(value = 0, count = 1) {
-  const safeCount = Math.max(1, Number(count) || 1);
-  const total = round(Math.max(0, Number(value) || 0));
-  const base = Math.floor((total / safeCount) * 10) / 10;
-  const values = Array.from({ length: safeCount }, () => base);
-  values[safeCount - 1] = round(total - base * (safeCount - 1));
-  return values;
+function mealTargetOverageLine(overages = []) {
+  return (Array.isArray(overages) ? overages : []).map((entry) => (
+    `${entry.label} +${formatNumber(entry.excess, entry.key === "kcal" ? 0 : 1)} ${entry.unit}`
+  )).join(" · ");
 }
 
 function remainingTotals(objective, totals) {
@@ -2694,12 +3142,6 @@ function displayCompactKcal(value) {
   return `${formatNumber(value, 0)} kcal`;
 }
 
-function inputNumber(value) {
-  const number = round(value);
-  if (!Number.isFinite(number) || number <= 0) return "";
-  return Number.isInteger(number) ? String(number) : String(number);
-}
-
 function mealTargetLine(target = {}) {
   const safe = sanitizeTotals(target);
   const parts = [];
@@ -2725,11 +3167,6 @@ function normalizeTrackingMealType(value = "") {
     .replace(/^_+|_+$/g, "");
   if (token === "libre" || token === "otro") return "otra";
   return TRACKING_MEAL_TYPES.includes(token) ? token : "";
-}
-
-function nextAvailableMealType(meals = []) {
-  const used = new Set((meals || []).map((meal) => meal.type || meal.id).filter(Boolean));
-  return TRACKING_MEAL_TYPES.find((type) => !used.has(type)) || "otra";
 }
 
 function mealTypeLabel(value = "") {
@@ -2795,10 +3232,6 @@ function addDays(date, days) {
   const parsed = new Date(`${date}T12:00:00`);
   parsed.setDate(parsed.getDate() + days);
   return toDateInputValue(parsed);
-}
-
-function todayLocalString() {
-  return toDateInputValue(new Date());
 }
 
 function validDateKey(value = "") {

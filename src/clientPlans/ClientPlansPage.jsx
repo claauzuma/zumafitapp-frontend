@@ -125,6 +125,7 @@ function buildPlanDetailGroups(planId = "free", capabilities = {}) {
   const ownMeals = Number(limits.ownMeals);
   const favorites = Number(limits.favorites);
   const menuDays = Number(limits.menuDays);
+  const equivalentMealFoods = Number(limits.equivalentMealFoods);
   const objectiveChangeDays = Number(limits.manualObjectiveChangeDays);
   const objectiveChanges = Number(limits.manualObjectiveChangesPerWindow);
   const automaticMenuSoon = capabilities.automaticMenusStatus === "coming_soon";
@@ -140,6 +141,12 @@ function buildPlanDetailGroups(planId = "free", capabilities = {}) {
         { text: Number.isFinite(ownMenus) ? formatLimit(ownMenus, "menu propio", "menus propios") : "Menus propios", state: ownMenus > 0 ? "included" : "blocked" },
         { text: Number.isFinite(menuDays) ? `${formatLimit(menuDays, "dia", "dias")} por menu` : "Menu semanal", state: menuDays > 0 ? "included" : "blocked" },
         { text: Number.isFinite(ownMeals) ? formatLimit(ownMeals, "comida guardada", "comidas guardadas") : "Comidas guardadas", state: ownMeals > 0 ? "included" : "blocked" },
+        {
+          text: capabilities.canUseEquivalences
+            ? `Equivalentes manuales y calculados de hasta ${Number.isFinite(equivalentMealFoods) ? equivalentMealFoods : 6} alimentos`
+            : "Comidas equivalentes calculadas",
+          state: capabilities.canUseEquivalences ? "included" : "blocked",
+        },
         {
           text: Number.isFinite(objectiveChanges) && Number.isFinite(objectiveChangeDays)
             ? `${objectiveChanges} cambios exitosos de objetivos cada ${objectiveChangeDays} dias`

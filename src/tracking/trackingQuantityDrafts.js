@@ -460,13 +460,20 @@ export function buildTrackingQuantityCalculationRequest({
   trackingQuantityMode,
   fixedFoods = [],
   pendingFoods = [],
+  generationStrategy = "selected_only",
+  rejectedSuggestionFoodIds = [],
 } = {}) {
   const normalizedMode = normalizeTrackingQuantityMode(trackingQuantityMode);
   return {
     date,
     target,
     mode: "kcalProteina",
-    generationType: "selectedOnly",
+    generationType: generationStrategy === "assisted_food_addition"
+      ? "assisted_food_addition"
+      : "selectedOnly",
+    rejectedSuggestionFoodIds: Array.isArray(rejectedSuggestionFoodIds)
+      ? rejectedSuggestionFoodIds.map(String).filter(Boolean).slice(0, 40)
+      : [],
     trackingQuantityMode: normalizedMode,
     fixedFoods,
     pendingFoods,

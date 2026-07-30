@@ -187,6 +187,44 @@
   grid-template-columns:repeat(3, minmax(0,1fr));
 }
 
+.prof-check{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:44px;
+  margin-top:12px;
+  padding:10px 12px;
+  border:1px solid rgba(120,170,230,.13);
+  border-radius:14px;
+  background:rgba(8,14,22,.72);
+  color:#dce6ef;
+  font-size:13px;
+  font-weight:850;
+}
+
+.prof-check input{
+  width:18px;
+  height:18px;
+  accent-color:#52e5b8;
+}
+
+.prof-stack{
+  display:grid;
+  gap:9px;
+}
+
+.prof-card.compact{
+  min-width:0;
+  padding:11px 12px;
+  border:1px solid rgba(120,170,230,.13);
+  border-radius:14px;
+  background:rgba(8,14,22,.72);
+}
+
+.prof-card.compact > strong{
+  color:#f8fafc;
+}
+
 .prof-capacitySummary{
   display:grid;
   grid-template-columns:repeat(3, minmax(0,1fr));

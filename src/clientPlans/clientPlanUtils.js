@@ -11,6 +11,7 @@ export const PLAN_PRESETS = {
       trackingHistoryDays: 7,
       manualObjectiveChangeDays: 30,
       manualObjectiveChangesPerWindow: 2,
+      equivalentMealFoods: 0,
     },
     canTrack: true,
     canCreateOwnMenu: true,
@@ -24,6 +25,7 @@ export const PLAN_PRESETS = {
     canUseManualDayCompletion: true,
     canPlanRemainingIntake: false,
     canAutoCalculateTrackingQuantities: false,
+    canUseEquivalences: false,
     automaticMenusStatus: "blocked",
     automaticRoutineStatus: "blocked",
     autoCoachNutrition: "manual",
@@ -32,7 +34,7 @@ export const PLAN_PRESETS = {
   },
   pro: {
     plan: "pro",
-    limits: { ownMenus: 10, ownMeals: 100, favorites: 20, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null },
+    limits: { ownMenus: 10, ownMeals: 100, favorites: 20, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 6 },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -45,6 +47,7 @@ export const PLAN_PRESETS = {
     canUseManualDayCompletion: true,
     canPlanRemainingIntake: true,
     canAutoCalculateTrackingQuantities: true,
+    canUseEquivalences: true,
     automaticMenusStatus: "coming_soon",
     automaticRoutineStatus: "coming_soon",
     autoCoachNutrition: "coming_soon",
@@ -55,7 +58,7 @@ export const PLAN_PRESETS = {
   },
   vip: {
     plan: "vip",
-    limits: { ownMenus: 50, ownMeals: 500, favorites: 100, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null },
+    limits: { ownMenus: 50, ownMeals: 500, favorites: 100, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 10 },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -68,6 +71,7 @@ export const PLAN_PRESETS = {
     canUseManualDayCompletion: true,
     canPlanRemainingIntake: true,
     canAutoCalculateTrackingQuantities: true,
+    canUseEquivalences: true,
     automaticMenusStatus: "coming_soon",
     automaticRoutineStatus: "coming_soon",
     autoCoachNutrition: "coming_soon",
@@ -118,6 +122,7 @@ export const PLAN_DETAIL_COPY = {
       "Biblioteca global ZumaFit",
       "10 menus propios de hasta 7 dias",
       "100 comidas guardadas y 20 favoritos",
+      "Comidas equivalentes manuales o calculadas con hasta 6 alimentos",
       "AutoCoach nutricional y rutinas automaticas marcados como proximamente",
       "Ideal para usuarios autogestionados constantes",
     ],
@@ -127,6 +132,7 @@ export const PLAN_DETAIL_COPY = {
     description: "VIP es el nivel pensado para mayor personalizacion y futuras revisiones adaptativas, sin presentar IA como activa todavia.",
     bullets: [
       "50 menus propios y 500 comidas guardadas",
+      "Comidas equivalentes manuales o calculadas con hasta 10 alimentos",
       "100 favoritos",
       "Biblioteca premium ZumaFit",
       "AutoCoach Nutricional y de Entrenamiento marcados como proximamente",
@@ -381,6 +387,12 @@ export function planBenefits(capabilities = {}) {
   if (Number.isFinite(Number(capabilities.limits?.ownMeals))) {
     benefits.push(`Comidas propias hasta ${capabilities.limits.ownMeals}`);
   }
+  if (capabilities.canUseEquivalences) {
+    const foodsLimit = Number(capabilities?.limits?.equivalentMealFoods);
+    benefits.push(Number.isFinite(foodsLimit) && foodsLimit > 0
+      ? `Equivalentes de hasta ${foodsLimit} alimentos`
+      : "Comidas equivalentes");
+  }
   if (capabilities.canUsePremiumLibrary) {
     benefits.push("Biblioteca ZumaFit premium");
   } else if (capabilities.canUseGlobalLibrary) {
@@ -400,6 +412,7 @@ export function planFeatureRows(capabilities = {}) {
   const ownMeals = Number(capabilities?.limits?.ownMeals);
   const favorites = Number(capabilities?.limits?.favorites);
   const menuDays = Number(capabilities?.limits?.menuDays);
+  const equivalentMealFoods = Number(capabilities?.limits?.equivalentMealFoods);
   const nutritionMode = String(capabilities?.autoCoachNutrition || "manual");
   const trainingMode = String(capabilities?.autoCoachTraining || "manual");
   const automaticMenusStatus = String(capabilities?.automaticMenusStatus || (capabilities.canGenerateAutomaticMenu ? "enabled" : "blocked"));
@@ -429,6 +442,15 @@ export function planFeatureRows(capabilities = {}) {
       label: "Comidas propias",
       value: Number.isFinite(ownMeals) ? `Hasta ${ownMeals}` : "No disponible",
       included: Number.isFinite(ownMeals) && ownMeals > 0,
+    },
+    {
+      key: "equivalentMeals",
+      label: "Comidas equivalentes",
+      value: capabilities.canUseEquivalences
+        ? `Manual + calculo, hasta ${Number.isFinite(equivalentMealFoods) ? equivalentMealFoods : 6} alimentos`
+        : "No incluido",
+      included: capabilities.canUseEquivalences === true,
+      muted: capabilities.canUseEquivalences !== true,
     },
     {
       key: "favorites",

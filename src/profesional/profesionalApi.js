@@ -70,6 +70,28 @@ export async function updateProfessionalClientMenu(clientId, payload) {
   };
 }
 
+export async function getProfessionalClientEquivalentActivity(clientId, filters = {}) {
+  const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/equivalent-activity${qsFrom(filters)}`, {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return {
+    activity: Array.isArray(data?.activity) ? data.activity : [],
+    notifications: Array.isArray(data?.notifications) ? data.notifications : [],
+    weeklyDigest: Array.isArray(data?.weeklyDigest) ? data.weeklyDigest : [],
+    settings: data?.settings || {},
+    total: Number(data?.total) || 0,
+  };
+}
+
+export async function reviewProfessionalClientEquivalent(clientId, date, entryId, action, reason = "") {
+  return await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/equivalents/${date}/${encodeURIComponent(entryId)}/review`, {
+    method: "PATCH",
+    body: { action, reason },
+    timeoutMs: 12000,
+  });
+}
+
 export async function updateProfessionalClientRoutine(clientId, payload) {
   const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/routine`, {
     method: "PATCH",
