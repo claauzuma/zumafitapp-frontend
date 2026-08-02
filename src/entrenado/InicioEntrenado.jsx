@@ -1,7 +1,19 @@
 // src/entrenado/InicioEntrenado.jsx
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Apple, CalendarDays, CheckCircle2, Dumbbell, Target, TrendingUp, X } from "lucide-react";
+import {
+  Apple,
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  Crown,
+  Dumbbell,
+  ListChecks,
+  Target,
+  TrendingUp,
+  UserRound,
+  X,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { getCachedUser } from "../authCache.js";
@@ -32,6 +44,7 @@ import {
 } from "../menus/flexibleMarginTracking.js";
 import { createNavigationPrefetchHandlers } from "../routes/routePrefetch.js";
 import { getMenuTrackingWeek } from "../tracking/trackingApi.js";
+import { buildWeeklyCalorieSummary } from "./homeWeeklyCalories.js";
 
 const CSS = `
 *{ box-sizing:border-box; }
@@ -565,6 +578,501 @@ html, body, #root{
 }
 `;
 
+const HOME_V2_CSS = `
+.zfh{
+  width:min(100%, 980px);
+  margin:0 auto;
+  display:grid;
+  gap:14px;
+  color:#f8fafc;
+}
+
+.zfh button{
+  font:inherit;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+.zfh-panel{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(245,215,110,.24);
+  border-radius:22px;
+  background:
+    radial-gradient(620px 250px at 100% 0%, rgba(250,204,21,.12), transparent 58%),
+    radial-gradient(520px 250px at 0% 0%, rgba(14,165,233,.10), transparent 58%),
+    linear-gradient(145deg,#101a23,#070b10 72%);
+  box-shadow:0 18px 52px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.zfh-hero{
+  padding:20px;
+  min-height:190px;
+  display:grid;
+  align-content:space-between;
+  gap:28px;
+}
+
+.zfh-hero::after{
+  content:"";
+  position:absolute;
+  width:240px;
+  height:240px;
+  right:-90px;
+  top:-115px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(250,204,21,.18),transparent 68%);
+  pointer-events:none;
+}
+
+.zfh-heroTop,
+.zfh-objectiveHead,
+.zfh-menuIntro,
+.zfh-sectionHead,
+.zfh-weekHead{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.zfh-planLabel{
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  border:1px solid rgba(245,215,110,.38);
+  border-radius:999px;
+  padding:0 13px;
+  color:#fff1ad;
+  background:rgba(9,14,19,.52);
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+
+.zfh-planLink,
+.zfh-detailLink{
+  min-height:44px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:13px;
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  color:rgba(255,255,255,.84);
+  background:rgba(255,255,255,.045);
+  cursor:pointer;
+  font-size:12px;
+  font-weight:850;
+}
+
+.zfh-heroBody{
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:end;
+  gap:16px;
+}
+
+.zfh-hello{
+  margin:0;
+  color:#fff;
+  font-size:clamp(30px, 6vw, 48px);
+  font-weight:950;
+  line-height:1;
+  letter-spacing:-.035em;
+}
+
+.zfh-identity{
+  margin-top:14px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.zfh-chip{
+  min-height:34px;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:999px;
+  padding:0 11px;
+  color:rgba(255,255,255,.78);
+  background:rgba(255,255,255,.035);
+  font-size:12px;
+  font-weight:800;
+}
+
+.zfh-chip svg{ color:#60a5fa; }
+
+.zfh-planBadge{
+  min-width:98px;
+  min-height:58px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  border:1px solid rgba(245,215,110,.22);
+  border-radius:18px;
+  color:#f8d75a;
+  background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(255,255,255,.035));
+  font-weight:950;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+
+.zfh-planBadge.free{ color:#d1d5db; border-color:rgba(209,213,219,.18); background:rgba(255,255,255,.04); }
+.zfh-planBadge.vip{ color:#e9d5ff; border-color:rgba(192,132,252,.30); background:linear-gradient(135deg,rgba(126,34,206,.20),rgba(250,204,21,.06)); }
+
+.zfh-trial{
+  margin:0 20px 18px;
+}
+
+.zfh-menuCard{
+  min-height:196px;
+  padding:20px;
+  display:grid;
+  align-content:space-between;
+  gap:18px;
+  background:
+    linear-gradient(90deg,rgba(7,13,18,.98) 0%,rgba(7,13,18,.92) 54%,rgba(7,13,18,.42) 100%),
+    url('/images/foods/pechugadepollo.jpeg') right center / min(48%, 390px) 100% no-repeat,
+    linear-gradient(145deg,#101a23,#080b10);
+}
+
+.zfh-roundIcon{
+  width:46px;
+  height:46px;
+  flex:0 0 auto;
+  border:1px solid rgba(245,215,110,.24);
+  border-radius:16px;
+  display:grid;
+  place-items:center;
+  color:#f5d76e;
+  background:rgba(245,215,110,.075);
+}
+
+.zfh-menuCopy{
+  max-width:560px;
+}
+
+.zfh-menuCopy h2,
+.zfh-sectionHead h2{
+  margin:0;
+  font-size:clamp(20px,4vw,27px);
+  line-height:1.12;
+  font-weight:950;
+  letter-spacing:-.02em;
+}
+
+.zfh-menuCopy p{
+  margin:8px 0 0;
+  max-width:520px;
+  color:rgba(255,255,255,.74);
+  font-size:14px;
+  line-height:1.45;
+}
+
+.zfh-primary{
+  width:100%;
+  min-height:50px;
+  border:0;
+  border-radius:15px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  color:#080808;
+  background:linear-gradient(100deg,#facc15,#ffe27a 72%,#f5c842);
+  box-shadow:0 12px 30px rgba(250,204,21,.13);
+  cursor:pointer;
+  font-weight:950;
+}
+
+.zfh-objective{
+  padding:20px;
+}
+
+.zfh-objectiveTitle{
+  display:flex;
+  align-items:center;
+  gap:11px;
+}
+
+.zfh-kcal{
+  margin:18px 0 0 58px;
+}
+
+.zfh-kcal strong{
+  color:#f7d653;
+  font-size:clamp(34px,7vw,48px);
+  line-height:1;
+  font-weight:950;
+  letter-spacing:-.035em;
+}
+
+.zfh-kcal span{
+  margin-left:6px;
+  color:#f5d76e;
+  font-size:18px;
+  font-weight:900;
+}
+
+.zfh-kcal small{
+  margin-top:6px;
+  display:block;
+  color:rgba(255,255,255,.56);
+  font-size:12px;
+  font-weight:750;
+}
+
+.zfh-macros{
+  margin-top:22px;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+}
+
+.zfh-macro{
+  min-width:0;
+  display:grid;
+  gap:8px;
+  padding:0 14px;
+  border-right:1px solid rgba(255,255,255,.10);
+}
+
+.zfh-macro:first-child{ padding-left:0; }
+.zfh-macro:last-child{ padding-right:0; border-right:0; }
+.zfh-macro strong{ font-size:14px; color:#f8fafc; white-space:nowrap; }
+.zfh-macroTrack{ height:6px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.10); }
+.zfh-macroTrack i{ display:block; width:var(--fill,0%); height:100%; border-radius:inherit; background:linear-gradient(90deg,#38bdf8,#60a5fa); }
+.zfh-macro.carbs .zfh-macroTrack i{ background:linear-gradient(90deg,#34d399,#4ade80); }
+.zfh-macro.fat .zfh-macroTrack i{ background:linear-gradient(90deg,#c084fc,#a78bfa); }
+
+.zfh-week{
+  margin-top:22px;
+  padding-top:18px;
+  border-top:1px solid rgba(255,255,255,.09);
+}
+
+.zfh-weekHead span{
+  color:rgba(255,255,255,.60);
+  font-size:13px;
+  font-weight:750;
+}
+
+.zfh-weekHead strong{
+  color:#7dd3fc;
+  font-size:12px;
+  font-weight:850;
+}
+
+.zfh-chart{
+  height:180px;
+  margin-top:13px;
+  padding:16px 4px 0;
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:7px;
+  align-items:end;
+  border-bottom:1px solid rgba(255,255,255,.10);
+  background:repeating-linear-gradient(to top, transparent 0, transparent 52px, rgba(255,255,255,.035) 53px);
+}
+
+.zfh-day{
+  min-width:0;
+  height:164px;
+  display:grid;
+  grid-template-rows:minmax(0,1fr) 28px;
+  justify-items:center;
+  gap:6px;
+}
+
+.zfh-barArea{
+  position:relative;
+  width:100%;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+}
+
+.zfh-bar{
+  position:relative;
+  width:min(28px,72%);
+  min-height:6px;
+  border-radius:9px 9px 4px 4px;
+  background:linear-gradient(180deg,#ffd84f,#8a6612);
+  box-shadow:0 0 16px rgba(250,204,21,.14);
+}
+
+.zfh-day.complete .zfh-bar{ background:linear-gradient(180deg,#6ee7a8,#147a4b); box-shadow:0 0 15px rgba(74,222,128,.18); }
+.zfh-day.missed .zfh-bar{ background:linear-gradient(180deg,#fb7185,#8f273a); box-shadow:0 0 15px rgba(251,113,133,.14); }
+.zfh-day.pending .zfh-bar{ background:linear-gradient(180deg,#ffd84f,#866714); }
+.zfh-day.projected .zfh-bar{ opacity:.62; background:repeating-linear-gradient(135deg,#d9aa25 0 6px,#80651e 6px 12px); }
+
+.zfh-barValue{
+  position:absolute;
+  left:50%;
+  top:-14px;
+  transform:translateX(-50%);
+  color:rgba(255,255,255,.47);
+  font-size:8px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+.zfh-dayLabel{
+  min-width:26px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  color:rgba(255,255,255,.58);
+  font-size:12px;
+  font-weight:900;
+  border-bottom:2px solid transparent;
+}
+
+.zfh-day.today .zfh-dayLabel{
+  color:#ffe16d;
+  border-bottom-color:#facc15;
+}
+
+.zfh-chartLegend{
+  margin-top:14px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 14px;
+}
+
+.zfh-chartLegend span{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:rgba(255,255,255,.58);
+  font-size:10px;
+  font-weight:800;
+}
+
+.zfh-chartLegend i{ width:7px; height:7px; border-radius:50%; background:#facc15; }
+.zfh-chartLegend .complete i{ background:#4ade80; }
+.zfh-chartLegend .missed i{ background:#fb7185; }
+
+.zfh-chartState{
+  min-height:170px;
+  display:grid;
+  place-items:center;
+  color:rgba(255,255,255,.62);
+  text-align:center;
+  font-size:13px;
+  font-weight:800;
+}
+
+.zfh-secondaryGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+
+.zfh-quickCard{
+  min-width:0;
+  min-height:112px;
+  padding:15px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:18px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:11px;
+  color:#f8fafc;
+  background:linear-gradient(145deg,#101820,#090d12);
+  cursor:pointer;
+  text-align:left;
+}
+
+.zfh-quickCard .zfh-roundIcon{ width:42px; height:42px; border-radius:14px; }
+.zfh-quickCard strong{ display:block; font-size:15px; font-weight:950; }
+.zfh-quickCard span{ display:block; margin-top:3px; color:rgba(255,255,255,.56); font-size:11px; line-height:1.3; font-weight:750; }
+.zfh-quickCard > svg{ color:rgba(255,255,255,.42); }
+
+.zfh-emptyObjective{
+  margin-top:16px;
+  border:1px dashed rgba(245,215,110,.25);
+  border-radius:15px;
+  padding:14px;
+  color:rgba(255,255,255,.72);
+  background:rgba(245,215,110,.05);
+  font-size:13px;
+  line-height:1.45;
+}
+
+.zfh .followupCard{ margin-top:0; }
+
+@media (hover:hover){
+  .zfh-planLink:hover,.zfh-detailLink:hover,.zfh-quickCard:hover{ border-color:rgba(245,215,110,.30); transform:translateY(-1px); }
+  .zfh-primary:hover{ filter:brightness(1.035); }
+}
+
+@media (max-width:680px){
+  .zfh{ gap:9px; }
+  .zfh-panel{ border-radius:17px; }
+  .zfh-hero{ min-height:142px; padding:12px 14px; gap:10px; }
+  .zfh-planLink{ display:none; }
+  .zfh-planLabel{ min-height:31px; padding:0 11px; font-size:10px; }
+  .zfh-heroBody{ grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+  .zfh-hello{ font-size:29px; }
+  .zfh-planBadge{ min-width:72px; min-height:44px; padding:0 9px; border-radius:15px; font-size:11px; }
+  .zfh-planBadge svg{ width:16px; }
+  .zfh-identity{ margin-top:8px; gap:5px; }
+  .zfh-chip{ min-height:29px; padding:0 8px; font-size:9px; }
+  .zfh-chip svg{ width:13px; }
+  .zfh-menuCard{ min-height:152px; padding:12px 14px; gap:8px; background-position:right center; background-size:auto 100%; }
+  .zfh-objective{ padding:14px; }
+  .zfh-roundIcon{ width:42px; height:42px; border-radius:14px; }
+  .zfh-menuCopy{ max-width:72%; }
+  .zfh-menuCopy h2,.zfh-sectionHead h2{ font-size:19px; }
+  .zfh-menuCopy p{ margin-top:4px; font-size:11px; line-height:1.3; max-width:88%; }
+  .zfh-primary{ min-height:44px; border-radius:13px; font-size:13px; }
+  .zfh-detailLink{ min-height:44px; padding:0 10px; font-size:10px; }
+  .zfh-objectiveTitle{ gap:9px; }
+  .zfh-kcal{ margin:12px 0 0; }
+  .zfh-kcal strong{ font-size:34px; }
+  .zfh-kcal span{ font-size:15px; }
+  .zfh-kcal small{ margin-top:3px; font-size:10px; }
+  .zfh-macros{ margin-top:14px; }
+  .zfh-macro{ padding:0 8px; gap:6px; }
+  .zfh-macro strong{ font-size:11px; }
+  .zfh-macroTrack{ height:5px; }
+  .zfh-week{ margin-top:14px; padding-top:13px; }
+  .zfh-weekHead span{ font-size:11px; }
+  .zfh-weekHead strong{ font-size:10px; }
+  .zfh-chart{ height:122px; margin-top:8px; gap:4px; padding:12px 0 0; }
+  .zfh-day{ height:107px; grid-template-rows:minmax(0,1fr) 24px; gap:4px; }
+  .zfh-dayLabel{ height:24px; font-size:10px; }
+  .zfh-bar{ width:min(22px,74%); }
+  .zfh-barValue{ top:-12px; font-size:7px; }
+  .zfh-chartLegend{ display:none; }
+  .zfh-secondaryGrid{ grid-template-columns:1fr; gap:8px; }
+  .zfh-quickCard{ min-height:68px; padding:10px 12px; }
+}
+
+@media (max-width:390px){
+  .zfh-planLink{ width:40px; padding:0; }
+  .zfh-planLink span{ display:none; }
+  .zfh-planBadge{ min-width:54px; }
+  .zfh-planBadge span{ display:none; }
+  .zfh-menuCopy{ max-width:82%; }
+  .zfh-weekHead{ align-items:flex-start; flex-direction:column; gap:3px; }
+  .zfh-macro strong{ font-size:11px; }
+  .zfh-barValue{ font-size:7px; }
+}
+`;
+
 function titleCaseFirstName(fullName) {
   const s = String(fullName || "").trim();
   if (!s) return "";
@@ -1090,6 +1598,38 @@ export default function InicioEntrenado() {
           icon: Apple,
         };
   const NextActionIcon = nextAction.icon;
+  const planKind = planKindFromValue(plan, capabilities);
+  const planLabel = rawPlan ? clientPlanLabel(plan) : "Sin confirmar";
+  const currentWeekDays = useMemo(
+    () => Array.isArray(currentMenuTrackingQuery.data?.days) ? currentMenuTrackingQuery.data.days : [],
+    [currentMenuTrackingQuery.data?.days]
+  );
+  const todayRow = currentWeekDays.find((day) => day?.date === todayDateKey) || null;
+  const todayTarget = targetTotalsFromRow(todayRow || {});
+  const hasTodayTarget = hasAnyTotals(todayTarget);
+  const homeObjective = hasTodayTarget
+    ? {
+        kcal: todayTarget.kcal,
+        p: todayTarget.proteina,
+        c: todayTarget.carbs,
+        g: todayTarget.grasas,
+      }
+    : objective;
+  const hasHomeObjective = hasTodayTarget || hasObjective;
+  const weeklyCalories = useMemo(
+    () => buildWeeklyCalorieSummary({
+      rows: currentWeekDays,
+      weekStart: currentWeekStart,
+      todayDateKey,
+      fallbackTargetKcal: homeObjective?.kcal || 0,
+    }),
+    [currentWeekDays, currentWeekStart, homeObjective?.kcal, todayDateKey]
+  );
+  const homeMenuDescription = coachControlsNutrition
+    ? "Revisa el menu indicado por tu coach y marca las comidas cuando realmente las completes."
+    : hasOwnMenu
+      ? "Revisa tu menu activo y registra tus comidas solo cuando corresponda."
+      : "Crea tu primer menu o registra el dia libremente desde Tracking.";
 
   function dismissPendingFollowup() {
     if (!pendingFollowup) return;
@@ -1105,50 +1645,62 @@ export default function InicioEntrenado() {
 
   return (
     <div className="wrap">
-      <style>{CSS}</style>
+      <style>{`${CSS}\n${HOME_V2_CSS}`}</style>
 
-      <div className="card heroCard">
-        <div className="homeTopline">
-          <span className="homePlanPill">{rawPlan ? `Plan ${clientPlanLabel(plan)}` : "Plan no disponible"}</span>
-        </div>
+      <div className="zfh">
+        <section className="zfh-panel zfh-hero" aria-labelledby="home-client-title">
+          <div className="zfh-heroTop">
+            <span className="zfh-planLabel">Plan {planLabel}</span>
+            <button type="button" className="zfh-planLink" onClick={() => navigate("/app/planes")}>
+              <span>Ver mi plan</span><ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </div>
 
-        <div className="kicker">Tu día en ZumaFit</div>
-        <h1 className="h1">{titulo}</h1>
-
-        <p className="p">
-          Plan {rawPlan ? clientPlanLabel(plan) : "sin confirmar"} · {coachControlsNutrition ? "con coach" : "autogestionado"}.
-        </p>
-
-        <div className="heroActions">
-          <button type="button" className="secondary" onClick={() => navigate("/app/planes")}>
-            Ver mi plan
-          </button>
-        </div>
+          <div className="zfh-heroBody">
+            <div>
+              <h1 className="zfh-hello" id="home-client-title">{titulo}</h1>
+              <div className="zfh-identity" aria-label="Resumen de tu plan">
+                <span className="zfh-chip"><UserRound size={15} aria-hidden="true" />{coachControlsNutrition ? "Acompañado por coach" : "Autogestionado"}</span>
+                <span className="zfh-chip"><ListChecks size={15} aria-hidden="true" />{menuUsageText}</span>
+              </div>
+            </div>
+            <span className={`zfh-planBadge ${planKind}`} aria-label={`Plan ${planLabel}`}>
+              <Crown size={20} aria-hidden="true" /><span>{planLabel}</span>
+            </span>
+          </div>
+        </section>
 
         {capabilitiesQuery.isError && !rawPlan ? (
           <div className="planMuted">No pudimos cargar tu plan ahora. Reintenta desde Mi plan.</div>
-        ) : !rawPlan ? (
-          <div className="planMuted">Cargando plan y limites...</div>
-        ) : (
-          <div className="homeCardMeta">
-            <span>{coachControlsNutrition ? "Nutricion con coach" : "Autogestionado"}</span>
-            <span>{hasObjective ? "Objetivos configurados" : "Objetivos pendientes"}</span>
-            <span>{menuUsageText}</span>
-          </div>
-        )}
+        ) : null}
 
         {trial?.active ? (
-          <div className="trialActive">
+          <div className="trialActive zfh-trial">
             <div>
-              <strong>Prueba Pro activa - te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} dias</strong>
-              <span>Finaliza el {formatHomeDate(trial.endsAt) || "dia indicado por el servidor"}</span>
+              <strong>Prueba Pro activa · te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} días</strong>
+              <span>Finaliza el {formatHomeDate(trial.endsAt) || "día indicado por el servidor"}</span>
             </div>
-            <button type="button" onClick={() => navigate("/app/planes")}>
-              Ver funciones Pro
-            </button>
+            <button type="button" onClick={() => navigate("/app/planes")}>Ver funciones Pro</button>
           </div>
         ) : null}
-      </div>
+
+        <section className="zfh-panel zfh-menuCard" aria-labelledby="home-menu-title">
+          <div className="zfh-menuIntro">
+            <span className="zfh-roundIcon" aria-hidden="true"><NextActionIcon size={24} /></span>
+            <div className="zfh-menuCopy">
+              <h2 id="home-menu-title">{nextAction.title}</h2>
+              <p>{homeMenuDescription}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="zfh-primary"
+            onClick={() => navigate(nextAction.route, nextAction.state ? { state: nextAction.state } : undefined)}
+            {...(nextAction.route === "/app/menu/nuevo" ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
+          >
+            {nextAction.label}<ArrowRight size={19} aria-hidden="true" />
+          </button>
+        </section>
 
       {pendingFollowup ? (
         <div className="card followupCard" role="status" aria-live="polite">
@@ -1183,121 +1735,115 @@ export default function InicioEntrenado() {
         </div>
       ) : null}
 
-      <div className="card nextActionCard">
-        <strong className="homeCardTitle"><NextActionIcon aria-hidden="true" /> {nextAction.title}</strong>
-        <p className="p" style={{ marginTop: 7 }}>{nextAction.text}</p>
-        <div className="homeActionsRow">
-          <button
-            type="button"
-            className="cardAction"
-            onClick={() => navigate(nextAction.route, nextAction.state ? { state: nextAction.state } : undefined)}
-            {...(nextAction.route === "/app/menu/nuevo" ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
-          >
-            {nextAction.label}
-          </button>
-        </div>
-      </div>
+        <section className="zfh-panel zfh-objective" aria-labelledby="home-objective-title">
+          <div className="zfh-objectiveHead">
+            <div className="zfh-objectiveTitle">
+              <span className="zfh-roundIcon" aria-hidden="true"><Target size={23} /></span>
+              <h2 id="home-objective-title">Objetivos</h2>
+            </div>
+            <button type="button" className="zfh-detailLink" onClick={() => navigate("/app/objetivos")}>
+              {hasHomeObjective ? "Ver detalle" : "Configurar"}<ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </div>
 
-      <div className="grid">
-        <div className="card objectiveHomeCard">
-          <strong className="homeCardTitle"><Target aria-hidden="true" /> Objetivos</strong>
-          {hasObjective ? (
+          {hasHomeObjective ? (
             <>
-              <div className="homeKcalValue">{objective.kcal} kcal</div>
-              <div className="homeMacroGrid" aria-label="Macros objetivo">
-                <span className="homeMacro">
-                  <strong>P {objective.p ?? "-" } g</strong>
-                  <i style={{ "--fill": barWidth(objective.p, 260) }} />
+              <div className="zfh-kcal">
+                <strong>{new Intl.NumberFormat("es-AR").format(Math.round(homeObjective.kcal || 0))}</strong>
+                <span>kcal</span>
+                <small>Meta diaria</small>
+              </div>
+
+              <div className="zfh-macros" aria-label="Distribución objetivo de macronutrientes">
+                <span className="zfh-macro protein">
+                  <strong>P {homeObjective.p ?? "–"} g</strong>
+                  <span className="zfh-macroTrack"><i style={{ "--fill": barWidth(homeObjective.p, 260) }} /></span>
                 </span>
-                <span className="homeMacro green">
-                  <strong>C {objective.c ?? "-" } g</strong>
-                  <i style={{ "--fill": barWidth(objective.c, 520) }} />
+                <span className="zfh-macro carbs">
+                  <strong>C {homeObjective.c ?? "–"} g</strong>
+                  <span className="zfh-macroTrack"><i style={{ "--fill": barWidth(homeObjective.c, 520) }} /></span>
                 </span>
-                <span className="homeMacro violet">
-                  <strong>G {objective.g ?? "-" } g</strong>
-                  <i style={{ "--fill": barWidth(objective.g, 170) }} />
+                <span className="zfh-macro fat">
+                  <strong>G {homeObjective.g ?? "–"} g</strong>
+                  <span className="zfh-macroTrack"><i style={{ "--fill": barWidth(homeObjective.g, 170) }} /></span>
                 </span>
+              </div>
+
+              <div className="zfh-week">
+                <div className="zfh-weekHead">
+                  <span>Objetivo semanal (kcal)</span>
+                  <strong>{weeklyCalories.targetDays ? `Prom. ${new Intl.NumberFormat("es-AR").format(weeklyCalories.averageTargetKcal)} kcal` : "Sin metas configuradas"}</strong>
+                </div>
+
+                {currentMenuTrackingQuery.isLoading ? (
+                  <div className="zfh-chartState" role="status">Cargando tu semana…</div>
+                ) : currentMenuTrackingQuery.isError ? (
+                  <div className="zfh-chartState">No pudimos cargar la distribución semanal ahora.</div>
+                ) : (
+                  <div className="zfh-chart" role="list" aria-label="Calorías de la semana: verde cumplido, rojo no cumplido y amarillo pendiente">
+                    {weeklyCalories.days.map((day) => {
+                      const visibleKcal = day.targetKcal || day.consumedKcal;
+                      const accessibleValue = day.targetKcal
+                        ? `meta de ${day.targetKcal} calorías, ${day.consumedKcal} registradas`
+                        : `${day.consumedKcal} calorías registradas, sin meta configurada`;
+                      return (
+                        <span
+                          key={day.date}
+                          role="listitem"
+                          className={`zfh-day ${day.tone} ${day.isToday ? "today" : ""} ${day.isProjected ? "projected" : ""}`}
+                          aria-label={`${day.label}: ${accessibleValue}, ${day.statusLabel}`}
+                          title={`${accessibleValue} · ${day.statusLabel}`}
+                        >
+                          <span className="zfh-barArea">
+                            <span className="zfh-bar" style={{ height: `${day.heightPercent}%` }}>
+                              <span className="zfh-barValue">{visibleKcal > 0 ? visibleKcal : "0"}</span>
+                            </span>
+                          </span>
+                          <span className="zfh-dayLabel">{day.label}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="zfh-chartLegend" aria-label="Referencias del gráfico">
+                  <span className="complete"><i />Cumplido</span>
+                  <span className="missed"><i />No cumplido</span>
+                  <span className="pending"><i />Pendiente / meta</span>
+                </div>
               </div>
             </>
           ) : (
-            <div className="homeEmptyNote">
+            <div className="zfh-emptyObjective">
               {goalLoadFailed
-                ? "No pudimos cargar tus objetivos completos. No vamos a mostrar 0 kcal como si fuera una meta real."
-                : "Todavia no configuraste una meta diaria. Menu y Tracking pueden funcionar, pero el resumen queda pendiente."}
+                ? "No pudimos cargar tus objetivos completos. No mostramos una meta inventada."
+                : "Todavía no configuraste una meta diaria. Definila para ver calorías, macros y distribución semanal."}
             </div>
           )}
-          <div className="homeActionsRow">
-            <button type="button" className={`cardAction ${hasObjective ? "secondary" : ""}`} onClick={() => navigate("/app/objetivos")}>
-              {hasObjective ? "Ver objetivos" : "Configurar objetivos"}
-            </button>
-          </div>
-        </div>
+        </section>
 
-        <div className="card">
-          <strong className="homeCardTitle"><Apple aria-hidden="true" /> Menu de hoy</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            {coachControlsNutrition
-              ? "Tu menu esta gestionado por tu coach."
-              : hasOwnMenu
-                ? "Ya tenes menus propios para planificar tus comidas."
-                : "Todavia no creaste tu menu. Podes usar tu propio plan o registrar libremente en Tracking."}
-          </p>
-          <div className="homeCardMeta">
-            <span>{menuUsageText}</span>
-            {coachControlsNutrition ? <span>Coach</span> : <span>Autogestionado</span>}
+        <section aria-labelledby="home-more-title">
+          <div className="zfh-sectionHead" style={{ margin: "2px 2px 10px" }}>
+            <h2 id="home-more-title">Tu día, en un vistazo</h2>
           </div>
-          <div className="homeActionsRow">
-            <button
-              type="button"
-              className="cardAction secondary"
-              onClick={() => navigate(coachControlsNutrition || hasOwnMenu ? "/app/menu" : "/app/menu/nuevo", { state: { from: "/app/inicio" } })}
-              {...(!coachControlsNutrition && !hasOwnMenu ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
-            >
-              {coachControlsNutrition || hasOwnMenu ? "Ver menu" : "Crear mi menu"}
+          <div className="zfh-secondaryGrid">
+            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/tracking")}>
+              <span className="zfh-roundIcon" aria-hidden="true"><CalendarDays size={21} /></span>
+              <span><strong>Tracking</strong><span>Registrá lo que realmente comiste.</span></span>
+              <ArrowRight size={17} aria-hidden="true" />
             </button>
-            {!coachControlsNutrition && !hasOwnMenu ? (
-              <button type="button" className="cardAction secondary" onClick={() => navigate("/app/tracking")}>
-                Ir a Tracking
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="card">
-          <strong className="homeCardTitle"><CalendarDays aria-hidden="true" /> Tracking</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            Registra lo que realmente comiste y comparalo con tus objetivos.
-          </p>
-          <div className="homeActionsRow">
-            <button type="button" className="cardAction secondary" onClick={() => navigate("/app/tracking")}>
-              Registrar dia
+            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/rutinas")}>
+              <span className="zfh-roundIcon" aria-hidden="true"><Dumbbell size={21} /></span>
+              <span><strong>Rutina</strong><span>Revisá tu entrenamiento disponible.</span></span>
+              <ArrowRight size={17} aria-hidden="true" />
+            </button>
+            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/progresos")}>
+              <span className="zfh-roundIcon" aria-hidden="true"><TrendingUp size={21} /></span>
+              <span><strong>Progreso</strong><span>Peso, medidas y evolución real.</span></span>
+              <ArrowRight size={17} aria-hidden="true" />
             </button>
           </div>
-        </div>
-
-        <div className="card">
-          <strong className="homeCardTitle"><Dumbbell aria-hidden="true" /> Rutina</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            Tu entrenamiento del dia o la semana.
-          </p>
-          <div className="homeActionsRow">
-            <button type="button" className="cardAction secondary" onClick={() => navigate("/app/rutinas")}>
-              Ver rutina
-            </button>
-          </div>
-        </div>
-
-        <div className="card">
-          <strong className="homeCardTitle"><TrendingUp aria-hidden="true" /> Progreso</strong>
-          <p className="p" style={{ marginTop: 6 }}>
-            Peso, medidas y constancia con datos reales disponibles.
-          </p>
-          <div className="homeActionsRow">
-            <button type="button" className="cardAction secondary" onClick={() => navigate("/app/progresos")}>
-              Ver progreso
-            </button>
-          </div>
-        </div>
+        </section>
       </div>
     </div>
   );

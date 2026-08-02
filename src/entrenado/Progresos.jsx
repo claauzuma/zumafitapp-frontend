@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import {
   ArrowDown,
@@ -13,8 +13,12 @@ import {
   Scale,
   Target,
   TrendingUp,
+  X,
 } from "lucide-react";
 import { getCachedUser } from "../authCache.js";
+import { useAuthMe } from "../authQueries.js";
+import { fetchClientProgress, upsertClientWeight } from "../clientGoals/clientGoalsApi.js";
+import { queryKeys } from "../queryClient.js";
 import {
   CLIENT_PLAN_CAPABILITIES_STALE_TIME,
   clientPlanCapabilitiesKey,
@@ -390,6 +394,18 @@ const CSS = `
   line-height:1.4;
   font-weight:800;
 }
+
+.zp-weight-action{min-height:44px;border:1px solid rgba(57,211,83,.4);border-radius:12px;background:rgba(57,211,83,.1);color:#a7f3b0;padding:0 14px;font-weight:850;}
+.zp-weight-modal{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.72);backdrop-filter:blur(7px);}
+.zp-weight-dialog{width:min(100%,420px);border:1px solid rgba(255,210,31,.25);border-radius:20px;background:#0d1015;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.55);}
+.zp-weight-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.zp-weight-dialog header button{width:44px;height:44px;border:1px solid var(--zp-border);border-radius:12px;background:#16191f;color:#fff;}
+.zp-weight-dialog label{display:grid;gap:6px;margin-top:14px;color:var(--zp-muted);font-size:.78rem;font-weight:800;}
+.zp-weight-dialog input{min-height:46px;border:1px solid var(--zp-border-strong);border-radius:12px;background:#080a0e;color:#fff;padding:0 12px;font-size:1rem;}
+.zp-weight-dialog footer{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px;}
+.zp-weight-dialog footer button{min-height:46px;border:1px solid var(--zp-border);border-radius:12px;background:#16191f;color:#fff;font-weight:850;}
+.zp-weight-dialog footer button:last-child{border-color:#ffd21f;background:#ffd21f;color:#080808;}
+.zp-weight-error{margin-top:12px;color:#fecaca;font-size:.8rem;font-weight:750;}
 
 .zp-chart-shell{
   overflow:hidden;
@@ -1288,6 +1304,7 @@ function goalWeightFromUser(user = {}) {
 
 function weightHistoryFromUser(user = {}) {
   const candidates = [
+    user?.progress?.checkins,
     user?.progress?.weights,
     user?.progress?.weightHistory,
     user?.body?.weightHistory,
@@ -1369,9 +1386,15 @@ function visibleWeightsForAccess(weights = [], access = {}) {
 
 function ProgressPage() {
   const cachedUser = useMemo(() => getCachedUser(), []);
+  const queryClient = useQueryClient();
+  const authQuery = useAuthMe({ enabled: true, initialFromCache: true, staleTime: 30000 });
+  const progressQuery = useQuery({ queryKey: ["client", "progress"], queryFn: fetchClientProgress, staleTime: 30000, retry: 1 });
+  const liveUser = useMemo(() => authQuery.data || cachedUser || {}, [authQuery.data, cachedUser]);
   const [activeTab, setActiveTab] = useState("Resumen");
   const [range, setRange] = useState("4 semanas");
-  const [weights] = useState(() => weightHistoryFromUser(cachedUser));
+  const [weightDialogOpen, setWeightDialogOpen] = useState(false);
+  const progressUser = useMemo(() => ({ ...liveUser, progress: { ...(liveUser.progress || {}), ...(progressQuery.data?.summary || {}), checkins: progressQuery.data?.checkins || liveUser?.progress?.checkins || [] } }), [liveUser, progressQuery.data]);
+  const weights = useMemo(() => weightHistoryFromUser(progressUser), [progressUser]);
   const [measurements] = useState([]);
   const [photos, setPhotos] = useState({});
   const capabilitiesQuery = useQuery({
@@ -1382,8 +1405,8 @@ function ProgressPage() {
     retry: false,
   });
   const capabilities = capabilitiesQuery.data || cachedUser?.nutritionCapabilities || null;
-  const access = useMemo(() => resolveProgressAccess(cachedUser, capabilities), [cachedUser, capabilities]);
-  const summary = useMemo(() => buildSummary(weights, cachedUser), [weights, cachedUser]);
+  const access = useMemo(() => resolveProgressAccess(liveUser, capabilities), [liveUser, capabilities]);
+  const summary = useMemo(() => buildSummary(weights, progressUser), [weights, progressUser]);
 
   const commonProps = {
     activeTab,
@@ -1397,6 +1420,7 @@ function ProgressPage() {
     access,
     capabilitiesError: capabilitiesQuery.isError,
     onPhotoChange: setPhotos,
+    onWeightEdit: () => setWeightDialogOpen(true),
   };
 
   return (
@@ -1408,11 +1432,12 @@ function ProgressPage() {
       <div className="zp-desktop">
         <DesktopProgressScreen {...commonProps} />
       </div>
+      {weightDialogOpen ? <WeightEditorDialog user={progressUser} onClose={() => setWeightDialogOpen(false)} onSaved={async () => { setWeightDialogOpen(false); await Promise.all([progressQuery.refetch(), authQuery.refetch(), queryClient.invalidateQueries({ queryKey: queryKeys.authMe() })]); }} /> : null}
     </div>
   );
 }
 
-function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange }) {
+function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit }) {
   return (
     <>
       <ProgressHero />
@@ -1429,13 +1454,14 @@ function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, we
           photos={photos}
           access={access}
           onPhotoChange={onPhotoChange}
+          onWeightEdit={onWeightEdit}
         />
       </main>
     </>
   );
 }
 
-function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange }) {
+function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit }) {
   return (
     <div className="zp-desktop-inner">
       <ProgressHero />
@@ -1451,6 +1477,7 @@ function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, w
         photos={photos}
         access={access}
         onPhotoChange={onPhotoChange}
+        onWeightEdit={onWeightEdit}
       />
     </div>
   );
@@ -1473,7 +1500,7 @@ function ProgressHero() {
 function ProgressAccessBanner({ access, capabilitiesError = false }) {
   const title = access.isBasic ? "Progreso basico" : "Progreso completo";
   const copy = access.isBasic
-    ? "Free muestra tu peso, objetivo y medidas basicas reales cuando ya estan disponibles. El alta de nuevos registros se habilitara con guardado persistente."
+    ? "Free incluye el registro de peso real. Pro y VIP agregan historial y comparaciones mas extensas."
     : "Historial completo, rangos largos y funciones avanzadas segun tu plan efectivo.";
   return (
     <section className="zp-access-banner" aria-label="Acceso a progresos">
@@ -1506,7 +1533,7 @@ function ProgressTabs({ activeTab, onTabChange }) {
   );
 }
 
-function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange }) {
+function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange, onWeightEdit }) {
   if (activeTab === "Peso") {
     return (
       <>
@@ -1516,6 +1543,7 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
           range={range}
           onRangeChange={onRangeChange}
           access={access}
+          onWeightEdit={onWeightEdit}
         />
         <BodyMeasurementsCard access={access} measurements={measurements} />
         {access.canUsePhotos ? (
@@ -1571,12 +1599,13 @@ function ProgressTabContent({ activeTab, range, onRangeChange, weights, summary,
         range={range}
         onRangeChange={onRangeChange}
         access={access}
+        onWeightEdit={onWeightEdit}
       />
     </>
   );
 }
 
-function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange }) {
+function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, measurements, photos, access, onPhotoChange, onWeightEdit }) {
   if (activeTab !== "Peso") {
     return (
       <div className="zp-stack">
@@ -1590,6 +1619,7 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, m
           photos={photos}
           access={access}
           onPhotoChange={onPhotoChange}
+          onWeightEdit={onWeightEdit}
         />
       </div>
     );
@@ -1609,6 +1639,7 @@ function DesktopDashboard({ activeTab, range, onRangeChange, weights, summary, m
           range={range}
           onRangeChange={onRangeChange}
           access={access}
+          onWeightEdit={onWeightEdit}
         />
         <div className="zp-side-stack">
           <BodyMeasurementsCard access={access} measurements={measurements} />
@@ -1637,7 +1668,7 @@ function RangeSelector({ value, onChange, access }) {
   );
 }
 
-function WeightChartCard({ weights, summary, range, onRangeChange, access }) {
+function WeightChartCard({ weights, summary, range, onRangeChange, access, onWeightEdit }) {
   const visibleWeights = visibleWeightsForAccess(weights, access);
   const title = access.isBasic ? "Peso - ultimos registros" : `Peso - ${range}`;
   const subtitle = access.isBasic ? "Progreso basico incluido en Free" : "historial completo";
@@ -1679,9 +1710,39 @@ function WeightChartCard({ weights, summary, range, onRangeChange, access }) {
       </div>
 
       <div className="zp-lock-note" role="status">
-        Registro de peso proximamente. Disponible cuando activemos guardado de progreso.
+        <button type="button" className="zp-weight-action" onClick={onWeightEdit}>{summary.hasWeight ? "Editar peso de hoy" : "Registrar peso"}</button>
       </div>
     </section>
+  );
+}
+
+function localDateInput() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function WeightEditorDialog({ user, onClose, onSaved }) {
+  const [date, setDate] = useState(localDateInput());
+  const [weightKg, setWeightKg] = useState(() => currentWeightFromUser(user)?.toString() || "");
+  const mutation = useMutation({ mutationFn: upsertClientWeight, onSuccess: onSaved });
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !mutation.isPending) onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mutation.isPending, onClose]);
+  return (
+    <div className="zp-weight-modal" onMouseDown={(event) => { if (event.target === event.currentTarget && !mutation.isPending) onClose(); }}>
+      <section className="zp-weight-dialog" role="dialog" aria-modal="true" aria-labelledby="zp-weight-title">
+        <header><div><small>Progreso real</small><h2 id="zp-weight-title">Registrar o editar peso</h2></div><button type="button" onClick={onClose} aria-label="Cerrar registro de peso"><X size={18} /></button></header>
+        <label>Fecha<input type="date" max={localDateInput()} value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Peso en kg<input autoFocus type="number" inputMode="decimal" min="20" max="350" step="0.1" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} aria-label="Peso en kilogramos" /></label>
+        <p>Si ya existe un registro en esa fecha, se actualiza: no se crea un duplicado.</p>
+        {mutation.isError ? <div className="zp-weight-error" role="alert">{mutation.error?.message || "No pudimos guardar el peso."}</div> : null}
+        <footer><button type="button" onClick={onClose} disabled={mutation.isPending}>Cancelar</button><button type="button" onClick={() => mutation.mutate({ date, weightKg: Number(weightKg) })} disabled={mutation.isPending || !(Number(weightKg) >= 20 && Number(weightKg) <= 350)}>{mutation.isPending ? "Guardando..." : "Guardar peso"}</button></footer>
+      </section>
+    </div>
   );
 }
 

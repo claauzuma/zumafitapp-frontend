@@ -34,3 +34,20 @@ export async function updateClientGoals(payload = {}) {
 
   return user;
 }
+
+export async function fetchClientProgress() {
+  return await apiFetch("/api/usuarios/users/me/progress", { method: "GET", timeoutMs: 9000 });
+}
+
+export async function upsertClientWeight(payload = {}) {
+  const data = await apiFetch("/api/usuarios/users/me/progress/weight", {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 10000,
+  });
+  if (data?.user) {
+    setAuthLogged(data.user);
+    setAuthUserQueryData(data.user);
+  }
+  return data;
+}

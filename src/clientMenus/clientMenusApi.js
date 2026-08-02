@@ -20,6 +20,13 @@ export async function getClientNutritionCapabilities() {
   return null;
 }
 
+export async function authorizeClientMenuGeneration() {
+  return await apiFetch("/api/clientes/me/menus/generation-authorize", {
+    method: "POST",
+    timeoutMs: 10000,
+  });
+}
+
 export async function listClientMenus(filters = {}) {
   return await apiFetch(`/api/clientes/me/menus${qsFrom(filters)}`, {
     method: "GET",

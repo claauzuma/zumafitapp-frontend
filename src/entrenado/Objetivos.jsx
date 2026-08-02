@@ -263,6 +263,61 @@ function buildAutomaticNutritionTarget(user = {}, target = {}) {
   };
 }
 
+function localDateKey() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function yearsOld(value) {
+  const birth = value ? new Date(value) : null;
+  if (!birth || !Number.isFinite(birth.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const month = now.getMonth() - birth.getMonth();
+  if (month < 0 || (month === 0 && now.getDate() < birth.getDate())) age -= 1;
+  return age > 0 && age < 120 ? age : null;
+}
+
+function profileDataFromUser(user = {}) {
+  const basics = user?.profile?.basics || {};
+  return {
+    weightKg: getCurrentWeightKg(user),
+    date: localDateKey(),
+    heightCm: firstNumber(user?.antropometriaActual?.alturaCm, basics.alturaCm),
+    age: yearsOld(basics.fechaNacimiento),
+    gender: basics.genero || "prefiero_no_decir",
+    activity: basics.actividadDiaria || "moderado",
+    goalType: user?.goal?.type || "mantener_peso",
+    trainingFrequency: basics.frecuenciaEjercicio || "",
+  };
+}
+
+function buildProfileFormulaTarget(user = {}, target = {}, data = {}) {
+  const weight = maybeNumber(data.weightKg);
+  const height = maybeNumber(data.heightCm);
+  const age = maybeNumber(data.age);
+  if (weight === null || height === null || age === null) {
+    return { ...buildAutomaticNutritionTarget(user, target), formula: "Datos actuales guardados" };
+  }
+  const gender = String(data.gender || "").toLowerCase();
+  const sexAdjustment = ["masculino", "hombre", "male"].includes(gender) ? 5 : ["femenino", "mujer", "female"].includes(gender) ? -161 : -78;
+  const bmr = 10 * weight + 6.25 * height - 5 * age + sexAdjustment;
+  const activityFactors = { sedentario: 1.2, ligero: 1.35, moderado: 1.45, activo: 1.55, muy_activo: 1.65 };
+  const factor = activityFactors[data.activity] || 1.45;
+  const maintenance = Math.round(bmr * factor);
+  const syntheticUser = {
+    ...user,
+    antropometriaActual: { ...(user.antropometriaActual || {}), pesoKg: weight },
+    body: { ...(user.body || {}), weightKg: weight, tdeeCustom: maintenance },
+    goal: { ...(user.goal || {}), type: data.goalType || user?.goal?.type },
+  };
+  return {
+    ...buildAutomaticNutritionTarget(syntheticUser, target),
+    formula: `Mifflin-St Jeor · actividad x${factor}`,
+    maintenance,
+  };
+}
+
 function draftFromTarget(target) {
   return {
     kcal: target?.kcal !== null && target?.kcal !== undefined ? String(round(target.kcal)) : "",
@@ -434,11 +489,17 @@ export default function Objetivos() {
   const [activeTab, setActiveTab] = useState("nutrition");
   const [editNutrition, setEditNutrition] = useState(false);
   const [nutritionMode, setNutritionMode] = useState("recalculate");
+  const [recalculationStep, setRecalculationStep] = useState("current_data");
+  const [recalculationData, setRecalculationData] = useState({});
+  const [confirmProfileUpdate, setConfirmProfileUpdate] = useState(false);
+  const [profilePreviewOnly, setProfilePreviewOnly] = useState(false);
   const [nutritionDraft, setNutritionDraft] = useState({ kcal: "", p: "", c: "", g: "" });
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [weeklyMode, setWeeklyMode] = useState("same_all_days");
   const [dayDrafts, setDayDrafts] = useState({});
   const [trainingDays, setTrainingDays] = useState(TRAINING_DAYS_DEFAULT);
+  const [expandedDay, setExpandedDay] = useState("monday");
+  const [copyTargetDays, setCopyTargetDays] = useState([]);
   const [confirmLastChange, setConfirmLastChange] = useState(false);
   const [status, setStatus] = useState(null);
   const [trainingDraft, setTrainingDraft] = useState({ type: "", approach: "" });
@@ -458,6 +519,8 @@ export default function Objetivos() {
   const target = useMemo(() => targetFromUser(user), [user]);
   const initialDraft = useMemo(() => draftFromTarget(target), [target]);
   const automaticTarget = useMemo(() => buildAutomaticNutritionTarget(user, target), [user, target]);
+  const currentProfileData = useMemo(() => profileDataFromUser(user), [user]);
+  const updatedAutomaticTarget = useMemo(() => buildProfileFormulaTarget(user, target, recalculationData), [recalculationData, target, user]);
   const goalsAccess = user.goalsAccess || {};
   const nutritionAuthority = accessContext?.authority?.nutrition || user?.goalsAccess?.authority || "client";
   const trainingAuthority = accessContext?.authority?.training || "client";
@@ -469,7 +532,12 @@ export default function Objetivos() {
   const changesRemaining = goalsAccess.changesRemaining;
   const mismatch = energyMismatch(nutritionDraft);
   const nutritionDraftUnchanged = sameNutritionDraft(nutritionDraft, initialDraft);
-  const nutritionUnchanged = nutritionDraftUnchanged && weeklyMode === "same_all_days";
+  const profileUpdateChanged = recalculationStep === "update_data" && (
+    round(recalculationData.weightKg) !== round(currentProfileData.weightKg) ||
+    recalculationData.activity !== currentProfileData.activity ||
+    recalculationData.goalType !== currentProfileData.goalType
+  );
+  const nutritionUnchanged = nutritionDraftUnchanged && weeklyMode === "same_all_days" && !profileUpdateChanged;
   const weeklyPlan = user?.menu?.weeklyPlan || {};
   const freeChangesBlocked = isFree && changesLimit !== null && changesRemaining <= 0;
   const canEditNutrition = !nutritionLockedByCoach && !freeChangesBlocked;
@@ -482,6 +550,15 @@ export default function Objetivos() {
         : changesRemaining === 1
           ? "Ultimo cambio disponible"
           : `${changesRemaining ?? 0} cambios disponibles`;
+  const weeklySummary = useMemo(() => {
+    const drafts = weeklyMode === "same_all_days"
+      ? DAYS.map(() => normalizeDraft(nutritionDraft))
+      : DAYS.map((day) => normalizeDraft(dayDrafts[day.key] || nutritionDraft));
+    const total = drafts.reduce((acc, value) => ({
+      kcal: acc.kcal + (value.kcal || 0), p: acc.p + (value.p || 0), c: acc.c + (value.c || 0), g: acc.g + (value.g || 0),
+    }), { kcal: 0, p: 0, c: 0, g: 0 });
+    return { total, average: { kcal: total.kcal / 7, p: total.p / 7, c: total.c / 7, g: total.g / 7 } };
+  }, [dayDrafts, nutritionDraft, weeklyMode]);
 
   const mutation = useMutation({
     mutationFn: updateClientGoals,
@@ -516,6 +593,12 @@ export default function Objetivos() {
   }, [initialDraft, target, weeklyPlan?.mode, weeklyPlan?.trainingDays]);
 
   useEffect(() => {
+    setRecalculationData(currentProfileData);
+    setConfirmProfileUpdate(false);
+    setProfilePreviewOnly(false);
+  }, [currentProfileData]);
+
+  useEffect(() => {
     setTrainingDraft({
       type: user?.goal?.type || "",
       approach: user?.goal?.approach || "",
@@ -528,9 +611,13 @@ export default function Objetivos() {
     setConfirmLastChange(false);
     setStatus(null);
     setNutritionMode("manual");
+    setRecalculationStep("current_data");
+    setRecalculationData(currentProfileData);
+    setConfirmProfileUpdate(false);
+    setProfilePreviewOnly(false);
     setNutritionDraft(initialDraft);
     window.setTimeout(() => editButtonRef.current?.focus(), 0);
-  }, [initialDraft]);
+  }, [currentProfileData, initialDraft]);
 
   useEffect(() => {
     if (!editNutrition) return undefined;
@@ -642,15 +729,28 @@ export default function Objetivos() {
     setConfirmLastChange(false);
     setShowDiscardConfirm(false);
     setNutritionMode("recalculate");
-    if (automaticTarget.kcal === null || automaticTarget.kcal === undefined) {
-      setStatus({ type: "warn", text: automaticTarget.warning || "Faltan datos para recalcular automaticamente." });
+    const preview = recalculationStep === "update_data" ? updatedAutomaticTarget : automaticTarget;
+    if (preview.kcal === null || preview.kcal === undefined) {
+      setStatus({ type: "warn", text: preview.warning || "Faltan datos para recalcular automaticamente." });
       return;
     }
     setNutritionDraft({
-      kcal: String(automaticTarget.kcal),
-      p: String(automaticTarget.macros.p),
-      c: String(automaticTarget.macros.c),
-      g: String(automaticTarget.macros.g),
+      kcal: String(preview.kcal),
+      p: String(preview.macros.p),
+      c: String(preview.macros.c),
+      g: String(preview.macros.g),
+    });
+  }
+
+  function applyUpdatedDataPreview({ saveProfile = false } = {}) {
+    setNutritionMode("recalculate");
+    setProfilePreviewOnly(!saveProfile);
+    setConfirmProfileUpdate(saveProfile);
+    setNutritionDraft({
+      kcal: String(updatedAutomaticTarget.kcal ?? ""),
+      p: String(updatedAutomaticTarget.macros?.p ?? ""),
+      c: String(updatedAutomaticTarget.macros?.c ?? ""),
+      g: String(updatedAutomaticTarget.macros?.g ?? ""),
     });
   }
 
@@ -688,6 +788,22 @@ export default function Objetivos() {
         macros: { p: values.p, c: values.c, g: values.g },
       },
     };
+    if (nutritionMode === "recalculate") {
+      payload.recalculation = {
+        mode: profilePreviewOnly ? "current_data" : recalculationStep,
+        confirmProfileUpdate: !profilePreviewOnly && recalculationStep === "update_data" && confirmProfileUpdate,
+        date: recalculationData.date || localDateKey(),
+        weightKg: maybeNumber(recalculationData.weightKg),
+        activity: recalculationData.activity || null,
+      };
+      if (recalculationStep === "update_data" && profileUpdateChanged && !profilePreviewOnly) {
+        if (!confirmProfileUpdate) {
+          setStatus({ type: "warn", text: "Confirma que queres guardar los nuevos datos y registrar el peso de esa fecha." });
+          return;
+        }
+        payload.goal = { type: recalculationData.goalType || null };
+      }
+    }
     if (!isFree && canUseWeeklyTargets) {
       payload.weeklyPlan = buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays);
     }
@@ -727,6 +843,24 @@ export default function Objetivos() {
       });
       return next;
     });
+  }
+
+  function setDayDraftValue(dayKey, field, value) {
+    setDayDrafts((current) => ({ ...current, [dayKey]: { ...(current[dayKey] || {}), [field]: value } }));
+  }
+
+  function copyExpandedDay(targetKeys) {
+    const source = { ...(dayDrafts[expandedDay] || nutritionDraft) };
+    setDayDrafts((current) => {
+      const next = { ...current };
+      targetKeys.filter((key) => key !== expandedDay).forEach((key) => { next[key] = { ...source }; });
+      return next;
+    });
+  }
+
+  function restoreWeeklyBase() {
+    setDayDrafts(buildDayDrafts({ kcal: maybeNumber(nutritionDraft.kcal), macros: { p: maybeNumber(nutritionDraft.p), c: maybeNumber(nutritionDraft.c), g: maybeNumber(nutritionDraft.g) } }));
+    setCopyTargetDays([]);
   }
 
   if (goalsQuery.isLoading) {
@@ -902,30 +1036,28 @@ export default function Objetivos() {
                 ) : null}
 
                 {weeklyMode !== "same_all_days" ? (
-                  <div className="og-dayGrid">
-                    {DAYS.map((day) => (
-                      <div className="og-dayRow" key={day.key}>
-                        <strong>{day.short}</strong>
-                        {["kcal", "p", "c", "g"].map((key) => (
-                          <label key={key}>
-                            <span>{key === "kcal" ? "kcal" : key.toUpperCase()}</span>
-                            <input
-                              type="number"
-                              value={dayDrafts[day.key]?.[key] || ""}
-                              onChange={(event) =>
-                                setDayDrafts((current) => ({
-                                  ...current,
-                                  [day.key]: {
-                                    ...(current[day.key] || {}),
-                                    [key]: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    ))}
+                  <div className="og-compactWeek">
+                    <div className="og-weekSummary">
+                      <span>Promedio diario <strong>{formatNumber(weeklySummary.average.kcal, " kcal")}</strong></span>
+                      <span>Semana <strong>{formatNumber(weeklySummary.total.kcal, " kcal")}</strong></span>
+                      <span>P/C/G promedio <strong>{round(weeklySummary.average.p)} / {round(weeklySummary.average.c)} / {round(weeklySummary.average.g)} g</strong></span>
+                      <button type="button" onClick={restoreWeeklyBase}><RotateCcw size={14} /> Restaurar semana</button>
+                    </div>
+                    {DAYS.map((day) => {
+                      const values = dayDrafts[day.key] || nutritionDraft;
+                      const badge = weeklyMode === "training_rest" ? (trainingDays.includes(day.key) ? "Entrenamiento" : "Descanso") : sameNutritionDraft(values, nutritionDraft) ? "Base" : "Personalizado";
+                      const open = expandedDay === day.key;
+                      return <article className={`og-compactDay ${open ? "open" : ""}`} key={day.key}>
+                        <button type="button" className="og-compactDayHead" onClick={() => setExpandedDay(open ? "" : day.key)} aria-expanded={open}>
+                          <strong>{day.label}</strong><span className={`og-dayBadge ${badge.toLowerCase()}`}>{badge}</span><small>{values.kcal || "-"} kcal · P {values.p || "-"} · C {values.c || "-"} · G {values.g || "-"}</small><ChevronDown size={16} />
+                        </button>
+                        {open ? <div className="og-compactDayBody">
+                          <div className="og-dayFields">{["kcal", "p", "c", "g"].map((key) => <label key={key}><span>{key === "kcal" ? "kcal" : key.toUpperCase()}</span><input type="number" min="0" value={values[key] || ""} onChange={(event) => setDayDraftValue(day.key, key, event.target.value)} /></label>)}</div>
+                          <div className="og-copyDays">{DAYS.filter((entry) => entry.key !== day.key).map((entry) => <label key={entry.key}><input type="checkbox" checked={copyTargetDays.includes(entry.key)} onChange={(event) => setCopyTargetDays((current) => event.target.checked ? [...new Set([...current, entry.key])] : current.filter((key) => key !== entry.key))} />{entry.short}</label>)}</div>
+                          <div className="og-dayActions"><button type="button" onClick={() => setDayDrafts((current) => ({ ...current, [day.key]: { ...nutritionDraft } }))}>Usar base</button><button type="button" onClick={() => copyExpandedDay(DAYS.map((entry) => entry.key))}>Copiar a todos</button><button type="button" onClick={() => copyExpandedDay(copyTargetDays)} disabled={!copyTargetDays.length}>Copiar seleccionados</button></div>
+                        </div> : null}
+                      </article>;
+                    })}
                   </div>
                 ) : null}
               </>
@@ -1095,6 +1227,40 @@ export default function Objetivos() {
                   </button>
                 </div>
 
+                {nutritionMode === "recalculate" ? (
+                  <section className="og-recalculationSteps">
+                    <div className="og-recalculationChoice" role="group" aria-label="Datos para recalcular">
+                      <button type="button" className={recalculationStep === "current_data" ? "active" : ""} onClick={() => { setRecalculationStep("current_data"); setConfirmProfileUpdate(false); setProfilePreviewOnly(false); }}>Usar datos actuales</button>
+                      <button type="button" className={recalculationStep === "update_data" ? "active" : ""} onClick={() => { setRecalculationStep("update_data"); setProfilePreviewOnly(false); }}>Actualizar datos</button>
+                    </div>
+                    <div className="og-currentData">
+                      <span>Peso <strong>{formatNumber(currentProfileData.weightKg, " kg")}</strong></span>
+                      <span>Fecha <strong>{currentProfileData.date}</strong></span>
+                      <span>Altura <strong>{formatNumber(currentProfileData.heightCm, " cm")}</strong></span>
+                      <span>Edad <strong>{formatNumber(currentProfileData.age, " anos")}</strong></span>
+                      <span>Sexo <strong>{currentProfileData.gender || "Sin definir"}</strong></span>
+                      <span>Actividad <strong>{currentProfileData.activity || "Sin definir"}</strong></span>
+                      <span>Objetivo <strong>{goalLabel(currentProfileData.goalType)}</strong></span>
+                      <span>Deporte <strong>{trainingFrequencyLabel(currentProfileData.trainingFrequency)}</strong></span>
+                      <span>Criterio <strong>{recalculationStep === "update_data" ? updatedAutomaticTarget.formula : automaticTarget.description}</strong></span>
+                    </div>
+                    {recalculationStep === "update_data" ? (
+                      <>
+                        <div className="og-profileUpdateGrid">
+                          <label><span>Peso (kg)</span><input type="number" min="20" max="350" step="0.1" value={recalculationData.weightKg ?? ""} onChange={(event) => setRecalculationData((current) => ({ ...current, weightKg: event.target.value }))} /></label>
+                          <label><span>Fecha del peso</span><input type="date" max={localDateKey()} value={recalculationData.date || localDateKey()} onChange={(event) => setRecalculationData((current) => ({ ...current, date: event.target.value }))} /></label>
+                          <label><span>Actividad diaria</span><select value={recalculationData.activity || "moderado"} onChange={(event) => setRecalculationData((current) => ({ ...current, activity: event.target.value }))}><option value="sedentario">Sedentario</option><option value="ligero">Ligero</option><option value="moderado">Moderado</option><option value="activo">Activo</option><option value="muy_activo">Muy activo</option></select></label>
+                          <label><span>Objetivo</span><select value={recalculationData.goalType || "mantener_peso"} onChange={(event) => setRecalculationData((current) => ({ ...current, goalType: event.target.value }))}>{GOAL_TYPES.map((goal) => <option key={goal.value} value={goal.value}>{goal.label}</option>)}</select></label>
+                        </div>
+                        <div className="og-previewCompare"><div><span>Antes</span><strong>{formatNumber(target.kcal, " kcal")}</strong><small>P {formatNumber(target.macros?.p)} · C {formatNumber(target.macros?.c)} · G {formatNumber(target.macros?.g)}</small></div><div><span>Vista previa ({formatNumber((updatedAutomaticTarget.kcal || 0) - (target.kcal || 0), " kcal")})</span><strong>{formatNumber(updatedAutomaticTarget.kcal, " kcal")}</strong><small>P {formatNumber(updatedAutomaticTarget.macros?.p)} · C {formatNumber(updatedAutomaticTarget.macros?.c)} · G {formatNumber(updatedAutomaticTarget.macros?.g)} · {updatedAutomaticTarget.formula}</small></div></div>
+                        <label className="og-profileConfirm"><input type="checkbox" checked={confirmProfileUpdate} onChange={(event) => { setConfirmProfileUpdate(event.target.checked); setProfilePreviewOnly(false); }} /> Confirmo actualizar estos datos. El peso se guarda en Progresos; si ya existe esa fecha, se reemplaza sin duplicar.</label>
+                        <div className="og-previewActions"><button type="button" className="og-applyPreview" onClick={() => applyUpdatedDataPreview({ saveProfile: false })}>Usar objetivo sin guardar datos</button><button type="button" className="og-applyPreview" onClick={() => applyUpdatedDataPreview({ saveProfile: true })}>Actualizar datos y usar objetivo</button></div>
+                        {profilePreviewOnly ? <Notice type="info">Vista previa aplicada: al guardar el objetivo no se cambiaran peso ni actividad.</Notice> : null}
+                      </>
+                    ) : <button type="button" className="og-applyPreview" onClick={applyAutomaticNutritionTarget}>Recalcular sin cambiar mis datos</button>}
+                  </section>
+                ) : null}
+
                 <div className="og-editorFields">
                   <EditorField
                     icon={Flame}
@@ -1139,10 +1305,7 @@ export default function Objetivos() {
                   </p>
                 ) : null}
                 {nutritionMode === "manual" ? (
-                  <p className="og-formHint">
-                    <Info size={16} />
-                    Las calorias se calculan automaticamente desde proteina y carbs x4, grasas x9.
-                  </p>
+                  <><p className="og-formHint"><Info size={16} />Las calorias se calculan automaticamente desde proteina y carbs x4, grasas x9.</p><div className="og-inlineActions"><button type="button" onClick={() => setNutritionDraft(initialDraft)}><RotateCcw size={14} /> Restaurar valores anteriores</button><button type="button" onClick={() => { setNutritionDraft(draftFromTarget(automaticTarget)); setNutritionMode("recalculate"); }}>Restablecer recomendado</button></div></>
                 ) : null}
 
                 {status && status.type !== "success" ? <Notice type={status.type}>{status.text}</Notice> : null}

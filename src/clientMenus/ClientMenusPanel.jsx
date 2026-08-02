@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
   Search,
   Sparkles,
   Sun,
+  Target,
   Trash2,
   Utensils,
   X,
@@ -156,21 +158,62 @@ function selectedDaysForPlan(capabilities = {}, user = {}) {
   return DAYS.slice(0, menuDayLimit(capabilities, user)).map(([key]) => key);
 }
 
-function defaultMeals() {
-  return BASE_MEALS.map((type, index) => ({
+function defaultMeals(count = 4) {
+  const mealTypes = {
+    3: ["desayuno", "almuerzo", "cena"],
+    4: BASE_MEALS,
+    5: [...BASE_MEALS, "snack"],
+    6: ["desayuno", "colacion", "almuerzo", "merienda", "cena", "snack"],
+  }[Math.max(3, Math.min(6, Math.round(Number(count) || 4)))] || BASE_MEALS;
+  return mealTypes.map((type, index) => ({
     ...emptyMeal(type),
     orden: index + 1,
   }));
 }
 
-function emptyDraft(capabilities = {}, user = {}) {
+function emptyDraft(capabilities = {}, user = {}, options = {}) {
+  const explicitDayLimit = Number(options.dayLimit);
+  const dayLimit = Number.isFinite(explicitDayLimit) && explicitDayLimit > 0
+    ? Math.min(7, explicitDayLimit)
+    : menuDayLimit(capabilities, user);
+  const requestedDays = Array.isArray(options.selectedDays)
+    ? [...new Set(options.selectedDays.filter((day) => DAYS.some(([key]) => key === day)))].slice(0, dayLimit)
+    : [];
   return {
-    nombre: "Mi menu",
+    nombre: String(options.nombre || "Mi menu").trim() || "Mi menu",
     descripcion: "",
-    selectedDays: selectedDaysForPlan(capabilities, user),
-    comidas: defaultMeals(),
+    fechaInicio: /^\d{4}-\d{2}-\d{2}$/.test(String(options.fechaInicio || options.initialDate || "")) ? String(options.fechaInicio || options.initialDate) : localIsoDate(),
+    objectiveMode: options.objectiveMode === "custom" ? "custom" : "current",
+    menuTarget: options.objectiveMode === "custom" && options.menuTarget ? options.menuTarget : null,
+    selectedDays: requestedDays.length ? requestedDays : selectedDaysForPlan(capabilities, user),
+    comidas: defaultMeals(options.mealCount),
     isActiveOwnMenu: false,
   };
+}
+
+function clientMenuDraftStorageKey(user = {}) {
+  const owner = String(user?.id || user?._id || user?.email || "anonymous");
+  return `zumafit:client-menu-draft:v1:${owner}`;
+}
+
+function loadClientMenuDraft(user = {}) {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(clientMenuDraftStorageKey(user)) || "null");
+    return parsed?.version === 1 && parsed?.draft?.nombre && Array.isArray(parsed?.draft?.comidas) ? parsed.draft : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveClientMenuDraft(user = {}, draft = null) {
+  if (typeof window === "undefined" || !draft) return;
+  try { window.localStorage.setItem(clientMenuDraftStorageKey(user), JSON.stringify({ version: 1, draft, updatedAt: new Date().toISOString() })); } catch { /* storage puede estar bloqueado */ }
+}
+
+function clearClientMenuDraft(user = {}) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(clientMenuDraftStorageKey(user)); } catch { /* storage puede estar bloqueado */ }
 }
 
 function itemTotals(items = []) {
@@ -225,6 +268,14 @@ function normalizeMenuForDraft(menu = {}, capabilities = {}, user = {}) {
     id: menu.id || menu._id,
     nombre: menu.nombre || "Mi menu",
     descripcion: menu.descripcion || "",
+    fechaInicio: menu.fechaInicio ? String(menu.fechaInicio).slice(0, 10) : localIsoDate(),
+    objectiveMode: menu.objectiveMode || menu.estrategiaObjetivo || "current",
+    menuTarget: menu.kcalObjetivo || menu.macrosObjetivo ? {
+      kcal: toNumber(menu.kcalObjetivo),
+      proteina: toNumber(menu.macrosObjetivo?.proteina),
+      carbs: toNumber(menu.macrosObjetivo?.carbs),
+      grasas: toNumber(menu.macrosObjetivo?.grasas),
+    } : null,
     selectedDays: (dayKeys.length ? dayKeys : planDays).slice(0, menuDayLimit(capabilities, user)),
     comidas: comidas.length ? comidas : defaultMeals(),
     isActiveOwnMenu: !!menu.isActiveOwnMenu,
@@ -355,6 +406,12 @@ export default function ClientMenusPanel({
   editMenuRequest = null,
   user = {},
   directCreate = false,
+  initialDraft = null,
+  initialDate = "",
+  initialTarget = null,
+  initialMealCount = 4,
+  initialSetup = null,
+  activeMenuComparison = null,
   returnTo = "/app/menu",
   onUsageChange,
 }) {
@@ -369,7 +426,7 @@ export default function ClientMenusPanel({
   const [error, setError] = useState("");
   const [editor, setEditor] = useState(() => (
     directCreate && !editMenuRequest?.id
-      ? { mode: "create", draft: emptyDraft(user?.nutritionCapabilities || {}, user) }
+      ? { mode: "create", draft: initialDraft || (initialSetup ? emptyDraft(user?.nutritionCapabilities || {}, user, { initialDate, mealCount: initialMealCount, ...initialSetup }) : loadClientMenuDraft(user)) || emptyDraft(user?.nutritionCapabilities || {}, user, { initialDate, mealCount: initialMealCount }) }
       : null
   ));
   const [search, setSearch] = useState("");
@@ -428,8 +485,8 @@ export default function ClientMenusPanel({
       });
       return;
     }
-    setEditor({ mode: "create", draft: emptyDraft(capabilities, user) });
-  }, [canOpenCreate, capabilities, directCreate, location.pathname, navigate, user]);
+    setEditor({ mode: "create", draft: emptyDraft(capabilities, user, { initialDate, mealCount: initialMealCount, ...(initialSetup || {}) }) });
+  }, [canOpenCreate, capabilities, directCreate, initialDate, initialMealCount, initialSetup, location.pathname, navigate, user]);
 
   useEffect(() => {
     if (!directCreate || loading) return;
@@ -439,8 +496,13 @@ export default function ClientMenusPanel({
       setLimitPrompt(true);
       return;
     }
-    setEditor((current) => current || { mode: "create", draft: emptyDraft(capabilities, user) });
-  }, [capabilities, directCreate, hasEditMenuRequest, limitReached, loading, user]);
+    setEditor((current) => {
+      if (initialDraft && current?.mode === "create" && current.draft !== initialDraft) {
+        return { mode: "create", draft: initialDraft };
+      }
+      return current || { mode: "create", draft: initialDraft || emptyDraft(capabilities, user, { initialDate, mealCount: initialMealCount, ...(initialSetup || {}) }) };
+    });
+  }, [capabilities, directCreate, hasEditMenuRequest, initialDate, initialDraft, initialMealCount, initialSetup, limitReached, loading, user]);
 
   useEffect(() => {
     if (!createSignal || handledCreateSignal.current === createSignal || loading) return;
@@ -502,10 +564,12 @@ export default function ClientMenusPanel({
     if (directCreate && !options?.skipConfirm) {
       const ok = window.confirm("Salir del creador sin guardar los cambios?");
       if (!ok) return;
+      clearClientMenuDraft(user);
       navigate(returnTo || "/app/menu", { replace: true });
       return;
     }
     if (directCreate) {
+      clearClientMenuDraft(user);
       navigate(returnTo || "/app/menu", { replace: true });
       return;
     }
@@ -517,11 +581,25 @@ export default function ClientMenusPanel({
     const cleanDraft = { ...draft };
     delete cleanDraft.focusName;
     delete cleanDraft.isActiveOwnMenu;
-    const payload = { ...cleanDraft, activate };
+    const selectedTarget = cleanDraft.objectiveMode === "custom" ? cleanDraft.menuTarget : initialTarget || nutritionTargetFromUser(user);
+    const payload = {
+      ...cleanDraft,
+      activate,
+      estrategiaObjetivo: cleanDraft.objectiveMode || "current",
+      kcalObjetivo: toNumber(selectedTarget?.kcal),
+      macrosObjetivo: {
+        proteina: toNumber(selectedTarget?.proteina),
+        carbs: toNumber(selectedTarget?.carbs),
+        grasas: toNumber(selectedTarget?.grasas),
+      },
+    };
+    delete payload.menuTarget;
+    delete payload.objectiveMode;
     const ok = await runAction(async () => {
       if (editor.mode === "edit" && draft.id) await updateClientMenu(draft.id, payload);
       else await createClientMenu(payload);
       setEditor(null);
+      clearClientMenuDraft(user);
     }, isEditingActiveMenu ? "Cambios guardados." : activate ? "Menu guardado y activado." : "Menu guardado.");
     if (ok && activate) navigate("/app/menu", { replace: true });
     if (ok && !activate && directCreate) {
@@ -584,7 +662,7 @@ export default function ClientMenusPanel({
       setCapabilities(data?.capabilities || user?.nutritionCapabilities || null);
       setPagination(data?.pagination || null);
       setActiveMenu(data?.activeMenu || null);
-      setEditor({ mode: "create", draft: emptyDraft(data?.capabilities || capabilities, user) });
+      setEditor({ mode: "create", draft: emptyDraft(data?.capabilities || capabilities, user, { initialDate, mealCount: initialMealCount, ...(initialSetup || {}) }) });
       setLimitPrompt(false);
     }, "Menu anterior eliminado. Ya podes crear uno nuevo.");
   }
@@ -600,9 +678,13 @@ export default function ClientMenusPanel({
             loadingContext={loading}
             contextError={error}
             onRetryContext={loadMenus}
+            wizardStep={initialSetup ? 3 : null}
+            onDraftChange={(draft) => saveClientMenuDraft(user, draft)}
             canActivate={capabilities?.canActivateOwnMenu !== false && capabilities?.activeMenuSource !== "coach"}
             capabilities={capabilities}
             user={user}
+            currentTargetOverride={initialTarget}
+            activeMenuComparison={activeMenuComparison}
             onClose={closeEditor}
             onSave={handleSave}
             onSaveMeal={handleSaveMealFromMenu}
@@ -745,6 +827,8 @@ export default function ClientMenusPanel({
           canActivate={capabilities?.canActivateOwnMenu !== false && capabilities?.activeMenuSource !== "coach"}
           capabilities={capabilities}
           user={user}
+          currentTargetOverride={initialTarget}
+          activeMenuComparison={activeMenuComparison}
           onClose={closeEditor}
           onSave={handleSave}
           onSaveMeal={handleSaveMealFromMenu}
@@ -833,6 +917,8 @@ function MenuEditor({
   canActivate,
   capabilities,
   user,
+  currentTargetOverride = null,
+  activeMenuComparison = null,
   embedded = false,
   loadingContext = false,
   contextError = "",
@@ -841,6 +927,8 @@ function MenuEditor({
   onSaveMeal,
   onOpenPlans,
   onRetryContext,
+  onDraftChange,
+  wizardStep = null,
 }) {
   const [draft, setDraft] = useState(initialDraft);
   const [addOpen, setAddOpen] = useState(false);
@@ -852,7 +940,8 @@ function MenuEditor({
   const [descriptionOpen, setDescriptionOpen] = useState(Boolean(initialDraft.descripcion));
   const [mealBuilder, setMealBuilder] = useState(null);
   const totals = useMemo(() => menuTotals(draft), [draft]);
-  const target = useMemo(() => nutritionTargetFromUser(user), [user]);
+  const currentTarget = useMemo(() => currentTargetOverride || nutritionTargetFromUser(user), [currentTargetOverride, user]);
+  const target = draft.objectiveMode === "custom" ? draft.menuTarget : currentTarget;
   const missing = useMemo(() => missingFromTarget(totals, target), [target, totals]);
   const dayLimit = menuDayLimit(capabilities, user);
   const singleDay = dayLimit <= 1;
@@ -861,6 +950,10 @@ function MenuEditor({
   const plan = planKey(capabilities, user);
   const tone = planTone(plan);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initialDraft), [draft, initialDraft]);
+
+  useEffect(() => {
+    if (embedded) onDraftChange?.(draft);
+  }, [draft, embedded, onDraftChange]);
 
   const handleClose = useCallback(() => {
     if (dirty) {
@@ -905,6 +998,24 @@ function MenuEditor({
     }));
   }
 
+  function duplicateMeal(mealId) {
+    setDraft((current) => {
+      if ((current.comidas || []).length >= MAX_MEALS_PER_DAY) return current;
+      const index = current.comidas.findIndex((meal) => meal.id === mealId);
+      if (index < 0) return current;
+      const source = current.comidas[index];
+      const duplicate = {
+        ...source,
+        id: uid("meal"),
+        nombre: `${source.nombre || titleForMealType(source.tipoComida)} copia`,
+        items: (source.items || []).map((item) => ({ ...item, id: uid("item") })),
+      };
+      const comidas = [...current.comidas];
+      comidas.splice(index + 1, 0, duplicate);
+      return { ...current, comidas: comidas.map((meal, mealIndex) => ({ ...meal, orden: mealIndex + 1 })) };
+    });
+  }
+
   function moveMeal(mealId, direction) {
     setDraft((current) => {
       const index = current.comidas.findIndex((meal) => meal.id === mealId);
@@ -933,7 +1044,7 @@ function MenuEditor({
     if (!mealTarget?.kcal) return;
     if (!meal.target) updateMeal(meal.id, { target: mealTarget });
     setMealBuilder({
-      row: { date: localIsoDate(), tracking: { menuId: draft.id || "new-own-menu" } },
+      row: { date: draft.fechaInicio || localIsoDate(), tracking: { menuId: draft.id || "new-own-menu" } },
       baseMeal: { ...meal, target: mealTarget, totals: mealTarget, totales: mealTarget },
       meal: { ...meal, target: mealTarget, totals: mealTarget, totales: mealTarget },
       mealIndex: Math.max(0, draft.comidas.findIndex((entry) => entry.id === meal.id)),
@@ -990,12 +1101,13 @@ function MenuEditor({
       aria-labelledby="client-menu-editor-title"
     >
       <div className={`client-editor client-editor-pro plan-${tone}`}>
+        {wizardStep ? <span className="client-editor-wizard-step">Paso {wizardStep} de 3</span> : null}
         <header className="client-editor-top">
           <button type="button" className="nl-icon" onClick={handleClose} aria-label="Volver">
             <ChevronDown size={18} />
           </button>
           <div className="client-editor-title-block">
-            <span className="nl-kicker">{mode === "edit" ? "Editar menu diario" : "Crear menu diario"}</span>
+            <span className="nl-kicker">{mode === "edit" ? "Editar menú diario" : wizardStep ? "Completar comidas" : "Crear menú diario"}</span>
             <div className="client-editor-title-row">
               {nameEditing ? (
                 <input
@@ -1031,8 +1143,25 @@ function MenuEditor({
 
         <div className="client-editor-info">
           <Info size={22} />
-          <p>Empezas con 4 comidas. Podes renombrarlas, eliminarlas, ordenarlas o agregar otras.</p>
+          <p>{wizardStep ? `Completá las ${draft.comidas.length} comidas iniciales. Podés renombrarlas, ordenarlas o agregar otras.` : `Empezás con ${draft.comidas.length} comidas. Podés renombrarlas, eliminarlas, ordenarlas o agregar otras.`}</p>
         </div>
+
+        {wizardStep ? (
+          <section className="client-wizard-config-summary" aria-label="Configuración elegida">
+            <span><CalendarDays size={15} /><small>Comienza</small><strong>{draft.fechaInicio || "–"}</strong></span>
+            <span><Target size={15} /><small>Objetivo</small><strong>{target?.kcal ? `${formatNumber(target.kcal, 0)} kcal` : "Sin meta"}</strong></span>
+            <span><Utensils size={15} /><small>Días</small><strong>{draft.selectedDays?.length || 1}</strong></span>
+          </section>
+        ) : null}
+
+        {activeMenuComparison?.current && activeMenuComparison?.proposed ? (
+          <section className="client-menu-comparison" aria-label="Comparacion con el menu activo">
+            <div><span>Menu actual</span><strong>{formatNumber(activeMenuComparison.current.kcal, 0)} kcal</strong><small>P {formatNumber(activeMenuComparison.current.proteina, 0)} · C {formatNumber(activeMenuComparison.current.carbs, 0)} · G {formatNumber(activeMenuComparison.current.grasas, 0)}</small></div>
+            <ChevronRight size={18} aria-hidden="true" />
+            <div><span>Nueva propuesta</span><strong>{formatNumber(activeMenuComparison.proposed.kcal, 0)} kcal</strong><small>P {formatNumber(activeMenuComparison.proposed.proteina, 0)} · C {formatNumber(activeMenuComparison.proposed.carbs, 0)} · G {formatNumber(activeMenuComparison.proposed.grasas, 0)}</small></div>
+            <p>Tu menu actual sigue intacto. Guardar crea una alternativa; solo “Guardar y activar” cambia el menu vigente.</p>
+          </section>
+        ) : null}
 
         {loadingContext ? (
           <div className="client-menu-context-status" role="status">
@@ -1069,7 +1198,19 @@ function MenuEditor({
           )}
         </div>
 
-        {!singleDay ? (
+        {!wizardStep ? <section className="client-menu-objective">
+          <div className="client-menu-objective-head">
+            <div><strong>Objetivo y comienzo</strong><span>El menu se crea sin registrar consumo.</span></div>
+            <label><span>Fecha de inicio</span><input type="date" value={draft.fechaInicio || ""} onChange={(event) => setDraft({ ...draft, fechaInicio: event.target.value })} aria-label="Fecha de inicio del menu" /></label>
+          </div>
+          <div className="client-menu-objective-mode" role="group" aria-label="Objetivo nutricional del menu">
+            <button type="button" className={draft.objectiveMode !== "custom" ? "active" : ""} onClick={() => setDraft({ ...draft, objectiveMode: "current" })}>Usar mi objetivo actual</button>
+            <button type="button" className={draft.objectiveMode === "custom" ? "active" : ""} onClick={() => setDraft({ ...draft, objectiveMode: "custom", menuTarget: draft.menuTarget || currentTarget || { kcal: 0, proteina: 0, carbs: 0, grasas: 0 } })}>Objetivo propio</button>
+          </div>
+          {draft.objectiveMode === "custom" ? <div className="client-menu-objective-grid">{[["kcal", "kcal"], ["proteina", "Proteina"], ["carbs", "Carbohidratos"], ["grasas", "Grasas"]].map(([field, label]) => <label key={field}><span>{label}</span><input type="number" min="0" step="0.1" value={draft.menuTarget?.[field] || ""} onChange={(event) => setDraft({ ...draft, menuTarget: { ...(draft.menuTarget || {}), [field]: clampPositive(event.target.value) } })} aria-label={`${label} objetivo del menu`} /></label>)}</div> : null}
+        </section> : null}
+
+        {!wizardStep && !singleDay ? (
           <div className="client-days" aria-label="Dias del menu">
             {DAYS.map(([key, , shortLabel]) => (
               <button key={key} type="button" className={draft.selectedDays.includes(key) ? "active" : ""} onClick={() => toggleDay(key)}>
@@ -1098,6 +1239,7 @@ function MenuEditor({
                   canMoveDown={index < draft.comidas.length - 1}
                   onChange={(patch) => updateMeal(meal.id, patch)}
                   onRemove={() => removeMeal(meal.id)}
+                  onDuplicate={() => duplicateMeal(meal.id)}
                   onMoveUp={() => moveMeal(meal.id, -1)}
                   onMoveDown={() => moveMeal(meal.id, 1)}
                   onSaveMeal={() => onSaveMeal?.(meal)}
@@ -1189,12 +1331,12 @@ function MenuEditor({
               disabled={saving}
             >
               {saving ? <Loader2 size={15} className="nl-spin" /> : <Save size={15} />}
-              {editingActiveMenu ? "Guardar cambios" : "Guardar menu"}
+              {editingActiveMenu ? "Guardar cambios" : activeMenuComparison ? "Guardar alternativa" : "Guardar menu"}
             </button>
             {!editingActiveMenu ? (
               <button type="button" className="nl-primary" onClick={() => onSave(draft, true)} disabled={saving || !canActivateDraft}>
                 {saving ? <Loader2 size={15} className="nl-spin" /> : <Power size={15} />}
-                Guardar y activar
+                {activeMenuComparison ? "Usar desde la fecha elegida" : "Guardar y activar"}
               </button>
             ) : null}
           </div>
@@ -1270,6 +1412,7 @@ function MealEditor({
   canMoveDown,
   onChange,
   onRemove,
+  onDuplicate,
   onMoveUp,
   onMoveDown,
   onSaveMeal,
@@ -1542,6 +1685,7 @@ function MealEditor({
             closeMenu();
           }}
           onRemove={handleRemoveMeal}
+          onDuplicate={() => { onDuplicate(); closeMenu(); }}
         />
       ) : null}
     </article>
@@ -1562,6 +1706,7 @@ function MealOptionsSheet({
   onMoveUp,
   onMoveDown,
   onRemove,
+  onDuplicate,
 }) {
   if (typeof document === "undefined") return null;
   const titleId = `${meal.id}-options-title`;
@@ -1592,6 +1737,10 @@ function MealOptionsSheet({
           <button type="button" role="menuitem" onClick={onMoveDown} disabled={!canMoveDown}>
             <ArrowDown size={16} />
             Mover abajo
+          </button>
+          <button type="button" role="menuitem" onClick={onDuplicate}>
+            <Copy size={16} />
+            Duplicar comida
           </button>
           <button type="button" role="menuitem" className="danger" onClick={onRemove}>
             <Trash2 size={16} />

@@ -260,6 +260,10 @@ export default function ClientNutritionHome({
     onCreateMenu?.();
   }
 
+  function generateMenu() {
+    navigate("/app/menu/nuevo?mode=generate", { state: { from: "/app/nutricion" } });
+  }
+
   if (loading) {
     return (
       <section className="nutrition-home nh-loading" aria-busy="true" aria-live="polite">
@@ -361,6 +365,7 @@ export default function ClientNutritionHome({
           usedMenus={usedMenus}
           ownMenusLimit={ownMenusLimit}
           onCreate={createMenu}
+          onGenerate={generateMenu}
           onOpenMyMenus={onOpenMyMenus}
           onOpenPlans={() => navigate("/app/planes")}
           onTracking={goTracking}
@@ -405,6 +410,7 @@ function SelfEmptyState({
   usedMenus,
   ownMenusLimit,
   onCreate,
+  onGenerate,
   onOpenMyMenus,
   onOpenLibrary,
   onOpenPlans,
@@ -447,6 +453,16 @@ function SelfEmptyState({
           lockedText={createBlockedText}
           actionLabel={createBlocked ? "Administrar mis menus" : "Crear menu"}
           onClick={createBlocked ? onOpenMyMenus : onCreate}
+        />
+        <OptionCard
+          icon={<Sparkles size={20} />}
+          title="Generar automaticamente"
+          description="Crea una vista previa desde tu objetivo, la biblioteca y alimentos elegidos. Nada se consume hasta que lo confirmes en Tracking."
+          locked={capabilities?.canGenerateAutomaticMenu !== true}
+          lockedTitle="Disponible en Pro y VIP"
+          lockedText="Free conserva el creador manual; Pro y VIP agregan generacion con tracking_calorie_fill_v1."
+          actionLabel={capabilities?.canGenerateAutomaticMenu === true ? "Generar menu" : "Ver como funciona"}
+          onClick={onGenerate}
         />
         <OptionCard
           icon={<BookOpen size={20} />}

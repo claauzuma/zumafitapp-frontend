@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Apple,
+  BookOpen,
   Calculator,
   CalendarDays,
   CheckSquare2,
@@ -16,14 +17,18 @@ import {
   ClipboardCheck,
   Eye,
   Lock,
+  Layers3,
   Minus,
   MoreHorizontal,
   MoonStar,
   PencilLine,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Save,
   Search,
   Sparkles,
+  SlidersHorizontal,
   Square,
   Sun,
   Sunrise,
@@ -34,6 +39,7 @@ import {
 } from "lucide-react";
 
 import { apiFetch } from "../../Api.js";
+import { getCachedUser } from "../../authCache.js";
 import { getFoodEquivalents } from "../../menus/menusApi.js";
 import {
   assignmentFlexibleCalories,
@@ -53,7 +59,8 @@ import {
 } from "../../menus/flexibleMarginTracking.js";
 import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
-import { getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
+import { authorizeClientMenuGeneration, getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
+import { generateClientMenuPreview } from "../../clientMenus/clientMenuGeneration.js";
 import {
   CLIENT_PLAN_CAPABILITIES_STALE_TIME,
   clientPlanCapabilitiesKey,
@@ -73,6 +80,18 @@ import {
 } from "./ManualDayCompletion.jsx";
 import EquivalentMealBuilder from "./EquivalentMealBuilder.jsx";
 import { resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
+import {
+  DEFAULT_MENU_GENERATION_SETTINGS,
+  MENU_GENERATION_MODE_COMBINE,
+  MENU_GENERATION_MODE_SCRATCH,
+  MENU_GENERATION_MODE_SIMILAR,
+  dayKeyFromIsoDate,
+  generationModeLabel,
+  libraryTargetPath,
+  loadMenuGenerationSettings,
+  mealTypesForCount,
+  saveMenuGenerationSettings,
+} from "./menuQuickActions.js";
 
 const EMPTY_DAYS = [];
 const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -87,6 +106,7 @@ const TOTAL_KEYS = {
   carbs: ["carbs", "carbohidratos", "carbohydrates", "hidratos", "carbsTotal", "carbohidratosTotal", "c"],
   grasas: ["grasas", "grasa", "fat", "fats", "grasasTotal", "fatTotal", "g"],
 };
+const MenuAutonomousActionsContext = React.createContext(null);
 
 function uid(prefix = "id") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -509,7 +529,7 @@ function emptyMenuCopy(source = "none") {
   }
   return {
     title: "Todavía no tenés menú para este día.",
-    text: "Creá tu propio menú, explorá la biblioteca ZumaFit o registrá libremente en Tracking.",
+    text: "Podés crear tu propio menú, generar uno automáticamente según tus objetivos o explorar comidas de la biblioteca ZumaFit.",
     emptyMealsText: "Creá tu menú o usá Tracking mientras lo armás.",
   };
 }
@@ -2045,6 +2065,12 @@ function manualCompletionSummaryForRow(row, enabled = true) {
 export default function MenuPlan() {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentUser = useMemo(() => getCachedUser() || {}, []);
+  const [quickSettings, setQuickSettings] = useState(() => loadMenuGenerationSettings(currentUser));
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [quickGenerating, setQuickGenerating] = useState(false);
+  const [quickGenerationError, setQuickGenerationError] = useState("");
+  const [quickTopUpOffer, setQuickTopUpOffer] = useState(null);
   const requestedDate = useMemo(() => dateKeyFromSearch(location.search), [location.search]);
   const currentDate = useCurrentLocalDate();
   const initialSelectedDate = requestedDate || currentDate;
@@ -2193,6 +2219,155 @@ export default function MenuPlan() {
   const historyOldestDate = Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
     ? addDays(currentDate, -(trackingHistoryDays - 1))
     : "";
+  const selectedQuickTarget = targetTotals(selectedDisplayRow || selectedRow || {});
+  const resolvedCapabilities = capabilitiesQuery.data || {};
+  const cachedCoach = Boolean(
+    currentUser?.coach?.entrenadorId || currentUser?.coach?.coachId || currentUser?.coachId || currentUser?.entrenadorId
+  );
+  const clientHasCoach = resolvedCapabilities.hasCoach === true || resolvedCapabilities.clientType === "with_coach" || cachedCoach;
+  const showAutonomousQuickActions = Boolean(capabilitiesQuery.data)
+    && !clientHasCoach
+    && menuSourceMeta(activePlanSource).key !== "coach";
+  const canGenerateAutonomousMenu = resolvedCapabilities.canGenerateAutomaticMenu === true;
+
+  function openQuickLibrary() {
+    navigate(libraryTargetPath(selectedRow?.date, selectedQuickTarget), {
+      state: { from: `${location.pathname}${location.search}` },
+    });
+  }
+
+  function openQuickCreateMenu() {
+    navigate("/app/menu/nuevo", {
+      state: {
+        from: `${location.pathname}${location.search}`,
+        selectedDate: selectedRow?.date,
+        dailyTarget: selectedQuickTarget,
+      },
+    });
+  }
+
+  function openQuickTracking() {
+    navigate(`/app/tracking?date=${encodeURIComponent(selectedRow?.date || currentDate)}`);
+  }
+
+  function saveQuickSettings(nextSettings) {
+    const saved = saveMenuGenerationSettings(currentUser, nextSettings);
+    setQuickSettings(saved);
+    setQuickSettingsOpen(false);
+    setQuickGenerationError("");
+    setQuickTopUpOffer(null);
+    setToast("Ajustes automáticos guardados.");
+    window.setTimeout(() => setToast(""), 2200);
+  }
+
+  function restoreQuickSettings() {
+    setQuickGenerationError("");
+    return { ...DEFAULT_MENU_GENERATION_SETTINGS };
+  }
+
+  async function runQuickAutomatic({ allowCalorieTopUp = false } = {}) {
+    if (quickGenerating) return;
+    if (!canGenerateAutonomousMenu) {
+      navigate("/app/planes");
+      return;
+    }
+    if (!selectedQuickTarget.kcal) {
+      setQuickGenerationError("Primero necesitas configurar el objetivo nutricional de este dia.");
+      return;
+    }
+    if (quickSettings.mode === MENU_GENERATION_MODE_SCRATCH) {
+      navigate("/app/menu/nuevo?mode=generate", {
+        state: {
+          from: `${location.pathname}${location.search}`,
+          selectedDate: selectedRow?.date,
+          dailyTarget: selectedQuickTarget,
+          generationSettings: quickSettings,
+        },
+      });
+      return;
+    }
+    setQuickGenerating(true);
+    setQuickGenerationError("");
+    if (!allowCalorieTopUp) setQuickTopUpOffer(null);
+    try {
+      const authorization = await authorizeClientMenuGeneration();
+      if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
+        throw new Error("GENERATION_NOT_AUTHORIZED");
+      }
+      const preview = await generateClientMenuPreview({
+        target: selectedQuickTarget,
+        mealTypes: mealTypesForCount(quickSettings.mealCount),
+        selectedDays: [dayKeyFromIsoDate(selectedRow?.date)],
+        selectedDate: selectedRow?.date,
+        distribution: quickSettings.distribution,
+        sourceMode: "combined",
+        generationMode: quickSettings.mode,
+        allowRepeats: quickSettings.allowRepeats,
+        preferFavorites: quickSettings.preferFavorites,
+        firstMealTime: quickSettings.firstMealTime,
+        allowCalorieTopUp,
+        name: `Menu ${formatDate(selectedRow?.date)}`,
+      });
+      setQuickTopUpOffer(null);
+      navigate("/app/menu/nuevo", {
+        state: {
+          from: `${location.pathname}${location.search}`,
+          selectedDate: selectedRow?.date,
+          dailyTarget: selectedQuickTarget,
+          generationSettings: quickSettings,
+          generatedDraft: {
+            ...preview,
+            fechaInicio: selectedRow?.date,
+            objectiveMode: "custom",
+            menuTarget: selectedQuickTarget,
+          },
+          activeMenuComparison: trackingChoice(selectedRow) ? {
+            current: choiceTotals(trackingChoice(selectedRow)),
+            proposed: preview.comidas?.reduce(
+              (totals, meal) => addTotals(totals, mealTotals(meal)),
+              { kcal: 0, proteina: 0, carbs: 0, grasas: 0 }
+            ),
+          } : null,
+        },
+      });
+    } catch (generationError) {
+      if (generationError?.code === "MENU_CALORIE_TOP_UP_CONFIRMATION_REQUIRED") {
+        setQuickTopUpOffer(generationError.details || null);
+        setQuickGenerationError("");
+      } else if (["MENU_NO_CALORIE_MATCH", "MENU_NO_PROTEIN_MATCH"].includes(generationError?.code)) {
+        setQuickGenerationError(generationError.message);
+      } else {
+        setQuickGenerationError("No pudimos preparar el menú. Revisá tu conexión e intentá nuevamente.");
+      }
+    } finally {
+      setQuickGenerating(false);
+    }
+  }
+
+  const autonomousActions = {
+    visible: showAutonomousQuickActions,
+    canGenerate: canGenerateAutonomousMenu,
+    settings: quickSettings,
+    settingsOpen: quickSettingsOpen,
+    generating: quickGenerating,
+    error: quickGenerationError,
+    topUpOffer: quickTopUpOffer,
+    hasTarget: selectedQuickTarget.kcal > 0,
+    onLibrary: openQuickLibrary,
+    onCreate: openQuickCreateMenu,
+    onAutomatic: () => runQuickAutomatic(),
+    onAcceptTopUp: () => runQuickAutomatic({ allowCalorieTopUp: true }),
+    onRejectTopUp: () => setQuickTopUpOffer(null),
+    onTracking: openQuickTracking,
+    onToggleSettings: () => {
+      setQuickGenerationError("");
+      setQuickSettingsOpen((current) => !current);
+    },
+    onCloseSettings: () => setQuickSettingsOpen(false),
+    onSaveSettings: saveQuickSettings,
+    onRestoreSettings: restoreQuickSettings,
+    onOpenObjectives: () => navigate("/app/objetivos"),
+  };
 
   function canNavigateToMenuDate(date = "") {
     if (!date || !historyOldestDate) return true;
@@ -2921,6 +3096,7 @@ export default function MenuPlan() {
   }
 
   return (
+    <MenuAutonomousActionsContext.Provider value={autonomousActions}>
     <div
       className="min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-0 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
       style={{ background: "#070707", color: "#f4f4f5", minHeight: "60vh" }}
@@ -3227,6 +3403,7 @@ export default function MenuPlan() {
       ) : null}
 
     </div>
+    </MenuAutonomousActionsContext.Provider>
   );
 }
 
@@ -3472,7 +3649,7 @@ function MobileDayPicker({
   const secondaryLabel = selectedIsToday ? `${dayLabel} · ${dateLabel}` : dateLabel;
 
   return (
-    <div className="grid grid-cols-[42px_minmax(0,1fr)_42px] items-center gap-1.5 rounded-[1.05rem] border border-white/10 bg-[linear-gradient(145deg,rgba(16,24,36,.98),rgba(8,13,20,.98))] p-1.5 shadow-[0_10px_26px_rgba(0,0,0,.22)]">
+    <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-1 rounded-[.95rem] border border-white/10 bg-[linear-gradient(145deg,rgba(16,24,36,.98),rgba(8,13,20,.98))] p-1 shadow-[0_8px_22px_rgba(0,0,0,.22)]">
       <button
         type="button"
         onClick={onPrevious}
@@ -3485,11 +3662,11 @@ function MobileDayPicker({
       <div className="min-w-0 py-0.5 text-center" aria-current={selectedIsToday ? "date" : undefined}>
         <div className="flex min-w-0 items-center justify-center gap-1.5">
           <CalendarDays size={14} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-400"}`} />
-          <span className="truncate text-[18px] font-black leading-tight text-white">
+          <span className="truncate text-base font-black leading-tight text-white">
             {selectedIsToday ? "Hoy" : dayLabel}
           </span>
         </div>
-        <div className="mt-0.5 truncate text-[10px] font-black uppercase tracking-[0.08em] text-zinc-400">
+        <div className="truncate text-[9px] font-black uppercase tracking-[0.09em] text-zinc-400">
           {secondaryLabel}
         </div>
       </div>
@@ -3851,6 +4028,196 @@ function FlexibleMarginSlotCard({
   );
 }
 
+function AutonomousMenuQuickActions() {
+  const actions = React.useContext(MenuAutonomousActionsContext);
+  const [draft, setDraft] = useState(actions?.settings || DEFAULT_MENU_GENERATION_SETTINGS);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (actions?.settingsOpen) setDraft(actions.settings || DEFAULT_MENU_GENERATION_SETTINGS);
+  }, [actions?.settings, actions?.settingsOpen]);
+
+  useEffect(() => {
+    if (!actions?.settingsOpen) return undefined;
+    function closeOnKey(event) {
+      if (event.key === "Escape") actions.onCloseSettings?.();
+    }
+    function closeOutside(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) actions.onCloseSettings?.();
+    }
+    window.addEventListener("keydown", closeOnKey);
+    document.addEventListener("pointerdown", closeOutside);
+    return () => {
+      window.removeEventListener("keydown", closeOnKey);
+      document.removeEventListener("pointerdown", closeOutside);
+    };
+  }, [actions]);
+
+  if (!actions?.visible) return null;
+  const automaticLocked = !actions.canGenerate;
+  const modeLabel = generationModeLabel(actions.settings?.mode);
+  const modes = [
+    {
+      id: MENU_GENERATION_MODE_SIMILAR,
+      icon: Search,
+      title: "Buscar menú similar en biblioteca",
+      text: "Busca un menú completo cercano a tus calorías y macronutrientes.",
+      tone: "gold",
+    },
+    {
+      id: MENU_GENERATION_MODE_COMBINE,
+      icon: Layers3,
+      title: "Combinar comidas de la biblioteca",
+      text: "Selecciona comidas publicadas y las combina para completar el día.",
+      tone: "green",
+    },
+    {
+      id: MENU_GENERATION_MODE_SCRATCH,
+      icon: Sparkles,
+      title: "Generar desde cero",
+      text: "ZumaFit crea una combinación nueva según tus objetivos y preferencias.",
+      tone: "violet",
+    },
+  ];
+
+  return (
+    <section ref={rootRef} className="mt-2.5" aria-label="Acciones rapidas de menu">
+      <div className="grid grid-cols-4 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
+        <QuickMenuAction icon={BookOpen} label="Biblioteca" tone="green" onClick={actions.onLibrary} />
+        <QuickMenuAction icon={Plus} label="Crear menú" tone="violet" onClick={actions.onCreate} />
+        <QuickMenuAction
+          icon={actions.generating ? RefreshCw : Sparkles}
+          label={actions.generating ? "Generando" : "Automático"}
+          detail={automaticLocked ? "Pro" : modeLabel}
+          tone="cyan"
+          onClick={actions.onAutomatic}
+          busy={actions.generating}
+          locked={automaticLocked}
+        />
+        <QuickMenuAction
+          icon={SlidersHorizontal}
+          label="Ajustes"
+          tone="gold"
+          onClick={actions.onToggleSettings}
+          pressed={actions.settingsOpen}
+          controls="menu-generation-settings"
+          compact
+        />
+      </div>
+
+      {actions.topUpOffer ? (
+        <div className="mt-2 overflow-hidden rounded-2xl border border-cyan-300/30 bg-[radial-gradient(circle_at_100%_0,rgba(34,211,238,.12),transparent_38%),rgba(8,18,25,.96)] p-3 shadow-[0_12px_28px_rgba(0,0,0,.28)]" role="alertdialog" aria-labelledby="menu-top-up-title" aria-describedby="menu-top-up-description">
+          <div className="flex items-start gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-200"><CircleAlert size={17} aria-hidden="true" /></span>
+            <div className="min-w-0">
+              <strong id="menu-top-up-title" className="block text-[12px] font-black text-white">Encontramos un menú cercano</strong>
+              <p id="menu-top-up-description" className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-300">
+                <b className="text-cyan-100">{actions.topUpOffer.candidateName}</b> cumple la referencia proteica, pero faltan <b className="text-[#FFE080]">{Math.round(Number(actions.topUpOffer.topUpTarget?.kcal) || 0)} kcal</b> para tu objetivo del día.
+              </p>
+              <p className="mt-1 text-[9px] font-bold leading-relaxed text-zinc-500">Si aceptás, se abrirá un borrador con un complemento pendiente para que elijas sus alimentos antes de guardar.</p>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-[.72fr_1.28fr] gap-2">
+            <button type="button" className="min-h-11 rounded-xl border border-white/10 bg-white/[0.035] px-2 text-[10px] font-black text-zinc-300" onClick={actions.onRejectTopUp} disabled={actions.generating}>No usar</button>
+            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-2 text-[10px] font-black text-cyan-100" onClick={actions.onAcceptTopUp} disabled={actions.generating}>
+              {actions.generating ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+              Usar y completar {Math.round(Number(actions.topUpOffer.topUpTarget?.kcal) || 0)} kcal
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {actions.error ? (
+        <div className="mt-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-xs font-bold text-amber-100" role="alert">
+          <p>{actions.error}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {!actions.hasTarget ? <button type="button" className="min-h-11 rounded-xl border border-amber-200/30 px-3 font-black" onClick={actions.onOpenObjectives}>Ir a Objetivos</button> : null}
+            <button type="button" className="min-h-11 rounded-xl border border-white/10 px-3 font-black" onClick={actions.onLibrary}>Explorar biblioteca</button>
+            <button type="button" className="min-h-11 rounded-xl border border-white/10 px-3 font-black" onClick={actions.onCreate}>Crear manualmente</button>
+          </div>
+        </div>
+      ) : null}
+
+      {actions.settingsOpen ? (
+        <div id="menu-generation-settings" className="mt-1.5 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/30 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_34%),linear-gradient(145deg,#111923,#080d13)] p-2 shadow-[0_14px_34px_rgba(0,0,0,.34)]">
+          <header className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5 text-[#FFD76B]">
+              <SlidersHorizontal size={15} aria-hidden="true" />
+              <div className="min-w-0"><strong className="block truncate text-[11px] font-black">Opciones de generación automática</strong><span className="block truncate text-[8.5px] font-bold text-zinc-500">Se guarda para los próximos cálculos.</span></div>
+            </div>
+            <button type="button" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-300" onClick={actions.onCloseSettings} aria-label="Cerrar ajustes automáticos"><ChevronUp size={15} /></button>
+          </header>
+
+          <div className="mt-1.5 grid gap-1.5" role="radiogroup" aria-label="Método principal de generación">
+            {modes.map((mode) => {
+              const Icon = mode.icon;
+              const selected = draft.mode === mode.id;
+              const tone = mode.tone === "gold" ? "text-[#FFD76B]" : mode.tone === "green" ? "text-lime-300" : "text-violet-300";
+              return (
+                <label key={mode.id} className={`grid min-h-[52px] cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2.5 py-1.5 ${selected ? "border-[#D4AF37]/65 bg-[#D4AF37]/[0.08]" : "border-white/10 bg-black/15"}`}>
+                  <input type="radio" name="menu-generation-mode" value={mode.id} checked={selected} onChange={() => setDraft((current) => ({ ...current, mode: mode.id }))} className="h-4 w-4 accent-[#D4AF37]" />
+                  <span className="min-w-0"><strong className="block text-[11px] font-black leading-tight text-white">{mode.title}</strong><span className="mt-0.5 block text-[9px] font-bold leading-tight text-zinc-400">{mode.text}</span></span>
+                  <Icon size={16} className={tone} aria-hidden="true" />
+                </label>
+              );
+            })}
+          </div>
+
+          <button type="button" className="mt-1.5 flex min-h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-2.5 text-[10px] font-black text-zinc-200" onClick={() => setAdvancedOpen((current) => !current)} aria-expanded={advancedOpen}>
+            Ajustes avanzados
+            {advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {advancedOpen ? (
+            <div className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-black/15 p-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Cantidad de comidas</span><select className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.mealCount} onChange={(event) => setDraft((current) => ({ ...current, mealCount: Number(event.target.value) }))}>{[3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} comidas{count === 4 ? " - recomendada" : ""}</option>)}</select></label>
+              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Distribucion del objetivo</span><select className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.distribution} onChange={(event) => setDraft((current) => ({ ...current, distribution: event.target.value }))}><option value="balanced">Segun tipo de comida</option><option value="equal">Partes iguales</option></select></label>
+              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Horario de la primera comida</span><input type="time" className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.firstMealTime} onChange={(event) => setDraft((current) => ({ ...current, firstMealTime: event.target.value }))} /></label>
+              <div className="grid gap-2 sm:pt-5">
+                <label className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-bold text-zinc-200"><input type="checkbox" checked={draft.allowRepeats} onChange={(event) => setDraft((current) => ({ ...current, allowRepeats: event.target.checked }))} /> Permitir repetir comidas</label>
+                <label className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-bold text-zinc-200"><input type="checkbox" checked={draft.preferFavorites} onChange={(event) => setDraft((current) => ({ ...current, preferFavorites: event.target.checked }))} /> Priorizar favoritas</label>
+              </div>
+            </div>
+          ) : null}
+
+          <footer className="mt-1.5 grid grid-cols-3 gap-1.5">
+            <button type="button" className="min-h-11 rounded-xl border border-white/10 bg-white/[0.035] px-2 text-[11px] font-black text-zinc-300" onClick={actions.onCloseSettings}>Cancelar</button>
+            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/[0.035] px-2 text-[11px] font-black text-zinc-200" onClick={() => setDraft(actions.onRestoreSettings?.() || DEFAULT_MENU_GENERATION_SETTINGS)}><RotateCcw size={14} /> Recomendados</button>
+            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/15 px-2 text-[11px] font-black text-[#FFE8A3]" onClick={() => actions.onSaveSettings?.(draft)}><Save size={14} /> Guardar</button>
+          </footer>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function QuickMenuAction({ icon, label, detail = "", tone = "gold", onClick, busy = false, locked = false, pressed, controls, compact = false }) {
+  const colors = {
+    green: "border-lime-400/35 bg-lime-400/10 text-lime-300",
+    violet: "border-violet-400/35 bg-violet-400/10 text-violet-300",
+    cyan: "border-cyan-400/35 bg-cyan-400/10 text-cyan-200",
+    gold: "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFD76B]",
+  };
+  return (
+    <button
+      type="button"
+      className={`group relative flex min-h-[60px] min-w-0 flex-col items-center justify-center gap-0.5 border-r border-white/[0.07] px-0.5 py-1.5 text-center transition hover:bg-white/[0.055] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] min-[640px]:min-h-14 min-[640px]:flex-row min-[640px]:gap-2 min-[640px]:px-2 ${pressed ? "bg-[#D4AF37]/[0.08]" : ""}`}
+      onClick={onClick}
+      aria-busy={busy || undefined}
+      aria-pressed={pressed}
+      aria-expanded={controls ? pressed : undefined}
+      aria-controls={controls}
+      aria-label={`${label}${detail ? `, ${detail}` : ""}${locked ? ", requiere plan Pro o VIP" : ""}`}
+    >
+      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border min-[640px]:h-8 min-[640px]:w-8 ${colors[tone] || colors.gold}`}>
+        {React.createElement(icon, { size: compact ? 14 : 15, className: busy ? "animate-spin" : "", "aria-hidden": "true" })}
+      </span>
+      <span className="w-full min-w-0 px-0.5"><strong className="block truncate text-[8.5px] font-black leading-tight text-zinc-100 min-[390px]:text-[9px] sm:text-xs">{label}</strong>{detail ? <small className="hidden truncate text-[8px] font-bold text-zinc-500 min-[640px]:block">{detail}</small> : null}</span>
+    </button>
+  );
+}
+
 function MobileDayMenu({
   row,
   weekRows = [],
@@ -3933,6 +4300,8 @@ function MobileDayMenu({
         mealsCount={countableMeals.length || 0}
       />
 
+      <AutonomousMenuQuickActions />
+
       {/*
             <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
               P {formatNumber(target.proteina, 0)} g - C {formatNumber(target.carbs, 0)} g - G {formatNumber(target.grasas, 0)} g
@@ -3955,7 +4324,7 @@ function MobileDayMenu({
       */}
 
       {!primary?.snapshot ? (
-        <div className="mt-4">
+        <div className="mt-2.5">
           <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
         </div>
       ) : null}
@@ -4070,23 +4439,23 @@ function MobileGoalAccordion({
     <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
       <button
         type="button"
-        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5 py-2.5 text-left"
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2 text-left"
         aria-expanded={expanded}
         aria-controls={detailId}
         onClick={onToggle}
       >
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
-          <Target size={17} strokeWidth={2.2} aria-hidden="true" />
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
+          <Target size={15} strokeWidth={2.2} aria-hidden="true" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-black text-white">Meta del día</span>
-          <span className="mt-0.5 block text-[17px] font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
-          <span className="mt-0.5 block truncate text-[10.5px] font-black text-sky-200">{macroSummary}</span>
+          <span className="block truncate text-[11px] font-black leading-tight text-white">Meta del día</span>
+          <span className="block text-[18px] font-black leading-tight text-[#FFD76B]">{displayKcal(target.kcal)}</span>
+          <span className="block truncate text-[9px] font-black leading-tight text-sky-200">{macroSummary}</span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           <span className="min-w-[42px] text-right leading-tight">
-            <strong className="block text-sm font-black text-emerald-300">{safePercent}%</strong>
-            <span className="block text-[8.5px] font-bold text-zinc-500">cumplido</span>
+            <strong className="block text-[13px] font-black text-emerald-300">{safePercent}%</strong>
+            <span className="block text-[7.5px] font-bold text-zinc-500">cumplido</span>
           </span>
           <span className="grid h-7 w-7 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300">
             <ChevronIcon size={15} strokeWidth={2.4} aria-hidden="true" />
@@ -4835,40 +5204,45 @@ function MobileMetric({ label, value, detail, tone = "blue", progress = null }) 
 }
 
 function MobileEmptyCard({ title, text }) {
+  const autonomousActions = React.useContext(MenuAutonomousActionsContext);
   const joined = `${title || ""} ${text || ""}`.toLowerCase();
-  const isMissingAssignedMenuCopy = joined.includes("coach lo asigne") || joined.includes("coach asigne") || joined.includes("avisarle a tu coach");
-  const genericCopy = emptyMenuCopy("none");
-  const displayTitle = isMissingAssignedMenuCopy ? genericCopy.title : title;
-  const displayText = isMissingAssignedMenuCopy
-    ? genericCopy.text
-    : text;
+  const isAutonomousEmptyState = joined.includes("biblioteca zumafit") && joined.includes("generar uno automáticamente");
   return (
-    <div className="relative overflow-hidden rounded-[1.3rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_38%),linear-gradient(145deg,#111923,#090e15)] p-3.5 shadow-[0_14px_32px_rgba(0,0,0,.28)]">
-      <span className="pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37]" aria-hidden="true" />
-      <div className="flex items-start gap-3 text-zinc-100">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFD76B]">
-          <CircleAlert size={19} />
+    <div className="relative overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_38%),linear-gradient(145deg,#111923,#090e15)] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,.28)]">
+      <span className="pointer-events-none absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37]" aria-hidden="true" />
+      <div className="flex items-start gap-2 text-zinc-100">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFD76B]">
+          <CircleAlert size={15} />
         </span>
-        <span className="min-w-0 pt-0.5">
-          <span className="block text-[9px] font-black uppercase tracking-[0.12em] text-[#FFE8A3]/65">Plan del día</span>
-          <strong className="mt-0.5 block text-base font-black leading-tight">{displayTitle}</strong>
+        <span className="min-w-0">
+          <span className="block text-[7.5px] font-black uppercase tracking-[0.12em] text-[#FFE8A3]/65">Plan del día</span>
+          <strong className="block text-sm font-black leading-tight">{title}</strong>
         </span>
       </div>
-      {displayText ? <p className="mt-2 pl-[52px] text-xs font-bold leading-relaxed text-zinc-400">{displayText}</p> : null}
-      {isMissingAssignedMenuCopy ? (
+      {text ? <p className="mt-1 pl-10 text-[9.5px] font-bold leading-[1.45] text-zinc-400">{text}</p> : null}
+      {isAutonomousEmptyState && autonomousActions?.visible ? (
         <>
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            <Link
-              to="/app/menu/nuevo"
-              state={{ from: "/app/menu" }}
-              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-3 text-sm font-black text-[#080808]"
-              {...createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false })}
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={autonomousActions.onCreate}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-2 text-[10px] font-black leading-tight text-[#080808]"
             >
-              Crear mi menu
-            </Link>
-            <a href="/app/tracking" className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-3 text-xs font-black text-zinc-100">
-              Ir a Tracking
-            </a>
+              <Plus size={15} /> Crear mi menú
+            </button>
+            <button
+              type="button"
+              onClick={autonomousActions.onAutomatic}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-2 text-center text-[9.5px] font-black leading-tight text-cyan-100"
+            >
+              <Sparkles size={15} /> Generar automáticamente
+            </button>
+            <button type="button" onClick={autonomousActions.onLibrary} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-[9.5px] font-black leading-tight text-zinc-100">
+              <BookOpen size={15} /> Explorar biblioteca
+            </button>
+            <button type="button" onClick={autonomousActions.onTracking} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-[9.5px] font-black leading-tight text-zinc-100">
+              <Target size={15} /> Registrar en Tracking
+            </button>
           </div>
         </>
       ) : null}
@@ -5660,6 +6034,8 @@ function TodayHero({
           </div>
         )}
       </div>
+
+      <AutonomousMenuQuickActions />
 
       {snapshot ? (
         <div className="mt-3 rounded-[1.2rem] border border-white/10 bg-black/20 p-3">
