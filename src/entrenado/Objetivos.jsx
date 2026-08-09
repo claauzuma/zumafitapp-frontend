@@ -21,7 +21,7 @@ import {
 
 import { clientAccessContextKey, clientPlanCapabilitiesKey } from "../clientPlans/clientPlanQueries.js";
 import { clientPlanLabel, normalizeClientPlan, planFromCapabilities } from "../clientPlans/clientPlanUtils.js";
-import { clientGoalsKey, fetchClientGoals, updateClientGoals } from "../clientGoals/clientGoalsApi.js";
+import { clientGoalsKey, fetchClientGoals, previewClientNutrition, updateClientGoals } from "../clientGoals/clientGoalsApi.js";
 import { queryKeys } from "../queryClient.js";
 import "./Objetivos.css";
 
@@ -61,12 +61,6 @@ function firstNumber(...values) {
     if (n !== null) return n;
   }
   return null;
-}
-
-function clampNumber(value, min, max) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return min;
-  return Math.min(max, Math.max(min, n));
 }
 
 function maybeNumber(value) {
@@ -191,75 +185,26 @@ function getCurrentWeightKg(user = {}) {
   );
 }
 
-function getMaintenanceKcal(user = {}, target = {}) {
-  return firstNumber(
-    user?.body?.tdeeCustom,
-    user?.profile?.basics?.tdeeCustom,
-    user?.goal?.maintenanceKcal,
-    user?.body?.tdeeEstimated,
-    user?.profile?.basics?.tdeeEstimado,
-    user?.goal?.initialBudgetKcal,
-    target?.kcal
-  );
-}
-
-function getGoalMode(user = {}) {
-  const type = String(user?.goal?.type || "").toLowerCase();
-  if (type === "perder_peso" || type === "perder_grasa") return "lose";
-  if (type === "ganar_peso" || type === "ganar_masa") return "gain";
-  return "maintain";
-}
-
-function buildAutomaticNutritionTarget(user = {}, target = {}) {
-  const maintenance = getMaintenanceKcal(user, target);
-  const weight = getCurrentWeightKg(user);
-  const mode = getGoalMode(user);
-  const defaultRate = mode === "maintain" ? 0 : 0.5;
-  const rate = Math.abs(firstNumber(user?.goal?.ratePctBWPerWeek, defaultRate) || defaultRate);
-  const fallbackKcal = firstNumber(user?.goal?.initialBudgetKcal, target?.kcal, maintenance);
-  let kcal = maintenance ?? fallbackKcal;
-  const warnings = [];
-
-  if (maintenance !== null && mode !== "maintain") {
-    if (weight !== null) {
-      const kcalPerDay = ((weight * (rate / 100)) * 7700) / 7;
-      if (mode === "lose") {
-        const minBudget = 1400;
-        const maxBudgetLose = Math.max(minBudget, maintenance - 100);
-        kcal = Math.round(clampNumber(maintenance - kcalPerDay, minBudget, maxBudgetLose));
-      } else {
-        kcal = Math.round(clampNumber(maintenance + kcalPerDay, maintenance + 100, maintenance + 1200));
-      }
-    } else {
-      kcal = fallbackKcal ?? maintenance;
-      warnings.push("No encontramos peso actual. Usamos tu presupuesto guardado como base.");
-    }
-  } else if (maintenance !== null) {
-    kcal = Math.round(maintenance);
-  }
-
-  if (kcal === null || kcal === undefined) {
+function calculatedTargetFromPreview(preview = null) {
+  if (!preview?.ready || !preview?.target) {
+    const missing = Array.isArray(preview?.missingFields) ? preview.missingFields.join(", ") : "datos corporales";
     return {
       kcal: null,
       macros: { p: null, c: null, g: null },
-      description: "Faltan datos de peso o mantenimiento",
-      warning: "Faltan datos corporales para calcular automaticamente.",
+      description: preview?.formula || "Calculadora central de ZumaFit",
+      formula: preview?.formula || "Calculadora central de ZumaFit",
+      warning: `Faltan datos para calcular: ${missing}.`,
+      usedData: preview?.usedData || {},
     };
   }
-
-  const macros = distributeMacros(kcal, user);
-  const modeLabel = mode === "lose" ? "perdida" : mode === "gain" ? "subida" : "mantenimiento";
-  const parts = [
-    maintenance !== null ? `TDEE ${round(maintenance).toLocaleString("es-AR")} kcal` : "meta actual",
-    weight !== null ? `peso ${weight.toLocaleString("es-AR")} kg` : "sin peso actual",
-    mode === "maintain" ? modeLabel : `${modeLabel} ${rate}%/sem`,
-  ];
-
   return {
-    kcal: round(kcal),
-    macros,
-    description: parts.join(" · "),
-    warning: warnings[0] || "",
+    kcal: preview.target.kcal,
+    macros: preview.target.macros,
+    description: `TDEE ${Number(preview.maintenanceKcal || 0).toLocaleString("es-AR")} kcal · ajuste ${preview.adjustment?.percent || 0}%`,
+    formula: preview.formula,
+    maintenance: preview.maintenanceKcal,
+    usedData: preview.usedData || {},
+    warning: "",
   };
 }
 
@@ -268,53 +213,35 @@ function localDateKey() {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
-function yearsOld(value) {
-  const birth = value ? new Date(value) : null;
-  if (!birth || !Number.isFinite(birth.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const month = now.getMonth() - birth.getMonth();
-  if (month < 0 || (month === 0 && now.getDate() < birth.getDate())) age -= 1;
-  return age > 0 && age < 120 ? age : null;
-}
-
 function profileDataFromUser(user = {}) {
   const basics = user?.profile?.basics || {};
   return {
     weightKg: getCurrentWeightKg(user),
     date: localDateKey(),
+    birthDate: basics.fechaNacimiento || "",
     heightCm: firstNumber(user?.antropometriaActual?.alturaCm, basics.alturaCm),
-    age: yearsOld(basics.fechaNacimiento),
-    gender: basics.genero || "prefiero_no_decir",
-    activity: basics.actividadDiaria || "moderado",
-    goalType: user?.goal?.type || "mantener_peso",
+    age: null,
+    gender: basics.genero || "",
+    activity: basics.actividadDiaria || "",
+    activityFactor: basics.factorActividad ?? null,
+    goalType: user?.goal?.type || "",
     trainingFrequency: basics.frecuenciaEjercicio || "",
   };
 }
 
-function buildProfileFormulaTarget(user = {}, target = {}, data = {}) {
-  const weight = maybeNumber(data.weightKg);
-  const height = maybeNumber(data.heightCm);
-  const age = maybeNumber(data.age);
-  if (weight === null || height === null || age === null) {
-    return { ...buildAutomaticNutritionTarget(user, target), formula: "Datos actuales guardados" };
-  }
-  const gender = String(data.gender || "").toLowerCase();
-  const sexAdjustment = ["masculino", "hombre", "male"].includes(gender) ? 5 : ["femenino", "mujer", "female"].includes(gender) ? -161 : -78;
-  const bmr = 10 * weight + 6.25 * height - 5 * age + sexAdjustment;
-  const activityFactors = { sedentario: 1.2, ligero: 1.35, moderado: 1.45, activo: 1.55, muy_activo: 1.65 };
-  const factor = activityFactors[data.activity] || 1.45;
-  const maintenance = Math.round(bmr * factor);
-  const syntheticUser = {
-    ...user,
-    antropometriaActual: { ...(user.antropometriaActual || {}), pesoKg: weight },
-    body: { ...(user.body || {}), weightKg: weight, tdeeCustom: maintenance },
-    goal: { ...(user.goal || {}), type: data.goalType || user?.goal?.type },
-  };
+function nutritionPreviewPayload(data = {}) {
   return {
-    ...buildAutomaticNutritionTarget(syntheticUser, target),
-    formula: `Mifflin-St Jeor · actividad x${factor}`,
-    maintenance,
+    data: {
+      birthDate: data.birthDate,
+      age: data.age,
+      sex: data.gender,
+      weightKg: data.weightKg,
+      heightCm: data.heightCm,
+      activityFactor: data.activityFactor,
+      activity: data.activity,
+      exerciseFrequency: data.trainingFrequency,
+      goalType: data.goalType,
+    },
   };
 }
 
@@ -503,6 +430,9 @@ export default function Objetivos() {
   const [confirmLastChange, setConfirmLastChange] = useState(false);
   const [status, setStatus] = useState(null);
   const [trainingDraft, setTrainingDraft] = useState({ type: "", approach: "" });
+  const [automaticTarget, setAutomaticTarget] = useState(() => calculatedTargetFromPreview(null));
+  const [updatedAutomaticTarget, setUpdatedAutomaticTarget] = useState(() => calculatedTargetFromPreview(null));
+  const [nutritionPreviewLoading, setNutritionPreviewLoading] = useState(false);
 
   const goalsQuery = useQuery({
     queryKey: clientGoalsKey,
@@ -518,9 +448,7 @@ export default function Objetivos() {
   const plan = getPlan(data);
   const target = useMemo(() => targetFromUser(user), [user]);
   const initialDraft = useMemo(() => draftFromTarget(target), [target]);
-  const automaticTarget = useMemo(() => buildAutomaticNutritionTarget(user, target), [user, target]);
   const currentProfileData = useMemo(() => profileDataFromUser(user), [user]);
-  const updatedAutomaticTarget = useMemo(() => buildProfileFormulaTarget(user, target, recalculationData), [recalculationData, target, user]);
   const goalsAccess = user.goalsAccess || {};
   const nutritionAuthority = accessContext?.authority?.nutrition || user?.goalsAccess?.authority || "client";
   const trainingAuthority = accessContext?.authority?.training || "client";
@@ -597,6 +525,55 @@ export default function Objetivos() {
     setConfirmProfileUpdate(false);
     setProfilePreviewOnly(false);
   }, [currentProfileData]);
+
+  useEffect(() => {
+    if (!user?.id && !user?._id) return undefined;
+    let active = true;
+    setNutritionPreviewLoading(true);
+    previewClientNutrition(nutritionPreviewPayload(currentProfileData))
+      .then((preview) => {
+        if (!active) return;
+        const next = calculatedTargetFromPreview(preview);
+        setAutomaticTarget(next);
+        setUpdatedAutomaticTarget(next);
+      })
+      .catch((error) => {
+        if (!active) return;
+        const failed = calculatedTargetFromPreview(null);
+        failed.warning = error?.message || "No pudimos consultar la calculadora de ZumaFit.";
+        setAutomaticTarget(failed);
+        setUpdatedAutomaticTarget(failed);
+      })
+      .finally(() => {
+        if (active) setNutritionPreviewLoading(false);
+      });
+    return () => { active = false; };
+  }, [currentProfileData, user?._id, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id && !user?._id) return undefined;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setNutritionPreviewLoading(true);
+      previewClientNutrition(nutritionPreviewPayload(recalculationData))
+        .then((preview) => {
+          if (active) setUpdatedAutomaticTarget(calculatedTargetFromPreview(preview));
+        })
+        .catch((error) => {
+          if (!active) return;
+          const failed = calculatedTargetFromPreview(null);
+          failed.warning = error?.message || "No pudimos consultar la calculadora de ZumaFit.";
+          setUpdatedAutomaticTarget(failed);
+        })
+        .finally(() => {
+          if (active) setNutritionPreviewLoading(false);
+        });
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [recalculationData, user?._id, user?.id]);
 
   useEffect(() => {
     setTrainingDraft({
@@ -729,6 +706,10 @@ export default function Objetivos() {
     setConfirmLastChange(false);
     setShowDiscardConfirm(false);
     setNutritionMode("recalculate");
+    if (nutritionPreviewLoading) {
+      setStatus({ type: "info", text: "Estamos calculando la propuesta con tus datos actuales." });
+      return;
+    }
     const preview = recalculationStep === "update_data" ? updatedAutomaticTarget : automaticTarget;
     if (preview.kcal === null || preview.kcal === undefined) {
       setStatus({ type: "warn", text: preview.warning || "Faltan datos para recalcular automaticamente." });
@@ -1237,7 +1218,7 @@ export default function Objetivos() {
                       <span>Peso <strong>{formatNumber(currentProfileData.weightKg, " kg")}</strong></span>
                       <span>Fecha <strong>{currentProfileData.date}</strong></span>
                       <span>Altura <strong>{formatNumber(currentProfileData.heightCm, " cm")}</strong></span>
-                      <span>Edad <strong>{formatNumber(currentProfileData.age, " anos")}</strong></span>
+                      <span>Edad <strong>{formatNumber(automaticTarget.usedData?.age, " anos")}</strong></span>
                       <span>Sexo <strong>{currentProfileData.gender || "Sin definir"}</strong></span>
                       <span>Actividad <strong>{currentProfileData.activity || "Sin definir"}</strong></span>
                       <span>Objetivo <strong>{goalLabel(currentProfileData.goalType)}</strong></span>
@@ -1249,8 +1230,8 @@ export default function Objetivos() {
                         <div className="og-profileUpdateGrid">
                           <label><span>Peso (kg)</span><input type="number" min="20" max="350" step="0.1" value={recalculationData.weightKg ?? ""} onChange={(event) => setRecalculationData((current) => ({ ...current, weightKg: event.target.value }))} /></label>
                           <label><span>Fecha del peso</span><input type="date" max={localDateKey()} value={recalculationData.date || localDateKey()} onChange={(event) => setRecalculationData((current) => ({ ...current, date: event.target.value }))} /></label>
-                          <label><span>Actividad diaria</span><select value={recalculationData.activity || "moderado"} onChange={(event) => setRecalculationData((current) => ({ ...current, activity: event.target.value }))}><option value="sedentario">Sedentario</option><option value="ligero">Ligero</option><option value="moderado">Moderado</option><option value="activo">Activo</option><option value="muy_activo">Muy activo</option></select></label>
-                          <label><span>Objetivo</span><select value={recalculationData.goalType || "mantener_peso"} onChange={(event) => setRecalculationData((current) => ({ ...current, goalType: event.target.value }))}>{GOAL_TYPES.map((goal) => <option key={goal.value} value={goal.value}>{goal.label}</option>)}</select></label>
+                          <label><span>Actividad diaria</span><select value={recalculationData.activity || ""} onChange={(event) => setRecalculationData((current) => ({ ...current, activity: event.target.value }))}><option value="">Seleccionar</option><option value="sedentario">Sedentario</option><option value="ligero">Ligero</option><option value="moderado">Moderado</option><option value="activo">Activo</option><option value="muy_activo">Muy activo</option></select></label>
+                          <label><span>Objetivo</span><select value={recalculationData.goalType || ""} onChange={(event) => setRecalculationData((current) => ({ ...current, goalType: event.target.value }))}><option value="">Seleccionar</option>{GOAL_TYPES.map((goal) => <option key={goal.value} value={goal.value}>{goal.label}</option>)}</select></label>
                         </div>
                         <div className="og-previewCompare"><div><span>Antes</span><strong>{formatNumber(target.kcal, " kcal")}</strong><small>P {formatNumber(target.macros?.p)} · C {formatNumber(target.macros?.c)} · G {formatNumber(target.macros?.g)}</small></div><div><span>Vista previa ({formatNumber((updatedAutomaticTarget.kcal || 0) - (target.kcal || 0), " kcal")})</span><strong>{formatNumber(updatedAutomaticTarget.kcal, " kcal")}</strong><small>P {formatNumber(updatedAutomaticTarget.macros?.p)} · C {formatNumber(updatedAutomaticTarget.macros?.c)} · G {formatNumber(updatedAutomaticTarget.macros?.g)} · {updatedAutomaticTarget.formula}</small></div></div>
                         <label className="og-profileConfirm"><input type="checkbox" checked={confirmProfileUpdate} onChange={(event) => { setConfirmProfileUpdate(event.target.checked); setProfilePreviewOnly(false); }} /> Confirmo actualizar estos datos. El peso se guarda en Progresos; si ya existe esa fecha, se reemplaza sin duplicar.</label>

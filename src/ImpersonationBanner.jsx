@@ -38,6 +38,8 @@ export default function ImpersonationBanner() {
   }, [session]);
 
   const target = session?.targetUser || null;
+  const actorRole = session?.actorRole || (session?.actorCoachId ? "coach" : "admin");
+  const actorLabel = actorRole === "coach" ? "Panel Coach" : "Panel Admin";
   const fullName = useMemo(() => {
     const nombre = String(target?.profile?.nombre || "").trim();
     const apellido = String(target?.profile?.apellido || "").trim();
@@ -72,12 +74,12 @@ export default function ImpersonationBanner() {
         <div className="imp-title">Modo simulacion · Solo lectura</div>
         <div className="imp-sub">
           Estas viendo la app como: <strong>{fullName}</strong>
-          {target?.email ? ` (${target.email})` : ""}. Ingresaste desde el Panel Admin.
+          {target?.email ? ` (${target.email})` : ""}. Ingresaste desde el {actorLabel}.
         </div>
       </div>
 
       <button className="imp-btn" type="button" onClick={handleBack} disabled={leaving} data-impersonation-allow="true">
-        {leaving ? "Volviendo..." : "Volver al Panel Admin"}
+        {leaving ? "Volviendo..." : `Volver al ${actorLabel}`}
       </button>
     </div>
   );

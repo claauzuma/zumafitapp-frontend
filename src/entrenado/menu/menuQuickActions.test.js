@@ -8,6 +8,7 @@ import {
   loadMenuGenerationSettings,
   mealTypesForCount,
   normalizeMenuGenerationSettings,
+  resolveAutonomousMenuActions,
   resetMenuGenerationSettings,
   saveMenuGenerationSettings,
 } from "./menuQuickActions.js";
@@ -60,4 +61,27 @@ test("deriva comidas, dia y biblioteca desde la fecha y objetivo elegidos", () =
   assert.match(path, /targetKcal=2636/);
   assert.match(path, /targetProtein=165/);
   assert.match(path, /targetFat=88/);
+});
+
+test("acciones autonomas dependen de capabilities aun cuando existe coach", () => {
+  assert.deepEqual(resolveAutonomousMenuActions({
+    hasCoach: true,
+    canUseGlobalLibrary: true,
+    canCreateOwnMenu: true,
+    canGenerateAutomaticMenu: true,
+    canEditMenuPreferences: true,
+  }), {
+    library: true,
+    create: true,
+    automatic: true,
+    settings: true,
+    visible: true,
+  });
+  assert.deepEqual(resolveAutonomousMenuActions({ hasCoach: true }), {
+    library: false,
+    create: false,
+    automatic: false,
+    settings: false,
+    visible: false,
+  });
 });

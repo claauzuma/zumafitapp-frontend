@@ -191,6 +191,15 @@ export async function unassignCoachFromClient(id) {
   return data?.user || data;
 }
 
+export async function updateAdminClientMenuAutonomy(id, preset = null) {
+  const data = await apiFetch(`/api/usuarios/admin/users/${id}/client-menu-autonomy`, {
+    method: "PATCH",
+    body: { preset },
+    timeoutMs: 12000,
+  });
+  return data?.user || data;
+}
+
 export async function getAdminCoachClients(id) {
   const data = await apiFetch(`/api/usuarios/admin/users/${id}/clients`, {
     method: "GET",

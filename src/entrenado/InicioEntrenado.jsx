@@ -1599,7 +1599,9 @@ export default function InicioEntrenado() {
         };
   const NextActionIcon = nextAction.icon;
   const planKind = planKindFromValue(plan, capabilities);
-  const planLabel = rawPlan ? clientPlanLabel(plan) : "Sin confirmar";
+  const planLabel = accessContext?.hasCoach || capabilities?.hasCoach
+    ? "con Coach"
+    : rawPlan ? clientPlanLabel(plan) : "Sin confirmar";
   const currentWeekDays = useMemo(
     () => Array.isArray(currentMenuTrackingQuery.data?.days) ? currentMenuTrackingQuery.data.days : [],
     [currentMenuTrackingQuery.data?.days]

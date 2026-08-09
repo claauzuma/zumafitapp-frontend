@@ -33,6 +33,13 @@ const CLIENT_LIMITS = [
   ["goalChangesWindowDays", "Ventana de cambios (días)", true],
 ];
 
+const AUTONOMY_PRESETS = [
+  ["total", "Autonomía total"],
+  ["equivalences", "Alternativas + equivalencias propias"],
+  ["coach_only", "Sólo alternativas del coach"],
+  ["view_only", "Sin cambios / sólo ver"],
+];
+
 export default function AdminCoachPlanes() {
   const queryClient = useQueryClient();
   const coachPlansQuery = useAdminCoachPlans();
@@ -202,6 +209,7 @@ export default function AdminCoachPlanes() {
 
 function CoachPlanForm({ draft, patchDraft }) {
   const menus = draft?.features?.menus || {};
+  const autonomy = draft?.clientAutonomy || {};
   return (
     <>
       <div className="acp-fieldGrid">
@@ -220,6 +228,27 @@ function CoachPlanForm({ draft, patchDraft }) {
             </label>
           ))}
         </div>
+      </div>
+      <div className="acp-section">
+        <h3>Autonomía coach-cliente</h3>
+        <p>Fuente base del plan. El backend combina este valor con un override del coach y, finalmente, con el permiso de cada relación.</p>
+        <div className="acp-fieldGrid">
+          <label className="acp-field">
+            <span>Preset predeterminado</span>
+            <select value={autonomy.defaultPreset || "equivalences"} onChange={(event) => patchDraft(["clientAutonomy", "defaultPreset"], event.target.value)}>
+              {AUTONOMY_PRESETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="acp-checkGrid">
+          {AUTONOMY_PRESETS.map(([key, label]) => (
+            <label key={key} className="acp-check">
+              <input type="checkbox" checked={autonomy?.availablePresets?.[key] !== false} onChange={(event) => patchDraft(["clientAutonomy", "availablePresets", key], event.target.checked)} />
+              <span>Disponible: {label}</span>
+            </label>
+          ))}
+        </div>
+        <div className="acp-note">Valor base: {autonomy.defaultPreset || "equivalences"} · origen: plan profesional. Los overrides efectivos se muestran en la ficha del coach.</div>
       </div>
     </>
   );
@@ -279,6 +308,10 @@ function coachPayload(draft) {
     maxClients: draft.maxClients,
     maxCoachOwnedMenus: draft.maxCoachOwnedMenus,
     maxCoachOwnedMeals: draft.maxCoachOwnedMeals,
+    clientAutonomy: {
+      defaultPreset: draft?.clientAutonomy?.defaultPreset || "equivalences",
+      availablePresets: Object.fromEntries(AUTONOMY_PRESETS.map(([key]) => [key, draft?.clientAutonomy?.availablePresets?.[key] !== false])),
+    },
     features: {
       menus: Object.fromEntries(COACH_CAPABILITIES.map(([key]) => [key, draft?.features?.menus?.[key] === true])),
     },

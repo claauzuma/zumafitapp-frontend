@@ -5,34 +5,13 @@ function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
 }
 
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function addDays(date, days) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function fmtDateAR(date) {
-  try {
-    return date.toLocaleDateString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
-const KCAL_PER_KG = 7700;
-
 export default function GoalLoseSetup({
   initialBudgetKcal,
+  endDateLabel,
+  projection,
+  calculationReady,
+  calculationLoading,
+  calculationError,
   targetWeightKg,
   setTargetWeightKg,
   ratePctBWPerWeek,
@@ -41,7 +20,6 @@ export default function GoalLoseSetup({
   onNext,
   heightCm,
   currentWeightKg,
-  tdeeKcal,
 }) {
   const currentWeight = Number(currentWeightKg);
 
@@ -130,50 +108,12 @@ export default function GoalLoseSetup({
     setEditingRate(false);
   }
 
-  // 5) cálculos
-  const computed = useMemo(() => {
-    const cw = Number(currentWeightKg);
-    const tdee = Number(tdeeKcal);
-    const deltaKg = Number.isFinite(cw) ? Math.max(0, cw - safeTarget) : 0;
-
-    const weeklyLossKg =
-      Number.isFinite(cw) && cw > 0 ? (rateSafe / 100) * cw : 0;
-
-    const dailyDefBase =
-      weeklyLossKg > 0 ? (weeklyLossKg * KCAL_PER_KG) / 7 : 0;
-
-    const progress = clamp(deltaKg / 12, 0.25, 1);
-    const dailyDefEffective = dailyDefBase * progress;
-
-    let budget = Number(initialBudgetKcal) || 0;
-    if (Number.isFinite(tdee) && tdee > 0) {
-      budget = Math.round(tdee - dailyDefEffective);
-      budget = Math.max(1200, budget);
-    }
-
-    let etaLabel = "—";
-    if (weeklyLossKg > 0 && deltaKg > 0) {
-      const weeks = deltaKg / weeklyLossKg;
-      const days = Math.max(1, Math.round(weeks * 7));
-      etaLabel = fmtDateAR(addDays(startOfDay(new Date()), days));
-    } else if (deltaKg === 0 && Number.isFinite(cw) && cw > 0) {
-      etaLabel = fmtDateAR(startOfDay(new Date()));
-    }
-
-    return {
-      deltaKg,
-      weeklyLossKg,
-      dailyDefBase,
-      dailyDefEffective,
-      budget,
-      etaLabel,
-      progress,
-    };
-  }, [rateSafe, currentWeightKg, tdeeKcal, initialBudgetKcal, safeTarget]);
-
+  const deltaKg = Number.isFinite(currentWeight) ? Math.max(0, currentWeight - safeTarget) : 0;
+  const weeklyLossKg = Number(projection?.kgPerWeek) || 0;
+  const dailyDeficit = Number(projection?.dailyEnergyChange) || 0;
   const deltaText =
-    computed.deltaKg > 0
-      ? `faltan ${computed.deltaKg.toFixed(1)} kg`
+    deltaKg > 0
+      ? `faltan ${deltaKg.toFixed(1)} kg`
       : "ya estás en el objetivo";
 
   const targetError =
@@ -191,20 +131,18 @@ export default function GoalLoseSetup({
     <div>
       <div className="ob2-kpiRow">
         <div className="ob2-kpi mint">
-          <div className="ob2-kpi-num">{computed.budget || initialBudgetKcal} kcal</div>
+          <div className="ob2-kpi-num">{calculationLoading ? "Calculando…" : `${initialBudgetKcal ?? "—"} kcal`}</div>
           <div className="ob2-kpi-sub">
             presupuesto diario inicial
-            <div style={{ marginTop: 4, color: "#bdbdbd", fontSize: 12 }}>
-              (ajustado por objetivo: {Math.round(computed.progress * 100)}%)
-            </div>
           </div>
         </div>
 
         <div className="ob2-kpi">
-          <div className="ob2-kpi-num">{computed.etaLabel}</div>
+          <div className="ob2-kpi-num">{endDateLabel || "—"}</div>
           <div className="ob2-kpi-sub">fecha estimada (aprox.)</div>
         </div>
       </div>
+      {calculationError ? <div className="ob2-error" role="alert">{calculationError}</div> : null}
 
       <h1 className="ob2-h1">¿Cuál es tu peso objetivo?</h1>
       <p className="ob2-p">
@@ -290,9 +228,7 @@ export default function GoalLoseSetup({
         Recomendado: 0.5% por semana.
         <span style={{ color: "#bdbdbd", fontSize: 12 }}>
           {" "}
-          ({computed.weeklyLossKg.toFixed(2)} kg/sem · déficit base{" "}
-          {Math.round(computed.dailyDefBase)} kcal/día · aplicado{" "}
-          {Math.round(computed.dailyDefEffective)} kcal/día)
+          ({weeklyLossKg.toFixed(2)} kg/sem · déficit {Math.round(dailyDeficit)} kcal/día)
         </span>
       </p>
 
@@ -378,7 +314,7 @@ export default function GoalLoseSetup({
               className="ob2-btn primary"
               type="button"
               onClick={handleNext}
-              disabled={Number.isFinite(currentWeight) && safeTarget >= currentWeight}
+              disabled={!calculationReady || calculationLoading || (Number.isFinite(currentWeight) && safeTarget >= currentWeight)}
             >
               Siguiente
             </button>

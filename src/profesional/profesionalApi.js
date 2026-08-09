@@ -57,6 +57,28 @@ export async function updateProfessionalClientNutrition(clientId, payload) {
   };
 }
 
+export async function previewProfessionalClientNutrition(clientId, payload = {}) {
+  const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/nutrition-preview`, {
+    method: "POST",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.preview || null;
+}
+
+export async function updateProfessionalClientOnboarding(clientId, payload = {}) {
+  const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/onboarding`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return {
+    coach: data?.coach || null,
+    client: data?.client || null,
+    preview: data?.preview || null,
+  };
+}
+
 export async function updateProfessionalClientMenu(clientId, payload) {
   const data = await apiFetch(`/api/usuarios/users/me/coach-clients/${clientId}/menu`, {
     method: "PATCH",

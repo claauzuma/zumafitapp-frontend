@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -13,6 +13,8 @@ import {
   Copy,
   Droplets,
   Dumbbell,
+  Calculator,
+  Eye,
   Flame,
   LineChart,
   Mail,
@@ -38,12 +40,15 @@ import { Avatar, Metric } from "./profesionalPieces.jsx";
 import { fmtDate, fmtKcal, fullName, goalLabel, planLabel, specialtyLabel } from "./profesionalFormat.js";
 import {
   getProfessionalClientEquivalentActivity,
+  previewProfessionalClientNutrition,
   reviewProfessionalClientEquivalent,
+  updateProfessionalClientOnboarding,
   updateProfessionalClientMenu,
   updateProfessionalClientNutrition,
   updateProfessionalClientProgress,
   updateProfessionalClientRoutine,
 } from "./profesionalApi.js";
+import { startCoachClientImpersonation } from "../impersonationApi.js";
 import { useProfessionalClientDetail } from "./profesionalQueries.js";
 import { invalidateProfessionalClient, queryClient, queryKeys } from "../queryClient.js";
 import WeeklyClientMenuPlanner from "../menus/WeeklyClientMenuPlanner.jsx";
@@ -67,9 +72,16 @@ const MODE_LABELS = {
 
 const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const MEALS = ["Desayuno", "Almuerzo", "Merienda", "Cena"];
+const AUTONOMY_PRESETS = {
+  total: { canUseMenuAlternatives: true, canCreateEquivalentMeals: true, canUseLibrary: true, canCreateOwnMenu: true, canUseAutomaticMenu: true, canEditPreferences: true },
+  equivalences: { canUseMenuAlternatives: true, canCreateEquivalentMeals: true, canUseLibrary: false, canCreateOwnMenu: false, canUseAutomaticMenu: false, canEditPreferences: true },
+  coach_only: { canUseMenuAlternatives: true, canCreateEquivalentMeals: false, canUseLibrary: false, canCreateOwnMenu: false, canUseAutomaticMenu: false, canEditPreferences: false },
+  view_only: { canUseMenuAlternatives: false, canCreateEquivalentMeals: false, canUseLibrary: false, canCreateOwnMenu: false, canUseAutomaticMenu: false, canEditPreferences: false },
+};
 
 export default function ClienteDetalleProfesional() {
   const { clientId } = useParams();
+  const navigate = useNavigate();
   const [saving, setSaving] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -79,6 +91,8 @@ export default function ClienteDetalleProfesional() {
   const [editingMacros, setEditingMacros] = useState(false);
   const [editingProfileSection, setEditingProfileSection] = useState("");
   const [editingProgressCheckin, setEditingProgressCheckin] = useState(false);
+  const [editingOnboarding, setEditingOnboarding] = useState(false);
+  const [nutritionPreview, setNutritionPreview] = useState(null);
   const [pendingNutritionSave, setPendingNutritionSave] = useState(null);
   const [equivalentActivity, setEquivalentActivity] = useState({ activity: [], notifications: [], weeklyDigest: [], total: 0 });
   const [equivalentActivityLoading, setEquivalentActivityLoading] = useState(false);
@@ -88,6 +102,9 @@ export default function ClienteDetalleProfesional() {
   const coach = detailQuery.data?.coach || null;
   const client = detailQuery.data?.client || null;
   const access = useMemo(() => getCoachAccess(coach), [coach]);
+  const availableAutonomyPresets = client?.clientPermissions?.menu?.availableAutonomyPresets
+    || coach?.effectiveCapabilities?.clientAutonomy?.availablePresets
+    || {};
 
   const [nutritionDraft, setNutritionDraft] = useState(() => createNutritionDraft(null));
   const [menuDraft, setMenuDraft] = useState(() => createMenuDraft(null));
@@ -101,6 +118,8 @@ export default function ClienteDetalleProfesional() {
     setEditingMacros(false);
     setEditingProfileSection("");
     setEditingProgressCheckin(false);
+    setEditingOnboarding(false);
+    setNutritionPreview(null);
     setPendingNutritionSave(null);
   }, [client]);
 
@@ -375,6 +394,14 @@ export default function ClienteDetalleProfesional() {
           coachNotes: menuDraft.coachNotes,
         },
         clientPermissions: {
+          menu: {
+            autonomyPreset: menuDraft.autonomyPreset,
+            canEditPreferences: menuDraft.canEditPreferences,
+            canUseLibrary: menuDraft.canUseLibrary,
+            canCreateOwnMenu: menuDraft.canCreateOwnMenu,
+            canUseAutomaticMenu: menuDraft.canUseAutomaticMenu,
+            canActivateOwnMenuOverCoachPlan: false,
+          },
           tracking: {
             canUseMenuAlternatives: menuDraft.canUseMenuAlternatives,
             canCreateEquivalentMeals: menuDraft.canCreateEquivalentMeals,
@@ -438,6 +465,72 @@ export default function ClienteDetalleProfesional() {
     await requestNutritionSave(nextDraft, "Macros base guardados para el cliente.");
   }
 
+  async function saveClientOnboarding(values, confirmExisting = false) {
+    try {
+      setSaving("onboarding");
+      setErr("");
+      const data = await updateProfessionalClientOnboarding(clientId, {
+        onboarding: values,
+        complete: true,
+        confirmExisting,
+      });
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
+      setEditingOnboarding(false);
+      setOk("Onboarding del cliente actualizado y auditado.");
+    } catch (error) {
+      if (error?.code === "ONBOARDING_CONFIRMATION_REQUIRED" && !confirmExisting) {
+        const fields = Array.isArray(error?.changedFields) ? error.changedFields.join(", ") : "datos existentes";
+        if (window.confirm(`Vas a modificar ${fields}. ¿Querés continuar?`)) {
+          await saveClientOnboarding(values, true);
+        }
+        return;
+      }
+      setErr(error?.message || "No se pudo actualizar el onboarding del cliente.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function openNutritionCalculator() {
+    try {
+      setSaving("nutrition-preview");
+      setErr("");
+      const preview = await previewProfessionalClientNutrition(clientId);
+      setNutritionPreview(preview || { ready: false, missingFields: ["datos del cliente"] });
+    } catch (error) {
+      setErr(error?.message || "No se pudo calcular la propuesta nutricional.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  function applyNutritionPreview() {
+    if (!nutritionPreview?.ready) return;
+    const target = nutritionPreview.target || {};
+    setNutritionDraft((current) => ({
+      ...current,
+      kcal: valueOrEmpty(target.kcal),
+      p: valueOrEmpty(target.macros?.p),
+      c: valueOrEmpty(target.macros?.c),
+      g: valueOrEmpty(target.macros?.g),
+    }));
+    setNutritionPreview(null);
+    setOk("Propuesta aplicada al borrador. Revisala y guardá la planificación para confirmar.");
+  }
+
+  async function viewAsClient() {
+    try {
+      setSaving("impersonation");
+      setErr("");
+      await startCoachClientImpersonation(clientId, { returnTo: `/coach/clientes/${clientId}` });
+      navigate("/app/inicio");
+    } catch (error) {
+      setErr(error?.message || "No se pudo abrir la vista segura del cliente.");
+      setSaving("");
+    }
+  }
+
   if (loading) {
     return (
       <div className="prof-page">
@@ -483,6 +576,10 @@ export default function ClienteDetalleProfesional() {
               <span className="prof-chip">Asignado: {fmtDate(client?.coach?.assignedAt)}</span>
             </div>
           </div>
+          <button type="button" className="prof-btn compact" onClick={viewAsClient} disabled={saving === "impersonation"}>
+            {saving === "impersonation" ? <RefreshCw size={16} className="spin" /> : <Eye size={16} />}
+            Ver como cliente
+          </button>
         </div>
 
         <div className="prof-tabs">
@@ -547,6 +644,7 @@ export default function ClienteDetalleProfesional() {
             routineDraft={routineDraft}
             access={access}
             onEdit={setEditingProfileSection}
+            onCompleteOnboarding={() => setEditingOnboarding(true)}
           />
         )}
 
@@ -557,7 +655,12 @@ export default function ClienteDetalleProfesional() {
             locked={!access.nutrition}
             lockedText="No disponible: tu perfil no tiene especialidad de nutrición o tu plan no permite gestión nutricional."
           >
-            <NutritionGeneralSection draft={nutritionDraft} onEdit={() => setEditingMacros(true)} />
+            <NutritionGeneralSection
+              draft={nutritionDraft}
+              onEdit={() => setEditingMacros(true)}
+              onCalculate={openNutritionCalculator}
+              calculating={saving === "nutrition-preview"}
+            />
 
             <DailyTargetsSection
               client={client}
@@ -600,19 +703,18 @@ export default function ClienteDetalleProfesional() {
               <label className="prof-field compact">
                 <span>Nivel de autonomia</span>
                 <select
-                  value={!menuDraft.canUseMenuAlternatives
-                    ? "locked"
-                    : menuDraft.canCreateEquivalentMeals ? "own_and_coach" : "coach_only"}
+                  value={menuDraft.autonomyPreset}
                   onChange={(event) => setMenuDraft((draft) => ({
                     ...draft,
-                    canUseMenuAlternatives: event.target.value !== "locked",
-                    canCreateEquivalentMeals: event.target.value === "own_and_coach",
+                    autonomyPreset: event.target.value,
+                    ...(AUTONOMY_PRESETS[event.target.value] || AUTONOMY_PRESETS.view_only),
                   }))}
                   aria-label="Nivel de autonomia del cliente sobre el menu"
                 >
-                  <option value="own_and_coach">Alternativas + equivalencias propias</option>
-                  <option value="coach_only">Solo alternativas del coach</option>
-                  <option value="locked">Sin cambios: solo ver el menu</option>
+                  <option value="total" disabled={availableAutonomyPresets.total === false}>Autonomia total{availableAutonomyPresets.total === false ? " (no disponible)" : ""}</option>
+                  <option value="equivalences" disabled={availableAutonomyPresets.equivalences === false}>Alternativas + equivalencias propias{availableAutonomyPresets.equivalences === false ? " (no disponible)" : ""}</option>
+                  <option value="coach_only" disabled={availableAutonomyPresets.coach_only === false}>Solo alternativas del coach{availableAutonomyPresets.coach_only === false ? " (no disponible)" : ""}</option>
+                  <option value="view_only" disabled={availableAutonomyPresets.view_only === false}>Sin cambios: solo ver el menu{availableAutonomyPresets.view_only === false ? " (no disponible)" : ""}</option>
                 </select>
               </label>
               <div className="prof-grid">
@@ -816,6 +918,25 @@ export default function ClienteDetalleProfesional() {
           onClose={() => setEditingProgressCheckin(false)}
         />
       ) : null}
+      {editingOnboarding ? (
+        <CoachOnboardingDrawer
+          client={client}
+          saving={saving === "onboarding"}
+          onSave={saveClientOnboarding}
+          onClose={() => setEditingOnboarding(false)}
+        />
+      ) : null}
+      {nutritionPreview ? (
+        <NutritionCalculatorDrawer
+          preview={nutritionPreview}
+          onApply={applyNutritionPreview}
+          onCompleteData={() => {
+            setNutritionPreview(null);
+            setEditingOnboarding(true);
+          }}
+          onClose={() => setNutritionPreview(null)}
+        />
+      ) : null}
       {pendingNutritionSave ? (
         <NutritionAssignmentConfirmDialog
           impact={pendingNutritionSave.impact}
@@ -965,7 +1086,7 @@ function EditablePanel({ title, icon: Icon, locked, lockedText, children }) {
   );
 }
 
-function ProfileTab({ client, nutritionDraft, menuDraft, routineDraft, access, onEdit }) {
+function ProfileTab({ client, nutritionDraft, menuDraft, routineDraft, access, onEdit, onCompleteOnboarding }) {
   const facts = profileFacts(client);
   const onboarding = onboardingFacts(client);
   const restrictions = restrictionFacts(client);
@@ -1003,6 +1124,11 @@ function ProfileTab({ client, nutritionDraft, menuDraft, routineDraft, access, o
         eyebrow="Origen: onboarding"
         title="Onboarding y preferencias"
         description="Información disponible para entender contexto, experiencia y necesidades."
+        action={access.nutrition ? (
+          <button type="button" className="prof-btn compact" onClick={onCompleteOnboarding}>
+            <ClipboardCheck size={15} /> Completar onboarding
+          </button>
+        ) : null}
       >
         {onboarding.length ? (
           <div className="prof-profileDetailGrid">
@@ -1352,7 +1478,7 @@ function ClientProgressTimeline({ progress }) {
   );
 }
 
-function NutritionGeneralSection({ draft, onEdit }) {
+function NutritionGeneralSection({ draft, onEdit, onCalculate, calculating = false }) {
   const calculatedKcal = calculateMacroKcal(draft.p, draft.c, draft.g);
   const hasMacros = calculatedKcal !== null;
   return (
@@ -1363,10 +1489,15 @@ function NutritionGeneralSection({ draft, onEdit }) {
           <h3>Macros base</h3>
           <p>Los días sin configuración propia heredan esta distribución.</p>
         </div>
-        <button type="button" className="prof-btn compact" onClick={onEdit}>
-          <Pencil size={15} />
-          Editar
-        </button>
+        <div className="prof-actions compact">
+          <button type="button" className="prof-btn compact" onClick={onCalculate} disabled={calculating}>
+            {calculating ? <RefreshCw size={15} className="spin" /> : <Calculator size={15} />}
+            Calcular
+          </button>
+          <button type="button" className="prof-btn compact" onClick={onEdit}>
+            <Pencil size={15} /> Editar
+          </button>
+        </div>
       </div>
 
       <div className="prof-macroBaseSummary">
@@ -1799,6 +1930,76 @@ function ProfileEditDrawer({ section, nutritionDraft, menuDraft, routineDraft, s
   );
 }
 
+function CoachOnboardingDrawer({ client, saving, onSave, onClose }) {
+  const [draft, setDraft] = useState(() => createCoachOnboardingDraft(client));
+  const set = (key) => (value) => setDraft((current) => ({ ...current, [key]: value }));
+  return (
+    <DrawerShell
+      eyebrow="Onboarding compartido"
+      title="Completar onboarding del cliente"
+      description="Editás los mismos datos que utiliza el perfil del cliente. Los cambios existentes requieren confirmación y quedan auditados."
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="prof-btn" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="button" className="prof-btn gold" onClick={() => onSave(draft)} disabled={saving}>
+            {saving ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
+            {saving ? "Guardando..." : "Guardar onboarding"}
+          </button>
+        </>
+      )}
+    >
+      <div className="prof-formGrid">
+        <Field label="Fecha de nacimiento" type="date" value={draft.fechaNacimiento} onChange={set("fechaNacimiento")} />
+        <label className="prof-field"><span>Sexo</span><select value={draft.genero} onChange={(event) => set("genero")(event.target.value)}><option value="">Sin definir</option><option value="masculino">Masculino</option><option value="femenino">Femenino</option><option value="prefiero_no_decir">Prefiero no decir</option></select></label>
+        <Field label="Altura (cm)" inputMode="decimal" value={draft.alturaCm} onChange={set("alturaCm")} />
+        <Field label="Peso (kg)" inputMode="decimal" value={draft.pesoKg} onChange={set("pesoKg")} />
+        <label className="prof-field"><span>Actividad diaria</span><select value={draft.actividadDiaria} onChange={(event) => set("actividadDiaria")(event.target.value)}><option value="">Sin definir</option><option value="sedentario">Sedentaria</option><option value="ligero">Ligera</option><option value="moderado">Moderada</option><option value="activo">Activa</option><option value="muy_activo">Muy activa</option></select></label>
+        <label className="prof-field"><span>Frecuencia de ejercicio</span><select value={draft.frecuenciaEjercicio} onChange={(event) => set("frecuenciaEjercicio")(event.target.value)}><option value="">Sin definir</option><option value="none">Sin ejercicio</option><option value="1_3">1 a 3 días</option><option value="4_6">4 a 6 días</option><option value="7_plus">7 o más</option></select></label>
+        <Field label="Factor de actividad" inputMode="decimal" value={draft.factorActividad} onChange={set("factorActividad")} />
+        <label className="prof-field"><span>Objetivo</span><select value={draft.objetivo} onChange={(event) => set("objetivo")(event.target.value)}><option value="">Sin definir</option><option value="perder_peso">Pérdida de grasa</option><option value="mantener_peso">Mantenimiento</option><option value="ganar_peso">Ganancia muscular</option></select></label>
+      </div>
+      <div className="prof-lock">No se inventan valores faltantes. Para completar el onboarding, todos los datos requeridos deben ser válidos.</div>
+    </DrawerShell>
+  );
+}
+
+function NutritionCalculatorDrawer({ preview, onApply, onCompleteData, onClose }) {
+  const used = preview?.usedData || {};
+  const target = preview?.target || {};
+  return (
+    <DrawerShell
+      eyebrow="Vista previa"
+      title="Calculadora de objetivos y macros"
+      description="La propuesta no se guarda hasta que la apliques al borrador y confirmes la planificación."
+      onClose={onClose}
+      footer={preview?.ready ? (
+        <><button type="button" className="prof-btn" onClick={onClose}>Cancelar</button><button type="button" className="prof-btn gold" onClick={onApply}><Check size={16} /> Usar propuesta</button></>
+      ) : (
+        <><button type="button" className="prof-btn" onClick={onClose}>Cerrar</button><button type="button" className="prof-btn gold" onClick={onCompleteData}><ClipboardCheck size={16} /> Completar datos</button></>
+      )}
+    >
+      {!preview?.ready ? (
+        <div className="prof-error"><strong>Faltan datos reales para calcular:</strong> {(preview?.missingFields || []).join(", ") || "datos del cliente"}.</div>
+      ) : (
+        <div className="prof-stack">
+          <div className="prof-grid">
+            <Metric icon={Flame} label="TMB promedio" value={`${preview.bmr?.average || 0} kcal`} />
+            <Metric icon={Activity} label="Gasto estimado" value={`${preview.maintenanceKcal || 0} kcal`} />
+            <Metric icon={Target} label="Ajuste" value={`${preview.adjustment?.percent > 0 ? "+" : ""}${preview.adjustment?.percent || 0}%`} />
+            <Metric icon={Calculator} label="Propuesta" value={`${target.kcal || 0} kcal`} />
+          </div>
+          <div className="prof-panel twoCol">
+            <InfoBlock title="Datos utilizados" lines={[`${used.age} años · ${used.sex}`, `${used.weightKg} kg · ${used.heightCm} cm`, `Factor ${used.activityFactor} · ${goalLabel(used.goalType)}`]} />
+            <InfoBlock title="Macros propuestos" lines={[`Proteína: ${target.macros?.p || 0} g`, `Carbohidratos: ${target.macros?.c || 0} g`, `Grasas: ${target.macros?.g || 0} g`]} />
+          </div>
+          <p className="prof-muted">Fórmula: {preview.formula}. TMB Mifflin {preview.bmr?.mifflin} kcal; Harris-Benedict {preview.bmr?.harrisBenedict} kcal.</p>
+        </div>
+      )}
+    </DrawerShell>
+  );
+}
+
 function DrawerShell({ eyebrow, title, description, onClose, footer, children }) {
   return (
     <div className="prof-dailyDrawerBackdrop" role="presentation" onMouseDown={onClose}>
@@ -1955,8 +2156,34 @@ function createNutritionDraft(client) {
   };
 }
 
+function createCoachOnboardingDraft(client) {
+  const basics = client?.profile?.basics || {};
+  const anthropometry = client?.antropometriaActual || {};
+  return {
+    fechaNacimiento: basics.fechaNacimiento || "",
+    genero: basics.genero || "",
+    alturaCm: valueOrEmpty(anthropometry.alturaCm),
+    pesoKg: valueOrEmpty(anthropometry.pesoKg),
+    actividadDiaria: basics.actividadDiaria || "",
+    frecuenciaEjercicio: basics.frecuenciaEjercicio || "",
+    factorActividad: valueOrEmpty(basics.factorActividad),
+    objetivo: client?.goal?.type || "",
+  };
+}
+
 function createMenuDraft(client) {
   const menu = client?.menu || {};
+  const menuPermissions = client?.clientPermissions?.menu || {};
+  const inferredPreset = menuPermissions.autonomyPreset || (
+    menuPermissions.canCreateOwnMenu === true || menuPermissions.canUseLibrary === true
+      ? "total"
+      : client?.clientPermissions?.tracking?.canUseMenuAlternatives === false
+        ? "view_only"
+        : client?.clientPermissions?.tracking?.canCreateEquivalentMeals === false
+          ? "coach_only"
+          : "equivalences"
+  );
+  const preset = AUTONOMY_PRESETS[inferredPreset] || AUTONOMY_PRESETS.equivalences;
   return {
     modeType: normalizeMode(menu?.mode?.type || "manual"),
     lockedByCoach: !!menu?.mode?.lockedByCoach,
@@ -1966,8 +2193,13 @@ function createMenuDraft(client) {
     snackLibreKcal: valueOrEmpty(menu?.mealConfig?.snackLibreKcal),
     mealsByDay: normalizeMealsByDay(menu?.weeklyPlan?.mealsByDay),
     coachNotes: menu?.coachNotes || "",
-    canUseMenuAlternatives: client?.clientPermissions?.tracking?.canUseMenuAlternatives !== false,
-    canCreateEquivalentMeals: client?.clientPermissions?.tracking?.canCreateEquivalentMeals !== false,
+    autonomyPreset: inferredPreset,
+    canUseMenuAlternatives: client?.clientPermissions?.tracking?.canUseMenuAlternatives ?? preset.canUseMenuAlternatives,
+    canCreateEquivalentMeals: client?.clientPermissions?.tracking?.canCreateEquivalentMeals ?? preset.canCreateEquivalentMeals,
+    canUseLibrary: menuPermissions.canUseLibrary ?? preset.canUseLibrary,
+    canCreateOwnMenu: menuPermissions.canCreateOwnMenu ?? preset.canCreateOwnMenu,
+    canUseAutomaticMenu: menuPermissions.canUseAutomaticMenu ?? preset.canUseAutomaticMenu,
+    canEditPreferences: menuPermissions.canEditPreferences ?? preset.canEditPreferences,
     equivalentNotificationMode: ["none", "important_only", "weekly_digest", "all_consumed", "all_created"].includes(client?.clientPermissions?.tracking?.equivalentNotificationMode)
       ? client.clientPermissions.tracking.equivalentNotificationMode
       : "weekly_digest",

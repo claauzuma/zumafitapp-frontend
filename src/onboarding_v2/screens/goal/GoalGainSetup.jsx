@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 
 function round1(n) {
   const x = Number(n);
@@ -7,8 +7,13 @@ function round1(n) {
 }
 
 export default function GoalGainSetup({
-  initialBudgetKcal = 2400,
+  maintenanceKcal,
+  initialBudgetKcal,
   endDateLabel = "—",
+  projection,
+  calculationReady,
+  calculationLoading,
+  calculationError,
   targetWeightKg,
   setTargetWeightKg,
   ratePctBWPerWeek,
@@ -16,15 +21,7 @@ export default function GoalGainSetup({
   onBack,
   onNext,
 }) {
-  const surplusKcal = useMemo(() => {
-    const r = Number(ratePctBWPerWeek || 0);
-    if (r <= 0.25) return 150;
-    if (r <= 0.5) return 250;
-    if (r <= 0.75) return 350;
-    return 450;
-  }, [ratePctBWPerWeek]);
-
-  const targetKcal = initialBudgetKcal + surplusKcal;
+  const surplusKcal = Number(projection?.dailyEnergyChange) || 0;
 
   return (
     <div>
@@ -75,10 +72,11 @@ export default function GoalGainSetup({
 
       <div className="ob2-card" style={{ marginTop: 10, borderColor: "rgba(245,215,110,.18)", background: "linear-gradient(180deg, rgba(245,215,110,.08), rgba(0,0,0,.15))" }}>
         <div style={{ fontWeight: 1000 }}>Presupuesto inicial (aprox.)</div>
+        {calculationError ? <div className="ob2-error" role="alert">{calculationError}</div> : null}
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-          <Row k="Mantenimiento" v={`${initialBudgetKcal} kcal`} />
+          <Row k="Mantenimiento" v={calculationLoading ? "Calculando…" : `${maintenanceKcal ?? "—"} kcal`} />
           <Row k="Superávit" v={`+${surplusKcal} kcal`} />
-          <Row k="Objetivo" v={`${targetKcal} kcal`} strong />
+          <Row k="Objetivo" v={calculationLoading ? "Calculando…" : `${initialBudgetKcal ?? "—"} kcal`} strong />
         </div>
         <div style={{ marginTop: 10, color: "#bdbdbd", fontSize: 12 }}>
           Fecha estimada: <b style={{ color: "#eaeaea" }}>{endDateLabel}</b> (placeholder)
@@ -95,7 +93,7 @@ export default function GoalGainSetup({
               className="ob2-btn primary"
               type="button"
               onClick={onNext}
-              disabled={!targetWeightKg || Number(targetWeightKg) <= 0}
+              disabled={!calculationReady || calculationLoading || !targetWeightKg || Number(targetWeightKg) <= 0}
             >
               Siguiente
             </button>

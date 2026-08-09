@@ -35,6 +35,15 @@ export async function updateClientGoals(payload = {}) {
   return user;
 }
 
+export async function previewClientNutrition(payload = {}) {
+  const data = await apiFetch("/api/usuarios/users/me/nutrition-preview", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 10000,
+  });
+  return data?.preview || null;
+}
+
 export async function fetchClientProgress() {
   return await apiFetch("/api/usuarios/users/me/progress", { method: "GET", timeoutMs: 9000 });
 }

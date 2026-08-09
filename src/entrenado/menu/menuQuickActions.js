@@ -109,3 +109,20 @@ export function libraryTargetPath(date = "", target = {}) {
   });
   return `/app/nutricion?${params.toString()}`;
 }
+
+export function resolveAutonomousMenuActions(capabilities = {}) {
+  const library = capabilities.canUseBasicLibrary === true
+    || capabilities.canUseGlobalLibrary === true
+    || capabilities.canUsePremiumLibrary === true;
+  const create = capabilities.canCreateOwnMenu === true;
+  const automatic = capabilities.canGenerateAutomaticMenu === true;
+  const settings = capabilities.canEditMenuPreferences === true
+    || capabilities.hasCoach !== true;
+  return {
+    library,
+    create,
+    automatic,
+    settings,
+    visible: library || create || automatic || settings,
+  };
+}

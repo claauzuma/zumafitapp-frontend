@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   capabilitiesFromAccessContext,
+  clientTypeLabel,
   extractCapabilities,
   menusUsageFromResponse,
   normalizeCapabilities,
@@ -63,6 +64,11 @@ test("capabilitiesFromAccessContext respeta autogestionado despues de finalizar 
   assert.equal(capabilities.effectivePersonalPlan, "free");
   assert.equal(capabilities.hasCoach, false);
   assert.equal(capabilities.clientType, "self_managed");
+});
+
+test("la etiqueta comercial separa Plan con Coach del plan personal", () => {
+  assert.equal(clientTypeLabel({ personalPlan: "free" }, { hasCoach: true }), "Plan con Coach");
+  assert.equal(clientTypeLabel({ personalPlan: "premium" }, { hasCoach: false }), "Autogestionado");
 });
 
 test("resolveEffectiveClientNutritionCapabilities usa endpoint directo 200", async () => {

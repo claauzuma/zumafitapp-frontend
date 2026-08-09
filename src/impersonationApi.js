@@ -9,11 +9,25 @@ import {
 import { clearPrivateQueryCache, setAuthUserQueryData } from "./queryClient.js";
 
 export async function startAdminImpersonation(targetUserId, { returnTo = "/admin/usuarios" } = {}) {
+  return await startReadOnlyImpersonation(
+    `/api/usuarios/admin/users/${targetUserId}/impersonation/start`,
+    { returnTo }
+  );
+}
+
+export async function startCoachClientImpersonation(targetUserId, { returnTo = "/coach/clientes" } = {}) {
+  return await startReadOnlyImpersonation(
+    `/api/usuarios/users/me/coach-clients/${targetUserId}/impersonation/start`,
+    { returnTo }
+  );
+}
+
+async function startReadOnlyImpersonation(path, { returnTo }) {
   if (isImpersonating()) {
     restoreAdminAfterImpersonation();
   }
 
-  const data = await apiFetch(`/api/usuarios/admin/users/${targetUserId}/impersonation/start`, {
+  const data = await apiFetch(path, {
     method: "POST",
     body: {},
     timeoutMs: 12000,

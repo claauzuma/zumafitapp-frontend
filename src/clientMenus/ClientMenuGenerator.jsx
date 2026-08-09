@@ -59,7 +59,7 @@ export default function ClientMenuGenerator({ user = {}, targetOverride = null, 
   }, [foodSearch]);
 
   const plan = String(capabilities?.plan || user?.personalPlan || user?.plan || "free").toLowerCase();
-  const allowed = capabilities?.canGenerateAutomaticMenu === true && capabilities?.hasCoach !== true && capabilities?.clientType !== "with_coach";
+  const allowed = capabilities?.canGenerateAutomaticMenu === true;
   const dayLimit = Math.max(1, Number(capabilities?.limits?.menuDays) || (plan === "free" ? 1 : 7));
   const maxFoods = Math.max(1, Number(capabilities?.limits?.equivalentMealFoods) || (plan === "vip" ? 10 : 6));
 

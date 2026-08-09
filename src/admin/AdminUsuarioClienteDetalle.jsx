@@ -4,6 +4,7 @@ import {
   Ban,
   Eye,
   RefreshCw,
+  Save,
   Trash2,
   UserMinus,
   UserPlus,
@@ -14,6 +15,7 @@ import {
   updateAdminUserStatus,
   updateAdminUserPlan,
   deleteAdminUser,
+  updateAdminClientMenuAutonomy,
 } from "./adminUsuariosApi.js";
 import { useAdminCoaches, useAdminUser } from "./adminUsuariosQueries.js";
 import { startAdminImpersonation } from "../impersonationApi.js";
@@ -35,6 +37,12 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const [coachQuery, setCoachQuery] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedCoach, setSelectedCoach] = useState(null);
+  const [autonomyPreset, setAutonomyPreset] = useState(user?.clientPermissions?.menu?.autonomyPreset || "");
+  const [savingAutonomy, setSavingAutonomy] = useState(false);
+
+  useEffect(() => {
+    setAutonomyPreset(user?.clientPermissions?.menu?.autonomyPreset || "");
+  }, [user?.clientPermissions?.menu?.autonomyPreset]);
 
   const tabs = [
     { key: "resumen", label: "Resumen", emoji: "📋" },
@@ -51,6 +59,9 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
   const assignedCoachQuery = useAdminUser(assignedCoachId, { enabled: Boolean(assignedCoachId) });
   const coachesQuery = useAdminCoaches(debouncedCoachQuery.trim(), { enabled: shouldLoadCoaches });
   const assignedCoach = assignedCoachQuery.data || null;
+  const availableAutonomyPresets = user?.clientPermissions?.menu?.availableAutonomyPresets
+    || assignedCoach?.effectiveCapabilities?.clientAutonomy?.availablePresets
+    || {};
   const assignedCoachLoading = Boolean(assignedCoachId) && assignedCoachQuery.isLoading;
   const coachOptions = Array.isArray(coachesQuery.data) ? coachesQuery.data : [];
   const coachesLoading = shouldLoadCoaches && (coachesQuery.isLoading || coachesQuery.isFetching);
@@ -148,6 +159,20 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
       navigate("/admin/usuarios");
     } catch (e) {
       setErr(e?.message || "No se pudo eliminar el usuario");
+    }
+  }
+
+  async function handleSaveAutonomy() {
+    try {
+      setSavingAutonomy(true);
+      setErr("");
+      const updated = await updateAdminClientMenuAutonomy(user.id, autonomyPreset || null);
+      onUserChange(updated);
+      await invalidateAfterAdminUserUpdate(user.id, updated);
+    } catch (error) {
+      setErr(error?.message || "No se pudo guardar la autonomía de esta relación.");
+    } finally {
+      setSavingAutonomy(false);
     }
   }
 
@@ -362,6 +387,27 @@ export default function AdminUsuarioClienteDetalle({ user, onUserChange }) {
                 </div>
                 <div className="auc-helperText">
                   Asignado el {dateLabel(user?.coach?.assignedAt)}.
+                </div>
+              </div>
+            ) : null}
+
+            {assignedCoach ? (
+              <div className="auc-currentCoachCard">
+                <div className="auc-relationLabel">Permiso efectivo sobre el menú</div>
+                <div className="auc-helperText">Base del plan del coach: {user?.clientPermissions?.menu?.autonomyDefaultPreset || assignedCoach?.effectiveCapabilities?.clientAutonomy?.defaultPreset || "equivalences"}. Origen actual: {user?.clientPermissions?.menu?.autonomySource || "relación"}.</div>
+                <label className="auc-searchLabel" htmlFor="admin-client-autonomy">Override de esta relación</label>
+                <select id="admin-client-autonomy" className="auc-searchInput" value={autonomyPreset} onChange={(event) => setAutonomyPreset(event.target.value)}>
+                  <option value="">Restaurar default efectivo del coach</option>
+                  <option value="total" disabled={availableAutonomyPresets.total === false}>Autonomía total{availableAutonomyPresets.total === false ? " (no disponible)" : ""}</option>
+                  <option value="equivalences" disabled={availableAutonomyPresets.equivalences === false}>Alternativas + equivalencias propias{availableAutonomyPresets.equivalences === false ? " (no disponible)" : ""}</option>
+                  <option value="coach_only" disabled={availableAutonomyPresets.coach_only === false}>Sólo alternativas del coach{availableAutonomyPresets.coach_only === false ? " (no disponible)" : ""}</option>
+                  <option value="view_only" disabled={availableAutonomyPresets.view_only === false}>Sin cambios / sólo ver{availableAutonomyPresets.view_only === false ? " (no disponible)" : ""}</option>
+                </select>
+                <div className="auc-actions">
+                  <button type="button" className="auc-btn auc-btnGold" onClick={handleSaveAutonomy} disabled={savingAutonomy}>
+                    {savingAutonomy ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
+                    {savingAutonomy ? "Guardando..." : "Guardar permiso efectivo"}
+                  </button>
                 </div>
               </div>
             ) : null}

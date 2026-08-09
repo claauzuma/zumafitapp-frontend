@@ -44,6 +44,12 @@ import {
 import "./adminUsuarioCoach.css";
 
 const PLAN_OPTIONS = COACH_PROFESSIONAL_PLAN_OPTIONS;
+const CLIENT_AUTONOMY_OPTIONS = [
+  ["total", "Autonomía total"],
+  ["equivalences", "Alternativas + equivalencias propias"],
+  ["coach_only", "Sólo alternativas del coach"],
+  ["view_only", "Sin cambios / sólo ver"],
+];
 
 const SPECIALTY_OPTIONS = [
   {
@@ -891,6 +897,30 @@ export default function AdminUsuarioCoachDetalle({ user, onUserChange, onRefresh
               <div className="auco-sub">Solo se aplica cuando subscription.status indica una prueba real.</div>
             </div>
 
+            <div className="auco-box">
+              <div className="auco-kicker">Autonomía predeterminada de sus clientes</div>
+              <div className="auco-sub">Base del plan → override de este coach → permiso de la relación. Efectivo actual: {effective?.clientAutonomy?.defaultPreset || "equivalences"} ({effective?.sources?.clientAutonomy?.defaultPreset || "plan"}).</div>
+              <label className="auco-permissionControl">
+                <span>Preset por defecto</span>
+                <select className="auco-select" value={overrideDraft?.clientAutonomy?.defaultPreset || "inherit"} onChange={(event) => setOverrideDraft((current) => ({ ...current, clientAutonomy: { ...(current.clientAutonomy || {}), defaultPreset: event.target.value === "inherit" ? null : event.target.value } }))}>
+                  <option value="inherit">Heredar del plan</option>
+                  {CLIENT_AUTONOMY_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+              </label>
+              <div className="auco-permissionGrid">
+                {CLIENT_AUTONOMY_OPTIONS.map(([key, label]) => (
+                  <label key={key} className="auco-permissionControl">
+                    <span>{label}</span>
+                    <select className="auco-select" value={selectValue(overrideDraft?.clientAutonomy?.availablePresets?.[key])} onChange={(event) => setOverrideDraft((current) => ({ ...current, clientAutonomy: { ...(current.clientAutonomy || {}), availablePresets: { ...(current.clientAutonomy?.availablePresets || {}), [key]: event.target.value === "inherit" ? null : event.target.value === "true" } } }))}>
+                      <option value="inherit">Heredar del plan</option>
+                      <option value="true">Disponible</option>
+                      <option value="false">No disponible</option>
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {PERMISSION_SECTIONS.map((section) => {
               const available =
                 !section.specialtyKey ||
@@ -1234,6 +1264,10 @@ function normalizeOverrides(raw = {}) {
     maxCoachOwnedMenus: null,
     maxCoachOwnedMeals: null,
     trialEndsAt: null,
+    clientAutonomy: {
+      defaultPreset: null,
+      availablePresets: { total: null, equivalences: null, coach_only: null, view_only: null },
+    },
     features: {
       routines: {
         manualBuilder: null,
@@ -1267,6 +1301,14 @@ function normalizeOverrides(raw = {}) {
   return {
     ...base,
     ...raw,
+    clientAutonomy: {
+      ...base.clientAutonomy,
+      ...(raw?.clientAutonomy || {}),
+      availablePresets: {
+        ...base.clientAutonomy.availablePresets,
+        ...(raw?.clientAutonomy?.availablePresets || {}),
+      },
+    },
     features: {
       ...base.features,
       ...(raw?.features || {}),

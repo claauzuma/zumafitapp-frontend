@@ -322,7 +322,7 @@ export function hasClientCoach(user = {}) {
 }
 
 export function clientTypeLabel(user = {}, capabilities = null) {
-  return (capabilities?.hasCoach ?? hasClientCoach(user)) ? "Con coach" : "Autogestionado";
+  return (capabilities?.hasCoach ?? hasClientCoach(user)) ? "Plan con Coach" : "Autogestionado";
 }
 
 export function libraryAccessLabel(capabilities = {}) {

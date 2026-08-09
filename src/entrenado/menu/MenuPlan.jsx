@@ -90,6 +90,7 @@ import {
   libraryTargetPath,
   loadMenuGenerationSettings,
   mealTypesForCount,
+  resolveAutonomousMenuActions,
   saveMenuGenerationSettings,
 } from "./menuQuickActions.js";
 
@@ -2221,14 +2222,12 @@ export default function MenuPlan() {
     : "";
   const selectedQuickTarget = targetTotals(selectedDisplayRow || selectedRow || {});
   const resolvedCapabilities = capabilitiesQuery.data || {};
-  const cachedCoach = Boolean(
-    currentUser?.coach?.entrenadorId || currentUser?.coach?.coachId || currentUser?.coachId || currentUser?.entrenadorId
-  );
-  const clientHasCoach = resolvedCapabilities.hasCoach === true || resolvedCapabilities.clientType === "with_coach" || cachedCoach;
-  const showAutonomousQuickActions = Boolean(capabilitiesQuery.data)
-    && !clientHasCoach
-    && menuSourceMeta(activePlanSource).key !== "coach";
-  const canGenerateAutonomousMenu = resolvedCapabilities.canGenerateAutomaticMenu === true;
+  const quickActionAccess = resolveAutonomousMenuActions(resolvedCapabilities);
+  const canUseAutonomousLibrary = quickActionAccess.library;
+  const canCreateAutonomousMenu = quickActionAccess.create;
+  const canGenerateAutonomousMenu = quickActionAccess.automatic;
+  const canEditAutonomousSettings = quickActionAccess.settings;
+  const showAutonomousQuickActions = Boolean(capabilitiesQuery.data) && quickActionAccess.visible;
 
   function openQuickLibrary() {
     navigate(libraryTargetPath(selectedRow?.date, selectedQuickTarget), {
@@ -2346,7 +2345,10 @@ export default function MenuPlan() {
 
   const autonomousActions = {
     visible: showAutonomousQuickActions,
+    canUseLibrary: canUseAutonomousLibrary,
+    canCreate: canCreateAutonomousMenu,
     canGenerate: canGenerateAutonomousMenu,
+    canEditSettings: canEditAutonomousSettings,
     settings: quickSettings,
     settingsOpen: quickSettingsOpen,
     generating: quickGenerating,
@@ -4056,6 +4058,7 @@ function AutonomousMenuQuickActions() {
 
   if (!actions?.visible) return null;
   const automaticLocked = !actions.canGenerate;
+  const actionCount = [actions.canUseLibrary, actions.canCreate, true, actions.canEditSettings].filter(Boolean).length;
   const modeLabel = generationModeLabel(actions.settings?.mode);
   const modes = [
     {
@@ -4083,9 +4086,9 @@ function AutonomousMenuQuickActions() {
 
   return (
     <section ref={rootRef} className="mt-2.5" aria-label="Acciones rapidas de menu">
-      <div className="grid grid-cols-4 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
-        <QuickMenuAction icon={BookOpen} label="Biblioteca" tone="green" onClick={actions.onLibrary} />
-        <QuickMenuAction icon={Plus} label="Crear menú" tone="violet" onClick={actions.onCreate} />
+      <div className="grid overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, actionCount)}, minmax(0, 1fr))` }}>
+        {actions.canUseLibrary ? <QuickMenuAction icon={BookOpen} label="Biblioteca" tone="green" onClick={actions.onLibrary} /> : null}
+        {actions.canCreate ? <QuickMenuAction icon={Plus} label="Crear menú" tone="violet" onClick={actions.onCreate} /> : null}
         <QuickMenuAction
           icon={actions.generating ? RefreshCw : Sparkles}
           label={actions.generating ? "Generando" : "Automático"}
@@ -4095,7 +4098,7 @@ function AutonomousMenuQuickActions() {
           busy={actions.generating}
           locked={automaticLocked}
         />
-        <QuickMenuAction
+        {actions.canEditSettings ? <QuickMenuAction
           icon={SlidersHorizontal}
           label="Ajustes"
           tone="gold"
@@ -4103,7 +4106,7 @@ function AutonomousMenuQuickActions() {
           pressed={actions.settingsOpen}
           controls="menu-generation-settings"
           compact
-        />
+        /> : null}
       </div>
 
       {actions.topUpOffer ? (
@@ -8055,6 +8058,7 @@ function MenuChoicesBlock({ row, choices, onUseAlternative }) {
 }
 
 function EmptyMenu({ row }) {
+  const actions = React.useContext(MenuAutonomousActionsContext);
   return (
     <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-5">
       <div className="flex items-center gap-3 text-zinc-200">
@@ -8071,17 +8075,17 @@ function EmptyMenu({ row }) {
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Link
+        {actions?.canCreate ? <Link
           to="/app/menu/nuevo"
           state={{ from: "/app/menu" }}
           className="inline-flex rounded-2xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 py-2 text-sm font-black text-[#080808]"
           {...createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false })}
         >
           Crear mi menu
-        </Link>
-        <a href="/app/nutricion" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
+        </Link> : null}
+        {actions?.canUseLibrary ? <a href="/app/nutricion" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
           Explorar ZumaFit
-        </a>
+        </a> : null}
         <a href="/app/tracking" className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-100">
           Ir a Tracking
         </a>

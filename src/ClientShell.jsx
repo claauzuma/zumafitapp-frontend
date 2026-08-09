@@ -980,7 +980,7 @@ export default function ClientShell() {
       }
       setToast({
         type: "success",
-        message: `Invitacion aceptada. ${invitation.coachName || "Tu coach"} debe confirmar el inicio del servicio.`,
+        message: `Invitación aceptada. Ya quedaste vinculado con ${invitation.coachName || "tu coach"}.`,
       });
       const nextPath = skipOnboarding
         ? "/app/inicio"

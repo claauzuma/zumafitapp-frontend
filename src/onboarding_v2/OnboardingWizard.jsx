@@ -221,6 +221,15 @@ export default function OnboardingWizard({ startAt = "basics" }) {
             heightCm={form.alturaCm}
             currentWeightKg={form.pesoKg}
             tdeeKcal={form.tdeeCustom ?? form.tdeeEstimado}
+            nutritionInput={{
+              birthDate: form.fechaNacimiento,
+              sex: form.sexo,
+              heightCm: form.alturaCm,
+              weightKg: form.pesoKg,
+              activity: form.actividadDiaria,
+              exerciseFrequency: form.frecuenciaEjercicio,
+              ...(form.tdeeCustom != null ? { maintenanceKcalOverride: Number(form.tdeeCustom) } : {}),
+            }}
             onDone={async () => {
               const me = await apiFetch("/api/usuarios/auth/me", { method: "GET" });
               const user = me?.user || me;
@@ -306,6 +315,10 @@ function ScreenFooter({ screenKey, form, onNext, onBack, patchStep1, nav }) {
     if (screenKey === "exercise") return !!form.frecuenciaEjercicio;
     if (screenKey === "daily") return !!form.actividadDiaria;
     if (screenKey === "exp") return !!form.experienciaPesas;
+    if (screenKey === "tdee") {
+      const value = form.tdeeCustom != null ? Number(form.tdeeCustom) : Number(form.tdeeEstimado);
+      return Number.isFinite(value) && value > 0;
+    }
     return true;
   }
 
