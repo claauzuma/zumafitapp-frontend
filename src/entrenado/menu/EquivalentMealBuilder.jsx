@@ -9,6 +9,7 @@ import {
   Library,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -41,6 +42,8 @@ import {
   equivalentMealComparison,
   equivalentMealDraftStorageKey,
   equivalentMealTarget,
+  equivalentLibrarySourceLabel,
+  filterEquivalentLibraryMeals,
 } from "./menuEquivalentMeal.js";
 
 const format = (value, digits = 0) => Number(value || 0).toLocaleString("es-AR", {
@@ -214,6 +217,10 @@ export default function EquivalentMealBuilder({
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryMeals, setLibraryMeals] = useState([]);
   const [libraryError, setLibraryError] = useState("");
+  const [libraryScope, setLibraryScope] = useState("all");
+  const [libraryFiltersOpen, setLibraryFiltersOpen] = useState(context.initialSection === "settings");
+  const [libraryInclude, setLibraryInclude] = useState("");
+  const [libraryExclude, setLibraryExclude] = useState("");
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
   const titleId = `equivalent-meal-${mealIndex}-title`;
@@ -232,6 +239,10 @@ export default function EquivalentMealBuilder({
     optimization,
   }) : null, [optimization, target, totals]);
   const ready = trackingDraftsReadyToConfirm(drafts);
+  const visibleLibraryMeals = useMemo(() => filterEquivalentLibraryMeals(libraryMeals, {
+    include: libraryInclude,
+    exclude: libraryExclude,
+  }), [libraryExclude, libraryInclude, libraryMeals]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -459,14 +470,17 @@ export default function EquivalentMealBuilder({
       setLibraryOpen(true);
       setLibraryLoading(true);
       setLibraryError("");
+      setLibraryScope(scope);
+      const primaryFoodFilter = libraryInclude.split(",").map((term) => term.trim()).find(Boolean) || "";
       const data = await listLibraryMeals({
         scope,
         tipoComida: meal.tipoComida || meal.type || "todos",
+        search: primaryFoodFilter,
         targetKcal: target.kcal,
         targetProteina: target.proteina,
         targetCarbs: target.carbs,
         targetGrasas: target.grasas,
-        limit: 8,
+        limit: 20,
       });
       setLibraryMeals(Array.isArray(data?.comidas) ? data.comidas : []);
     } catch (libraryLoadError) {
@@ -476,6 +490,13 @@ export default function EquivalentMealBuilder({
       setLibraryLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!["library", "settings"].includes(context.initialSection)) return;
+    loadLibrary("all");
+    // La apertura inicial depende solo de la accion que abrio el dialogo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function applyLibraryMeal(libraryMeal = {}, adjust = false) {
     const sourceItems = Array.isArray(libraryMeal.items) ? libraryMeal.items : [];
@@ -581,8 +602,10 @@ export default function EquivalentMealBuilder({
             <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 text-[10px] font-black uppercase tracking-wide text-emerald-200">
               <Sparkles size={14} /> Mi equivalente
             </span>
-            <h3 id={titleId} className="mt-2 truncate text-xl font-black text-white sm:text-2xl">Reemplazar {mealTitle}</h3>
-            <p className="mt-1 text-xs font-bold text-zinc-400">Solo cambia esta comida del {row.date || "dia"}. El menu original no se modifica.</p>
+            <h3 id={titleId} className="mt-2 truncate text-xl font-black text-white sm:text-2xl">
+              {context.initialSection === "library" ? "Buscar comida equivalente" : context.initialSection === "settings" ? "Ajustar reemplazo" : `Reemplazar ${mealTitle}`}
+            </h3>
+            <p className="mt-1 text-xs font-bold text-zinc-400">Meta: {mealTitle}. Solo cambia esta comida del {row.date || "dia"}; el menu original no se modifica.</p>
           </div>
           <button ref={closeRef} type="button" onClick={onClose} disabled={saving || calculating} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/12 bg-white/[0.06] text-white disabled:opacity-50" aria-label="Cerrar y conservar borrador">
             <X size={20} />
@@ -695,9 +718,36 @@ export default function EquivalentMealBuilder({
               </div>
               {libraryOpen ? (
                 <div className="mt-3 grid gap-2">
-                  <button type="button" onClick={() => loadLibrary("favorites")} disabled={libraryLoading} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/[0.07] text-[10px] font-black text-rose-100"><Heart size={14} /> Ver mis favoritas</button>
+                  <button
+                    type="button"
+                    onClick={() => setLibraryFiltersOpen((open) => !open)}
+                    aria-expanded={libraryFiltersOpen}
+                    className="flex min-h-11 items-center justify-between rounded-xl border border-sky-300/20 bg-sky-300/[0.07] px-3 text-[11px] font-black text-sky-100"
+                  >
+                    <span className="flex items-center gap-2"><SlidersHorizontal size={15} /> Ajustar alimentos</span>
+                    <ChevronRight size={15} className={`transition ${libraryFiltersOpen ? "rotate-90" : ""}`} />
+                  </button>
+                  {libraryFiltersOpen ? (
+                    <div className="grid gap-2 rounded-xl border border-white/10 bg-black/20 p-2.5 sm:grid-cols-2">
+                      <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                        Debe incluir
+                        <input value={libraryInclude} onChange={(event) => setLibraryInclude(event.target.value)} placeholder="Ej: pollo, arroz" className="min-h-11 rounded-xl border border-emerald-300/20 bg-black/30 px-3 text-sm font-bold normal-case text-white outline-none placeholder:text-zinc-600" aria-label="Alimentos que debe incluir la comida" />
+                      </label>
+                      <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                        Evitar
+                        <input value={libraryExclude} onChange={(event) => setLibraryExclude(event.target.value)} placeholder="Ej: queso" className="min-h-11 rounded-xl border border-rose-300/20 bg-black/30 px-3 text-sm font-bold normal-case text-white outline-none placeholder:text-zinc-600" aria-label="Alimentos que no debe incluir la comida" />
+                      </label>
+                      <button type="button" onClick={() => loadLibrary(libraryScope)} disabled={libraryLoading} className="min-h-11 rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-50 sm:col-span-2">
+                        {libraryLoading ? "Aplicando..." : "Aplicar filtros"}
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => loadLibrary("all")} disabled={libraryLoading} className={`flex min-h-10 items-center justify-center gap-2 rounded-xl border text-[10px] font-black ${libraryScope === "all" ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-white/[0.03] text-zinc-300"}`}><Library size={14} /> Todas</button>
+                    <button type="button" onClick={() => loadLibrary("favorites")} disabled={libraryLoading} className={`flex min-h-10 items-center justify-center gap-2 rounded-xl border text-[10px] font-black ${libraryScope === "favorites" ? "border-rose-300/25 bg-rose-300/[0.08] text-rose-100" : "border-white/10 bg-white/[0.03] text-zinc-300"}`}><Heart size={14} /> Favoritas</button>
+                  </div>
                   {libraryError ? <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 p-2 text-xs font-bold text-rose-100" role="alert">{libraryError}</div> : null}
-                  {libraryMeals.map((libraryMeal) => {
+                  {visibleLibraryMeals.map((libraryMeal) => {
                     const equivalence = libraryMeal.equivalence || {};
                     const diff = equivalence.diff || {};
                     return (
@@ -705,6 +755,7 @@ export default function EquivalentMealBuilder({
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <strong className="block truncate text-sm font-black text-white">{libraryMeal.nombre}</strong>
+                            <span className="mt-1 inline-flex rounded-full border border-sky-300/20 bg-sky-300/[0.07] px-2 py-0.5 text-[9px] font-black text-sky-100">{equivalentLibrarySourceLabel(libraryMeal)}</span>
                             <span className="mt-1 block text-[10px] font-bold text-zinc-400">{format(libraryMeal.totales?.kcal)} kcal · {signed(diff.kcal)} kcal</span>
                             <span className="mt-1 block text-[10px] font-bold text-zinc-500">P {signed(diff.proteina, 1)} · C {signed(diff.carbs, 1)} · G {signed(diff.grasas, 1)}</span>
                           </div>
@@ -717,7 +768,7 @@ export default function EquivalentMealBuilder({
                       </article>
                     );
                   })}
-                  {!libraryLoading && !libraryMeals.length && !libraryError ? <p className="text-center text-xs font-bold text-zinc-500">No hay coincidencias visibles para esta meta.</p> : null}
+                  {!libraryLoading && !visibleLibraryMeals.length && !libraryError ? <p className="text-center text-xs font-bold text-zinc-500">No hay comidas visibles que coincidan con la meta y los alimentos elegidos.</p> : null}
                 </div>
               ) : null}
             </section>

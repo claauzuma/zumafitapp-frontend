@@ -64,6 +64,49 @@ export function equivalentMealComparison(targetValue = {}, proposalValue = {}) {
   };
 }
 
+function normalizedFilterTerms(value = "") {
+  return String(value || "")
+    .split(",")
+    .map((term) => term.trim().toLocaleLowerCase("es"))
+    .filter(Boolean);
+}
+
+function libraryMealFoodNames(meal = {}) {
+  const items = Array.isArray(meal.items)
+    ? meal.items
+    : Array.isArray(meal.alimentos)
+      ? meal.alimentos
+      : [];
+  return items.map((item) => String(
+    item?.nombreSnapshot || item?.nombre || item?.name || item?.alimento?.nombre || ""
+  ).toLocaleLowerCase("es"));
+}
+
+export function filterEquivalentLibraryMeals(meals = [], { include = "", exclude = "" } = {}) {
+  const includeTerms = normalizedFilterTerms(include);
+  const excludeTerms = normalizedFilterTerms(exclude);
+  return (Array.isArray(meals) ? meals : []).filter((meal) => {
+    const foodNames = libraryMealFoodNames(meal);
+    const includesRequired = !includeTerms.length || includeTerms.every((term) =>
+      foodNames.some((name) => name.includes(term))
+    );
+    const includesExcluded = excludeTerms.some((term) =>
+      foodNames.some((name) => name.includes(term))
+    );
+    return includesRequired && !includesExcluded;
+  });
+}
+
+export function equivalentLibrarySourceLabel(meal = {}) {
+  const ownerType = String(meal.ownerType || "").toLocaleLowerCase("es");
+  const sourceType = String(meal.sourceType || "").toLocaleLowerCase("es");
+  if (meal.assigned || sourceType === "assigned_snapshot") return "Alternativa del coach";
+  if (ownerType === "cliente" || ownerType === "client" || sourceType === "client_owned") return "Mi comida";
+  if (ownerType === "coach" || sourceType === "coach_owned") return "Biblioteca del coach";
+  if (ownerType === "admin" || sourceType.startsWith("admin_")) return "Biblioteca ZumaFit";
+  return "Biblioteca";
+}
+
 export function equivalentMealDraftStorageKey(owner = "", date = "", mealId = "", menuId = "", creationType = "full_meal") {
   const safe = (value) => encodeURIComponent(String(value || "").slice(0, 120));
   if (!owner) return "";

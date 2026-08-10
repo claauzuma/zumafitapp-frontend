@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   equivalentMealComparison,
   equivalentMealDraftStorageKey,
+  equivalentLibrarySourceLabel,
+  filterEquivalentLibraryMeals,
   resolveEquivalentMealAccess,
 } from "./menuEquivalentMeal.js";
 
@@ -56,4 +58,26 @@ test("el borrador queda aislado por fecha y comida", () => {
     equivalentMealDraftStorageKey("cliente-2", "2026-07-29", "almuerzo")
   );
   assert.equal(equivalentMealDraftStorageKey("", "2026-07-29", "almuerzo"), "");
+});
+
+test("los filtros de biblioteca exigen inclusiones y descartan exclusiones por alimento", () => {
+  const meals = [
+    { id: "own", items: [{ nombreSnapshot: "Pechuga de pollo" }, { nombre: "Arroz" }] },
+    { id: "public", alimentos: [{ name: "Pasta" }, { nombre: "Queso" }] },
+  ];
+  assert.deepEqual(
+    filterEquivalentLibraryMeals(meals, { include: "pollo, arroz" }).map((meal) => meal.id),
+    ["own"]
+  );
+  assert.deepEqual(
+    filterEquivalentLibraryMeals(meals, { exclude: "queso" }).map((meal) => meal.id),
+    ["own"]
+  );
+});
+
+test("la biblioteca explica el origen autorizado de cada comida", () => {
+  assert.equal(equivalentLibrarySourceLabel({ ownerType: "cliente" }), "Mi comida");
+  assert.equal(equivalentLibrarySourceLabel({ ownerType: "coach" }), "Biblioteca del coach");
+  assert.equal(equivalentLibrarySourceLabel({ ownerType: "admin" }), "Biblioteca ZumaFit");
+  assert.equal(equivalentLibrarySourceLabel({ assigned: true, ownerType: "coach" }), "Alternativa del coach");
 });

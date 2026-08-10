@@ -2459,6 +2459,22 @@ export default function MenuPlan() {
     );
   }
 
+  function openMealAction(payload = {}) {
+    if (payload.action === "settings") {
+      if (equivalentMealAccess.canCreate) {
+        setEquivalentMealBuilder({ ...payload, initialSection: "settings" });
+        return;
+      }
+      setToast("Los ajustes de reemplazo no estan habilitados para este acceso.");
+      window.setTimeout(() => setToast(""), 3000);
+      return;
+    }
+    setMealDrawer({
+      ...payload,
+      initialView: payload.action === "replace" ? "replace" : "detail",
+    });
+  }
+
   function openActiveMenuEditor(row = selectedRow, options = {}) {
     if (menuSourceMeta(activePlanSource).key !== "own") return;
     const id = activeMenuIdFrom(row, activePlan);
@@ -3139,7 +3155,7 @@ export default function MenuPlan() {
                 onToggleMeal={toggleMenuMeal}
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
-                onOpenMeal={(payload) => setMealDrawer(payload)}
+                onOpenMeal={openMealAction}
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
@@ -3175,7 +3191,7 @@ export default function MenuPlan() {
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
                 onToggleMeal={toggleMenuMeal}
-                onOpenMeal={(payload) => setMealDrawer(payload)}
+                onOpenMeal={openMealAction}
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onRestoreGenerated={restoreGeneratedRemaining}
@@ -3200,7 +3216,7 @@ export default function MenuPlan() {
                 onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedDisplayRow, options)}
                 onToggleMeal={toggleMenuMeal}
-                onOpenMeal={(payload) => setMealDrawer(payload)}
+                onOpenMeal={openMealAction}
                 onQuickEditMeal={openQuickMealEditor}
                 onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                 onOpenFlexibleMargin={openFlexibleMargin}
@@ -3229,7 +3245,7 @@ export default function MenuPlan() {
                     activePlanSource={activePlanSource}
                     onMarkMissed={markDayMissed}
                     onToggleMeal={toggleMenuMeal}
-                    onOpenMeal={(payload) => setMealDrawer(payload)}
+                    onOpenMeal={openMealAction}
                     onQuickEditMeal={openQuickMealEditor}
                     onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
                     onOpenFlexibleMargin={openFlexibleMargin}
@@ -3256,7 +3272,7 @@ export default function MenuPlan() {
           onClose={() => setDetailRow(null)}
           onMarkMissed={markDayMissed}
           onToggleMeal={toggleMenuMeal}
-          onOpenMeal={(payload) => setMealDrawer(payload)}
+          onOpenMeal={openMealAction}
           onQuickEditMeal={openQuickMealEditor}
           onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
           onOpenFlexibleMargin={openFlexibleMargin}
@@ -5301,9 +5317,9 @@ function MobileMealCard({
     onToggleMeal(row, trackingMeal, mealIndex);
   }
 
-  function openMealDetail(event) {
+  function openMealDetail(event, action = "detail") {
     event.stopPropagation();
-    onOpenMeal(detailPayload);
+    onOpenMeal({ ...detailPayload, action });
   }
 
   function saveAsMeal(event) {
@@ -5417,7 +5433,7 @@ function MobileMealCard({
               )}
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2">
               {canEditThisMeal ? (
                 <button
                   type="button"
@@ -5429,25 +5445,15 @@ function MobileMealCard({
                   {foods.length ? "Editar alimentos" : "Agregar alimentos"}
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={openMealDetail}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-3 text-xs font-black text-zinc-100"
-              >
-                Detalle de comida
-                <Eye size={15} />
-              </button>
-              {onSaveAsSavedMeal ? (
-                <button
-                  type="button"
-                  onClick={saveAsMeal}
-                  disabled={saving || !foods.length}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-55"
-                >
-                  Guardar en Mis comidas
-                  <Plus size={15} />
-                </button>
-              ) : null}
+              <MealCompactActions
+                onDetail={(event) => openMealDetail(event, "detail")}
+                onReplace={(event) => openMealDetail(event, "replace")}
+                onSettings={(event) => openMealDetail(event, "settings")}
+                onSave={onSaveAsSavedMeal ? saveAsMeal : null}
+                canReplace={!manual && !generated}
+                canConfigure={!manual && !generated}
+                saveDisabled={saving || !foods.length}
+              />
             </div>
           </div>
         ) : null}
@@ -6252,9 +6258,9 @@ function DesktopMealCard({
     onToggleMeal(row, trackingMeal, mealIndex);
   }
 
-  function openMealDetail(event) {
+  function openMealDetail(event, action = "detail") {
     event.stopPropagation();
-    onOpenMeal?.(detailPayload);
+    onOpenMeal?.({ ...detailPayload, action });
   }
 
   function saveAsMeal(event) {
@@ -6376,7 +6382,7 @@ function DesktopMealCard({
             ) : null}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <div className="mt-4 grid gap-2">
             {canEditThisMeal ? (
               <button
                 type="button"
@@ -6388,25 +6394,15 @@ function DesktopMealCard({
                 {foods.length ? "Editar alimentos" : "Agregar alimentos"}
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={openMealDetail}
-              className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-xs font-black text-zinc-100"
-            >
-              Detalle de comida
-              <Eye size={15} />
-            </button>
-            {onSaveAsSavedMeal ? (
-              <button
-                type="button"
-                onClick={saveAsMeal}
-                disabled={saving || !foods.length}
-                className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3] disabled:opacity-55"
-              >
-                Guardar en Mis comidas
-                <Plus size={15} />
-              </button>
-            ) : null}
+            <MealCompactActions
+              onDetail={(event) => openMealDetail(event, "detail")}
+              onReplace={(event) => openMealDetail(event, "replace")}
+              onSettings={(event) => openMealDetail(event, "settings")}
+              onSave={onSaveAsSavedMeal ? saveAsMeal : null}
+              canReplace={!manual && !generated}
+              canConfigure={!manual && !generated}
+              saveDisabled={saving || !foods.length}
+            />
           </div>
         </div>
       ) : null}
@@ -6634,6 +6630,36 @@ function DayDetail({
       />
 
     </section>
+  );
+}
+
+function MealCompactActions({
+  onDetail,
+  onReplace,
+  onSettings,
+  onSave,
+  canReplace = true,
+  canConfigure = true,
+  saveDisabled = false,
+}) {
+  const buttonClass = "group inline-flex min-h-11 min-w-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 text-[10px] font-black transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 sm:flex-none sm:px-3";
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-black/25 p-1.5" role="group" aria-label="Acciones de la comida">
+      <button type="button" onClick={onDetail} className={`${buttonClass} border-white/10 bg-white/[0.05] text-zinc-100`} aria-label="Ver detalle de la comida" title="Detalle">
+        <Eye size={16} /><span className="hidden sm:inline">Detalle</span>
+      </button>
+      <button type="button" onClick={onReplace} disabled={!canReplace} className={`${buttonClass} border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100`} aria-label="Buscar otra comida equivalente" title="Buscar reemplazo">
+        <Search size={16} /><span className="hidden sm:inline">Buscar</span>
+      </button>
+      <button type="button" onClick={onSettings} disabled={!canConfigure} className={`${buttonClass} border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]`} aria-label="Ajustar alimentos del reemplazo" title="Ajustar búsqueda">
+        <SlidersHorizontal size={16} /><span className="hidden sm:inline">Ajustar</span>
+      </button>
+      {onSave ? (
+        <button type="button" onClick={onSave} disabled={saveDisabled} className={`${buttonClass} border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100`} aria-label="Guardar en Mis comidas" title="Guardar en Mis comidas">
+          <Save size={16} /><span className="hidden sm:inline">Guardar</span>
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -8116,7 +8142,7 @@ function MobileMealDetailDrawer({
   const mealIndex = context?.mealIndex || 0;
   const manual = !!context?.manual || meal?.source === "manual_food";
   const generated = !!context?.generated || meal?.source === "generated_remaining_meal";
-  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(context?.initialView === "replace");
   const done = completedMealIdSet(row).has(mealId(baseMeal, mealIndex));
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
@@ -8273,12 +8299,21 @@ function MobileMealDetailDrawer({
               saving={saving}
               onApply={onApplyMealReplacement}
               canCreateEquivalentMeal={canCreateEquivalentMeal}
-              onCreateEquivalentMeal={() => onCreateEquivalentMeal?.({
+              onBrowseLibrary={() => onCreateEquivalentMeal?.({
                 ...context,
                 row,
                 meal,
                 baseMeal,
                 mealIndex,
+                initialSection: "library",
+              })}
+              onConfigureFoods={() => onCreateEquivalentMeal?.({
+                ...context,
+                row,
+                meal,
+                baseMeal,
+                mealIndex,
+                initialSection: "settings",
               })}
             />
           ) : null}
@@ -8316,10 +8351,16 @@ function MobileMealReplacementPanel({
   saving,
   onApply,
   canCreateEquivalentMeal = false,
-  onCreateEquivalentMeal,
+  onBrowseLibrary,
+  onConfigureFoods,
 }) {
-  const [selected, setSelected] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const originalTotals = mealTotals(meal);
+  const activeOption = options[activeIndex] || null;
+
+  useEffect(() => {
+    setActiveIndex((current) => Math.min(current, Math.max(0, options.length - 1)));
+  }, [options.length]);
 
   return (
     <section className="mb-3 rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3">
@@ -8336,50 +8377,35 @@ function MobileMealReplacementPanel({
       </div>
 
       {canCreateEquivalentMeal ? (
-        <button
-          type="button"
-          onClick={onCreateEquivalentMeal}
-          disabled={saving}
-          className="mt-3 flex min-h-11 w-full items-center justify-between rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-3 text-left text-sm font-black text-emerald-100 disabled:opacity-50"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Sparkles size={16} className="shrink-0" />
-            <span className="truncate">Crear mi comida equivalente</span>
-          </span>
-          <ChevronRight size={17} className="shrink-0" />
-        </button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onBrowseLibrary} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/[0.08] px-2 text-[11px] font-black text-cyan-100 disabled:opacity-50">
+            <Search size={16} /> Base de comidas
+          </button>
+          <button type="button" onClick={onConfigureFoods} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2 text-[11px] font-black text-[#FFE8A3] disabled:opacity-50">
+            <SlidersHorizontal size={16} /> Por alimentos
+          </button>
+        </div>
       ) : null}
 
       {options.length ? (
         <div className="mt-3 grid gap-2">
-          {options.map((option) => {
-            const active = selected?.key === option.key;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setSelected(option)}
-                className={`rounded-2xl border p-3 text-left transition active:scale-[0.99] ${
-                  active ? "border-[#D4AF37]/45 bg-[#D4AF37]/10" : "border-white/10 bg-black/20"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <strong className="block truncate text-sm font-black text-white">{mealName(option.meal, mealIndex)}</strong>
-                    <span className="mt-1 block text-xs font-bold text-zinc-400">
-                      {displayKcal(option.totals.kcal)} - P {formatNumber(option.totals.proteina, 0)} g - {mealFoods(option.meal).length} alimentos
-                    </span>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-200">
-                    {option.badge}
-                  </span>
-                </div>
-                <div className="mt-2 text-[11px] font-bold text-zinc-500">
-                  Dif. {signedNumber(option.diff.kcal)} kcal - P {signedNumber(option.diff.proteina)} g
-                </div>
-              </button>
-            );
-          })}
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={() => setActiveIndex((index) => Math.max(0, index - 1))} disabled={activeIndex === 0} className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-200 disabled:opacity-30" aria-label="Alternativa anterior"><ChevronLeft size={18} /></button>
+            <span className="text-center text-[10px] font-black uppercase tracking-wide text-zinc-500">Alternativa del coach {activeIndex + 1}/{options.length}</span>
+            <button type="button" onClick={() => setActiveIndex((index) => Math.min(options.length - 1, index + 1))} disabled={activeIndex >= options.length - 1} className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-200 disabled:opacity-30" aria-label="Alternativa siguiente"><ChevronRight size={18} /></button>
+          </div>
+          <article className="rounded-2xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <strong className="block truncate text-sm font-black text-white">{mealName(activeOption.meal, mealIndex)}</strong>
+                <span className="mt-1 block text-xs font-bold text-zinc-400">
+                  {displayKcal(activeOption.totals.kcal)} - P {formatNumber(activeOption.totals.proteina, 0)} g - {mealFoods(activeOption.meal).length} alimentos
+                </span>
+              </div>
+              <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-200">{activeOption.badge}</span>
+            </div>
+            <div className="mt-2 text-[11px] font-bold text-zinc-500">Dif. {signedNumber(activeOption.diff.kcal)} kcal - P {signedNumber(activeOption.diff.proteina)} g</div>
+          </article>
         </div>
       ) : (
         <div className="mt-3 rounded-2xl border border-dashed border-white/15 p-3 text-sm font-bold text-zinc-500">
@@ -8387,10 +8413,10 @@ function MobileMealReplacementPanel({
         </div>
       )}
 
-      {selected ? (
+      {activeOption ? (
         <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3">
           <p className="text-sm font-black text-white">
-            Usar {mealName(selected.meal, mealIndex)} en lugar de {mealName(meal, mealIndex)}?
+            Usar {mealName(activeOption.meal, mealIndex)} en lugar de {mealName(meal, mealIndex)}?
           </p>
           <p className="mt-1 text-xs font-bold text-zinc-400">
             Se guarda como ajuste de tracking. Meta original: {displayKcal(originalTotals.kcal)}.
@@ -8398,7 +8424,7 @@ function MobileMealReplacementPanel({
           <button
             type="button"
             disabled={saving}
-            onClick={() => onApply?.({ row, originalMeal: meal, replacementMeal: selected.meal, mealIndex })}
+            onClick={() => onApply?.({ row, originalMeal: meal, replacementMeal: activeOption.meal, mealIndex })}
             className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 text-sm font-black text-[#03140c] disabled:opacity-60"
           >
             {saving ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={17} />}
