@@ -71,6 +71,7 @@ function normalizeNutritionFilters(filters = {}) {
 
 function normalizeMenuFilters(filters = {}) {
   return {
+    scope: cleanFilter(filters.scope),
     search: cleanText(filters.search),
     objetivo: cleanFilter(filters.objetivo || filters.goal),
     visibilidad: cleanFilter(filters.visibilidad || filters.visibility),

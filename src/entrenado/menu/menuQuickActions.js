@@ -126,3 +126,8 @@ export function resolveAutonomousMenuActions(capabilities = {}) {
     visible: library || create || automatic || settings,
   };
 }
+
+export function automaticGenerationRequiresPlan(error = {}) {
+  const code = String(error?.code || error?.message || "").trim();
+  return Number(error?.status) === 403 && code === "PLAN_CAPABILITY_REQUIRED";
+}

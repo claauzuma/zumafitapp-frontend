@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   DEFAULT_MENU_GENERATION_SETTINGS,
+  automaticGenerationRequiresPlan,
   dayKeyFromIsoDate,
   libraryTargetPath,
   loadMenuGenerationSettings,
@@ -84,4 +85,19 @@ test("acciones autonomas dependen de capabilities aun cuando existe coach", () =
     settings: false,
     visible: false,
   });
+});
+
+test("solo un rechazo real del servidor deriva la generacion automatica a planes", () => {
+  assert.equal(automaticGenerationRequiresPlan({
+    status: 403,
+    code: "PLAN_CAPABILITY_REQUIRED",
+  }), true);
+  assert.equal(automaticGenerationRequiresPlan({
+    status: 403,
+    code: "CLIENT_MENU_FORBIDDEN",
+  }), false);
+  assert.equal(automaticGenerationRequiresPlan({
+    status: 0,
+    message: "No se pudo conectar con el servidor",
+  }), false);
 });

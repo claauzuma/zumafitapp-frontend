@@ -85,6 +85,7 @@ import {
   MENU_GENERATION_MODE_COMBINE,
   MENU_GENERATION_MODE_SCRATCH,
   MENU_GENERATION_MODE_SIMILAR,
+  automaticGenerationRequiresPlan,
   dayKeyFromIsoDate,
   generationModeLabel,
   libraryTargetPath,
@@ -2266,23 +2267,8 @@ export default function MenuPlan() {
 
   async function runQuickAutomatic({ allowCalorieTopUp = false } = {}) {
     if (quickGenerating) return;
-    if (!canGenerateAutonomousMenu) {
-      navigate("/app/planes");
-      return;
-    }
     if (!selectedQuickTarget.kcal) {
       setQuickGenerationError("Primero necesitas configurar el objetivo nutricional de este dia.");
-      return;
-    }
-    if (quickSettings.mode === MENU_GENERATION_MODE_SCRATCH) {
-      navigate("/app/menu/nuevo?mode=generate", {
-        state: {
-          from: `${location.pathname}${location.search}`,
-          selectedDate: selectedRow?.date,
-          dailyTarget: selectedQuickTarget,
-          generationSettings: quickSettings,
-        },
-      });
       return;
     }
     setQuickGenerating(true);
@@ -2292,6 +2278,17 @@ export default function MenuPlan() {
       const authorization = await authorizeClientMenuGeneration();
       if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
         throw new Error("GENERATION_NOT_AUTHORIZED");
+      }
+      if (quickSettings.mode === MENU_GENERATION_MODE_SCRATCH) {
+        navigate("/app/menu/nuevo?mode=generate", {
+          state: {
+            from: `${location.pathname}${location.search}`,
+            selectedDate: selectedRow?.date,
+            dailyTarget: selectedQuickTarget,
+            generationSettings: quickSettings,
+          },
+        });
+        return;
       }
       const preview = await generateClientMenuPreview({
         target: selectedQuickTarget,
@@ -2330,7 +2327,9 @@ export default function MenuPlan() {
         },
       });
     } catch (generationError) {
-      if (generationError?.code === "MENU_CALORIE_TOP_UP_CONFIRMATION_REQUIRED") {
+      if (automaticGenerationRequiresPlan(generationError)) {
+        navigate("/app/planes");
+      } else if (generationError?.code === "MENU_CALORIE_TOP_UP_CONFIRMATION_REQUIRED") {
         setQuickTopUpOffer(generationError.details || null);
         setQuickGenerationError("");
       } else if (["MENU_NO_CALORIE_MATCH", "MENU_NO_PROTEIN_MATCH"].includes(generationError?.code)) {

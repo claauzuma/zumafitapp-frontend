@@ -48,6 +48,10 @@ import {
 import { updateProfessionalClientMenu } from "./profesionalApi.js";
 import { useProfessionalClients } from "./profesionalQueries.js";
 import {
+  defaultProfessionalMenuScope,
+  ownProfessionalMenus,
+} from "./professionalMenuLibrary.js";
+import {
   invalidateClientMenus,
   invalidateComidasLibrary,
   invalidateMenusLibrary,
@@ -88,13 +92,14 @@ export default function MenusProfesional() {
 
 function MenusWorkspace({ me }) {
   const activeTab = TAB_MENUS;
+  const permissions = menuPermissions(me);
   const [filters, setFilters] = useState({ search: "", goal: "todos", meals: 0 });
   const [selectedRange, setSelectedRange] = useState("");
   const [selectedProtein, setSelectedProtein] = useState("");
   const [selectedMenuId, setSelectedMenuId] = useState("");
   const [detailMenuId, setDetailMenuId] = useState("");
   const [selectedMealGroup, setSelectedMealGroup] = useState("");
-  const menuLibraryScope = "mine";
+  const [menuLibraryScope, setMenuLibraryScope] = useState(() => defaultProfessionalMenuScope(permissions));
   const [mealLibraryScope, setMealLibraryScope] = useState("mine");
   const [menuEditor, setMenuEditor] = useState(null);
   const [mealEditor, setMealEditor] = useState(null);
@@ -104,7 +109,6 @@ function MenusWorkspace({ me }) {
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useState(null);
 
-  const permissions = menuPermissions(me);
   const realMenusQuery = useMenusBase(
     { scope: menuLibraryScope, search: filters.search, estado: "activo", includeComidas: true },
     { enabled: true }
@@ -120,8 +124,9 @@ function MenusWorkspace({ me }) {
   const meals = comidasQuery.data?.comidas || [];
 
   const realMenus = useMemo(() => realMenusQuery.data?.menus || [], [realMenusQuery.data?.menus]);
+  const ownMenus = useMemo(() => ownProfessionalMenus(realMenus, getUserId(me)), [me, realMenus]);
   const reportedMenuUsage = Number(me?.effectiveCapabilities?.usage?.currentCoachOwnedMenus || 0);
-  const currentMenuUsage = Math.max(reportedMenuUsage, realMenus.length);
+  const currentMenuUsage = Math.max(reportedMenuUsage, ownMenus.length);
   const menuLimit = Number(me?.effectiveCapabilities?.limits?.maxCoachOwnedMenus);
   const hasMenuLimit = Number.isFinite(menuLimit) && menuLimit >= 0;
   const menuLimitReached = hasMenuLimit && currentMenuUsage >= menuLimit;
@@ -232,7 +237,7 @@ function MenusWorkspace({ me }) {
         setToast({ type: "warning", message: `Límite del plan alcanzado: ${currentMenuUsage} / ${menuLimit} menús propios.` });
         return;
       }
-      const duplicated = findIdenticalMenu(realMenus, payload, current?.id || current?.baseId);
+      const duplicated = findIdenticalMenu(ownMenus, payload, current?.id || current?.baseId);
       if (duplicated) {
         setToast({
           type: "warning",
@@ -461,6 +466,16 @@ function MenusWorkspace({ me }) {
 
         {activeTab === TAB_MENUS ? (
           <>
+        <ProfessionalLibrarySourceTabs
+          value={menuLibraryScope}
+          onChange={(scope) => {
+            setMenuLibraryScope(scope);
+            resetFlow("root");
+          }}
+          canUseGlobal={permissions.canUseGlobalMenuTemplates}
+          itemLabel="menús"
+          includeAll
+        />
         <div className="nf-toolbar nf-toolbarSlim">
           <label className="nf-searchWrap">
             <Search size={17} strokeWidth={2.2} aria-hidden="true" />
@@ -686,10 +701,21 @@ function MenusWorkspace({ me }) {
   );
 }
 
-function ProfessionalLibrarySourceTabs({ value, onChange, canUseGlobal, itemLabel = "plantillas" }) {
+function ProfessionalLibrarySourceTabs({ value, onChange, canUseGlobal, itemLabel = "plantillas", includeAll = false }) {
   return (
     <div className="nf-librarySourceBlock">
       <div className="nf-tabs nf-sourceTabs" role="tablist" aria-label={`Fuente de ${itemLabel}`}>
+        {includeAll && canUseGlobal ? (
+          <button
+            type="button"
+            className={`nf-tab ${value === "all" ? "active" : ""}`}
+            onClick={() => onChange("all")}
+            role="tab"
+            aria-selected={value === "all"}
+          >
+            Todos
+          </button>
+        ) : null}
         <button
           type="button"
           className={`nf-tab ${value === "mine" ? "active" : ""}`}

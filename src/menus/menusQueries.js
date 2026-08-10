@@ -15,7 +15,7 @@ export function useMenusBase(filters = {}, options = {}) {
     queryFn: () => listMenusBase(filters),
     enabled: options.enabled !== false,
     staleTime: STALE_TIMES.menusBase,
-    placeholderData: (previous) => previous,
+    placeholderData: options.keepPreviousData === true ? (previous) => previous : undefined,
   });
 }
 
