@@ -64,6 +64,22 @@ export function equivalentMealComparison(targetValue = {}, proposalValue = {}) {
   };
 }
 
+export function generatedAlternativeToDrafts(alternative = {}, createDraft, maxFoods = 6, optionIndex = 0) {
+  if (typeof createDraft !== "function") return [];
+  return (Array.isArray(alternative?.foods) ? alternative.foods : [])
+    .slice(0, Math.max(1, Number(maxFoods) || 6))
+    .map((food, index) => createDraft(food, index, optionIndex))
+    .filter(Boolean);
+}
+
+export function nextGeneratedAlternativeIndex(currentIndex, alternatives = []) {
+  const length = Array.isArray(alternatives) ? alternatives.length : 0;
+  if (!length) return -1;
+  const parsed = Number(currentIndex);
+  const normalized = Number.isInteger(parsed) ? parsed : -1;
+  return (Math.max(-1, normalized) + 1) % length;
+}
+
 function normalizedFilterTerms(value = "") {
   return String(value || "")
     .split(",")

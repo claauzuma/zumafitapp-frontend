@@ -41,12 +41,15 @@ import {
   getMenuDayCompatibility,
 } from "../menus/menuAssignmentCompatibility.js";
 import {
-  createDailyTargetsDraft,
   NUTRITION_WEEK_DAYS,
   resolveNutritionWeek,
 } from "../nutricion/dailyNutritionTargets.js";
 import { updateProfessionalClientMenu } from "./profesionalApi.js";
-import { useProfessionalClients } from "./profesionalQueries.js";
+import { useProfessionalClientDetail, useProfessionalClients } from "./profesionalQueries.js";
+import {
+  nutritionDraftForMenuAssignment,
+  resolveFreshAssignmentClient,
+} from "./professionalMenuAssignmentClient.js";
 import {
   defaultProfessionalMenuScope,
   ownProfessionalMenus,
@@ -114,6 +117,18 @@ function MenusWorkspace({ me }) {
     { enabled: true }
   );
   const clientsQuery = useProfessionalClients();
+  const assignClientDetailQuery = useProfessionalClientDetail(assignClientId, {
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  const assignClientRefreshing = Boolean(assignClientId) && (
+    assignClientDetailQuery.isPending || assignClientDetailQuery.isFetching
+  );
+  const freshAssignClient = resolveFreshAssignmentClient(
+    assignClientId,
+    assignClientDetailQuery.data,
+    { fetching: assignClientRefreshing }
+  );
   const foodsQuery = useAlimentos({});
   const foods = foodsQuery.data?.all || [];
   const comidasQuery = useComidas(
@@ -335,6 +350,12 @@ function MenusWorkspace({ me }) {
     setAssignDayKeys([]);
   }
 
+  function closeAssign() {
+    setAssignMenu(null);
+    setAssignClientId("");
+    setAssignDayKeys([]);
+  }
+
   function changeAssignClient(clientId) {
     setAssignClientId(clientId);
     setAssignDayKeys([]);
@@ -349,7 +370,7 @@ function MenusWorkspace({ me }) {
   }
 
   async function confirmAssign() {
-    const selectedClient = (clientsQuery.data?.clients || []).find((client) => String(client.id || client._id) === String(assignClientId));
+    const selectedClient = freshAssignClient;
     const dayRows = selectedClient ? buildAssignDayRows(selectedClient, assignMenu) : [];
     const selectedRows = dayRows.filter((row) => assignDayKeys.includes(row.day.key));
     const invalidRow = selectedRows.find((row) => {
@@ -359,6 +380,13 @@ function MenusWorkspace({ me }) {
 
     if (!assignMenu || !assignClientId || !assignDayKeys.length) {
       setToast({ type: "warning", message: "Elegí cliente y al menos un día para asignar el menú." });
+      return;
+    }
+    if (assignClientRefreshing || assignClientDetailQuery.error) {
+      setToast({
+        type: "warning",
+        message: assignClientDetailQuery.error?.message || "Todavia estamos actualizando la planificacion nutricional del cliente.",
+      });
       return;
     }
     if (!selectedClient || invalidRow) {
@@ -625,10 +653,14 @@ function MenusWorkspace({ me }) {
             menu={assignMenu}
             clients={clientsQuery.data?.clients || []}
             clientId={assignClientId}
+            selectedClient={freshAssignClient}
+            clientLoading={assignClientRefreshing}
+            clientError={assignClientDetailQuery.error}
+            onRetryClient={() => assignClientDetailQuery.refetch()}
             dayKeys={assignDayKeys}
             onClientChange={changeAssignClient}
             onDayToggle={toggleAssignDay}
-            onClose={() => setAssignMenu(null)}
+            onClose={closeAssign}
             onConfirm={confirmAssign}
             saving={busy === "assign"}
           />
@@ -1227,8 +1259,7 @@ function SkeletonGrid() {
   );
 }
 
-function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, onDayToggle, onClose, onConfirm, saving }) {
-  const selectedClient = clients.find((client) => String(client.id || client._id) === String(clientId)) || null;
+function AssignModal({ menu, clients, clientId, selectedClient, clientLoading, clientError, onRetryClient, dayKeys = [], onClientChange, onDayToggle, onClose, onConfirm, saving }) {
   const dayRows = useMemo(() => (selectedClient ? buildAssignDayRows(selectedClient, menu) : []), [menu, selectedClient]);
   const selectedRows = dayRows.filter((row) => dayKeys.includes(row.day.key));
   const compatibilityRows = selectedRows.map((row) => ({
@@ -1241,7 +1272,7 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
   const proteinWarningRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.proteinLow && row.compatibility?.canAssign);
   const surplusWarningRows = compatibilityRows.filter((row) => row.hasValidTarget && row.compatibility?.key === "surplus_warning");
   const replacingRows = compatibilityRows.filter((row) => row.assignment);
-  const canAssign = Boolean(clientId && selectedRows.length && invalidRows.length === 0);
+  const canAssign = Boolean(clientId && selectedClient && !clientLoading && !clientError && selectedRows.length && invalidRows.length === 0);
   const selectedNames = selectedRows.map((row) => row.day.label).join(", ");
   const compatibilitySummary = flexibleRows.length
     ? `${validRows.length}/${selectedRows.length} compatible${validRows.length === 1 ? "" : "s"} con margen flexible`
@@ -1294,6 +1325,20 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
             })}
           </select>
         </label>
+
+        {clientId && clientLoading ? (
+          <div className="nf-assignHint" role="status">
+            <RefreshCcw size={16} aria-hidden="true" />
+            Actualizando metas y planificacion semanal del cliente...
+          </div>
+        ) : null}
+
+        {clientId && !clientLoading && clientError ? (
+          <div className="nf-assignWarning" role="alert">
+            <span>No pudimos obtener la planificacion nutricional vigente. No se habilitara la asignacion con datos resumidos.</span>
+            <button type="button" className="nf-btn ghost" onClick={onRetryClient}>Reintentar</button>
+          </div>
+        ) : null}
 
         {selectedClient ? (
           <section className="nf-assignSection">
@@ -1425,7 +1470,7 @@ function AssignModal({ menu, clients, clientId, dayKeys = [], onClientChange, on
 }
 
 function buildAssignDayRows(client, menu) {
-  const nutritionWeek = resolveNutritionWeek(nutritionDraftFromClient(client));
+  const nutritionWeek = resolveNutritionWeek(nutritionDraftForMenuAssignment(client));
   return NUTRITION_WEEK_DAYS.map((day) => {
     const target = nutritionWeek.targets[day.key];
     const assignment = getWeeklyAssignmentForDay(client, day.key);
@@ -1440,17 +1485,6 @@ function buildAssignDayRows(client, menu) {
       compatibility: getAssignCompatibility(menu, target),
     };
   });
-}
-
-function nutritionDraftFromClient(client = {}) {
-  const macros = client?.metasActuales?.macros || {};
-  return {
-    kcal: client?.metasActuales?.kcal || "",
-    p: macros.p ?? macros.proteina ?? macros.protein ?? "",
-    c: macros.c ?? macros.carbs ?? macros.carbohidratos ?? "",
-    g: macros.g ?? macros.grasas ?? macros.fat ?? "",
-    dailyTargets: createDailyTargetsDraft(client),
-  };
 }
 
 function getAssignCompatibility(menu = {}, target = {}) {
@@ -1560,7 +1594,7 @@ function buildNextWeeklyAssignments(client = {}, dayKeys = [], menu = {}) {
   const snapshot = snapshotFromAssignableMenu(menu);
   const assignedAt = new Date().toISOString();
   const keys = Array.isArray(dayKeys) ? dayKeys : [dayKeys].filter(Boolean);
-  const nutritionWeek = resolveNutritionWeek(nutritionDraftFromClient(client));
+  const nutritionWeek = resolveNutritionWeek(nutritionDraftForMenuAssignment(client));
 
   return keys.reduce((nextAssignments, dayKey) => {
     const currentEntry = nextAssignments?.[dayKey] || {};

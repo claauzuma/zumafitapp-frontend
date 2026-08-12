@@ -35,6 +35,7 @@ import {
   Target,
   Trash2,
   Utensils,
+  WandSparkles,
   X,
 } from "lucide-react";
 
@@ -80,6 +81,7 @@ import {
 } from "./ManualDayCompletion.jsx";
 import EquivalentMealBuilder from "./EquivalentMealBuilder.jsx";
 import { resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
+import { menuWeekCacheKey, menuWeekCacheOwner } from "./menuWeekCache.js";
 import {
   DEFAULT_MENU_GENERATION_SETTINGS,
   MENU_GENERATION_MODE_COMBINE,
@@ -134,8 +136,8 @@ function canUseFlexibleMarginCalculation(permissions = {}) {
   return permissions?.canUseFlexibleMarginRecommendations === true;
 }
 
-function getMenuWeekCacheEntry(start) {
-  const key = start || mondayOfWeek();
+function getMenuWeekCacheEntry(start, owner) {
+  const key = menuWeekCacheKey(start || mondayOfWeek(), owner);
   const cached = menuWeekMemoryCache.get(key);
   if (!cached?.data) return null;
   if (Date.now() - cached.savedAt > MENU_WEEK_CACHE_TTL_MS) {
@@ -145,20 +147,20 @@ function getMenuWeekCacheEntry(start) {
   return cached;
 }
 
-function getCachedMenuWeek(start) {
-  const cached = getMenuWeekCacheEntry(start);
+function getCachedMenuWeek(start, owner) {
+  const cached = getMenuWeekCacheEntry(start, owner);
   return cached?.data || null;
 }
 
-function shouldRefreshCachedMenuWeek(start) {
-  const cached = getMenuWeekCacheEntry(start);
+function shouldRefreshCachedMenuWeek(start, owner) {
+  const cached = getMenuWeekCacheEntry(start, owner);
   if (!cached) return true;
   return Date.now() - cached.savedAt > MENU_WEEK_BACKGROUND_REFRESH_MS;
 }
 
-function setCachedMenuWeek(start, data) {
+function setCachedMenuWeek(start, owner, data) {
   if (!start || !data) return;
-  menuWeekMemoryCache.set(start, {
+  menuWeekMemoryCache.set(menuWeekCacheKey(start, owner), {
     data,
     savedAt: Date.now(),
   });
@@ -2068,6 +2070,7 @@ export default function MenuPlan() {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUser = useMemo(() => getCachedUser() || {}, []);
+  const menuCacheOwner = useMemo(() => menuWeekCacheOwner(currentUser), [currentUser]);
   const [quickSettings, setQuickSettings] = useState(() => loadMenuGenerationSettings(currentUser));
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [quickGenerating, setQuickGenerating] = useState(false);
@@ -2078,8 +2081,8 @@ export default function MenuPlan() {
   const initialSelectedDate = requestedDate || currentDate;
   const initialWeek = useMemo(() => {
     const start = mondayOfWeek(initialSelectedDate);
-    return { start, data: getCachedMenuWeek(start) };
-  }, [initialSelectedDate]);
+    return { start, data: getCachedMenuWeek(start, menuCacheOwner) };
+  }, [initialSelectedDate, menuCacheOwner]);
   const [weekStart, setWeekStart] = useState(initialWeek.start);
   const [weekData, setWeekData] = useState(initialWeek.data);
   const [loading, setLoading] = useState(() => !initialWeek.data);
@@ -2106,9 +2109,9 @@ export default function MenuPlan() {
 
   async function loadWeek(start = weekStart, options = {}) {
     const silent = !!options.silent;
-    const cached = getCachedMenuWeek(start);
+    const cached = getCachedMenuWeek(start, menuCacheOwner);
     const hydrateFromCache = !silent && cached;
-    const canUseFreshCacheOnly = hydrateFromCache && !shouldRefreshCachedMenuWeek(start);
+    const canUseFreshCacheOnly = hydrateFromCache && !shouldRefreshCachedMenuWeek(start, menuCacheOwner);
     if (hydrateFromCache) {
       setWeekData(cached);
       setLoading(false);
@@ -2126,7 +2129,7 @@ export default function MenuPlan() {
     }
     try {
       const data = await getMenuTrackingWeek(start);
-      setCachedMenuWeek(start, data);
+      setCachedMenuWeek(start, menuCacheOwner, data);
       setWeekData(data);
       setDetailRow((current) => current ? (data?.days || []).find((day) => day.date === current.date) || current : current);
       setMealDrawer((current) => {
@@ -2234,6 +2237,16 @@ export default function MenuPlan() {
     navigate(libraryTargetPath(selectedRow?.date, selectedQuickTarget), {
       state: { from: `${location.pathname}${location.search}` },
     });
+  }
+
+  async function openMenuOptions() {
+    setMenuOptionsDrawerOpen(true);
+    try {
+      await loadWeek(weekStart, { silent: true });
+    } catch (err) {
+      setToast(err?.message || "No se pudieron actualizar las opciones del menu.");
+      window.setTimeout(() => setToast(""), 2600);
+    }
   }
 
   function openQuickCreateMenu() {
@@ -2467,6 +2480,11 @@ export default function MenuPlan() {
       }
       setToast("Los ajustes de reemplazo no estan habilitados para este acceso.");
       window.setTimeout(() => setToast(""), 3000);
+      return;
+    }
+    if (payload.action === "replace" && equivalentMealAccess.canCreate) {
+      setMealDrawer(null);
+      setEquivalentMealBuilder({ ...payload, initialSection: "library" });
       return;
     }
     setMealDrawer({
@@ -3186,7 +3204,7 @@ export default function MenuPlan() {
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
                 previousDisabled={previousDayDisabled}
-                onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
+                onOpenMenuOptions={openMenuOptions}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedRow, options)}
                 onOpenFlexibleMargin={openFlexibleMargin}
                 onToggleFlexibleMarginCompleted={toggleFlexibleMarginCompleted}
@@ -3213,7 +3231,7 @@ export default function MenuPlan() {
                 onPrevious={() => moveSelectedDay(-1)}
                 onNext={() => moveSelectedDay(1)}
                 onView={() => setDetailRow(selectedDisplayRow)}
-                onOpenMenuOptions={() => setMenuOptionsDrawerOpen(true)}
+                onOpenMenuOptions={openMenuOptions}
                 onEditActiveMenu={(options) => openActiveMenuEditor(selectedDisplayRow, options)}
                 onToggleMeal={toggleMenuMeal}
                 onOpenMeal={openMealAction}
@@ -4561,7 +4579,12 @@ function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activ
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
-        <div className="min-w-0">
+        <button
+          type="button"
+          onClick={onOpenOptions}
+          className="min-w-0 rounded-xl text-left focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/35"
+          aria-label={choicesCount > 1 ? `Ver menu y ${choicesCount - 1} alternativas` : `Ver opciones de ${menuName}`}
+        >
           <h2 className="line-clamp-2 text-[17px] font-black leading-tight text-white" title={menuName}>
             {menuName}
           </h2>
@@ -4570,7 +4593,13 @@ function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activ
             <span className="hidden sm:inline"> · </span>
             <span className="block sm:inline">{summaryParts.secondary}</span>
           </p>
-        </div>
+          {choicesCount > 1 ? (
+            <span className="mt-1.5 inline-flex min-h-6 items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-300/[0.08] px-2 text-[10px] font-black text-sky-100">
+              <Layers3 size={12} aria-hidden="true" />
+              {choicesCount - 1} alternativa{choicesCount - 1 === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </button>
 
         <div className="flex shrink-0 items-center gap-2">
           {isOwn ? (
@@ -4582,6 +4611,20 @@ function MobileActiveMenuLine({ choice, activePlan = {}, choicesCount = 0, activ
               title="Editar menu"
             >
               <PencilLine size={16} />
+            </button>
+          ) : null}
+          {choicesCount > 1 ? (
+            <button
+              type="button"
+              onClick={onOpenOptions}
+              className="relative grid h-9 w-9 place-items-center rounded-xl border border-sky-300/30 bg-sky-300/[0.08] text-sky-100 shadow-[0_8px_20px_rgba(0,0,0,.16)] active:scale-[0.98]"
+              aria-label={`Ver ${choicesCount - 1} alternativas de menu`}
+              title="Alternativas"
+            >
+              <Layers3 size={17} />
+              <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full border border-[#080d12] bg-[#D4AF37] px-1 text-[9px] font-black text-black">
+                {choicesCount - 1}
+              </span>
             </button>
           ) : null}
           <button
@@ -4623,7 +4666,7 @@ function MobileMenuOptionsDrawer({
   const isOwn = sourceMeta.key === "own";
   const isCoach = sourceMeta.key === "coach";
   const showChoiceSelector = choices.length > 1;
-  const drawerTitle = showChoiceSelector ? "Cambiar menu" : "Opciones del menu";
+  const drawerTitle = showChoiceSelector ? "Menú y alternativas" : "Información del menú";
 
   useEffect(() => {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -4655,7 +4698,7 @@ function MobileMenuOptionsDrawer({
         type="button"
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
-        aria-label="Cerrar opciones de menu"
+        aria-label={`Cerrar ${drawerTitle.toLowerCase()}`}
       />
       <section className="absolute inset-x-0 bottom-0 max-h-[82dvh] overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[#080d12] shadow-[0_-18px_54px_rgba(0,0,0,.55)]">
         <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/20" />
@@ -4699,6 +4742,47 @@ function MobileMenuOptionsDrawer({
               </span>
             ) : null}
           </div>
+
+          {showChoiceSelector ? (
+            <section className="mb-3 rounded-[1.15rem] border border-sky-300/20 bg-sky-300/[0.035] p-2.5">
+              <header className="mb-2.5 flex items-center justify-between gap-3 px-1">
+                <div className="min-w-0">
+                  <strong className="flex items-center gap-2 text-sm font-black text-white">
+                    <Layers3 size={16} className="text-sky-200" aria-hidden="true" />
+                    Elegir menu para hoy
+                  </strong>
+                  <span className="mt-0.5 block text-[11px] font-bold text-zinc-500">
+                    El menu del coach no cambia; solamente elegis cual usar hoy.
+                  </span>
+                </div>
+                <span className="shrink-0 rounded-full border border-sky-300/25 bg-sky-300/[0.08] px-2 py-1 text-[10px] font-black text-sky-100">
+                  {choices.length} opciones
+                </span>
+              </header>
+              <div className="grid gap-2.5">
+                {choices.map((choice) => (
+                  <MobileMenuOptionRow
+                    key={choice.key}
+                    row={row}
+                    choice={choice}
+                    saving={saving}
+                    onClose={onClose}
+                    onSelectChoice={onSelectChoice}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : activeChoice ? (
+            <div className="mb-3 flex items-start gap-2.5 rounded-[1.05rem] border border-white/10 bg-white/[0.025] p-3">
+              <Layers3 size={17} className="mt-0.5 shrink-0 text-zinc-500" aria-hidden="true" />
+              <div>
+                <strong className="block text-xs font-black text-zinc-300">1 menú principal / 0 alternativas</strong>
+                <span className="mt-0.5 block text-[11px] font-bold leading-relaxed text-zinc-500">
+                  Tu coach todavía no guardó otro menú como alternativa para este día.
+                </span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mb-3 grid gap-2">
             {isOwn ? (
@@ -4786,20 +4870,7 @@ function MobileMenuOptionsDrawer({
             ) : null}
           </div>
 
-          {showChoiceSelector ? (
-            <div className="grid gap-2.5">
-              {choices.map((choice) => (
-                <MobileMenuOptionRow
-                  key={choice.key}
-                  row={row}
-                  choice={choice}
-                  saving={saving}
-                  onClose={onClose}
-                  onSelectChoice={onSelectChoice}
-                />
-              ))}
-            </div>
-          ) : !activeChoice ? (
+          {!activeChoice ? (
             <MobileEmptyCard
               title="No hay menus disponibles."
               text="Cuando tu coach asigne un menu, va a aparecer aca."
@@ -6642,16 +6713,16 @@ function MealCompactActions({
   canConfigure = true,
   saveDisabled = false,
 }) {
-  const buttonClass = "group inline-flex min-h-11 min-w-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 text-[10px] font-black transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 sm:flex-none sm:px-3";
+  const buttonClass = "group inline-flex h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-[10px] font-black transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto sm:px-3";
   return (
-    <div className="flex min-w-0 items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-black/25 p-1.5" role="group" aria-label="Acciones de la comida">
+    <div className="flex w-fit max-w-full items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-black/25 p-1.5" role="group" aria-label="Acciones de la comida">
       <button type="button" onClick={onDetail} className={`${buttonClass} border-white/10 bg-white/[0.05] text-zinc-100`} aria-label="Ver detalle de la comida" title="Detalle">
         <Eye size={16} /><span className="hidden sm:inline">Detalle</span>
       </button>
-      <button type="button" onClick={onReplace} disabled={!canReplace} className={`${buttonClass} border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100`} aria-label="Buscar otra comida equivalente" title="Buscar reemplazo">
-        <Search size={16} /><span className="hidden sm:inline">Buscar</span>
+      <button type="button" onClick={onReplace} disabled={!canReplace} className={`${buttonClass} border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100`} aria-label="Armar otra comida equivalente" title="Armar alternativa">
+        <WandSparkles size={16} /><span className="hidden sm:inline">Alternativa</span>
       </button>
-      <button type="button" onClick={onSettings} disabled={!canConfigure} className={`${buttonClass} border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]`} aria-label="Ajustar alimentos del reemplazo" title="Ajustar búsqueda">
+      <button type="button" onClick={onSettings} disabled={!canConfigure} className={`${buttonClass} border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#FFE16B] shadow-[inset_0_0_18px_rgba(212,175,55,.08),0_6px_18px_rgba(0,0,0,.18)]`} aria-label="Abrir ajustes de generación" title="Ajustes de generación">
         <SlidersHorizontal size={16} /><span className="hidden sm:inline">Ajustar</span>
       </button>
       {onSave ? (
@@ -8379,7 +8450,7 @@ function MobileMealReplacementPanel({
       {canCreateEquivalentMeal ? (
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button type="button" onClick={onBrowseLibrary} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/[0.08] px-2 text-[11px] font-black text-cyan-100 disabled:opacity-50">
-            <Search size={16} /> Base de comidas
+            <WandSparkles size={16} /> Armar alternativa
           </button>
           <button type="button" onClick={onConfigureFoods} disabled={saving} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2 text-[11px] font-black text-[#FFE8A3] disabled:opacity-50">
             <SlidersHorizontal size={16} /> Por alimentos

@@ -6,6 +6,8 @@ import {
   equivalentMealDraftStorageKey,
   equivalentLibrarySourceLabel,
   filterEquivalentLibraryMeals,
+  generatedAlternativeToDrafts,
+  nextGeneratedAlternativeIndex,
   resolveEquivalentMealAccess,
 } from "./menuEquivalentMeal.js";
 
@@ -80,4 +82,26 @@ test("la biblioteca explica el origen autorizado de cada comida", () => {
   assert.equal(equivalentLibrarySourceLabel({ ownerType: "coach" }), "Biblioteca del coach");
   assert.equal(equivalentLibrarySourceLabel({ ownerType: "admin" }), "Biblioteca ZumaFit");
   assert.equal(equivalentLibrarySourceLabel({ assigned: true, ownerType: "coach" }), "Alternativa del coach");
+});
+
+test("la alternativa del backend se transforma en borrador y recorre opciones sin azar", () => {
+  const alternative = {
+    foods: [
+      { foodId: "pollo", name: "Pollo", quantity: 180 },
+      { foodId: "arroz", name: "Arroz", quantity: 120 },
+    ],
+  };
+  const drafts = generatedAlternativeToDrafts(alternative, (food, index, optionIndex) => ({
+    id: `${optionIndex}-${index}`,
+    foodId: food.foodId,
+    quantity: food.quantity,
+  }), 6, 2);
+  assert.deepEqual(drafts, [
+    { id: "2-0", foodId: "pollo", quantity: 180 },
+    { id: "2-1", foodId: "arroz", quantity: 120 },
+  ]);
+  assert.equal(nextGeneratedAlternativeIndex(-1, [1, 2, 3]), 0);
+  assert.equal(nextGeneratedAlternativeIndex(0, [1, 2, 3]), 1);
+  assert.equal(nextGeneratedAlternativeIndex(2, [1, 2, 3]), 0);
+  assert.equal(nextGeneratedAlternativeIndex(0, []), -1);
 });

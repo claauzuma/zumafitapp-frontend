@@ -498,6 +498,28 @@
   border-color: rgba(255, 100, 100, 0.28);
 }
 
+.wmp-btn.pin,
+.wmp-primaryBadge {
+  color: #fff1ae;
+  border-color: rgba(245, 215, 110, 0.4);
+  background: rgba(245, 215, 110, 0.1);
+}
+
+.wmp-primaryBadge {
+  width: fit-content;
+  margin-left: 7px;
+  border: 1px solid rgba(245, 215, 110, 0.3);
+  border-radius: 999px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .wmp-iconBtn:disabled,
 .wmp-btn:disabled {
   opacity: 0.45;

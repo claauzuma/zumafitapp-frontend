@@ -14,12 +14,13 @@ export function useProfessionalClients() {
   });
 }
 
-export function useProfessionalClientDetail(clientId) {
+export function useProfessionalClientDetail(clientId, options = {}) {
   return useQuery({
     queryKey: queryKeys.professionalClientDetail(clientId),
     queryFn: () => getProfessionalClientDetail(clientId),
-    enabled: Boolean(clientId),
     staleTime: STALE_TIMES.professionalClientDetail,
+    ...options,
+    enabled: Boolean(clientId) && options.enabled !== false,
   });
 }
 

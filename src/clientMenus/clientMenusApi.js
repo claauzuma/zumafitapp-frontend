@@ -27,6 +27,31 @@ export async function authorizeClientMenuGeneration() {
   });
 }
 
+export async function getEquivalentMealGenerationSettings({ menuId, mealId, mealName = "" } = {}) {
+  const data = await apiFetch(`/api/clientes/me/menus/equivalent-generation-settings${qsFrom({ menuId, mealId, mealName })}`, {
+    method: "GET",
+    timeoutMs: 10000,
+  });
+  return data?.settings || null;
+}
+
+export async function saveEquivalentMealGenerationSettings(payload = {}) {
+  const data = await apiFetch("/api/clientes/me/menus/equivalent-generation-settings", {
+    method: "PUT",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return data?.settings || null;
+}
+
+export async function generateEquivalentMealAlternative(payload = {}) {
+  return await apiFetch("/api/clientes/me/menus/equivalent-alternatives/generate", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 30000,
+  });
+}
+
 export async function listClientMenus(filters = {}) {
   return await apiFetch(`/api/clientes/me/menus${qsFrom(filters)}`, {
     method: "GET",

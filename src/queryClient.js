@@ -124,6 +124,23 @@ export const queryKeys = {
     !!resetOverrides,
   ],
   adminEffectiveCapabilities: (coachId) => ["admin", "effectiveCapabilities", cleanId(coachId)],
+  adminFoods: (filters = {}) => [
+    "admin",
+    "foods",
+    {
+      page: Number(filters.page) || 1,
+      limit: Number(filters.limit) || 40,
+      search: cleanText(filters.search),
+      category: cleanFilter(filters.category),
+      unit: cleanFilter(filters.unit),
+      status: cleanFilter(filters.status),
+      sort: cleanText(filters.sort || "nombre_asc"),
+      mode: cleanFilter(filters.mode),
+      role: cleanFilter(filters.role),
+      mealType: cleanFilter(filters.mealType),
+    },
+  ],
+  adminFoodsRoot: () => ["admin", "foods"],
   adminDatabaseStats: () => ["admin", "databaseStats"],
   adminCollectionDetail: (collectionName) => ["admin", "collection", cleanId(collectionName), "detail"],
   adminCollectionDocuments: (collectionName, params = {}) => [
