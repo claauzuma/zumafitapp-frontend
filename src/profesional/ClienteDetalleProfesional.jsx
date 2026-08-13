@@ -8,6 +8,7 @@ import {
   Beef,
   CalendarDays,
   Check,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Copy,
@@ -62,6 +63,7 @@ import {
 } from "../nutricion/dailyNutritionTargets.js";
 import AppToast from "../ui/AppToast.jsx";
 import { buildNutritionAssignmentImpact } from "./nutritionAssignmentImpact.js";
+import { compactEquivalentActivity, equivalentActivitySummary } from "./equivalentActivityView.js";
 import "./profesionalPanel.css";
 
 const MODE_LABELS = {
@@ -94,8 +96,9 @@ export default function ClienteDetalleProfesional() {
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [nutritionPreview, setNutritionPreview] = useState(null);
   const [pendingNutritionSave, setPendingNutritionSave] = useState(null);
-  const [equivalentActivity, setEquivalentActivity] = useState({ activity: [], notifications: [], weeklyDigest: [], total: 0 });
+  const [equivalentActivity, setEquivalentActivity] = useState({ activity: [], notifications: [], weeklyDigest: [], clientMealAlternatives: [], total: 0 });
   const [equivalentActivityLoading, setEquivalentActivityLoading] = useState(false);
+  const [equivalentActivityExpanded, setEquivalentActivityExpanded] = useState(false);
   const detailQuery = useProfessionalClientDetail(clientId);
   const loading = detailQuery.isLoading;
   const loadErr = detailQuery.error?.message || "";
@@ -105,6 +108,8 @@ export default function ClienteDetalleProfesional() {
   const availableAutonomyPresets = client?.clientPermissions?.menu?.availableAutonomyPresets
     || coach?.effectiveCapabilities?.clientAutonomy?.availablePresets
     || {};
+  const compactActivity = useMemo(() => compactEquivalentActivity(equivalentActivity.activity), [equivalentActivity.activity]);
+  const activitySummary = useMemo(() => equivalentActivitySummary(equivalentActivity.activity), [equivalentActivity.activity]);
 
   const [nutritionDraft, setNutritionDraft] = useState(() => createNutritionDraft(null));
   const [menuDraft, setMenuDraft] = useState(() => createMenuDraft(null));
@@ -132,7 +137,7 @@ export default function ClienteDetalleProfesional() {
         if (active) setEquivalentActivity(data);
       })
       .catch(() => {
-        if (active) setEquivalentActivity({ activity: [], notifications: [], weeklyDigest: [], total: 0 });
+        if (active) setEquivalentActivity({ activity: [], notifications: [], weeklyDigest: [], clientMealAlternatives: [], total: 0 });
       })
       .finally(() => {
         if (active) setEquivalentActivityLoading(false);
@@ -765,23 +770,52 @@ export default function ClienteDetalleProfesional() {
               </div>
             </section>
 
-            <section className="prof-panel">
-              <div className="prof-titleRow">
+            <section className="prof-panel prof-equivalenceActivity">
+              <button type="button" className="prof-equivalenceActivityHead" onClick={() => setEquivalentActivityExpanded((value) => !value)} aria-expanded={equivalentActivityExpanded}>
                 <div>
                   <strong>Actividad de equivalencias</strong>
-                  <p className="prof-muted">Los borradores y las busquedas no generan avisos. Aca aparecen creaciones, consumos, alertas y revisiones.</p>
+                  <p className="prof-muted">Resumen de cambios, consumos y revisiones del cliente.</p>
                 </div>
-                <Activity size={20} aria-hidden="true" />
+                <span><Activity size={18} aria-hidden="true" /><ChevronDown size={18} className={equivalentActivityExpanded ? "open" : ""} aria-hidden="true" /></span>
+              </button>
+              <div className="prof-equivalenceStats" aria-label="Resumen de actividad">
+                <span className={activitySummary.pending ? "attention" : ""}>{activitySummary.pending} pendientes</span>
+                <span className={activitySummary.attention ? "attention" : ""}>{activitySummary.attention} alertas</span>
+                <span>{activitySummary.consumed} consumidas</span>
+                <span>{activitySummary.created} creadas</span>
               </div>
+              {equivalentActivity.clientMealAlternatives?.length && equivalentActivityExpanded ? (
+                <div className="prof-stack">
+                  {equivalentActivity.clientMealAlternatives.slice(0, 6).map((alternative) => (
+                    <article key={`${alternative.date}-${alternative.id}`} className="prof-card compact">
+                      <div className="prof-titleRow">
+                        <div>
+                          <strong>{alternative.name || "Alternativa del cliente"}</strong>
+                          <p className="prof-muted">{alternative.date} · reemplaza {alternative.originalMealName || "comida del menu"}</p>
+                        </div>
+                        <span className={`prof-chip ${alternative.active ? "good" : ""}`}>{alternative.active ? "Elegida" : "Guardada"}</span>
+                      </div>
+                      <p className="prof-muted">
+                        {Math.round(Number(alternative.resultTotals?.kcal) || 0)} kcal · P {Math.round(Number(alternative.resultTotals?.proteina) || 0)} g · {(alternative.foods || []).length} alimentos
+                      </p>
+                      <div className="prof-chipRow">
+                        {(alternative.foods || []).slice(0, 6).map((food, index) => (
+                          <span key={`${food.id || food.name}-${index}`} className="prof-chip">{food.name} {food.quantity} {food.unit}</span>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               {equivalentActivityLoading ? (
                 <p className="prof-muted">Cargando actividad...</p>
-              ) : equivalentActivity.activity.length ? (
+              ) : equivalentActivityExpanded && compactActivity.length ? (
                 <div className="prof-stack">
-                  {equivalentActivity.activity.slice(0, 8).map((item) => {
+                  {compactActivity.slice(0, 12).map((item) => {
                     const pending = item.event === "client_equivalent_pending_approval";
                     return (
                       <article key={item.id} className="prof-card compact">
-                        <strong>{equivalentEventLabel(item.event)}</strong>
+                        <strong>{equivalentEventLabel(item.event)}{item.occurrences > 1 ? ` · ${item.occurrences} veces` : ""}</strong>
                         <p className="prof-muted">{item.metadata?.date || "Sin fecha"} · {item.metadata?.mealName || "Comida"}</p>
                         {pending ? (
                           <div className="prof-actions compact">
@@ -796,9 +830,9 @@ export default function ClienteDetalleProfesional() {
                     <p className="prof-muted">Resumen {equivalentActivity.weeklyDigest[0].weekStart} a {equivalentActivity.weeklyDigest[0].weekEnd}: {equivalentActivity.weeklyDigest[0].total} eventos.</p>
                   ) : null}
                 </div>
-              ) : (
+              ) : equivalentActivityExpanded ? (
                 <p className="prof-muted">Todavia no hay actividad de equivalencias para este cliente.</p>
-              )}
+              ) : null}
             </section>
 
             <WeeklyClientMenuPlanner

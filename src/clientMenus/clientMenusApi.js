@@ -52,6 +52,14 @@ export async function generateEquivalentMealAlternative(payload = {}) {
   });
 }
 
+export async function recalculateEquivalentMealAlternative(payload = {}) {
+  return await apiFetch("/api/clientes/me/menus/equivalent-alternatives/recalculate", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 30000,
+  });
+}
+
 export async function listClientMenus(filters = {}) {
   return await apiFetch(`/api/clientes/me/menus${qsFrom(filters)}`, {
     method: "GET",

@@ -128,6 +128,51 @@
     0 12px 28px rgba(22, 3, 8, 0.16);
 }
 
+.wmp-dayCard.target-planned {
+  border-color: rgba(52, 211, 153, 0.42);
+  background:
+    radial-gradient(circle at 100% 0, rgba(45, 212, 191, 0.14), transparent 44%),
+    linear-gradient(145deg, rgba(5, 35, 38, 0.97), rgba(7, 18, 27, 0.98));
+}
+
+.wmp-dayIcon.target-planned,
+.wmp-status.target-planned {
+  border-color: rgba(52, 211, 153, 0.34);
+  background: rgba(16, 185, 129, 0.12);
+  color: #a7f3d0;
+}
+
+.wmp-mealTargetsPlan {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+}
+
+.wmp-mealTargetsPlan > span {
+  color: #6ee7b7;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wmp-mealTargetsPlan > strong {
+  color: #ecfdf5;
+  font-size: 1.1rem;
+}
+
+.wmp-mealTargetsPlan p {
+  margin: 0;
+  color: #fde68a;
+  font-weight: 950;
+}
+
+.wmp-mealTargetsPlan p span,
+.wmp-mealTargetsPlan small {
+  color: #a7b3c4;
+  font-weight: 750;
+}
+
 .wmp-dayCard.empty::before {
   background: linear-gradient(90deg, #f87171, #fb9a7f 60%, transparent);
 }
@@ -428,8 +473,52 @@
 
 .wmp-emptyActions {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 1px;
+}
+
+.wmp-emptyPlan {
+  min-height: 124px;
+  border: 1px solid rgba(248, 113, 113, 0.16);
+  border-radius: 14px;
+  background: rgba(8, 12, 18, 0.28);
+  padding: 12px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+}
+
+.wmp-emptyPlanLabel {
+  width: fit-content;
+  color: #ffc1c1;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.wmp-emptyPlan > strong {
+  margin-top: 4px;
+  color: #aebaca;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wmp-emptyPlan p {
+  margin: 0;
+  color: #fff0ae;
+  font-size: 19px;
+  font-weight: 950;
+}
+
+.wmp-emptyPlan p span,
+.wmp-emptyPlan small {
+  color: #b9c5d3;
+}
+
+.wmp-emptyPlan small {
+  line-height: 1.4;
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .wmp-emptyAction {
@@ -453,6 +542,668 @@
   border-color: rgba(248, 113, 113, 0.56);
   background: linear-gradient(135deg, rgba(153, 27, 27, 0.78), rgba(102, 25, 44, 0.78));
   color: #fff1f1;
+}
+
+.wmp-emptyAction.target {
+  color: #fff0ae;
+  border-color: rgba(245, 215, 110, 0.38);
+  background: rgba(245, 215, 110, 0.08);
+}
+
+.wmp-planningActionsOverlay {
+  justify-content: center;
+  align-items: center;
+  padding: 18px;
+}
+
+.wmp-planningActionsPanel {
+  width: min(620px, 100%);
+  border: 1px solid rgba(245, 215, 110, 0.22);
+  border-radius: 20px;
+  background: linear-gradient(160deg, #111a26, #080d14 72%);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+  padding: 18px;
+  display: grid;
+  gap: 15px;
+}
+
+.wmp-planningActionsPanel.compact {
+  width: min(520px, 100%);
+}
+
+.wmp-planningActionsPanel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.wmp-planningActionsPanel header span {
+  color: #f5d76e;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wmp-planningActionsPanel h3,
+.wmp-planningActionsPanel p {
+  margin: 0;
+}
+
+.wmp-planningActionsPanel h3 {
+  margin-top: 4px;
+  color: #f8fafc;
+  font-size: 25px;
+}
+
+.wmp-planningActionsPanel header p {
+  margin-top: 5px;
+  color: #aeb9c7;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.wmp-planningActionsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.wmp-planningActionsGrid > button {
+  min-height: 92px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #f4f7fb;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wmp-planningActionsGrid > button:hover:not(:disabled) {
+  border-color: rgba(245, 215, 110, 0.4);
+  background: rgba(245, 215, 110, 0.07);
+}
+
+.wmp-planningActionsGrid > button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.wmp-planningActionsGrid > button > span {
+  display: grid;
+  gap: 5px;
+}
+
+.wmp-planningActionsGrid strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.wmp-planningActionsGrid small {
+  color: #9fabb9;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wmp-targetModeOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 145;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.wmp-targetModePanel {
+  width: min(940px, 100%);
+  max-height: min(860px, calc(100dvh - 44px));
+  overflow: auto;
+  border: 1px solid rgba(71, 171, 255, 0.32);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(23, 91, 180, 0.24), transparent 36%),
+    radial-gradient(circle at 0% 100%, rgba(15, 118, 110, 0.11), transparent 38%),
+    linear-gradient(155deg, #07101b, #050a12 65%, #07111d);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.66), inset 0 1px rgba(255, 255, 255, 0.03);
+  color: #f8fafc;
+}
+
+.wmp-targetModeHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 26px 28px 8px;
+}
+
+.wmp-targetModeHeader h2,
+.wmp-targetModeHeader p,
+.wmp-targetModeBody p {
+  margin: 0;
+}
+
+.wmp-targetModeHeader h2 {
+  font-size: clamp(26px, 3vw, 37px);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.wmp-targetModeHeader p {
+  margin-top: 6px;
+  color: #93a3b8;
+  font-size: 14px;
+}
+
+.wmp-targetBack {
+  width: 43px;
+  height: 43px;
+  flex: 0 0 43px;
+  border: 1px solid rgba(45, 212, 191, 0.38);
+  border-radius: 999px;
+  background: rgba(5, 45, 48, 0.52);
+  color: #5eead4;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.wmp-targetModeBody {
+  padding: 18px 28px 22px;
+}
+
+.wmp-currentTarget {
+  border: 1px solid rgba(52, 211, 153, 0.24);
+  border-radius: 19px;
+  background: linear-gradient(135deg, rgba(13, 35, 44, 0.96), rgba(7, 19, 29, 0.88));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.wmp-currentTargetIcon,
+.wmp-targetModeChoiceIcon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.wmp-currentTargetIcon {
+  width: 55px;
+  height: 55px;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.26), rgba(6, 45, 48, 0.22));
+  color: #6ee7b7;
+}
+
+.wmp-currentTargetContent {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.wmp-currentTargetContent > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.wmp-currentTargetContent strong {
+  font-size: 17px;
+}
+
+.wmp-currentTargetContent small {
+  color: #8e9aaa;
+  font-size: 12px;
+}
+
+.wmp-targetMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.wmp-targetMetricGrid > span {
+  min-height: 40px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  color: #dbe4ee;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.wmp-targetMetricGrid > span:first-child { border-left: 0; }
+.wmp-targetMetricGrid .kcal svg { color: #f7c84c; }
+.wmp-targetMetricGrid .protein svg { color: #67e8f9; }
+.wmp-targetMetricGrid .carbs svg { color: #fb923c; }
+.wmp-targetMetricGrid .fat svg { color: #fde047; }
+
+.wmp-targetModeQuestion {
+  margin: 23px 4px 11px !important;
+  color: #92a1b4;
+  font-size: 14px;
+}
+
+.wmp-targetModeChoices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.wmp-targetModeChoice {
+  min-height: 142px;
+  border: 1px solid rgba(71, 171, 255, 0.36);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(6, 25, 42, 0.93), rgba(5, 12, 21, 0.92));
+  color: #eff6ff;
+  padding: 17px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.wmp-targetModeChoice:hover,
+.wmp-targetModeChoice:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.8);
+}
+
+.wmp-targetModeChoice.selected {
+  border-color: #34d399;
+  background: linear-gradient(145deg, rgba(5, 66, 57, 0.68), rgba(5, 27, 31, 0.94));
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.18), 0 0 28px rgba(16, 185, 129, 0.12);
+}
+
+.wmp-targetModeChoice.mixed.selected {
+  border-color: #60a5fa;
+  background: linear-gradient(145deg, rgba(7, 46, 84, 0.72), rgba(5, 20, 36, 0.94));
+}
+
+.wmp-targetModeChoice.daily_only.selected {
+  border-color: #f2c94c;
+  background: linear-gradient(145deg, rgba(74, 54, 8, 0.56), rgba(25, 20, 8, 0.92));
+}
+
+.wmp-targetModeChoiceIcon {
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(52, 211, 153, 0.32);
+  border-radius: 50%;
+  color: #5eead4;
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.wmp-targetModeChoice.mixed .wmp-targetModeChoiceIcon {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.wmp-targetModeChoice.daily_only .wmp-targetModeChoiceIcon {
+  color: #f5d76e;
+  border-color: rgba(245, 215, 110, 0.36);
+  background: rgba(245, 215, 110, 0.08);
+}
+
+.wmp-targetModeChoiceCopy,
+.wmp-targetModeChoiceTitle {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.wmp-targetModeChoiceTitle {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.wmp-targetModeChoiceCopy strong {
+  font-size: 16px;
+}
+
+.wmp-targetModeChoiceCopy > span:last-child {
+  color: #a6b2c2;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wmp-targetModeChoiceTitle small {
+  border: 1px solid rgba(52, 211, 153, 0.32);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.wmp-targetModeArrow { color: currentColor; opacity: 0.8; }
+
+.wmp-targetModeHint {
+  margin: 15px 5px 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8494a8;
+  font-size: 12px;
+}
+
+.wmp-targetModeFooter {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 16px 28px 23px;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.45fr) minmax(240px, 1fr);
+  gap: 12px;
+}
+
+.wmp-targetCancel,
+.wmp-targetContinue {
+  min-height: 52px;
+  border-radius: 14px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.wmp-perMealPanel {
+  width: min(1020px, 100%);
+}
+
+.wmp-perMealHeader .close {
+  margin-left: auto;
+  border-color: rgba(52, 211, 153, 0.28);
+}
+
+.wmp-perMealBody {
+  display: grid;
+  gap: 16px;
+}
+
+.wmp-currentTarget.compact {
+  padding: 13px 15px;
+}
+
+.wmp-mealCountPicker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.wmp-mealCountPicker legend,
+.wmp-mealTargetSection h3 {
+  margin: 0 0 9px;
+  color: #e5e7eb;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.wmp-mealCountPicker > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.wmp-mealCountPicker button {
+  min-height: 45px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #e5e7eb;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.wmp-mealCountPicker button.selected {
+  border-color: #34d399;
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.22), rgba(6, 56, 48, 0.34));
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.18), 0 0 22px rgba(16, 185, 129, 0.12);
+  color: #ecfdf5;
+}
+
+.wmp-mealTargetSection {
+  min-width: 0;
+}
+
+.wmp-mealTargetList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.wmp-mealTargetRow {
+  overflow: hidden;
+  border: 1px solid rgba(52, 211, 153, 0.44);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(7, 49, 43, 0.72), rgba(5, 22, 28, 0.94));
+}
+
+.wmp-mealTargetRow.tone-1 { border-color: rgba(56, 189, 248, 0.48); background: linear-gradient(145deg, rgba(7, 40, 68, 0.74), rgba(5, 19, 31, 0.94)); }
+.wmp-mealTargetRow.tone-2 { border-color: rgba(192, 132, 252, 0.48); background: linear-gradient(145deg, rgba(53, 24, 78, 0.72), rgba(20, 12, 35, 0.94)); }
+.wmp-mealTargetRow.tone-3 { border-color: rgba(250, 204, 21, 0.48); background: linear-gradient(145deg, rgba(68, 52, 5, 0.7), rgba(27, 22, 7, 0.94)); }
+
+.wmp-mealTargetSummary {
+  width: 100%;
+  min-height: 66px;
+  border: 0;
+  background: transparent;
+  color: #f8fafc;
+  padding: 9px 11px;
+  display: grid;
+  grid-template-columns: 42px minmax(90px, 0.8fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wmp-mealTargetSummary > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.wmp-mealTargetIcon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: #6ee7b7;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.tone-1 .wmp-mealTargetIcon { color: #7dd3fc; background: rgba(56, 189, 248, 0.08); }
+.tone-2 .wmp-mealTargetIcon { color: #d8b4fe; background: rgba(192, 132, 252, 0.08); }
+.tone-3 .wmp-mealTargetIcon { color: #fde047; background: rgba(250, 204, 21, 0.08); }
+
+.wmp-targetMetricGrid.compact {
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wmp-targetMetricGrid.compact > span {
+  padding: 7px 5px;
+  font-size: 10px;
+}
+
+.wmp-targetMetricGrid.compact small {
+  color: #8b98a8;
+  font-size: 7px;
+}
+
+.wmp-mealTargetChevron {
+  transition: transform 0.18s ease;
+}
+
+.wmp-mealTargetRow.expanded .wmp-mealTargetChevron {
+  transform: rotate(180deg);
+}
+
+.wmp-mealTargetEditor {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wmp-mealTargetEditor label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.wmp-mealTargetEditor label > span {
+  color: #9aa7b7;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.wmp-mealTargetEditor input {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.wmp-mealTargetEditor select {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  background: #08111b;
+  color: #fff;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.wmp-mealTargetEditor .wmp-mealMomentField {
+  grid-column: span 2;
+}
+
+.wmp-mealTargetValidation,
+.wmp-balancedDistribution {
+  min-height: 46px;
+  border-radius: 14px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wmp-mealTargetValidation {
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background: rgba(56, 189, 248, 0.055);
+  color: #aec3d6;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.wmp-mealTargetValidation.valid { border-color: rgba(52, 211, 153, 0.22); color: #a7f3d0; }
+.wmp-mealTargetValidation.invalid { border-color: rgba(251, 191, 36, 0.3); background: rgba(251, 191, 36, 0.08); color: #fde68a; }
+
+.wmp-balancedDistribution {
+  width: 100%;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+  color: #a7f3d0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wmp-balancedDistribution > span {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.wmp-balancedDistribution small { color: #83a79e; }
+
+.wmp-saveMealTargets {
+  min-height: 50px;
+  border: 1px solid #f8d66a;
+  border-radius: 13px;
+  background: linear-gradient(115deg, #d99d26, #f2c54f);
+  color: #11100b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.wmp-saveMealTargets:disabled,
+.wmp-targetContinue:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.wmp-spin { animation: wmpSpin 0.8s linear infinite; }
+@keyframes wmpSpin { to { transform: rotate(360deg); } }
+
+.wmp-targetCancel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  color: #bdc7d4;
+}
+
+.wmp-targetContinue {
+  border: 1px solid #ffe37b;
+  background: linear-gradient(115deg, #e8bb43, #ffe275);
+  color: #11100b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 8px 26px rgba(240, 190, 50, 0.18);
+}
+
+.wmp-targetBack:focus-visible,
+.wmp-targetModeChoice:focus-visible,
+.wmp-targetCancel:focus-visible,
+.wmp-targetContinue:focus-visible {
+  outline: 2px solid #fde68a;
+  outline-offset: 3px;
 }
 
 .wmp-emptyAction:hover:not(:disabled) {
@@ -843,9 +1594,176 @@
   .wmp-weekSummary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .wmp-targetModeChoices {
+    grid-template-columns: 1fr;
+  }
+
+  .wmp-targetModeChoice {
+    min-height: 100px;
+  }
+
+  .wmp-mealTargetList {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
+  .wmp-targetModeOverlay {
+    place-items: stretch;
+    padding: 0;
+    background: #030812;
+    backdrop-filter: none;
+  }
+
+  .wmp-targetModePanel {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .wmp-targetModeHeader {
+    padding: max(18px, env(safe-area-inset-top)) 14px 7px;
+    gap: 12px;
+  }
+
+  .wmp-targetModeHeader h2 {
+    font-size: 27px;
+  }
+
+  .wmp-targetModeBody {
+    flex: 1;
+    padding: 13px 14px 12px;
+  }
+
+  .wmp-currentTarget {
+    align-items: flex-start;
+    padding: 13px;
+  }
+
+  .wmp-currentTargetIcon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .wmp-currentTargetContent {
+    display: grid;
+    gap: 10px;
+  }
+
+  .wmp-targetMetricGrid {
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .wmp-targetMetricGrid > span {
+    min-width: 0;
+    padding: 7px 4px;
+    font-size: 10px;
+  }
+
+  .wmp-targetModeQuestion {
+    margin-top: 19px !important;
+  }
+
+  .wmp-targetModeChoices {
+    gap: 9px;
+  }
+
+  .wmp-targetModeChoice {
+    min-height: 105px;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    padding: 13px;
+    gap: 11px;
+  }
+
+  .wmp-targetModeChoiceIcon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .wmp-targetModeChoiceTitle {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .wmp-targetModeChoiceTitle small {
+    width: max-content;
+  }
+
+  .wmp-targetModeHint {
+    margin-top: 12px !important;
+  }
+
+  .wmp-targetModeFooter {
+    position: sticky;
+    bottom: 0;
+    padding: 12px 14px max(14px, env(safe-area-inset-bottom));
+    grid-template-columns: 0.85fr 1.15fr;
+    background: linear-gradient(180deg, rgba(5, 10, 18, 0.76), #050a12 24%);
+  }
+
+  .wmp-targetCancel,
+  .wmp-targetContinue {
+    min-height: 50px;
+  }
+
+  .wmp-perMealHeader {
+    align-items: flex-start;
+  }
+
+  .wmp-perMealHeader h2 {
+    font-size: 25px;
+  }
+
+  .wmp-perMealBody {
+    gap: 13px;
+  }
+
+  .wmp-perMealBody .wmp-currentTarget {
+    align-items: center;
+  }
+
+  .wmp-mealCountPicker button {
+    min-height: 42px;
+  }
+
+  .wmp-mealTargetSummary {
+    min-height: 58px;
+    grid-template-columns: 40px minmax(82px, 0.8fr) minmax(0, 2fr) auto;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  .wmp-mealTargetIcon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .wmp-targetMetricGrid.compact > span {
+    min-height: 38px;
+    padding: 5px 2px;
+    font-size: 8.5px;
+    gap: 2px;
+  }
+
+  .wmp-targetMetricGrid.compact svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .wmp-mealTargetEditor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wmp-saveMealTargets {
+    min-height: 48px;
+  }
+
   .wmp-hero,
   .wmp-focus,
   .wmp-pickerCard,
@@ -874,6 +1792,33 @@
   .wmp-cardActions {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .wmp-emptyActions {
+    grid-template-columns: 1fr;
+  }
+
+  .wmp-emptyAction {
+    min-height: 44px;
+  }
+
+  .wmp-planningActionsOverlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .wmp-planningActionsPanel {
+    width: 100%;
+    border-radius: 22px 22px 0 0;
+    padding: 16px 14px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .wmp-planningActionsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .wmp-planningActionsGrid > button {
+    min-height: 64px;
   }
 
   .wmp-iconBtn {

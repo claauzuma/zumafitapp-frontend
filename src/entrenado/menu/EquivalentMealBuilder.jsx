@@ -25,17 +25,15 @@ import {
 import { listAlimentos } from "../../nutricion/nutricionApi.js";
 import { getFoodImageUrl } from "../../nutricion/nutricionUtils.js";
 import { getCachedUser } from "../../authCache.js";
-import { calculateTrackingQuantities } from "../../tracking/trackingApi.js";
 import { listLibraryMeals } from "../../nutritionLibrary/nutritionLibraryApi.js";
 import {
   generateEquivalentMealAlternative,
   getEquivalentMealGenerationSettings,
+  recalculateEquivalentMealAlternative,
   saveEquivalentMealGenerationSettings,
 } from "../../clientMenus/clientMenusApi.js";
-import { buildTrackingQuantityInlineFeedback } from "../../tracking/trackingQuantityReview.js";
 import {
   applyTrackingDraftProposals,
-  buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
   isTrackingDraftAutomatic,
   markTrackingDraftAutomatic,
@@ -49,10 +47,13 @@ import {
   updateTrackingFoodDraftQuantity,
 } from "../../tracking/trackingQuantityDrafts.js";
 import {
+  buildEquivalentMealRecalculationRequest,
   buildEquivalentMealFromDrafts,
   createEquivalentDraftRequestId,
   equivalentMealComparison,
+  equivalentMealDecisionWarning,
   equivalentMealDraftStorageKey,
+  equivalentMealGenerationFeedback,
   equivalentMealTarget,
   equivalentLibrarySourceLabel,
   filterEquivalentLibraryMeals,
@@ -432,10 +433,13 @@ export default function EquivalentMealBuilder({
   const [foodEditorOpen, setFoodEditorOpen] = useState(false);
   const [error, setError] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
+  const [generationBlockingError, setGenerationBlockingError] = useState("");
   const [calculating, setCalculating] = useState(false);
   const [optimization, setOptimization] = useState(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [confirmOverage, setConfirmOverage] = useState(false);
+  const [nutritionWarningOpen, setNutritionWarningOpen] = useState(false);
+  const [nutritionWarningAccepted, setNutritionWarningAccepted] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryMeals, setLibraryMeals] = useState([]);
@@ -463,18 +467,17 @@ export default function EquivalentMealBuilder({
 
   const totals = useMemo(() => trackingDraftsNutritionTotals(drafts), [drafts]);
   const comparison = useMemo(() => equivalentMealComparison(target, totals), [target, totals]);
-  const calculationFeedback = useMemo(() => optimization ? buildTrackingQuantityInlineFeedback({
+  const nutritionDecisionWarning = useMemo(() => equivalentMealDecisionWarning({
     target,
     proposal: totals,
-    configured: {
-      kcal: target.kcal > 0,
-      proteina: target.proteina > 0,
-      carbs: target.carbs > 0,
-      grasas: target.grasas > 0,
-    },
     optimization,
-  }) : null, [optimization, target, totals]);
-  const ready = trackingDraftsReadyToConfirm(drafts);
+  }), [optimization, target, totals]);
+  const nutritionWarningSignature = nutritionDecisionWarning?.codes.join("|") || "";
+  useEffect(() => {
+    setNutritionWarningAccepted(false);
+    setNutritionWarningOpen(false);
+  }, [nutritionWarningSignature, totals.kcal, totals.proteina, totals.carbs, totals.grasas]);
+  const ready = trackingDraftsReadyToConfirm(drafts) && !generationBlockingError;
   const visibleLibraryMeals = useMemo(() => filterEquivalentLibraryMeals(libraryMeals, {
     include: libraryInclude,
     exclude: libraryExclude,
@@ -491,6 +494,11 @@ export default function EquivalentMealBuilder({
 
   useEffect(() => {
     function handleKey(event) {
+      if (event.key === "Escape" && nutritionWarningOpen) {
+        event.preventDefault();
+        setNutritionWarningOpen(false);
+        return;
+      }
       if (event.key === "Escape" && !saving && !calculating && !settingsSaving) onClose?.();
       if (event.key !== "Tab") return;
       const focusable = Array.from(dialogRef.current?.querySelectorAll(
@@ -509,7 +517,7 @@ export default function EquivalentMealBuilder({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [calculating, onClose, saving, settingsSaving]);
+  }, [calculating, nutritionWarningOpen, onClose, saving, settingsSaving]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -611,7 +619,10 @@ export default function EquivalentMealBuilder({
   function clearResult() {
     setOptimization(null);
     setConfirmOverage(false);
+    setNutritionWarningOpen(false);
+    setNutritionWarningAccepted(false);
     setError("");
+    setGenerationBlockingError("");
   }
 
   function invalidateGeneratedAlternatives() {
@@ -653,11 +664,14 @@ export default function EquivalentMealBuilder({
     setGeneratedAlternativeIndex(index);
     setDraftState("SUCCESS");
     setError("");
-    setGenerationNotice(selected.status === "TARGET_NOT_REACHABLE_WITH_SELECTED_FOODS"
-      ? "Mejor aproximacion posible usando solamente los alimentos requeridos."
-      : selected.status === "BEST_EFFORT"
-        ? "Completamos las calorias con la mejor aproximacion posible para estos alimentos."
-        : "Alternativa calculada. Generar otra opcion recorre el mismo ranking sin azar.");
+    const feedback = equivalentMealGenerationFeedback({
+      status: "SUCCESS",
+      recommended: selected.recommended === true,
+      alternative: selected,
+      relaxation: selected.relaxation,
+    });
+    setGenerationBlockingError("");
+    setGenerationNotice(feedback.notice);
     return true;
   }
 
@@ -707,9 +721,12 @@ export default function EquivalentMealBuilder({
   }
 
   function updateQuantity(id, value) {
-    setDrafts((current) => current.map((draft) => (
-      draft.id === id ? updateTrackingFoodDraftQuantity(draft, value) : draft
-    )));
+    setDrafts((current) => current.map((draft) => {
+      if (draft.id !== id) return draft;
+      // Escribir una cantidad es una decisión manual: queda fijada hasta que
+      // el usuario toque el candado para devolver ese alimento a Auto.
+      return markTrackingDraftManual(updateTrackingFoodDraftQuantity(draft, value));
+    }));
     clearResult();
     invalidateGeneratedAlternatives();
   }
@@ -751,47 +768,37 @@ export default function EquivalentMealBuilder({
     try {
       setCalculating(true);
       setError("");
-      const response = await calculateTrackingQuantities(buildTrackingQuantityCalculationRequest({
-        date: row.date,
+      const response = await recalculateEquivalentMealAlternative(buildEquivalentMealRecalculationRequest({
+        menuId,
+        mealId,
+        mealType: meal.tipoComida || meal.type || meal.mealType || "otra",
         target,
-        trackingQuantityMode: "calorie_fill",
+        drafts,
         fixedFoods: input.fixedFoods,
-        pendingFoods: input.pendingFoods,
-        generationStrategy: strategy,
-        rejectedSuggestionFoodIds,
+        variantSeed: Date.now(),
       }));
-      if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
-        throw new Error(response?.message || "No se encontro una combinacion valida.");
+      const feedback = equivalentMealGenerationFeedback(response);
+      if (!feedback.usable || !Array.isArray(response?.alternative?.foods)) {
+        setGenerationBlockingError(feedback.error);
+        throw new Error(feedback.error || "No se encontro una combinacion valida.");
       }
-      let calculationDrafts = drafts;
-      const addedCandidates = response.foods.filter((food) => food?.source === "addedCandidate");
-      if (addedCandidates.length) {
-        const additions = addedCandidates
-          .filter((food) => !calculationDrafts.some((draft) => String(draft.foodId) === String(food.foodId || food.alimentoId || food.id)))
-          .slice(0, Math.max(0, maxFoods - calculationDrafts.length))
-          .map((food, index) => ({
-            ...createTrackingFoodDraft(
-              responseCandidateFood(food),
-              "",
-              `suggested-${food.foodId || food.id || index}-${Date.now()}`,
-              "calorie_fill"
-            ),
-            suggested: true,
-            source: "addedCandidate",
-          }));
-        calculationDrafts = [...calculationDrafts, ...additions];
-      }
-      const proposals = trackingDraftProposals(calculationDrafts, response.foods);
-      if (proposals.length !== calculationDrafts.length) {
+      const proposals = trackingDraftProposals(drafts, response.alternative.foods);
+      if (proposals.length !== drafts.length) {
         throw new Error("No se obtuvo una cantidad valida para todos los alimentos.");
       }
-      const nextDrafts = applyTrackingDraftProposals(calculationDrafts, proposals, "calorie_fill");
+      const nextDrafts = applyTrackingDraftProposals(drafts, proposals, "calorie_fill");
       if (!trackingDraftsReadyToConfirm(nextDrafts)) {
         throw new Error("Revisa los alimentos: alguna cantidad no es fisicamente valida.");
       }
       setDrafts(nextDrafts);
-      setOptimization(response.optimization || null);
-      setWarnings(Array.isArray(response.warnings) ? response.warnings : []);
+      setOptimization(response.alternative.optimization || null);
+      setWarnings(Array.isArray(response.alternative.warnings) ? response.alternative.warnings : []);
+      setGenerationBlockingError("");
+      setGenerationNotice(feedback.notice || (
+        response.alternative.variant?.applied
+          ? "Redistribuimos las cantidades de los alimentos Auto sin cambiar la selección."
+          : "Estas son las mejores cantidades válidas para los alimentos actuales."
+      ));
     } catch (calculationError) {
       setError(calculationError?.message || "No pudimos calcular las cantidades.");
     } finally {
@@ -828,6 +835,7 @@ export default function EquivalentMealBuilder({
   async function generateAlternativeDraft() {
     setError("");
     setGenerationNotice("");
+    setGenerationBlockingError("");
     if (settingsGenerationMode === "library") {
       loadLibrary("all");
       return;
@@ -864,14 +872,16 @@ export default function EquivalentMealBuilder({
         target,
         limit: 32,
       });
+      const feedback = equivalentMealGenerationFeedback(response);
       const alternatives = [response?.alternative, ...(response?.alternatives || [])].filter(Boolean);
-      if (response?.status !== "SUCCESS" || !alternatives.length) {
+      if (!feedback.usable || !alternatives.length) {
         setDraftState("NO_SOLUTION");
         setDrafts([]);
         setOptimization(null);
-        setError(response?.code === "TARGET_NOT_REACHABLE_WITH_SELECTED_FOODS"
-          ? "No encontramos una cantidad valida usando solamente los alimentos seleccionados."
-          : "No encontramos una combinacion compatible con esta meta y estos ajustes.");
+        setGeneratedAlternatives([]);
+        setGeneratedAlternativeIndex(-1);
+        setGeneratedConstraintSignature("");
+        setGenerationBlockingError(feedback.error);
         return;
       }
       setGeneratedAlternatives(alternatives);
@@ -882,6 +892,7 @@ export default function EquivalentMealBuilder({
     } catch (generationError) {
       setDraftState("ERROR");
       setError(generationError?.message || "No pudimos generar la alternativa.");
+      setGenerationBlockingError("");
     } finally {
       setCalculating(false);
     }
@@ -958,7 +969,7 @@ export default function EquivalentMealBuilder({
       : "");
   }
 
-  async function apply() {
+  async function apply({ acceptNutritionWarning = false } = {}) {
     if (!ready) {
       setError(canAuto
         ? "Completa las cantidades o usa Calcular cantidades."
@@ -968,6 +979,10 @@ export default function EquivalentMealBuilder({
     if (comparison.exceedsCalories && !confirmOverage) {
       setConfirmOverage(true);
       setError(`La propuesta supera la meta por ${format(comparison.diff.kcal, 0)} kcal. Revisa las cantidades o toca Guardar igualmente.`);
+      return;
+    }
+    if (nutritionDecisionWarning && !nutritionWarningAccepted && !acceptNutritionWarning) {
+      setNutritionWarningOpen(true);
       return;
     }
     const equivalentMeal = buildEquivalentMealFromDrafts({
@@ -994,6 +1009,15 @@ export default function EquivalentMealBuilder({
         ...new Set([...(equivalentMeal.acceptedWarnings || []), "calorie_over_target"]),
       ];
     }
+    if (nutritionDecisionWarning && (nutritionWarningAccepted || acceptNutritionWarning)) {
+      equivalentMeal.warningAccepted = true;
+      equivalentMeal.acceptedWarnings = [
+        ...new Set([
+          ...(equivalentMeal.acceptedWarnings || []),
+          ...nutritionDecisionWarning.codes,
+        ]),
+      ];
+    }
     try {
       await onApply?.({
         row,
@@ -1004,6 +1028,7 @@ export default function EquivalentMealBuilder({
       });
       if (storageKey) window.localStorage.removeItem(storageKey);
       setDrafts([]);
+      setNutritionWarningOpen(false);
     } catch (applyError) {
       setError(applyError?.message || "No pudimos guardar la comida equivalente.");
     }
@@ -1189,6 +1214,13 @@ export default function EquivalentMealBuilder({
               <p className="px-2 pb-1 pt-1.5 text-center text-[9px] font-bold text-zinc-500">Usa los alimentos requeridos, evitados y preferencias que guardaste en Ajustes.</p>
             </section>
 
+            {generationBlockingError ? (
+              <div className="rounded-2xl border border-rose-400/35 bg-rose-400/[0.12] p-3 text-rose-50 shadow-[0_10px_28px_rgba(244,63,94,.08)]" role="alert">
+                <strong className="flex items-center gap-2 text-[12px] font-black uppercase tracking-[.04em]"><AlertTriangle size={16} /> No se puede alcanzar esta meta</strong>
+                <p className="mt-1.5 text-[10px] font-bold leading-relaxed text-rose-100/85">{generationBlockingError.replace(/^No se puede alcanzar esta meta\.\s*/i, "")}</p>
+              </div>
+            ) : null}
+
             {drafts.length ? (
               <section className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
                 <header className="flex min-h-10 items-center justify-between border-b border-white/[0.07] px-3">
@@ -1304,11 +1336,6 @@ export default function EquivalentMealBuilder({
               </section>
             ) : null}
 
-            {calculationFeedback ? (
-              <div className="rounded-2xl border border-amber-300/25 bg-amber-300/[0.07] p-3 text-xs font-bold text-amber-100">
-                <Info size={15} className="mr-2 inline" /><strong>{calculationFeedback.title}.</strong> {calculationFeedback.message}
-              </div>
-            ) : null}
             {error ? <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm font-bold text-rose-100" role="alert">{error}</div> : null}
             {generationNotice ? <div className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.07] p-3 text-[10px] font-bold leading-relaxed text-sky-100" role="status"><Info size={14} className="mr-1.5 inline" />{generationNotice}</div> : null}
 
@@ -1320,6 +1347,21 @@ export default function EquivalentMealBuilder({
         </div>
 
         <footer className="shrink-0 border-t border-white/10 bg-[#071018]/96 px-3 pb-[calc(.7rem+env(safe-area-inset-bottom))] pt-2.5">
+          {nutritionDecisionWarning ? (
+            <button
+              type="button"
+              onClick={() => setNutritionWarningOpen(true)}
+              className="mb-2 flex min-h-12 w-full items-center gap-2.5 rounded-2xl border border-amber-300/40 bg-[linear-gradient(135deg,rgba(245,158,11,.18),rgba(251,191,36,.08))] px-3 py-2 text-left text-amber-50 shadow-[0_8px_24px_rgba(245,158,11,.12)]"
+              aria-label={`${nutritionDecisionWarning.title}. ${nutritionDecisionWarning.summary}. Ver detalle`}
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-amber-200/35 bg-amber-300/15 text-amber-200"><AlertTriangle size={17} /></span>
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[11px] font-black uppercase tracking-[.04em]">{nutritionDecisionWarning.title}</strong>
+                <span className="mt-0.5 block text-[9px] font-bold leading-snug text-amber-100/75">{nutritionDecisionWarning.summary}. Tocá para revisar antes de usarla.</span>
+              </span>
+              <ChevronRight size={17} className="shrink-0 text-amber-200" />
+            </button>
+          ) : null}
           <div className="grid grid-cols-[1.2fr_.8fr] gap-2">
             <button type="button" onClick={generateAlternativeDraft} disabled={saving || calculating || libraryLoading || settingsLoading} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-200/30 bg-[linear-gradient(135deg,#69e6ad,#35c98b)] px-3 text-[11px] font-black text-[#032117] shadow-[0_9px_24px_rgba(16,185,129,.18)] disabled:opacity-45">
               {libraryLoading || calculating ? <RefreshCw size={15} className="animate-spin" /> : <WandSparkles size={15} />}
@@ -1343,6 +1385,55 @@ export default function EquivalentMealBuilder({
           <p className="mt-1.5 text-center text-[9px] font-bold text-zinc-600">Cerrar conserva el borrador. Cancelar lo descarta.</p>
         </footer>
       </div>
+
+      {nutritionWarningOpen && nutritionDecisionWarning ? (
+        <div className="absolute inset-0 z-20 flex items-end justify-center bg-black/75 px-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:items-center sm:p-6" role="presentation">
+          <section className="w-full max-w-[420px] overflow-hidden rounded-[1.65rem] border border-amber-300/35 bg-[radial-gradient(circle_at_100%_0,rgba(245,158,11,.18),transparent_38%),linear-gradient(180deg,#111820,#080d13)] shadow-[0_28px_90px_rgba(0,0,0,.72)]" role="alertdialog" aria-modal="true" aria-labelledby={`${titleId}-warning-title`}>
+            <div className="h-1 bg-[linear-gradient(90deg,#f59e0b,#fde68a,#d4af37)]" />
+            <div className="p-4 sm:p-5">
+              <header className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-amber-200/35 bg-amber-300/15 text-amber-200 shadow-[0_0_24px_rgba(245,158,11,.16)]"><AlertTriangle size={21} /></span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase tracking-[.16em] text-amber-300">Confirmación nutricional</span>
+                  <h4 id={`${titleId}-warning-title`} className="mt-0.5 text-[18px] font-black leading-tight text-white">{nutritionDecisionWarning.title}</h4>
+                  <p className="mt-1 text-[11px] font-bold leading-relaxed text-zinc-400">La alternativa es válida y podés usarla, pero no coincide suficientemente con toda la meta.</p>
+                </div>
+                <button type="button" onClick={() => setNutritionWarningOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-zinc-300" aria-label="Cerrar advertencia"><X size={17} /></button>
+              </header>
+
+              <div className="mt-4 grid grid-cols-4 gap-1.5 text-center">
+                {[
+                  ["Kcal", nutritionDecisionWarning.proposal.kcal, nutritionDecisionWarning.target.kcal, "text-amber-200"],
+                  ["P", nutritionDecisionWarning.proposal.proteina, nutritionDecisionWarning.target.proteina, "text-rose-200"],
+                  ["C", nutritionDecisionWarning.proposal.carbs, nutritionDecisionWarning.target.carbs, "text-sky-200"],
+                  ["G", nutritionDecisionWarning.proposal.grasas, nutritionDecisionWarning.target.grasas, "text-violet-200"],
+                ].map(([label, current, goal, color]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-black/25 px-1 py-2">
+                    <span className="block text-[8px] font-black uppercase text-zinc-500">{label}</span>
+                    <strong className={`mt-0.5 block text-[11px] font-black ${color}`}>{format(current, 1)}</strong>
+                    <span className="block text-[8px] font-bold text-zinc-600">de {format(goal, 1)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                {nutritionDecisionWarning.reasons.map((reason) => (
+                  <div key={reason} className="flex items-start gap-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] p-2.5 text-[10px] font-bold leading-relaxed text-amber-50">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-3 text-[10px] font-bold leading-relaxed text-zinc-400">Podés probar otra combinación o continuar con ésta si se ajusta mejor a lo que querés comer.</p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button autoFocus type="button" onClick={() => { setNutritionWarningOpen(false); generateAlternativeDraft(); }} disabled={calculating || saving} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/[0.09] px-3 text-[10px] font-black text-emerald-100 disabled:opacity-45"><WandSparkles size={15} /> Otra opción</button>
+                <button type="button" onClick={() => { setNutritionWarningAccepted(true); setNutritionWarningOpen(false); apply({ acceptNutritionWarning: true }); }} disabled={calculating || saving} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#FFE38A,#D4AF37)] px-3 text-[10px] font-black text-black shadow-[0_9px_24px_rgba(212,175,55,.2)] disabled:opacity-45"><Check size={15} /> Usar igualmente</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

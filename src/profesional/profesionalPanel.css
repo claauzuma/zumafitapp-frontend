@@ -213,6 +213,61 @@
   gap:9px;
 }
 
+.prof-equivalenceActivity{
+  gap:12px;
+}
+
+.prof-equivalenceActivityHead{
+  width:100%;
+  border:0;
+  padding:0;
+  background:transparent;
+  color:inherit;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  text-align:left;
+  cursor:pointer;
+}
+
+.prof-equivalenceActivityHead > span{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:#f5d76e;
+}
+
+.prof-equivalenceActivityHead svg:last-child{
+  transition:transform .18s ease;
+}
+
+.prof-equivalenceActivityHead svg.open{
+  transform:rotate(180deg);
+}
+
+.prof-equivalenceStats{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+
+.prof-equivalenceStats span{
+  border:1px solid rgba(120,170,230,.16);
+  border-radius:999px;
+  background:rgba(255,255,255,.035);
+  color:#aeb9c7;
+  padding:6px 10px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.prof-equivalenceStats span.attention{
+  border-color:rgba(251,191,36,.32);
+  background:rgba(251,191,36,.09);
+  color:#fde68a;
+}
+
 .prof-card.compact{
   min-width:0;
   padding:11px 12px;

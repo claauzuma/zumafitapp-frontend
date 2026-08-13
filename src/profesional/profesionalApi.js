@@ -101,6 +101,7 @@ export async function getProfessionalClientEquivalentActivity(clientId, filters 
     activity: Array.isArray(data?.activity) ? data.activity : [],
     notifications: Array.isArray(data?.notifications) ? data.notifications : [],
     weeklyDigest: Array.isArray(data?.weeklyDigest) ? data.weeklyDigest : [],
+    clientMealAlternatives: Array.isArray(data?.clientMealAlternatives) ? data.clientMealAlternatives : [],
     settings: data?.settings || {},
     total: Number(data?.total) || 0,
   };

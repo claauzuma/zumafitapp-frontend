@@ -5,6 +5,7 @@ import FullPageLoader from "./FullPageLoader.jsx";
 import { getCachedStatus, setAuthGuest, setAuthLogged } from "./authCache.js";
 import { useAuthMe } from "./authQueries.js";
 import { clearPrivateQueryCache } from "./queryClient.js";
+import { shouldShowInitialSessionLoader } from "./sessionGateState.js";
 
 export default function ProtectedRoute({ children }) {
   const [sessionStatus, setSessionStatus] = useState(() => getCachedStatus());
@@ -15,6 +16,7 @@ export default function ProtectedRoute({ children }) {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const showInitialLoader = shouldShowInitialSessionLoader(meQuery);
 
   useEffect(() => {
     if (!shouldCheck || meQuery.isPending || meQuery.isFetching) return;
@@ -41,7 +43,7 @@ export default function ProtectedRoute({ children }) {
 
   if (!shouldCheck) return <Navigate to="/login" replace />;
 
-  if (meQuery.isPending || meQuery.isFetching) {
+  if (showInitialLoader) {
     return <FullPageLoader title="Verificando sesion..." sub="Entrando a tu panel." />;
   }
 

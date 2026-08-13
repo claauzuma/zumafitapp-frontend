@@ -9,6 +9,7 @@ import {
 } from "./authCache.js";
 import { useAuthMe } from "./authQueries.js";
 import { clearPrivateQueryCache } from "./queryClient.js";
+import { shouldShowInitialSessionLoader } from "./sessionGateState.js";
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -51,6 +52,7 @@ export default function PublicOnlyRoute({ children }) {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const showInitialLoader = shouldShowInitialSessionLoader(meQuery);
 
   useEffect(() => {
     if (!shouldValidateSession || meQuery.isPending || meQuery.isFetching) return;
@@ -75,7 +77,7 @@ export default function PublicOnlyRoute({ children }) {
     shouldValidateSession,
   ]);
 
-  if (shouldValidateSession && (meQuery.isPending || meQuery.isFetching)) {
+  if (shouldValidateSession && showInitialLoader) {
     return <FullPageLoader title="Verificando sesion..." sub="Un segundo..." />;
   }
 

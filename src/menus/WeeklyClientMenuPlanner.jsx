@@ -1,18 +1,34 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Droplet,
   Eye,
   FilePlus2,
   Flame,
+  Info,
+  Loader2,
+  Moon,
   Pencil,
   Pin,
   Plus,
+  Puzzle,
   RefreshCw,
+  Save,
+  Scale,
   Search,
   Shuffle,
+  Soup,
+  Sun,
+  Sunrise,
+  Target,
   Trash2,
   Utensils,
+  Wheat,
   X,
 } from "lucide-react";
 
@@ -50,6 +66,22 @@ import {
   promoteMenuAlternative,
   replacePrimaryMenu,
 } from "./weeklyMenuAssignmentChoices.js";
+import {
+  ASSIGNED_DAY_PLANNING_ACTIONS,
+  EMPTY_DAY_ACTIONS,
+  TARGET_DEFINITION_MODES,
+  defaultTargetDefinitionMode,
+  emptyDayPlanningCopy,
+} from "./weeklyPlanningCard.js";
+import {
+  buildBalancedMealTargets,
+  MEAL_TYPE_OPTIONS,
+  mealTargetTotals,
+  normalizeStoredMealTargetPlan,
+  rebalanceMealTargets,
+  validateMealTargetPlan,
+  updateMealMoment,
+} from "./weeklyMealTargets.js";
 import "./weeklyClientMenus.css";
 
 const DAY_KEYS = NUTRITION_WEEK_DAYS.map((day) => day.key);
@@ -518,6 +550,9 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   const [picker, setPicker] = useState(null);
   const [creator, setCreator] = useState(null);
   const [editor, setEditor] = useState(null);
+  const [planningActionsDayKey, setPlanningActionsDayKey] = useState("");
+  const [targetFlowNotice, setTargetFlowNotice] = useState(null);
+  const [mealTargetsByDay, setMealTargetsByDay] = useState(() => client?.menu?.weeklyPlan?.mealTargetsByDay || {});
   const [detailDayKey, setDetailDayKey] = useState("");
   const [busy, setBusy] = useState("");
   const [search, setSearch] = useState("");
@@ -530,7 +565,8 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
 
   useEffect(() => {
     setAssignments(normalizeAssignments(client?.menu?.weeklyPlan?.assignedMenusByDay));
-  }, [client?.menu?.weeklyPlan?.assignedMenusByDay]);
+    setMealTargetsByDay(client?.menu?.weeklyPlan?.mealTargetsByDay || {});
+  }, [client?.menu?.weeklyPlan?.assignedMenusByDay, client?.menu?.weeklyPlan?.mealTargetsByDay]);
 
   const libraryMenus = useMemo(() => menusQuery.data?.menus || [], [menusQuery.data?.menus]);
   useEffect(() => {
@@ -555,22 +591,78 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
         const alternatives = Array.isArray(assignment?.alternatives) ? assignment.alternatives : [];
         const flexibleCalories = primary ? assignmentFlexibleCalories(primary, target, totals) : 0;
         const macroPending = primary ? assignmentMacroPending(primary, target, totals) : { protein: 0, carbs: 0, fat: 0 };
-        return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility, flexibleCalories, macroPending };
+        const mealTargetPlan = normalizeStoredMealTargetPlan(mealTargetsByDay?.[day.key]);
+        return { day, target, assignment, primary, alternatives, snapshot, totals, compatibility, flexibleCalories, macroPending, mealTargetPlan };
       }),
-    [hydratedAssignments, nutritionWeek]
+    [hydratedAssignments, mealTargetsByDay, nutritionWeek]
   );
 
   const selectedDay = weekRows.find((row) => row.day.key === selectedDayKey) || weekRows[0];
   const detailRow = weekRows.find((row) => row.day.key === detailDayKey) || null;
+  const planningActionsRow = weekRows.find((row) => row.day.key === planningActionsDayKey) || null;
 
-  async function persistAssignments(nextAssignments, successMessage = "Plan semanal actualizado.") {
+  function showTargetFlowNotice(row) {
+    if (!row) return;
+    setPlanningActionsDayKey("");
+    setTargetFlowNotice({
+      dayKey: row.day.key,
+      dayLabel: row.day.label,
+      target: row.target,
+      existingPlan: normalizeStoredMealTargetPlan(mealTargetsByDay?.[row.day.key]),
+      step: "mode",
+    });
+  }
+
+  async function savePerMealTargets(context, meals) {
+    const nextAssignments = { ...hydratedAssignments };
+    delete nextAssignments[context.dayKey];
+    const nextMealTargets = {
+      ...mealTargetsByDay,
+      [context.dayKey]: {
+        mode: "per_meal",
+        meals,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    setBusy("meal-targets-save");
+    try {
+      const data = await updateProfessionalClientMenu(clientId, {
+        menu: {
+          mode: { type: defaultMode(access), lockedByCoach: client?.menu?.mode?.lockedByCoach },
+          weeklyPlan: {
+            assignedMenusByDay: nextAssignments,
+            mealTargetsByDay: nextMealTargets,
+          },
+          coachNotes: client?.menu?.coachNotes || "",
+        },
+      });
+      setAssignments(nextAssignments);
+      setMealTargetsByDay(nextMealTargets);
+      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
+      await invalidateProfessionalClient(clientId, data?.client);
+      setTargetFlowNotice(null);
+      onToast?.({ type: "success", message: `Metas de ${context.dayLabel} guardadas para el cliente.` });
+      return true;
+    } catch (error) {
+      onToast?.({ type: "error", message: error?.message || "No se pudieron guardar las metas por comida." });
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function persistAssignments(nextAssignments, successMessage = "Plan semanal actualizado.", nextMealTargets = mealTargetsByDay) {
     setAssignments(nextAssignments);
+    setMealTargetsByDay(nextMealTargets);
     setBusy("weekly-save");
     try {
       const data = await updateProfessionalClientMenu(clientId, {
         menu: {
           mode: { type: defaultMode(access), lockedByCoach: client?.menu?.mode?.lockedByCoach },
-          weeklyPlan: { assignedMenusByDay: nextAssignments },
+          weeklyPlan: {
+            assignedMenusByDay: nextAssignments,
+            mealTargetsByDay: nextMealTargets,
+          },
           coachNotes: client?.menu?.coachNotes || "",
         },
       });
@@ -579,6 +671,7 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
       onToast?.({ type: "success", message: successMessage });
     } catch (error) {
       setAssignments(normalizeAssignments(client?.menu?.weeklyPlan?.assignedMenusByDay));
+      setMealTargetsByDay(client?.menu?.weeklyPlan?.mealTargetsByDay || {});
       onToast?.({ type: "error", message: error?.message || "No se pudo guardar la asignación semanal." });
     } finally {
       setBusy("");
@@ -599,8 +692,10 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
       ...hydratedAssignments,
       [dayKey]: replacePrimaryMenu(current, primaryMenu, MAX_MENU_ALTERNATIVES),
     };
+    const nextMealTargets = { ...mealTargetsByDay };
+    delete nextMealTargets[dayKey];
     setPicker(null);
-    await persistAssignments(next, message);
+    await persistAssignments(next, message, nextMealTargets);
   }
 
   async function addAlternative(dayKey, menu) {
@@ -750,9 +845,10 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
             onSelect={() => setSelectedDayKey(row.day.key)}
             onView={() => setDetailDayKey(row.day.key)}
             onChoose={() => openPicker(row.day.key, "choose")}
+            onDefineTarget={() => showTargetFlowNotice(row)}
             onCreate={() => access?.canCreateMenu && setCreator({ dayKey: row.day.key })}
             onAlternative={() => openPicker(row.day.key, "alternative")}
-            onEdit={() => row.snapshot && access?.canCreateMenu && setEditor({ dayKey: row.day.key, snapshot: row.snapshot })}
+            onEdit={() => row.snapshot && setPlanningActionsDayKey(row.day.key)}
             onClear={() => clearDay(row.day.key)}
             canCreate={!!access?.canCreateMenu}
           />
@@ -821,6 +917,47 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
         />
       ) : null}
 
+      {planningActionsRow ? (
+        <DayPlanningActionsDialog
+          row={planningActionsRow}
+          canCreate={!!access?.canCreateMenu}
+          onClose={() => setPlanningActionsDayKey("")}
+          onEdit={() => {
+            setPlanningActionsDayKey("");
+            if (access?.canCreateMenu) setEditor({ dayKey: planningActionsRow.day.key, snapshot: planningActionsRow.snapshot });
+          }}
+          onChoose={() => {
+            setPlanningActionsDayKey("");
+            openPicker(planningActionsRow.day.key, "choose");
+          }}
+          onDefineTarget={() => showTargetFlowNotice(planningActionsRow)}
+        />
+      ) : null}
+
+      {targetFlowNotice ? (
+        targetFlowNotice.step === "per_meal" ? (
+          <PerMealTargetScreen
+            context={targetFlowNotice}
+            saving={busy === "meal-targets-save"}
+            onBack={() => setTargetFlowNotice((current) => ({ ...current, step: "mode" }))}
+            onClose={() => setTargetFlowNotice(null)}
+            onSave={(meals) => savePerMealTargets(targetFlowNotice, meals)}
+          />
+        ) : (
+          <TargetDefinitionModeScreen
+            context={targetFlowNotice}
+            onClose={() => setTargetFlowNotice(null)}
+            onContinue={(mode) => {
+              if (mode.key === "per_meal") {
+                setTargetFlowNotice((current) => ({ ...current, step: "per_meal" }));
+                return;
+              }
+              onToast?.({ type: "info", message: `La pantalla “${mode.label}” queda para la próxima etapa.` });
+            }}
+          />
+        )
+      ) : null}
+
       {creator ? (
         <MenuCreationFlow
           foods={foods}
@@ -853,11 +990,12 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   );
 }
 
-function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoose, onCreate, onAlternative, onEdit, onClear }) {
+function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoose, onDefineTarget, onCreate, onAlternative, onEdit, onClear }) {
   const targetKcal = toNumber(row.target.kcal, 0);
   const percent = targetKcal > 0 ? Math.min(130, (row.totals.kcal / targetKcal) * 100) : 0;
   const overflow = percent > 100;
   const hasMenu = !!row.snapshot;
+  const hasMealTargets = !hasMenu && row.mealTargetPlan?.mode === "per_meal" && row.mealTargetPlan.meals.length > 0;
   const barTone = !row.snapshot
     ? "empty"
     : overflow
@@ -870,12 +1008,13 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
   const targetSourceClass = row.target.customized ? "custom" : row.target.adjusted ? "adjusted" : "";
   const targetSourceLabel = row.target.statusLabel || (row.target.customized ? "Personalizado" : row.target.adjusted ? "General ajustado" : "General");
   const alternativesCount = row.alternatives?.length || 0;
+  const emptyCopy = emptyDayPlanningCopy({ kcal: row.target.kcal, protein: row.target.p });
   return (
-    <article className={`wmp-dayCard ${hasMenu ? "assigned" : "empty"} ${selected ? "selected" : ""}`} onClick={onSelect}>
+    <article className={`wmp-dayCard ${hasMenu ? "assigned" : hasMealTargets ? "target-planned" : "empty"} ${selected ? "selected" : ""}`} onClick={onSelect}>
       <header>
         <div className="wmp-dayIdentity">
-          <span className={`wmp-dayIcon ${hasMenu ? "assigned" : "empty"}`} aria-hidden="true">
-            {hasMenu ? <Utensils size={18} strokeWidth={2.4} /> : <Search size={18} strokeWidth={2.4} />}
+          <span className={`wmp-dayIcon ${hasMenu ? "assigned" : hasMealTargets ? "target-planned" : "empty"}`} aria-hidden="true">
+            {hasMenu ? <Utensils size={18} strokeWidth={2.4} /> : hasMealTargets ? <Target size={18} strokeWidth={2.4} /> : <Search size={18} strokeWidth={2.4} />}
           </span>
           <div>
             <strong>{row.day.label}</strong>
@@ -886,6 +1025,11 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
         </div>
         {hasMenu ? (
           <span className={`wmp-status ${row.compatibility.tone}`}>{row.compatibility.label}</span>
+        ) : hasMealTargets ? (
+          <span className="wmp-status target-planned">
+            <CheckCircle2 size={13} strokeWidth={2.6} aria-hidden="true" />
+            Metas definidas
+          </span>
         ) : (
           <span className="wmp-status empty">
             <AlertTriangle size={13} strokeWidth={2.6} aria-hidden="true" />
@@ -894,27 +1038,19 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
         )}
       </header>
 
-      <div className="wmp-menuName">
-        {row.snapshot ? row.snapshot.name : "Día sin menú"}
-      </div>
-
-      <div className={`wmp-assignmentState ${hasMenu ? "assigned" : "empty"}`}>
-        {hasMenu ? (
+      {hasMenu ? (
+        <>
+          <div className="wmp-menuName">{row.snapshot.name}</div>
+          <div className="wmp-assignmentState assigned">
           <CheckCircle2 size={15} strokeWidth={2.5} aria-hidden="true" />
-        ) : (
-          <AlertTriangle size={15} strokeWidth={2.5} aria-hidden="true" />
-        )}
-        <span>{hasMenu ? "Menú activo para este día" : "Planificación pendiente"}</span>
-      </div>
-
-      <div className="wmp-dayKpis">
-        <span><Flame size={14} aria-hidden="true" /> Meta {displayKcal(row.target.kcal)}</span>
-        {row.flexibleCalories > 0 ? <span>Libre {displayKcal(row.flexibleCalories)}</span> : null}
-        <span>Menú {displayKcal(row.totals.kcal)}</span>
-      </div>
-
-      <div className={`wmp-targetLine ${hasMenu ? "" : "empty"}`}>
-        {hasMenu ? (
+            <span>Menú activo para este día</span>
+          </div>
+          <div className="wmp-dayKpis">
+            <span><Flame size={14} aria-hidden="true" /> Meta {displayKcal(row.target.kcal)}</span>
+            {row.flexibleCalories > 0 ? <span>Libre {displayKcal(row.flexibleCalories)}</span> : null}
+            <span>Menú {displayKcal(row.totals.kcal)}</span>
+          </div>
+          <div className="wmp-targetLine">
           <>
             <span>{`${row.snapshot.mealsCount || row.snapshot.meals?.length || 0} comidas`}</span>
           <span className="wmp-altInline">
@@ -939,17 +1075,30 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
             </button>
           </span>
           </>
-        ) : (
-          <span className="wmp-emptyHint">Asigná un menú para cubrir la meta del día.</span>
-        )}
-      </div>
-      <div className={`wmp-bar ${barTone}`} aria-label={`Progreso calórico ${Math.round(percent)}%`}>
-        <span style={{ width: `${percent}%` }} />
-      </div>
-      <div className="wmp-macroLine">
-        <span>P {displayMacro(row.target.p)} a {displayMacro(row.totals.protein)}</span>
-        <span>{formatSigned(row.compatibility.kcalDiff, " kcal")}</span>
-      </div>
+          </div>
+          <div className={`wmp-bar ${barTone}`} aria-label={`Progreso calórico ${Math.round(percent)}%`}>
+            <span style={{ width: `${percent}%` }} />
+          </div>
+          <div className="wmp-macroLine">
+            <span>P {displayMacro(row.target.p)} a {displayMacro(row.totals.protein)}</span>
+            <span>{formatSigned(row.compatibility.kcalDiff, " kcal")}</span>
+          </div>
+        </>
+      ) : hasMealTargets ? (
+        <div className="wmp-mealTargetsPlan">
+          <span>Planificación por comida</span>
+          <strong>{row.mealTargetPlan.meals.length} metas para {row.day.label}</strong>
+          <p>{displayKcal(row.target.kcal)} <span>· P {displayMacro(row.target.p)} · C {displayMacro(row.target.c)} · G {displayMacro(row.target.g)}</span></p>
+          <small>El cliente puede generar cada comida respetando estos objetivos.</small>
+        </div>
+      ) : (
+        <div className="wmp-emptyPlan">
+          <span className="wmp-emptyPlanLabel">{emptyCopy.status}</span>
+          <strong>{emptyCopy.targetLabel}</strong>
+          <p>{displayKcal(emptyCopy.kcal)} <span>· P {displayMacro(emptyCopy.protein)}</span></p>
+          <small>{emptyCopy.explanation}</small>
+        </div>
+      )}
 
       {hasMenu ? (
         <div className="wmp-cardActions" onClick={(event) => event.stopPropagation()}>
@@ -960,9 +1109,8 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
             type="button"
             className="wmp-iconBtn"
             onClick={onEdit}
-            disabled={!canCreate}
-            title={canCreate ? "Editar menú" : "Tu plan no permite crear menús propios"}
-            aria-label={`Editar el menú de ${row.day.label}`}
+            title="Cambiar planificación del día"
+            aria-label={`Cambiar el menú o la meta de ${row.day.label}`}
           >
             <Pencil size={16} />
           </button>
@@ -970,11 +1118,27 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
             <Trash2 size={16} />
           </button>
         </div>
+      ) : hasMealTargets ? (
+        <div className="wmp-emptyActions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="wmp-emptyAction target" onClick={onDefineTarget}>
+            <Pencil size={16} aria-hidden="true" /> Editar metas
+          </button>
+          <button type="button" className="wmp-emptyAction primary" onClick={onChoose}>
+            <Search size={16} aria-hidden="true" /> Usar un menú
+          </button>
+          <button type="button" className="wmp-emptyAction" onClick={onCreate} disabled={!canCreate}>
+            <FilePlus2 size={16} aria-hidden="true" /> Crear menú
+          </button>
+        </div>
       ) : (
         <div className="wmp-emptyActions" onClick={(event) => event.stopPropagation()}>
           <button type="button" className="wmp-emptyAction primary" onClick={onChoose}>
             <Search size={16} aria-hidden="true" />
-            Elegir menú
+            {EMPTY_DAY_ACTIONS[0].label}
+          </button>
+          <button type="button" className="wmp-emptyAction target" onClick={onDefineTarget}>
+            <Target size={16} aria-hidden="true" />
+            {EMPTY_DAY_ACTIONS[1].label}
           </button>
           <button
             type="button"
@@ -984,11 +1148,317 @@ function DayMenuCard({ row, selected, busy, canCreate, onSelect, onView, onChoos
             title={canCreate ? "Crear menú" : "Tu plan no permite crear menús propios"}
           >
             <FilePlus2 size={16} aria-hidden="true" />
-            Crear propio
+            {EMPTY_DAY_ACTIONS[2].label}
           </button>
         </div>
       )}
     </article>
+  );
+}
+
+function DayPlanningActionsDialog({ row, canCreate, onClose, onEdit, onChoose, onDefineTarget }) {
+  return (
+    <section className="wmp-drawer wmp-planningActionsOverlay" role="dialog" aria-modal="true" aria-labelledby="wmp-planning-actions-title">
+      <div className="wmp-planningActionsPanel">
+        <header>
+          <div>
+            <span>Planificación del día</span>
+            <h3 id="wmp-planning-actions-title">{row.day.label}</h3>
+            <p>Elegí qué querés cambiar sin perder la planificación actual.</p>
+          </div>
+          <button type="button" className="wmp-close" onClick={onClose} aria-label="Cerrar"><X size={20} /></button>
+        </header>
+        <div className="wmp-planningActionsGrid">
+          <button type="button" onClick={onEdit} disabled={!canCreate}>
+            <Pencil size={18} aria-hidden="true" />
+            <span><strong>{ASSIGNED_DAY_PLANNING_ACTIONS[0].label}</strong><small>Ajustar comidas y cantidades actuales.</small></span>
+          </button>
+          <button type="button" onClick={onChoose}>
+            <Search size={18} aria-hidden="true" />
+            <span><strong>{ASSIGNED_DAY_PLANNING_ACTIONS[1].label}</strong><small>Elegir otro menú de la biblioteca.</small></span>
+          </button>
+          <button type="button" onClick={onDefineTarget}>
+            <Target size={18} aria-hidden="true" />
+            <span><strong>{ASSIGNED_DAY_PLANNING_ACTIONS[2].label}</strong><small>Cambiar el objetivo de este día.</small></span>
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const TARGET_MODE_ICONS = {
+  per_meal: Soup,
+  mixed: Puzzle,
+  daily_only: CalendarDays,
+};
+
+function TargetDefinitionModeScreen({ context, onClose, onContinue }) {
+  const [selectedModeKey, setSelectedModeKey] = useState(defaultTargetDefinitionMode);
+  const selectedMode = TARGET_DEFINITION_MODES.find((mode) => mode.key === selectedModeKey) || TARGET_DEFINITION_MODES[0];
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <section className="wmp-targetModeOverlay" role="dialog" aria-modal="true" aria-labelledby="wmp-target-mode-title">
+      <div className="wmp-targetModePanel">
+        <header className="wmp-targetModeHeader">
+          <button type="button" className="wmp-targetBack" onClick={onClose} aria-label="Volver a la planificación semanal">
+            <ArrowLeft size={20} aria-hidden="true" />
+          </button>
+          <div>
+            <h2 id="wmp-target-mode-title">Definir meta del día</h2>
+            <p>{context.dayLabel} · Plan semanal</p>
+          </div>
+        </header>
+
+        <main className="wmp-targetModeBody">
+          <section className="wmp-currentTarget" aria-label="Meta actual del día">
+            <span className="wmp-currentTargetIcon"><Target size={25} aria-hidden="true" /></span>
+            <div className="wmp-currentTargetContent">
+              <div>
+                <strong>Meta actual</strong>
+                <small>Objetivo vigente para este día</small>
+              </div>
+              <TargetMetrics target={context.target} />
+            </div>
+          </section>
+
+          <p className="wmp-targetModeQuestion">¿Cómo querés definir la meta de este día?</p>
+
+          <div className="wmp-targetModeChoices" role="radiogroup" aria-label="Modo de definición de la meta">
+            {TARGET_DEFINITION_MODES.map((mode) => {
+              const ModeIcon = TARGET_MODE_ICONS[mode.key] || Target;
+              const selected = mode.key === selectedModeKey;
+              return (
+                <button
+                  key={mode.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={`wmp-targetModeChoice ${mode.key} ${selected ? "selected" : ""}`}
+                  onClick={() => setSelectedModeKey(mode.key)}
+                >
+                  <span className="wmp-targetModeChoiceIcon"><ModeIcon size={27} aria-hidden="true" /></span>
+                  <span className="wmp-targetModeChoiceCopy">
+                    <span className="wmp-targetModeChoiceTitle">
+                      <strong>{mode.label}</strong>
+                      {mode.recommended ? <small>Recomendado</small> : null}
+                    </span>
+                    <span>{mode.description}</span>
+                  </span>
+                  <ChevronRight size={22} className="wmp-targetModeArrow" aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="wmp-targetModeHint"><Info size={17} aria-hidden="true" /> Podés cambiar esta configuración más adelante.</p>
+        </main>
+
+        <footer className="wmp-targetModeFooter">
+          <button type="button" className="wmp-targetCancel" onClick={onClose}>Cancelar</button>
+          <button type="button" className="wmp-targetContinue" onClick={() => onContinue(selectedMode)}>
+            Continuar <ChevronRight size={20} aria-hidden="true" />
+          </button>
+        </footer>
+      </div>
+    </section>
+  );
+}
+
+const MEAL_TARGET_ICONS = {
+  breakfast: Sunrise,
+  lunch: Sun,
+  snack: Soup,
+  dinner: Moon,
+  extraSnack: Soup,
+};
+
+function PerMealTargetScreen({ context, saving, onBack, onClose, onSave }) {
+  const initialPlan = normalizeStoredMealTargetPlan(context.existingPlan);
+  const [mealCount, setMealCount] = useState(initialPlan?.meals?.length || 4);
+  const [meals, setMeals] = useState(() => initialPlan?.meals || buildBalancedMealTargets(context.target, 4, context.dayKey));
+  const [expandedMealId, setExpandedMealId] = useState("");
+  const validation = validateMealTargetPlan(meals, context.target);
+  const totals = mealTargetTotals(meals);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, saving]);
+
+  function applyMealCount(count) {
+    setMealCount(count);
+    setMeals(buildBalancedMealTargets(context.target, count, context.dayKey));
+    setExpandedMealId("");
+  }
+
+  function updateMealTarget(mealId, key, value) {
+    const parsed = value === "" ? 0 : Number(value);
+    setMeals((current) => current.map((meal) => (
+      meal.id === mealId
+        ? { ...meal, target: { ...meal.target, [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 } }
+        : meal
+    )));
+  }
+
+  function updateMealType(mealId, optionKey) {
+    const [type, label] = String(optionKey).split("::");
+    setMeals((current) => updateMealMoment(current, mealId, { type, label }));
+  }
+
+  function submit() {
+    if (!validation.valid || saving) return;
+    onSave(meals.map((meal, index) => ({ ...meal, order: index })));
+  }
+
+  return (
+    <section className="wmp-targetModeOverlay" role="dialog" aria-modal="true" aria-labelledby="wmp-per-meal-title">
+      <div className="wmp-targetModePanel wmp-perMealPanel">
+        <header className="wmp-targetModeHeader wmp-perMealHeader">
+          <button type="button" className="wmp-targetBack" onClick={onBack} disabled={saving} aria-label="Volver a modos de meta">
+            <ArrowLeft size={20} aria-hidden="true" />
+          </button>
+          <div>
+            <h2 id="wmp-per-meal-title">Personalizar por comida</h2>
+            <p>{context.dayLabel} · Plan semanal</p>
+          </div>
+          <button type="button" className="wmp-targetBack close" onClick={onClose} disabled={saving} aria-label="Cerrar">
+            <X size={20} aria-hidden="true" />
+          </button>
+        </header>
+
+        <main className="wmp-targetModeBody wmp-perMealBody">
+          <section className="wmp-currentTarget compact" aria-label="Meta diaria">
+            <span className="wmp-currentTargetIcon"><Soup size={25} aria-hidden="true" /></span>
+            <div className="wmp-currentTargetContent">
+              <div><strong>Meta diaria</strong><small>Objetivo total para este día</small></div>
+              <TargetMetrics target={context.target} />
+            </div>
+          </section>
+
+          <fieldset className="wmp-mealCountPicker">
+            <legend>Cantidad de comidas</legend>
+            <div>
+              {[3, 4, 5, 6].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={mealCount === count ? "selected" : ""}
+                  aria-pressed={mealCount === count}
+                  onClick={() => applyMealCount(count)}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <section className="wmp-mealTargetSection">
+            <h3>Objetivo por comida</h3>
+            <div className="wmp-mealTargetList">
+              {meals.map((meal, index) => {
+                const MealIcon = MEAL_TARGET_ICONS[meal.type] || Utensils;
+                const expanded = expandedMealId === meal.id;
+                return (
+                  <article key={meal.id} className={`wmp-mealTargetRow tone-${index % 4} ${expanded ? "expanded" : ""}`}>
+                    <button type="button" className="wmp-mealTargetSummary" onClick={() => setExpandedMealId(expanded ? "" : meal.id)} aria-expanded={expanded}>
+                      <span className="wmp-mealTargetIcon"><MealIcon size={22} aria-hidden="true" /></span>
+                      <strong>{meal.label}</strong>
+                      <TargetMetrics target={meal.target} compact />
+                      <ChevronDown size={18} className="wmp-mealTargetChevron" aria-hidden="true" />
+                    </button>
+                    {expanded ? (
+                      <div className="wmp-mealTargetEditor">
+                        <label className="wmp-mealMomentField">
+                          <span>Momento</span>
+                          <select
+                            value={`${meal.type}::${meal.label}`}
+                            onChange={(event) => updateMealType(meal.id, event.target.value)}
+                            aria-label={`Momento de la comida ${index + 1}`}
+                          >
+                            {MEAL_TYPE_OPTIONS.map((option) => (
+                              <option key={`${option.type}-${option.label}`} value={`${option.type}::${option.label}`}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        {[
+                          ["kcal", "Kcal", "1"],
+                          ["p", "Proteína", "0.1"],
+                          ["c", "Carbohidratos", "0.1"],
+                          ["g", "Grasas", "0.1"],
+                        ].map(([key, label, step]) => (
+                          <label key={key}>
+                            <span>{label}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step={step}
+                              inputMode="decimal"
+                              value={meal.target[key]}
+                              onChange={(event) => updateMealTarget(meal.id, key, event.target.value)}
+                              aria-label={`${label} objetivo de ${meal.label}`}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <div className={`wmp-mealTargetValidation ${validation.valid ? "valid" : "invalid"}`} role="status">
+            <Info size={17} aria-hidden="true" />
+            <span>
+              {validation.valid
+                ? "La suma de las comidas coincide con la meta diaria."
+                : `${validation.message} Ahora suman ${displayKcal(totals.kcal)} · P ${displayMacro(totals.p)} · C ${displayMacro(totals.c)} · G ${displayMacro(totals.g)}.`}
+            </span>
+          </div>
+
+          <button type="button" className="wmp-balancedDistribution" onClick={() => setMeals((current) => rebalanceMealTargets(context.target, current, context.dayKey))} disabled={saving}>
+            <Scale size={18} aria-hidden="true" />
+            <span><strong>Usar reparto equilibrado</strong><small>Recalcula las {mealCount} metas sin perder el total diario.</small></span>
+            <ChevronRight size={19} aria-hidden="true" />
+          </button>
+
+          <button type="button" className="wmp-saveMealTargets" onClick={submit} disabled={!validation.valid || saving}>
+            {saving ? <Loader2 size={18} className="wmp-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+            {saving ? "Guardando..." : "Guardar meta"}
+          </button>
+        </main>
+
+        <footer className="wmp-targetModeFooter">
+          <button type="button" className="wmp-targetCancel" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="button" className="wmp-targetContinue" onClick={submit} disabled={!validation.valid || saving}>
+            {saving ? "Guardando..." : "Continuar"} <ChevronRight size={20} aria-hidden="true" />
+          </button>
+        </footer>
+      </div>
+    </section>
+  );
+}
+
+function TargetMetrics({ target = {}, compact = false }) {
+  return (
+    <div className={`wmp-targetMetricGrid ${compact ? "compact" : ""}`}>
+      <span className="kcal"><Flame size={14} aria-hidden="true" /> {compact ? formatNumber(target.kcal, 0) : displayKcal(target.kcal)}{compact ? <small>kcal</small> : null}</span>
+      <span className="protein"><Target size={14} aria-hidden="true" /> P {displayMacro(target.p)}</span>
+      <span className="carbs"><Wheat size={14} aria-hidden="true" /> C {displayMacro(target.c)}</span>
+      <span className="fat"><Droplet size={14} aria-hidden="true" /> G {displayMacro(target.g)}</span>
+    </div>
   );
 }
 

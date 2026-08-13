@@ -81,6 +81,13 @@ import {
 } from "./ManualDayCompletion.jsx";
 import EquivalentMealBuilder from "./EquivalentMealBuilder.jsx";
 import { resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
+import {
+  activateMealReplacement,
+  mealReplacementSelectionKey,
+  mealReplacementSlot,
+  replaceClientGeneratedSlot,
+  replacementBelongsToMeal,
+} from "./mealAlternativeSelection.js";
 import { menuWeekCacheKey, menuWeekCacheOwner } from "./menuWeekCache.js";
 import {
   DEFAULT_MENU_GENERATION_SETTINGS,
@@ -111,6 +118,7 @@ const TOTAL_KEYS = {
   grasas: ["grasas", "grasa", "fat", "fats", "grasasTotal", "fatTotal", "g"],
 };
 const MenuAutonomousActionsContext = React.createContext(null);
+const MealChoiceActionsContext = React.createContext(null);
 
 function uid(prefix = "id") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -689,6 +697,32 @@ function targetTotals(row = {}) {
 
 function hasConfiguredTarget(row = {}) {
   return hasTotalValue(targetTotals(row));
+}
+
+function plannedMealTargets(row = {}) {
+  const plan = row?.mealTargetPlan;
+  if (plan?.mode !== "per_meal" || !Array.isArray(plan.meals)) return [];
+  return plan.meals.map((meal, index) => ({
+    id: String(meal.id || `planned-meal-${index + 1}`),
+    name: meal.label || meal.name || `Comida ${index + 1}`,
+    nombre: meal.label || meal.name || `Comida ${index + 1}`,
+    type: meal.type || "snack",
+    tipo: meal.type || "snack",
+    target: {
+      kcal: macro(meal.target?.kcal),
+      proteina: macro(meal.target?.p ?? meal.target?.proteina),
+      carbs: macro(meal.target?.c ?? meal.target?.carbs),
+      grasas: macro(meal.target?.g ?? meal.target?.grasas),
+    },
+    totals: {
+      kcal: macro(meal.target?.kcal),
+      proteina: macro(meal.target?.p ?? meal.target?.proteina),
+      carbs: macro(meal.target?.c ?? meal.target?.carbs),
+      grasas: macro(meal.target?.g ?? meal.target?.grasas),
+    },
+    foods: [],
+    coachTargetOnly: true,
+  }));
 }
 
 function consumedTotals(row = {}) {
@@ -1401,6 +1435,7 @@ function effectiveMealEntriesForDay(row = {}, baseMeals = [], weekRows = []) {
       mealIndex: index,
       done: completed.has(mealId(meal, index)),
       generated: false,
+      mealChoices: mealChoiceOptions(row, meal, index),
     }))
     .filter((entry) => !mealMatchesReplacement(entry.baseMeal, entry.mealIndex, replacementMeta));
 
@@ -1761,8 +1796,80 @@ function mealReplacementEntry(row = {}, mealIndex = 0) {
     ...(Array.isArray(row?.tracking?.generatedRemainingMeals) ? row.tracking.generatedRemainingMeals : []),
   ];
   return entries.find((entry) =>
-    entry?.source === "client_meal_replacement" && String(entry?.id || "").startsWith(prefix)
+    entry?.source === "client_meal_replacement" &&
+    entry?.isActiveReplacement !== false &&
+    String(entry?.id || "").startsWith(prefix)
   ) || null;
+}
+
+function mealReplacementEntries(row = {}, meal = {}, mealIndex = 0) {
+  return (Array.isArray(row?.tracking?.mealReplacements) ? row.tracking.mealReplacements : [])
+    .filter((entry) => entry?.source === "client_meal_replacement" && replacementBelongsToMeal(entry, {
+      date: row?.date,
+      mealIndex,
+      originalMealId: mealId(meal, mealIndex),
+    }));
+}
+
+function mealFromReplacementEntry(originalMeal = {}, entry = {}, mealIndex = 0) {
+  const foods = Array.isArray(entry.foods) ? entry.foods : [];
+  return {
+    ...originalMeal,
+    id: mealId(originalMeal, mealIndex),
+    name: entry.name || mealName(originalMeal, mealIndex),
+    nombre: entry.name || mealName(originalMeal, mealIndex),
+    source: "client_meal_replacement",
+    replacementMeta: {
+      type: "meal",
+      slot: mealReplacementSlot(entry),
+      originalName: mealName(originalMeal, mealIndex),
+      approvalStatus: entry.approvalStatus || "approved",
+      approvalReason: entry.approvalReason || "",
+    },
+    foods,
+    items: foods,
+    totals: totalsWithFallback(sumTotals(foods), addTotals(mealTotals(originalMeal), entry.totals)),
+  };
+}
+
+function mealChoiceOptions(row = {}, meal = {}, mealIndex = 0) {
+  const replacements = mealReplacementEntries(row, meal, mealIndex);
+  const options = [{
+    key: "original",
+    label: "Original del coach",
+    kind: "original",
+    meal,
+    active: !replacements.some((entry) => entry.isActiveReplacement !== false),
+  }];
+  replacements.forEach((entry) => {
+    const slot = mealReplacementSlot(entry);
+    options.push({
+      key: mealReplacementSelectionKey(entry),
+      label: slot === "client_generated" ? "Mi alternativa" : "Alternativa del coach",
+      kind: slot,
+      entry,
+      meal: mealFromReplacementEntry(meal, entry, mealIndex),
+      active: entry.isActiveReplacement !== false,
+    });
+  });
+  mealReplacementOptions(row, meal, mealIndex).forEach((candidate) => {
+    const candidateTotals = mealTotals(candidate.meal);
+    const duplicate = options.some((option) => {
+      const totals = mealTotals(option.meal);
+      return mealName(option.meal, mealIndex) === mealName(candidate.meal, mealIndex) &&
+        Math.round(totals.kcal) === Math.round(candidateTotals.kcal);
+    });
+    if (duplicate) return;
+    options.push({
+      key: `coach-candidate-${candidate.key}`,
+      label: "Alternativa del coach",
+      kind: "coach_assigned",
+      candidate: true,
+      meal: candidate.meal,
+      active: false,
+    });
+  });
+  return options;
 }
 
 function foodReplacementEntry(row = {}, mealIndex = 0, foodIndex = 0) {
@@ -1821,23 +1928,7 @@ function equivalentBuilderSeedFood(food = {}, index = 0) {
 function mealWithTrackingReplacements(row = {}, meal = {}, mealIndex = 0) {
   const mealEntry = mealReplacementEntry(row, mealIndex);
   if (mealEntry) {
-    const foods = Array.isArray(mealEntry.foods) ? mealEntry.foods : [];
-    return {
-      ...meal,
-      id: mealId(meal, mealIndex),
-      name: mealEntry.name || mealName(meal, mealIndex),
-      nombre: mealEntry.name || mealName(meal, mealIndex),
-      source: "client_meal_replacement",
-      replacementMeta: {
-        type: "meal",
-        originalName: mealName(meal, mealIndex),
-        approvalStatus: mealEntry.approvalStatus || "approved",
-        approvalReason: mealEntry.approvalReason || "",
-      },
-      foods,
-      items: foods,
-      totals: totalsWithFallback(sumTotals(foods), addTotals(mealTotals(meal), mealEntry.totals)),
-    };
+    return mealFromReplacementEntry(meal, mealEntry, mealIndex);
   }
 
   const foods = mealFoods(meal).map((food, foodIndex) => {
@@ -1873,10 +1964,17 @@ function buildMealReplacementEntry(row = {}, originalMeal = {}, replacementMeal 
   const originalTotals = mealTotals(originalMeal);
   const replacementTotals = mealTotals(replacementMeal);
   const replacementName = mealName(replacementMeal, mealIndex);
+  const replacementSlot = replacementMeal?.replacementSlot || (replacementMeal?.replacementMode === "custom_equivalent" ? "client_generated" : "coach_assigned");
+  const replacementIdentity = replacementMeal?.replacementIdentity || (replacementSlot === "client_generated"
+    ? mealId(originalMeal, mealIndex)
+    : mealId(replacementMeal, mealIndex));
   return {
-    id: `${mealReplacementPrefix(row, mealIndex)}-${trackingIdPart(mealId(originalMeal, mealIndex))}`.slice(0, 100),
+    id: `${mealReplacementPrefix(row, mealIndex)}-${trackingIdPart(replacementIdentity)}`.slice(0, 100),
     name: replacementName,
     source: "client_meal_replacement",
+    replacementSlot,
+    selectionKey: `${replacementSlot}:${trackingIdPart(replacementIdentity)}`.slice(0, 160),
+    isActiveReplacement: true,
     mode: replacementMeal?.replacementMode || null,
     creationType: replacementMeal?.creationType || "full_meal_equivalent",
     strategy: replacementMeal?.strategy || "selected_only",
@@ -3001,10 +3099,18 @@ export default function MenuPlan() {
     if (markCompleted) completedIds.add(mealId(originalMeal, mealIndex));
     const currentMealReplacements = Array.isArray(row?.tracking?.mealReplacements) ? row.tracking.mealReplacements : [];
     const currentFoodReplacements = Array.isArray(row?.tracking?.foodReplacements) ? row.tracking.foodReplacements : [];
-    const nextMealReplacements = [
-      ...currentMealReplacements.filter((entry) => !isReplacementEntryForMeal(entry, row, mealIndex)),
-      replacementEntry,
-    ];
+    const replacementContext = {
+      date: row?.date,
+      mealIndex,
+      originalMealId: mealId(originalMeal, mealIndex),
+    };
+    const nextMealReplacements = mealReplacementSlot(replacementEntry) === "client_generated"
+      ? replaceClientGeneratedSlot(currentMealReplacements, replacementEntry, replacementContext)
+      : [
+          ...activateMealReplacement(currentMealReplacements, replacementContext, "")
+            .filter((entry) => String(entry?.id || "") !== String(replacementEntry.id || "")),
+          replacementEntry,
+        ];
     const nextFoodReplacements = currentFoodReplacements.filter((entry) => !isReplacementEntryForMeal(entry, row, mealIndex));
     const optimisticRow = rowWithTracking(row, {
       completedMenuMealIds: [...completedIds],
@@ -3029,6 +3135,39 @@ export default function MenuPlan() {
         foodReplacements: nextFoodReplacements,
       }),
       "Reemplazo de comida guardado."
+    );
+  }
+
+  function selectMealChoice(row, originalMeal, mealIndex, option = {}) {
+    if (!row?.date || saving) return;
+    if (option?.candidate && option?.meal) {
+      applyMealReplacement({
+        row,
+        originalMeal,
+        replacementMeal: { ...option.meal, replacementSlot: "coach_assigned", replacementIdentity: option.key },
+        mealIndex,
+        markCompleted: false,
+      });
+      return;
+    }
+    const selectionKey = String(option?.key || option || "");
+    const context = {
+      date: row.date,
+      mealIndex,
+      originalMealId: mealId(originalMeal, mealIndex),
+    };
+    const current = Array.isArray(row?.tracking?.mealReplacements) ? row.tracking.mealReplacements : [];
+    const nextMealReplacements = activateMealReplacement(current, context, selectionKey === "original" ? "" : selectionKey);
+    const optimisticRow = rowWithTracking(row, { mealReplacements: nextMealReplacements });
+    setWeekData((currentData) => currentData ? {
+      ...currentData,
+      days: (currentData.days || []).map((day) => day.date === optimisticRow.date ? optimisticRow : day),
+    } : currentData);
+    setDetailRow((currentRow) => currentRow?.date === optimisticRow.date ? optimisticRow : currentRow);
+    setMealDrawer(null);
+    submitTracking(
+      trackingPayloadBase(row, { mealReplacements: nextMealReplacements }),
+      selectionKey === "original" ? "Comida original restaurada." : "Alternativa elegida para este dia."
     );
   }
 
@@ -3132,6 +3271,7 @@ export default function MenuPlan() {
 
   return (
     <MenuAutonomousActionsContext.Provider value={autonomousActions}>
+    <MealChoiceActionsContext.Provider value={{ select: selectMealChoice }}>
     <div
       className="min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-0 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
       style={{ background: "#070707", color: "#f4f4f5", minHeight: "60vh" }}
@@ -3438,6 +3578,7 @@ export default function MenuPlan() {
       ) : null}
 
     </div>
+    </MealChoiceActionsContext.Provider>
     </MenuAutonomousActionsContext.Provider>
   );
 }
@@ -4300,6 +4441,7 @@ function MobileDayMenu({
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
   const emptyCopy = emptyMenuCopy(activePlanSource);
   const flexiblePlan = flexiblePlanForChoice(displayRow, activeChoice, activePlanSource);
+  const targetOnlyMeals = plannedMealTargets(displayRow);
 
   return (
     <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -4359,10 +4501,29 @@ function MobileDayMenu({
         </div>
       */}
 
-      {!primary?.snapshot ? (
+      {!primary?.snapshot && !targetOnlyMeals.length ? (
         <div className="mt-2.5">
           <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
         </div>
+      ) : null}
+
+      {!primary?.snapshot && targetOnlyMeals.length ? (
+        <section className="mt-3 grid gap-2.5">
+          <div className="px-1">
+            <h3 className="text-base font-black text-white">Metas de comidas</h3>
+            <p className="mt-1 text-[11px] font-bold text-zinc-500">Tu coach definió los objetivos. Generá cada comida con el algoritmo o cargala manualmente.</p>
+          </div>
+          {targetOnlyMeals.map((meal, mealIndex) => (
+            <PlannedMealTargetCard
+              key={meal.id}
+              row={displayRow}
+              meal={meal}
+              mealIndex={mealIndex}
+              disabled={saving}
+              onGenerate={() => onOpenMeal({ row: displayRow, meal, baseMeal: meal, mealIndex, action: "replace" })}
+            />
+          ))}
+        </section>
       ) : null}
 
       {activeChoice?.snapshot ? (
@@ -4392,6 +4553,7 @@ function MobileDayMenu({
                 row={displayRow}
                 meal={entry.meal}
                 baseMeal={entry.baseMeal}
+                mealChoices={entry.mealChoices}
                 mealIndex={entry.mealIndex}
                 done={entry.done}
                 generated={entry.generated}
@@ -5126,6 +5288,7 @@ function MobileDayDetailView({
               row={displayRow}
               meal={entry.meal}
               baseMeal={entry.baseMeal}
+              mealChoices={entry.mealChoices}
               mealIndex={entry.mealIndex}
               done={entry.done}
               generated={entry.generated}
@@ -5348,6 +5511,7 @@ function MobileMealCard({
   generated = false,
   generatedEntry = null,
   manualEntry = null,
+  mealChoices = [],
   saving,
   canMarkMeals,
   onToggleMeal,
@@ -5357,6 +5521,7 @@ function MobileMealCard({
   onSaveAsSavedMeal,
   onDeleteManual,
 }) {
+  const mealChoiceActions = React.useContext(MealChoiceActionsContext);
   const trackingMeal = baseMeal || meal;
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
@@ -5373,6 +5538,7 @@ function MobileMealCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
   const canEditThisMeal = canQuickEdit && !manual && !generated;
+  const activeChoiceIndex = Math.max(0, mealChoices.findIndex((option) => option.active));
 
   function toggleExpanded() {
     setIsExpanded((value) => !value);
@@ -5409,6 +5575,14 @@ function MobileMealCard({
         <span className={`pointer-events-none absolute inset-0 ${visual.haze}`} aria-hidden="true" />
         {completedVisual ? <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(52,211,153,.16),transparent_38%),rgba(16,185,129,.07)]" aria-hidden="true" /> : null}
         <span className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${completedVisual ? "bg-gradient-to-b from-emerald-100 via-emerald-300 to-emerald-500 shadow-[0_0_22px_rgba(16,185,129,.72)]" : visual.rail}`} aria-hidden="true" />
+        {mealChoices.length > 1 ? (
+          <MealChoiceNavigator
+            options={mealChoices}
+            activeIndex={activeChoiceIndex}
+            disabled={saving}
+            onSelect={(option) => mealChoiceActions?.select?.(row, trackingMeal, mealIndex, option)}
+          />
+        ) : null}
         <div className="relative z-10 flex items-center gap-2.5">
           <button
             type="button"
@@ -5539,6 +5713,86 @@ function MobileMealMacroChip({ label, value }) {
       <span className="text-[#FFE8A3]">{label}</span>
       <span>{formatNumber(value, 0)} g</span>
     </span>
+  );
+}
+
+function PlannedMealTargetCard({ row, meal, mealIndex, disabled, onGenerate }) {
+  const generatedMeal = row ? mealWithTrackingReplacements(row, meal, mealIndex) : meal;
+  const hasGeneratedMeal = generatedMeal !== meal;
+  const totals = mealTotals(generatedMeal);
+  return (
+    <article className="rounded-[1.05rem] border border-emerald-300/25 bg-[linear-gradient(145deg,rgba(8,38,41,.92),rgba(6,16,25,.96))] p-3 shadow-[0_12px_28px_rgba(0,0,0,.24)]">
+      <div className="flex items-center gap-3">
+        <MealTypeIcon meal={meal} index={mealIndex} size="lg" />
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-[16px] font-black text-white">{mealName(generatedMeal, mealIndex)}</h4>
+          <p className="mt-1 text-[11px] font-black text-[#FFD76B]">{displayKcal(totals.kcal)} · {displayMenuMacros(totals)}</p>
+          <span className="mt-2 inline-flex rounded-full border border-sky-300/20 bg-sky-300/[.07] px-2 py-1 text-[9px] font-black text-sky-100">
+            {hasGeneratedMeal ? `Generada para ${mealName(meal, mealIndex)}` : "Meta del coach"}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={disabled}
+          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-emerald-300/35 bg-emerald-300/10 px-3 text-[11px] font-black text-emerald-100 disabled:opacity-50"
+          aria-label={`Generar ${mealName(meal, mealIndex)} según la meta del coach`}
+        >
+          <WandSparkles size={15} /> {hasGeneratedMeal ? "Cambiar" : "Generar"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function MealChoiceNavigator({ options = [], activeIndex = 0, disabled = false, onSelect }) {
+  const scrollerRef = useRef(null);
+  const scrollTimerRef = useRef(null);
+
+  useEffect(() => {
+    const node = scrollerRef.current?.children?.[activeIndex];
+    node?.scrollIntoView?.({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [activeIndex]);
+
+  useEffect(() => () => window.clearTimeout(scrollTimerRef.current), []);
+
+  function handleScroll() {
+    window.clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = window.setTimeout(() => {
+      const scroller = scrollerRef.current;
+      if (!scroller || disabled) return;
+      const center = scroller.scrollLeft + scroller.clientWidth / 2;
+      const children = [...scroller.children];
+      const closestIndex = children.reduce((best, child, index) => {
+        const childCenter = child.offsetLeft + child.offsetWidth / 2;
+        const bestChild = children[best];
+        const bestCenter = bestChild.offsetLeft + bestChild.offsetWidth / 2;
+        return Math.abs(childCenter - center) < Math.abs(bestCenter - center) ? index : best;
+      }, 0);
+      if (closestIndex !== activeIndex) onSelect?.(options[closestIndex]);
+    }, 140);
+  }
+
+  if (options.length <= 1) return null;
+  const previous = (activeIndex - 1 + options.length) % options.length;
+  const next = (activeIndex + 1) % options.length;
+  return (
+    <div className="relative z-20 mb-2.5 grid grid-cols-[36px_minmax(0,1fr)_36px] items-center gap-1.5 rounded-xl border border-white/[0.08] bg-black/25 p-1.5">
+      <button type="button" disabled={disabled} onClick={() => onSelect?.(options[previous])} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-200 disabled:opacity-40" aria-label="Ver alternativa anterior">
+        <ChevronLeft size={17} />
+      </button>
+      <div ref={scrollerRef} onScroll={handleScroll} className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Opciones de esta comida">
+        {options.map((option, index) => (
+          <button key={option.key} type="button" disabled={disabled || index === activeIndex} onClick={() => onSelect?.(option)} className={`min-h-9 min-w-[82%] snap-center rounded-lg border px-2 text-center text-[10px] font-black transition sm:min-w-[46%] ${index === activeIndex ? "border-emerald-300/35 bg-emerald-300/12 text-emerald-100" : "border-white/10 bg-white/[0.035] text-zinc-400"}`} aria-current={index === activeIndex ? "true" : undefined}>
+            <span className="block truncate">{option.label}</span>
+            <span className="mt-0.5 block text-[9px] font-bold opacity-70">{index + 1} de {options.length}{index === activeIndex ? " · elegida" : ""}</span>
+          </button>
+        ))}
+      </div>
+      <button type="button" disabled={disabled} onClick={() => onSelect?.(options[next])} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-200 disabled:opacity-40" aria-label="Ver alternativa siguiente">
+        <ChevronRight size={17} />
+      </button>
+    </div>
   );
 }
 
@@ -6297,6 +6551,7 @@ function DesktopMealCard({
   saving,
   compact = false,
 }) {
+  const mealChoiceActions = React.useContext(MealChoiceActionsContext);
   const { meal, baseMeal, mealIndex, done, generated, generatedEntry, manual } = entry;
   const trackingMeal = baseMeal || meal;
   const totals = mealTotals(meal);
@@ -6314,6 +6569,8 @@ function DesktopMealCard({
   const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
   const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
   const canEditThisMeal = canQuickEdit && !manual && !generated;
+  const mealChoices = Array.isArray(entry.mealChoices) ? entry.mealChoices : [];
+  const activeChoiceIndex = Math.max(0, mealChoices.findIndex((option) => option.active));
 
   function toggleExpanded() {
     setIsExpanded((value) => !value);
@@ -6356,6 +6613,15 @@ function DesktopMealCard({
     }`}>
       {done || generated || manual ? (
         <span className={`pointer-events-none absolute inset-y-4 left-0 w-1 rounded-r-full bg-gradient-to-b ${manual ? "from-sky-300 to-[#D4AF37]" : "from-emerald-300 to-[#D4AF37]"}`} aria-hidden="true" />
+      ) : null}
+
+      {mealChoices.length > 1 ? (
+        <MealChoiceNavigator
+          options={mealChoices}
+          activeIndex={activeChoiceIndex}
+          disabled={saving}
+          onSelect={(option) => mealChoiceActions?.select?.(row, trackingMeal, mealIndex, option)}
+        />
       ) : null}
 
       <div className="flex items-start gap-3">
@@ -6673,7 +6939,10 @@ function DayDetail({
       {choices.length ? (
         <MenuChoicesBlock row={row} choices={choices} onUseAlternative={onUseAlternative} />
       ) : (
-        <EmptyMenu row={row} />
+        <EmptyMenu
+          row={row}
+          onGenerateMeal={(meal, mealIndex) => onOpenMeal({ row, meal, baseMeal: meal, mealIndex, action: "replace" })}
+        />
       )}
 
       <FlexibleMarginSlotCard
@@ -8153,8 +8422,28 @@ function MenuChoicesBlock({ row, choices, onUseAlternative }) {
   );
 }
 
-function EmptyMenu({ row }) {
+function EmptyMenu({ row, onGenerateMeal }) {
   const actions = React.useContext(MenuAutonomousActionsContext);
+  const targetOnlyMeals = plannedMealTargets(row);
+  if (targetOnlyMeals.length) {
+    return (
+      <section className="grid gap-3 rounded-3xl border border-emerald-300/20 bg-emerald-300/[.045] p-4">
+        <div><strong className="text-white">Metas por comida</strong><p className="mt-1 text-sm font-semibold text-zinc-400">El coach definió {targetOnlyMeals.length} comidas para este día.</p></div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {targetOnlyMeals.map((meal, index) => (
+            <PlannedMealTargetCard
+              key={meal.id}
+              row={row}
+              meal={meal}
+              mealIndex={index}
+              disabled={!onGenerateMeal}
+              onGenerate={() => onGenerateMeal?.(meal, index)}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-5">
       <div className="flex items-center gap-3 text-zinc-200">

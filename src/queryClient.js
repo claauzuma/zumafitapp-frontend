@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { clearLiveTabSnapshot } from "./appSessionContinuity.js";
 
 export const STALE_TIMES = {
   authMe: 60 * 1000,
@@ -229,6 +230,7 @@ export function setAuthUserQueryData(user) {
 }
 
 export function clearPrivateQueryCache() {
+  clearLiveTabSnapshot();
   queryClient.clear();
 }
 
