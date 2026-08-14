@@ -4514,14 +4514,36 @@ function MobileDayMenu({
             <p className="mt-1 text-[11px] font-bold text-zinc-500">Tu coach definió los objetivos. Generá cada comida con el algoritmo o cargala manualmente.</p>
           </div>
           {targetOnlyMeals.map((meal, mealIndex) => (
-            <PlannedMealTargetCard
-              key={meal.id}
-              row={displayRow}
-              meal={meal}
-              mealIndex={mealIndex}
-              disabled={saving}
-              onGenerate={() => onOpenMeal({ row: displayRow, meal, baseMeal: meal, mealIndex, action: "replace" })}
-            />
+
+
+<PlannedMealTargetCard
+  key={meal.id}
+  row={displayRow}
+  meal={meal}
+  mealIndex={mealIndex}
+  disabled={saving}
+
+  onSettings={() =>
+    onOpenMeal({
+      row: displayRow,
+      meal,
+      baseMeal: meal,
+      mealIndex,
+      action: "settings",
+    })
+  }
+
+  onGenerate={() =>
+    onOpenMeal({
+      row: displayRow,
+      meal,
+      baseMeal: meal,
+      mealIndex,
+      action: "replace",
+    })
+  }
+/>
+
           ))}
         </section>
       ) : null}
@@ -5716,7 +5738,7 @@ function MobileMealMacroChip({ label, value }) {
   );
 }
 
-function PlannedMealTargetCard({ row, meal, mealIndex, disabled, onGenerate }) {
+function PlannedMealTargetCard({ row, meal, mealIndex, disabled,onSettings, onGenerate }) {
   const generatedMeal = row ? mealWithTrackingReplacements(row, meal, mealIndex) : meal;
   const hasGeneratedMeal = generatedMeal !== meal;
   const totals = mealTotals(generatedMeal);
@@ -5731,15 +5753,45 @@ function PlannedMealTargetCard({ row, meal, mealIndex, disabled, onGenerate }) {
             {hasGeneratedMeal ? `Generada para ${mealName(meal, mealIndex)}` : "Meta del coach"}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onGenerate}
-          disabled={disabled}
-          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-emerald-300/35 bg-emerald-300/10 px-3 text-[11px] font-black text-emerald-100 disabled:opacity-50"
-          aria-label={`Generar ${mealName(meal, mealIndex)} según la meta del coach`}
-        >
-          <WandSparkles size={15} /> {hasGeneratedMeal ? "Cambiar" : "Generar"}
-        </button>
+
+
+   <div className="flex shrink-0 items-center gap-2">
+
+  <button
+    type="button"
+    onClick={onSettings}
+    disabled={disabled}
+    className="grid min-h-10 min-w-10 place-items-center rounded-xl
+      border border-[#D4AF37]/40
+      bg-[#D4AF37]/12
+      text-[#FFE16B]
+      disabled:opacity-50"
+    aria-label={`Ajustar generación de ${mealName(meal, mealIndex)}`}
+    title="Ajustes de generación"
+  >
+    <SlidersHorizontal size={16} />
+  </button>
+
+  <button
+    type="button"
+    onClick={onGenerate}
+    disabled={disabled}
+    className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl
+      border border-emerald-300/35
+      bg-emerald-300/10
+      px-3 text-[11px]
+      font-black text-emerald-100
+      disabled:opacity-50"
+    aria-label={`Generar ${mealName(meal, mealIndex)} según la meta del coach`}
+  >
+    <WandSparkles size={15} />
+    {hasGeneratedMeal ? "Cambiar" : "Generar"}
+  </button>
+
+</div>
+
+
+
       </div>
     </article>
   );
@@ -8431,6 +8483,8 @@ function EmptyMenu({ row, onGenerateMeal }) {
         <div><strong className="text-white">Metas por comida</strong><p className="mt-1 text-sm font-semibold text-zinc-400">El coach definió {targetOnlyMeals.length} comidas para este día.</p></div>
         <div className="grid gap-2 sm:grid-cols-2">
           {targetOnlyMeals.map((meal, index) => (
+
+
             <PlannedMealTargetCard
               key={meal.id}
               row={row}
@@ -8440,6 +8494,7 @@ function EmptyMenu({ row, onGenerateMeal }) {
               onGenerate={() => onGenerateMeal?.(meal, index)}
             />
           ))}
+        
         </div>
       </section>
     );
