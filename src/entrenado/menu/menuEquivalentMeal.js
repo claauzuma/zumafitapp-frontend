@@ -109,7 +109,7 @@ export function equivalentMealDecisionWarning({
     codes.push("calorie_target_not_reached");
     reasons.push(`${differenceText("Calorías", -calorieDeficit, "kcal")} para completar la meta.`);
   }
-  if (proteinDeficit >= 3 - 1e-6) {
+  if (proteinDeficit > 4 + 1e-6) {
     codes.push("protein_target_not_reached");
     reasons.push(`${differenceText("Proteína", -proteinDeficit)} respecto de la meta.`);
   }
@@ -338,5 +338,26 @@ export function buildEquivalentMealFromDrafts({
       strategy: strategy === "assisted_food_addition" ? strategy : "selected_only",
       templateVersion: 1,
     },
+  };
+}
+
+export function buildCompletionTrackingBatch({
+  date = "",
+  trackingExecutionId = "",
+  replacementMeal = {},
+  mealName = "Comida",
+} = {}) {
+  const items = Array.isArray(replacementMeal?.items)
+    ? replacementMeal.items
+    : Array.isArray(replacementMeal?.foods) ? replacementMeal.foods : [];
+  if (!date || !trackingExecutionId || !replacementMeal?.requestId || !items.length) return null;
+  return {
+    requestId: replacementMeal.requestId,
+    date,
+    mealId: trackingExecutionId,
+    mealType: replacementMeal.mealType || "otra",
+    mealName: replacementMeal.originalMealName || mealName,
+    source: "menu_target_completion",
+    items,
   };
 }

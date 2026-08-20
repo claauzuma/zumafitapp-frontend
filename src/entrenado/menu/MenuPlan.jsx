@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import MealTargetTrackingPanel from "../../tracking/MealTargetTrackingPanel.jsx";
 import { useQuery } from "@tanstack/react-query";
+
+import {
+  useDeleteFoodLog,
+  useTrackingDay,
+} from "../../tracking/trackingQueries.js";
+
+
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -73,14 +81,20 @@ import {
 } from "../../hooks/useCurrentLocalDate.js";
 import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
 import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
-import { getTrackingDay, updateManualDayCompletion } from "../../tracking/trackingApi.js";
+import {
+  addFoodLogsBatch,
+  getTrackingDay,
+  saveMenuTrackingDay,
+  updateManualDayCompletion,
+} from "../../tracking/trackingApi.js";
 import { calculateManualDayProgress } from "../../tracking/manualDayCompletion.js";
 import {
   ManualDayCompletionAction,
   ManualDayCompletionDialog,
 } from "./ManualDayCompletion.jsx";
 import EquivalentMealBuilder from "./EquivalentMealBuilder.jsx";
-import { resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
+import MenuGenerationSettingsWizard from "./MenuGenerationSettingsWizard.jsx";
+import { buildCompletionTrackingBatch, resolveEquivalentMealAccess } from "./menuEquivalentMeal.js";
 import {
   activateMealReplacement,
   mealReplacementSelectionKey,
@@ -89,24 +103,20 @@ import {
   replacementBelongsToMeal,
 } from "./mealAlternativeSelection.js";
 import { menuWeekCacheKey, menuWeekCacheOwner } from "./menuWeekCache.js";
+import { isMealTargetCalorieComplete } from "./mealTargetCompletion.js";
 import {
   DEFAULT_MENU_GENERATION_SETTINGS,
-  MENU_GENERATION_MODE_COMBINE,
-  MENU_GENERATION_MODE_SCRATCH,
-  MENU_GENERATION_MODE_SIMILAR,
   automaticGenerationRequiresPlan,
-  dayKeyFromIsoDate,
+  buildAutonomousMenuGenerationRequest,
   generationModeLabel,
   libraryTargetPath,
   loadMenuGenerationSettings,
-  mealTypesForCount,
   resolveAutonomousMenuActions,
   saveMenuGenerationSettings,
 } from "./menuQuickActions.js";
 
 const EMPTY_DAYS = [];
 const MENU_WEEK_CACHE_TTL_MS = 5 * 60 * 1000;
-const MENU_WEEK_BACKGROUND_REFRESH_MS = 45 * 1000;
 const menuWeekMemoryCache = new Map();
 const MENU_EMOJI = "\u{1F37D}\uFE0F";
 const MENU_BOX_EMOJI = "\u{1F371}";
@@ -160,12 +170,6 @@ function getCachedMenuWeek(start, owner) {
   return cached?.data || null;
 }
 
-function shouldRefreshCachedMenuWeek(start, owner) {
-  const cached = getMenuWeekCacheEntry(start, owner);
-  if (!cached) return true;
-  return Date.now() - cached.savedAt > MENU_WEEK_BACKGROUND_REFRESH_MS;
-}
-
 function setCachedMenuWeek(start, owner, data) {
   if (!start || !data) return;
   menuWeekMemoryCache.set(menuWeekCacheKey(start, owner), {
@@ -190,7 +194,11 @@ function addDays(value, amount) {
 function formatDate(value) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00.000Z`);
-  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function formatNumber(value, digits = 0) {
@@ -574,6 +582,238 @@ function mealId(meal = {}, index = 0) {
   return String(meal.id || meal._id || meal.nombre || meal.name || `meal-${index + 1}`);
 }
 
+function normalizeMenuTargetMealType(value = "") {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (text.includes("desay")) return "desayuno";
+  if (text.includes("almuer")) return "almuerzo";
+  if (text.includes("meriend")) return "merienda";
+  if (text.includes("cena")) return "cena";
+  if (text.includes("snack")) return "snack";
+
+  return "otra";
+}
+
+function menuTargetMealTypeLabel(type = "") {
+  if (type === "desayuno") return "Desayuno";
+  if (type === "almuerzo") return "Almuerzo";
+  if (type === "merienda") return "Merienda";
+  if (type === "cena") return "Cena";
+  if (type === "snack") return "Snack";
+
+  return "Comida";
+}
+
+function safeMenuTargetId(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    // Debe coincidir con normalizeMealId (80) menos "menu_target_" (12).
+    .slice(0, 68);
+}
+
+function menuTargetPlanMeal(row = {}, baseMeal = {}, mealIndex = 0) {
+  const plan = row?.mealTargetPlan;
+
+  if (
+    plan?.mode !== "per_meal" ||
+    !Array.isArray(plan.meals)
+  ) {
+    return null;
+  }
+
+  const currentMealId = String(
+    mealId(baseMeal, mealIndex)
+  );
+
+  return (
+    plan.meals.find(
+      (entry) =>
+        String(entry?.id || "") === currentMealId
+    ) ||
+    plan.meals[mealIndex] ||
+    null
+  );
+}
+
+function menuTargetExecutionContext(
+  row = {},
+  meal = {},
+  baseMeal = {},
+  mealIndex = 0
+) {
+  const planned = menuTargetPlanMeal(
+    row,
+    baseMeal,
+    mealIndex
+  );
+
+  const plannedTarget =
+    planned?.target || {};
+
+  const hasPlannedTarget = Boolean(
+    Number(plannedTarget.kcal) ||
+    Number(
+      plannedTarget.p ??
+      plannedTarget.proteina
+    ) ||
+    Number(
+      plannedTarget.c ??
+      plannedTarget.carbs
+    ) ||
+    Number(
+      plannedTarget.g ??
+      plannedTarget.grasas
+    )
+  );
+
+  const target = hasPlannedTarget
+    ? {
+        kcal:
+          macro(
+            plannedTarget.kcal
+          ),
+
+        proteina:
+          macro(
+            plannedTarget.p ??
+            plannedTarget.proteina
+          ),
+
+        carbs:
+          macro(
+            plannedTarget.c ??
+            plannedTarget.carbs
+          ),
+
+        grasas:
+          macro(
+            plannedTarget.g ??
+            plannedTarget.grasas
+          ),
+      }
+    : mealTotals(meal);
+
+
+  const type =
+    normalizeMenuTargetMealType(
+      planned?.type ||
+      planned?.tipo ||
+      baseMeal?.type ||
+      baseMeal?.tipo ||
+      baseMeal?.tipoComida ||
+      mealName(
+        baseMeal,
+        mealIndex
+      )
+    );
+
+
+  const label =
+    planned?.label ||
+    planned?.name ||
+    planned?.nombre ||
+    menuTargetMealTypeLabel(type);
+
+
+  /*
+   * =====================================================
+   * ID ÚNICO COMPARTIDO CON TRACKING
+   * =====================================================
+   *
+   * La prioridad tiene que ser el ID REAL de la comida
+   * original del menú.
+   *
+   * Ej:
+   *
+   * demo-meal-demo-menu-2200-2300-180-0-3
+   *
+   * Tracking guarda los FoodLogs como:
+   *
+   * menu_target_demo-meal-demo-menu-2200-2300-180-0-3
+   *
+   * Menú debe consultar EXACTAMENTE ese mismo mealId.
+   */
+
+  const idSeed =
+    baseMeal?.id ||
+    baseMeal?._id ||
+    meal?.id ||
+    meal?._id ||
+    planned?.mealId ||
+    planned?.id ||
+    `slot_${mealIndex + 1}`;
+
+
+  return {
+    id:
+      `menu_target_${safeMenuTargetId(
+        idSeed
+      )}`,
+
+    label,
+    type,
+    target,
+  };
+}
+
+function trackingItemsForExecution(
+  trackingDay = null,
+  executionId = ""
+) {
+  if (!executionId) return [];
+
+  const meals =
+    trackingDay?.meals || {};
+
+  return Array.isArray(
+    meals?.[executionId]
+  )
+    ? meals[executionId]
+    : [];
+}
+
+function menuTargetCompletionState(
+  row = {},
+  meal = {},
+  baseMeal = {},
+  mealIndex = 0,
+  trackingDay = null
+) {
+  const execution = menuTargetExecutionContext(row, meal, baseMeal, mealIndex);
+  const trackedItems = trackingItemsForExecution(trackingDay, execution.id);
+  const trackedTotals = sumTotals(trackedItems);
+
+  return isMealTargetCalorieComplete({
+    targetKcal: execution.target?.kcal,
+    consumedKcal: trackedTotals.kcal,
+    trackedItemsCount: trackedItems.length,
+  });
+}
+
+function dailyTargetTrackingItems(row = {}, trackingDay = null) {
+  if (
+    !row?.date ||
+    !hasConfiguredTarget(row) ||
+    menuChoices(row).length ||
+    plannedMealTargets(row).length
+  ) {
+    return [];
+  }
+
+  return trackingItemsForExecution(
+    trackingDay,
+    `daily_target_${row.date}`
+  );
+}
+
+
+
+
+
+
 function emptyTotals() {
   return { kcal: 0, proteina: 0, carbs: 0, grasas: 0 };
 }
@@ -725,23 +965,149 @@ function plannedMealTargets(row = {}) {
   }));
 }
 
-function consumedTotals(row = {}) {
-  const trackingTotals = row?.tracking?.consumedTotals;
-  const backendTotals = trackingTotals ? totalFromLike(trackingTotals) : emptyTotals();
-  const localTotals = localConsumedTotals(row);
-  const tracking = row?.tracking || {};
+function menuConsumedTotals(row = {}) {
+  const tracking =
+    row?.tracking || {};
+
+
+  /*
+   * =========================================
+   * CONSUMO DEL MENÚ
+   * =========================================
+   *
+   * Ej:
+   * - comidas marcadas como Hechas
+   * - reemplazos
+   * - entradas propias del MenuPlan
+   */
+
+  const backendMenuTotals =
+    tracking?.consumedTotals
+      ? totalFromLike(
+          tracking.consumedTotals
+        )
+      : emptyTotals();
+
+
+  const localMenuTotals =
+    localConsumedTotals(row);
+
+
   const hasLocalTrackingData = [
     tracking.completedMenuMealIds,
     tracking.manualEntries,
     tracking.generatedRemainingMeals,
     tracking.mealReplacements,
     tracking.foodReplacements,
-  ].some((list) => Array.isArray(list) && list.length);
-  if (hasLocalTrackingData) return localTotals;
-  if (!trackingTotals) return localTotals;
-  if (!hasTotalValue(localTotals)) return backendTotals;
-  if (!hasTotalValue(backendTotals)) return localTotals;
-  return localTotals.kcal > backendTotals.kcal + 1 ? localTotals : backendTotals;
+  ].some(
+    (list) =>
+      Array.isArray(list) &&
+      list.length
+  );
+
+
+  /*
+   * Conservamos la lógica anterior:
+   *
+   * si hay cambios locales/optimistas del menú,
+   * usamos esos.
+   *
+   * Si no, usamos lo que vino del backend.
+   */
+
+  let resolvedMenuTotals =
+    emptyTotals();
+
+
+  if (hasLocalTrackingData) {
+    resolvedMenuTotals =
+      localMenuTotals;
+  } else if (
+    hasTotalValue(
+      backendMenuTotals
+    )
+  ) {
+    resolvedMenuTotals =
+      backendMenuTotals;
+  } else {
+    resolvedMenuTotals =
+      localMenuTotals;
+  }
+
+
+  /*
+   * =========================================
+   * TRACKING REAL / FOODLOGS
+   * =========================================
+   *
+   * Acá entran:
+   *
+   * - daily_target_<fecha>
+   * - menu_target_<id>
+   * - registros manuales de Tracking
+   *
+   * Esto es lo que antes Meta del día
+   * NO estaba contando.
+   */
+
+  return resolvedMenuTotals;
+}
+
+function consumedTotals(row = {}) {
+  const tracking = row?.tracking || {};
+  const resolvedMenuTotals = menuConsumedTotals(row);
+  const manualTrackingTotals =
+    tracking?.manualTrackingTotals
+      ? totalFromLike(
+          tracking.manualTrackingTotals
+        )
+      : emptyTotals();
+
+
+  /*
+   * Caso normal:
+   *
+   * consumo menú
+   * +
+   * FoodLogs reales
+   */
+
+  if (
+    hasTotalValue(
+      manualTrackingTotals
+    )
+  ) {
+    return addTotals(
+      resolvedMenuTotals,
+      manualTrackingTotals
+    );
+  }
+
+
+  /*
+   * Fallback:
+   *
+   * versiones/backend que ya manden
+   * directamente el total combinado.
+   */
+
+  if (
+    tracking?.totalConsumedTotals
+  ) {
+    const total =
+      totalFromLike(
+        tracking.totalConsumedTotals
+      );
+
+    if (
+      hasTotalValue(total)
+    ) {
+      return total;
+    }
+  }
+
+
+  return resolvedMenuTotals;
 }
 
 function remainingTotals(row = {}) {
@@ -1421,7 +1787,7 @@ function completedCountableMeals(entries = []) {
   return countableMealEntries(entries).filter((entry) => entry.done).length;
 }
 
-function effectiveMealEntriesForDay(row = {}, baseMeals = [], weekRows = []) {
+function effectiveMealEntriesForDay(row = {}, baseMeals = [], weekRows = [], trackingDay = null) {
   const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
   const generatedMeta = generatedReplacementMetaForMeals(displayRow, baseMeals, weekRows);
   const manualMeta = manualReplacementMetaForMeals(row, baseMeals);
@@ -1433,7 +1799,15 @@ function effectiveMealEntriesForDay(row = {}, baseMeals = [], weekRows = []) {
       meal: mealWithTrackingReplacements(row, meal, index),
       baseMeal: meal,
       mealIndex: index,
-      done: completed.has(mealId(meal, index)),
+      done:
+        completed.has(mealId(meal, index)) ||
+        menuTargetCompletionState(
+          displayRow,
+          mealWithTrackingReplacements(row, meal, index),
+          meal,
+          index,
+          trackingDay
+        ),
       generated: false,
       mealChoices: mealChoiceOptions(row, meal, index),
     }))
@@ -1533,21 +1907,111 @@ function remainingGenerationTargets(row = {}, count = 1, weekRows = []) {
   });
 }
 
-function trackingPayloadBase(row = {}, overrides = {}) {
-  const tracking = row.tracking || {};
+
+
+function trackingPayloadBase(
+  row = {},
+  overrides = {}
+) {
+  const tracking =
+    row.tracking || {};
+
   return {
-    date: row.date,
-    dayKey: row.dayKey,
-    completedMenuMealIds: Array.isArray(tracking.completedMenuMealIds) ? tracking.completedMenuMealIds : [],
-    manualEntries: Array.isArray(tracking.manualEntries) ? tracking.manualEntries : [],
-    generatedRemainingMeals: Array.isArray(tracking.generatedRemainingMeals) ? tracking.generatedRemainingMeals : [],
-    mealReplacements: Array.isArray(tracking.mealReplacements) ? tracking.mealReplacements : [],
-    foodReplacements: Array.isArray(tracking.foodReplacements) ? tracking.foodReplacements : [],
-    selectedAlternative: tracking.selectedAlternative || null,
-    flexibleMarginCompleted: isFlexibleMarginCompleted(row),
+    date:
+      row.date,
+
+    dayKey:
+      row.dayKey,
+
+    completedMenuMealIds:
+      Array.isArray(
+        tracking.completedMenuMealIds
+      )
+        ? tracking.completedMenuMealIds
+        : [],
+
+    /*
+     * IMPORTANTE:
+     *
+     * Conservamos siempre las comidas
+     * que están en modo 🎯 Por meta.
+     *
+     * Así, por ejemplo, marcar otra
+     * comida como Hecha no hace que
+     * Almuerzo vuelva accidentalmente
+     * a Pendiente.
+     */
+    targetMealIds:
+      Array.isArray(
+        tracking.targetMealIds
+      )
+        ? tracking.targetMealIds
+        : [],
+
+    manualEntries:
+      Array.isArray(
+        tracking.manualEntries
+      )
+        ? tracking.manualEntries
+        : [],
+
+    generatedRemainingMeals:
+      Array.isArray(
+        tracking.generatedRemainingMeals
+      )
+        ? tracking.generatedRemainingMeals
+        : [],
+
+    mealReplacements:
+      Array.isArray(
+        tracking.mealReplacements
+      )
+        ? tracking.mealReplacements
+        : [],
+
+    foodReplacements:
+      Array.isArray(
+        tracking.foodReplacements
+      )
+        ? tracking.foodReplacements
+        : [],
+
+    selectedAlternative:
+      tracking.selectedAlternative ||
+      null,
+
+    flexibleMarginCompleted:
+      isFlexibleMarginCompleted(row),
+
     ...overrides,
   };
 }
+
+
+
+
+function targetMealIdSet(row = {}) {
+  return new Set(
+    (
+      Array.isArray(row?.tracking?.targetMealIds)
+        ? row.tracking.targetMealIds
+        : []
+    ).map(String)
+  );
+}
+
+function isMealTargetMode(row = {}, meal = {}, mealIndex = 0) {
+  const id = mealId(meal, mealIndex);
+
+  return targetMealIdSet(row).has(
+    String(id)
+  );
+}
+
+
+
+
+
 
 function rowWithTracking(row = {}, trackingOverrides = {}) {
   return {
@@ -2136,13 +2600,8 @@ async function getMenuTrackingWeek(start) {
   });
 }
 
-async function saveMenuTrackingDay(payload) {
-  return await apiFetch("/api/usuarios/me/menu-tracking/day", {
-    method: "POST",
-    body: payload,
-    timeoutMs: 12000,
-  });
-}
+
+
 
 function manualCompletionSummaryForRow(row, enabled = true) {
   const choice = trackingChoice(row);
@@ -2171,9 +2630,17 @@ export default function MenuPlan() {
   const menuCacheOwner = useMemo(() => menuWeekCacheOwner(currentUser), [currentUser]);
   const [quickSettings, setQuickSettings] = useState(() => loadMenuGenerationSettings(currentUser));
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [quickWizardPurpose, setQuickWizardPurpose] = useState("settings");
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [quickGenerationError, setQuickGenerationError] = useState("");
   const [quickTopUpOffer, setQuickTopUpOffer] = useState(null);
+
+  useEffect(() => {
+    if (location.state?.openGenerationSettings !== true) return;
+    setQuickWizardPurpose("generate");
+    setQuickSettingsOpen(true);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate]);
   const requestedDate = useMemo(() => dateKeyFromSearch(location.search), [location.search]);
   const currentDate = useCurrentLocalDate();
   const initialSelectedDate = requestedDate || currentDate;
@@ -2205,26 +2672,41 @@ export default function MenuPlan() {
   const isMobileLayout = useIsMobileMenuLayout();
   const dateContextRef = useRef({ currentDate, requestedDate });
 
-  async function loadWeek(start = weekStart, options = {}) {
-    const silent = !!options.silent;
-    const cached = getCachedMenuWeek(start, menuCacheOwner);
-    const hydrateFromCache = !silent && cached;
-    const canUseFreshCacheOnly = hydrateFromCache && !shouldRefreshCachedMenuWeek(start, menuCacheOwner);
-    if (hydrateFromCache) {
-      setWeekData(cached);
-      setLoading(false);
-      setError("");
-      if (canUseFreshCacheOnly) {
-        setRefreshing(false);
-        return cached;
-      }
-      setRefreshing(true);
-    } else if (silent) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setError("");
-    }
+async function loadWeek(start = weekStart, options = {}) {
+  const silent = !!options.silent;
+
+  const cached =
+    getCachedMenuWeek(
+      start,
+      menuCacheOwner
+    );
+
+  const hydrateFromCache =
+    !silent && cached;
+
+
+  /*
+   * Mostramos el cache inmediatamente
+   * para no generar parpadeos.
+   *
+   * PERO siempre refrescamos desde backend.
+   *
+   * Esto es importante porque Tracking puede
+   * haber cambiado aunque el menú en sí no
+   * haya cambiado.
+   */
+
+  if (hydrateFromCache) {
+    setWeekData(cached);
+    setLoading(false);
+    setError("");
+    setRefreshing(true);
+  } else if (silent) {
+    setRefreshing(true);
+  } else {
+    setLoading(true);
+    setError("");
+  }
     try {
       const data = await getMenuTrackingWeek(start);
       setCachedMenuWeek(start, menuCacheOwner, data);
@@ -2294,6 +2776,20 @@ export default function MenuPlan() {
     () => days.find((day) => day.date === selectedDate) || todayRow,
     [days, selectedDate, todayRow]
   );
+  const selectedTrackingQuery = useTrackingDay(selectedRow?.date || "");
+
+  useEffect(() => {
+    if (selectedRow?.date) {
+      void selectedTrackingQuery.refetch();
+    }
+    // La semana puede venir de cache; el detalle de consumo siempre se revalida.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRow?.date]);
+
+  const selectedDailyTargetItems = useMemo(
+    () => dailyTargetTrackingItems(selectedRow, selectedTrackingQuery.data),
+    [selectedRow, selectedTrackingQuery.data]
+  );
   const selectedDisplayRow = useMemo(
     () => rowWithActiveGeneratedMeals(selectedRow, days),
     [selectedRow, days]
@@ -2361,14 +2857,21 @@ export default function MenuPlan() {
     navigate(`/app/tracking?date=${encodeURIComponent(selectedRow?.date || currentDate)}`);
   }
 
-  function saveQuickSettings(nextSettings) {
+  function persistQuickSettings(nextSettings, { close = true, notify = true } = {}) {
     const saved = saveMenuGenerationSettings(currentUser, nextSettings);
     setQuickSettings(saved);
-    setQuickSettingsOpen(false);
+    if (close) setQuickSettingsOpen(false);
     setQuickGenerationError("");
     setQuickTopUpOffer(null);
-    setToast("Ajustes automáticos guardados.");
-    window.setTimeout(() => setToast(""), 2200);
+    if (notify) {
+      setToast("Ajustes automáticos guardados.");
+      window.setTimeout(() => setToast(""), 2200);
+    }
+    return saved;
+  }
+
+  function saveQuickSettings(nextSettings) {
+    persistQuickSettings(nextSettings);
   }
 
   function restoreQuickSettings() {
@@ -2376,8 +2879,9 @@ export default function MenuPlan() {
     return { ...DEFAULT_MENU_GENERATION_SETTINGS };
   }
 
-  async function runQuickAutomatic({ allowCalorieTopUp = false } = {}) {
+  async function runQuickAutomatic({ allowCalorieTopUp = false, settingsOverride = null } = {}) {
     if (quickGenerating) return;
+    const generationSettings = settingsOverride || quickSettings;
     if (!selectedQuickTarget.kcal) {
       setQuickGenerationError("Primero necesitas configurar el objetivo nutricional de este dia.");
       return;
@@ -2390,38 +2894,24 @@ export default function MenuPlan() {
       if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
         throw new Error("GENERATION_NOT_AUTHORIZED");
       }
-      if (quickSettings.mode === MENU_GENERATION_MODE_SCRATCH) {
-        navigate("/app/menu/nuevo?mode=generate", {
-          state: {
-            from: `${location.pathname}${location.search}`,
-            selectedDate: selectedRow?.date,
-            dailyTarget: selectedQuickTarget,
-            generationSettings: quickSettings,
-          },
-        });
-        return;
-      }
-      const preview = await generateClientMenuPreview({
+      const coachTargets = selectedRow?.mealTargetPlan?.mode === "per_meal" && Array.isArray(selectedRow.mealTargetPlan.meals)
+        ? selectedRow.mealTargetPlan.meals
+        : [];
+      const preview = await generateClientMenuPreview(buildAutonomousMenuGenerationRequest({
+        settings: generationSettings,
         target: selectedQuickTarget,
-        mealTypes: mealTypesForCount(quickSettings.mealCount),
-        selectedDays: [dayKeyFromIsoDate(selectedRow?.date)],
         selectedDate: selectedRow?.date,
-        distribution: quickSettings.distribution,
-        sourceMode: "combined",
-        generationMode: quickSettings.mode,
-        allowRepeats: quickSettings.allowRepeats,
-        preferFavorites: quickSettings.preferFavorites,
-        firstMealTime: quickSettings.firstMealTime,
+        coachMealTargets: coachTargets,
         allowCalorieTopUp,
         name: `Menu ${formatDate(selectedRow?.date)}`,
-      });
+      }));
       setQuickTopUpOffer(null);
       navigate("/app/menu/nuevo", {
         state: {
           from: `${location.pathname}${location.search}`,
           selectedDate: selectedRow?.date,
           dailyTarget: selectedQuickTarget,
-          generationSettings: quickSettings,
+          generationSettings,
           generatedDraft: {
             ...preview,
             fechaInicio: selectedRow?.date,
@@ -2445,12 +2935,31 @@ export default function MenuPlan() {
         setQuickGenerationError("");
       } else if (["MENU_NO_CALORIE_MATCH", "MENU_NO_PROTEIN_MATCH"].includes(generationError?.code)) {
         setQuickGenerationError(generationError.message);
+      } else if ([
+        "MENU_SELECTED_FOODS_REQUIRED",
+        "MENU_SELECTED_ONLY_LIBRARY_CONFLICT",
+        "MENU_SELECTED_ONLY_INCOMPATIBLE",
+        "MENU_MEAL_GENERATION_FAILED",
+        "MENU_REPEATED_MEAL_UNAVAILABLE",
+        "MENU_NON_GENERIC_FOOD",
+        "MENU_REQUIRED_FOOD_MISSING",
+        "MENU_INVALID_GENERATED_QUANTITY",
+        "MENU_MEAL_PROTEIN_RANGE",
+        "MENU_DAILY_PROTEIN_RANGE",
+        "MENU_COACH_MEAL_PROTEIN_RANGE",
+      ].includes(generationError?.code)) {
+        setQuickGenerationError(generationError.message);
       } else {
         setQuickGenerationError("No pudimos preparar el menú. Revisá tu conexión e intentá nuevamente.");
       }
     } finally {
       setQuickGenerating(false);
     }
+  }
+
+  function generateFromWizard(nextSettings) {
+    const saved = persistQuickSettings(nextSettings, { close: true, notify: false });
+    void runQuickAutomatic({ settingsOverride: saved });
   }
 
   const autonomousActions = {
@@ -2461,22 +2970,35 @@ export default function MenuPlan() {
     canEditSettings: canEditAutonomousSettings,
     settings: quickSettings,
     settingsOpen: quickSettingsOpen,
+    wizardPurpose: quickWizardPurpose,
     generating: quickGenerating,
     error: quickGenerationError,
     topUpOffer: quickTopUpOffer,
     hasTarget: selectedQuickTarget.kcal > 0,
+    target: selectedQuickTarget,
+    hasMenu: Boolean(trackingChoice(selectedRow)?.snapshot),
     onLibrary: openQuickLibrary,
     onCreate: openQuickCreateMenu,
-    onAutomatic: () => runQuickAutomatic(),
+    onAutomatic: () => {
+      if (!canGenerateAutonomousMenu) {
+        navigate("/app/planes");
+        return;
+      }
+      setQuickGenerationError("");
+      setQuickWizardPurpose("generate");
+      setQuickSettingsOpen(true);
+    },
     onAcceptTopUp: () => runQuickAutomatic({ allowCalorieTopUp: true }),
     onRejectTopUp: () => setQuickTopUpOffer(null),
     onTracking: openQuickTracking,
     onToggleSettings: () => {
       setQuickGenerationError("");
+      setQuickWizardPurpose("settings");
       setQuickSettingsOpen((current) => !current);
     },
     onCloseSettings: () => setQuickSettingsOpen(false),
     onSaveSettings: saveQuickSettings,
+    onGenerateFromSettings: generateFromWizard,
     onRestoreSettings: restoreQuickSettings,
     onOpenObjectives: () => navigate("/app/objetivos"),
   };
@@ -2512,8 +3034,11 @@ export default function MenuPlan() {
         : trackingDay?.objetivo;
       const progress = calculateManualDayProgress({
         target,
-        menuConsumed: consumedTotals(summary.row),
-        trackedConsumed: trackingDay?.totals || {},
+        menuConsumed: menuConsumedTotals(summary.row),
+        trackedConsumed:
+          summary.row?.tracking?.manualTrackingTotals ||
+          trackingDay?.totals ||
+          {},
       });
       setManualCompletionPrompt((current) => current?.row?.date === summary.row.date
         ? { ...current, loading: false, error: "", progress }
@@ -2570,26 +3095,120 @@ export default function MenuPlan() {
     );
   }
 
-  function openMealAction(payload = {}) {
-    if (payload.action === "settings") {
-      if (equivalentMealAccess.canCreate) {
-        setEquivalentMealBuilder({ ...payload, initialSection: "settings" });
-        return;
-      }
-      setToast("Los ajustes de reemplazo no estan habilitados para este acceso.");
-      window.setTimeout(() => setToast(""), 3000);
-      return;
-    }
-    if (payload.action === "replace" && equivalentMealAccess.canCreate) {
-      setMealDrawer(null);
-      setEquivalentMealBuilder({ ...payload, initialSection: "library" });
-      return;
-    }
-    setMealDrawer({
+function openMealAction(payload = {}) {
+
+  if (payload.action === "native_target") {
+  setMealDrawer({
+    ...payload,
+
+    /*
+     * Esta comida YA nació como meta.
+     * No hay que tocar targetMealIds.
+     */
+    nativeTarget: true,
+
+    initialView: "target",
+  });
+
+  return;
+}
+
+
+if (payload.action === "target") {
+  const targetMeal =
+    payload.baseMeal ||
+    payload.meal;
+
+  void setMealTargetMode({
+    row: payload.row,
+    meal: targetMeal,
+    mealIndex:
+      Number(payload.mealIndex) || 0,
+    active: true,
+  });
+
+  setMealDrawer({
+    ...payload,
+    initialView: "target",
+  });
+
+  return;
+}
+
+if (payload.action === "native_target_complete") {
+  if (equivalentMealAccess.canCreate) {
+    setMealDrawer(null);
+
+    setEquivalentMealBuilder({
       ...payload,
-      initialView: payload.action === "replace" ? "replace" : "detail",
+
+  completionMode:
+  payload.completionMode === true,
+      nativeTarget: true,
+
+      initialSection: "library",
     });
+
+    return;
   }
+
+  setToast(
+    "La generación automática no está habilitada para este acceso."
+  );
+
+  window.setTimeout(
+    () => setToast(""),
+    3000
+  );
+
+  return;
+}
+
+
+  if (payload.action === "settings") {
+    if (equivalentMealAccess.canCreate) {
+      setEquivalentMealBuilder({
+        ...payload,
+        initialSection: "settings",
+      });
+
+      return;
+    }
+
+    setToast(
+      "Los ajustes de reemplazo no estan habilitados para este acceso."
+    );
+
+    window.setTimeout(
+      () => setToast(""),
+      3000
+    );
+
+    return;
+  }
+
+  if (
+    payload.action === "replace" &&
+    equivalentMealAccess.canCreate
+  ) {
+    setMealDrawer(null);
+
+    setEquivalentMealBuilder({
+      ...payload,
+      initialSection: "library",
+    });
+
+    return;
+  }
+
+  setMealDrawer({
+    ...payload,
+    initialView:
+      payload.action === "replace"
+        ? "replace"
+        : "detail",
+  });
+}
 
   function openActiveMenuEditor(row = selectedRow, options = {}) {
     if (menuSourceMeta(activePlanSource).key !== "own") return;
@@ -2771,6 +3390,190 @@ export default function MenuPlan() {
       setSaving(false);
     }
   }
+
+
+
+async function setMealTargetMode({
+  row,
+  meal,
+  mealIndex = 0,
+  active = true,
+} = {}) {
+  if (!row?.date || !meal || saving) {
+    return false;
+  }
+
+  /*
+   * ID REAL de la comida del menú.
+   * Ejemplo: el ID del Almuerzo/Merienda
+   * que viene del menú asignado.
+   */
+  const id = String(
+    mealId(
+      meal,
+      mealIndex
+    )
+  );
+
+  /*
+   * Tomamos el tracking actual del día.
+   */
+  const currentPayload =
+    trackingPayloadBase(row);
+
+  /*
+   * Comidas actualmente configuradas
+   * en modo Por meta.
+   */
+  const targetIds = new Set(
+    (
+      currentPayload.targetMealIds || []
+    ).map(String)
+  );
+
+  /*
+   * Comidas marcadas como Hecha.
+   */
+  const completedIds = new Set(
+    (
+      currentPayload.completedMenuMealIds || []
+    ).map(String)
+  );
+
+  if (active) {
+    /*
+     * =====================================
+     * ACTIVAR POR META
+     * =====================================
+     *
+     * Una comida NO puede estar:
+     *
+     * ✓ Hecha como propuesta
+     * Y
+     * 🎯 Por meta
+     *
+     * simultáneamente.
+     */
+
+    targetIds.add(id);
+
+    completedIds.delete(id);
+
+  } else {
+    /*
+     * =====================================
+     * SALIR DE POR META
+     * =====================================
+     */
+
+    targetIds.delete(id);
+  }
+
+  const nextTargetMealIds = [
+    ...targetIds,
+  ];
+
+  const nextCompletedMenuMealIds = [
+    ...completedIds,
+  ];
+
+  /*
+   * Valores nuevos que queremos guardar
+   * dentro de row.tracking.
+   */
+  const trackingOverrides = {
+    targetMealIds:
+      nextTargetMealIds,
+
+    completedMenuMealIds:
+      nextCompletedMenuMealIds,
+  };
+
+  /*
+   * =====================================
+   * ACTUALIZACIÓN OPTIMISTA
+   * =====================================
+   *
+   * Cambiamos la UI inmediatamente,
+   * sin esperar al backend.
+   */
+  const optimisticRow =
+    rowWithTracking(
+      row,
+      trackingOverrides
+    );
+
+  /*
+   * Actualizamos la semana visible.
+   */
+  setWeekData((currentData) =>
+    currentData
+      ? {
+          ...currentData,
+
+          days: (
+            currentData.days || []
+          ).map((day) =>
+            day.date ===
+            optimisticRow.date
+              ? optimisticRow
+              : day
+          ),
+        }
+      : currentData
+  );
+
+  /*
+   * Si está abierto el detalle del día,
+   * también lo actualizamos.
+   */
+  setDetailRow((current) =>
+    current?.date ===
+    optimisticRow.date
+      ? optimisticRow
+      : current
+  );
+
+  /*
+   * Si está abierto el drawer de la comida,
+   * mantenemos también la row actualizada.
+   */
+  setMealDrawer((current) =>
+    current?.row?.date ===
+    optimisticRow.date
+      ? {
+          ...current,
+          row: optimisticRow,
+        }
+      : current
+  );
+
+  /*
+   * =====================================
+   * PERSISTENCIA REAL
+   * =====================================
+   *
+   * submitTracking se encarga de:
+   *
+   * - guardar en backend
+   * - recargar la semana
+   * - mostrar toast
+   */
+  return await submitTracking(
+    trackingPayloadBase(
+      row,
+      trackingOverrides
+    ),
+
+    active
+      ? "Comida configurada por meta."
+      : "Comida restaurada a su propuesta."
+  );
+}
+
+
+
+
 
   function toggleMenuMeal(row, meal, index) {
     const id = mealId(meal, index);
@@ -3171,7 +3974,39 @@ export default function MenuPlan() {
     );
   }
 
-  async function applyEquivalentMeal({ saveTemplate = false, ...replacement } = {}) {
+  async function applyEquivalentMeal({
+    saveTemplate = false,
+    completionMode = false,
+    trackingExecutionId = "",
+    ...replacement
+  } = {}) {
+    if (completionMode) {
+      const row = replacement.row || {};
+      const replacementMeal = replacement.replacementMeal || {};
+      const batch = buildCompletionTrackingBatch({
+        date: row.date,
+        trackingExecutionId,
+        replacementMeal,
+        mealName: mealName(replacement.originalMeal, replacement.mealIndex),
+      });
+      if (!batch) {
+        throw new Error("No se pudo preparar el restante para Tracking.");
+      }
+      setSaving(true);
+      try {
+        await addFoodLogsBatch(batch);
+        await Promise.all([
+          selectedTrackingQuery.refetch(),
+          loadWeek(weekStart, { silent: true }),
+        ]);
+        setEquivalentMealBuilder(null);
+        setToast("Se agregó únicamente el restante. Lo ya registrado no se duplicó.");
+        window.setTimeout(() => setToast(""), 3200);
+        return true;
+      } finally {
+        setSaving(false);
+      }
+    }
     const saved = await applyMealReplacement({ ...replacement, markCompleted: false });
     if (!saved) throw new Error("No se pudo guardar el reemplazo para este dia.");
     if (saveTemplate) {
@@ -3302,6 +4137,7 @@ export default function MenuPlan() {
             mobileView === "detail" ? (
               <MobileDayDetailView
                 row={selectedRow}
+                trackingDay={selectedTrackingQuery.data}
                 weekRows={days}
                 activePlan={activePlan}
                 activePlanSource={activePlanSource}
@@ -3338,6 +4174,8 @@ export default function MenuPlan() {
             ) : (
               <MobileDayMenu
                 row={selectedRow}
+                trackingDay={selectedTrackingQuery.data}
+                dailyTargetItems={selectedDailyTargetItems}
                 weekRows={days}
                 activePlan={activePlan}
                 activePlanSource={activePlanSource}
@@ -3365,6 +4203,7 @@ export default function MenuPlan() {
             <>
               <TodayHero
                 row={selectedDisplayRow}
+                trackingDay={selectedTrackingQuery.data}
                 weekRows={days}
                 activePlan={activePlan}
                 activePlanSource={activePlanSource}
@@ -3399,6 +4238,8 @@ export default function MenuPlan() {
                 <div>
                   <DayDetail
                     row={selectedDisplayRow}
+                    trackingDay={selectedTrackingQuery.data}
+                    dailyTargetItems={selectedDailyTargetItems}
                     weekRows={days}
                     activePlanSource={activePlanSource}
                     onMarkMissed={markDayMissed}
@@ -3476,32 +4317,62 @@ export default function MenuPlan() {
         />
       ) : null}
 
-      {mealDrawer ? (
-        <MobileMealDetailDrawer
-          context={mealDrawer}
-          onToggleMeal={toggleMenuMeal}
-          onOpenFood={(payload) => setFoodDrawer(payload)}
-          onClose={() => setMealDrawer(null)}
-          canEditOwnMenuMeal={canQuickEditActiveMenu}
-          onQuickEditMeal={(payload) => {
-            setMealDrawer(null);
-            openQuickMealEditor(payload);
-          }}
-          canMarkMeals={canMarkMeals}
-          canReplaceMeals={canUseMenuAlternatives}
-          canCreateEquivalentMeal={equivalentMealAccess.canCreate}
-          onCreateEquivalentMeal={(context) => {
-            setMealDrawer(null);
-            setEquivalentMealBuilder(context);
-          }}
-          canReplaceFoods={equivalentMealAccess.canReplaceFoods}
-          readOnlyProfessionalMenu={menuSourceMeta(activePlanSource).key === "coach"}
-          onApplyMealReplacement={applyMealReplacement}
-          onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
-          onDeleteManual={deleteManualEntry}
-          saving={saving}
-        />
-      ) : null}
+
+{mealDrawer ? (
+  <MobileMealDetailDrawer
+    context={mealDrawer}
+    onToggleMeal={toggleMenuMeal}
+    onOpenFood={(payload) => setFoodDrawer(payload)}
+    onClose={() => setMealDrawer(null)}
+
+    canEditOwnMenuMeal={canQuickEditActiveMenu}
+
+    onQuickEditMeal={(payload) => {
+      setMealDrawer(null);
+      openQuickMealEditor(payload);
+    }}
+
+    canMarkMeals={canMarkMeals}
+    canReplaceMeals={canUseMenuAlternatives}
+
+    canCreateEquivalentMeal={equivalentMealAccess.canCreate}
+
+    onCreateEquivalentMeal={(context) => {
+      setMealDrawer(null);
+      setEquivalentMealBuilder(context);
+    }}
+
+    canReplaceFoods={equivalentMealAccess.canReplaceFoods}
+
+    readOnlyProfessionalMenu={
+      menuSourceMeta(activePlanSource).key === "coach"
+    }
+
+    onApplyMealReplacement={applyMealReplacement}
+
+    onSaveAsSavedMeal={saveMenuMealAsSavedMeal}
+
+    onDeleteManual={deleteManualEntry}
+
+    onSetMealTargetMode={setMealTargetMode}
+
+    saving={saving}
+
+    onTargetTrackingChanged={async () => {
+      await loadWeek(weekStart, {
+        silent: true,
+      });
+    }}
+
+    onTargetToast={(message) => {
+      setToast(message);
+
+      window.setTimeout(() => {
+        setToast("");
+      }, 3000);
+    }}
+  />
+) : null}
 
       {foodDrawer ? (
         <FoodActionDrawer
@@ -4206,60 +5077,14 @@ function FlexibleMarginSlotCard({
 
 function AutonomousMenuQuickActions() {
   const actions = React.useContext(MenuAutonomousActionsContext);
-  const [draft, setDraft] = useState(actions?.settings || DEFAULT_MENU_GENERATION_SETTINGS);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (actions?.settingsOpen) setDraft(actions.settings || DEFAULT_MENU_GENERATION_SETTINGS);
-  }, [actions?.settings, actions?.settingsOpen]);
-
-  useEffect(() => {
-    if (!actions?.settingsOpen) return undefined;
-    function closeOnKey(event) {
-      if (event.key === "Escape") actions.onCloseSettings?.();
-    }
-    function closeOutside(event) {
-      if (rootRef.current && !rootRef.current.contains(event.target)) actions.onCloseSettings?.();
-    }
-    window.addEventListener("keydown", closeOnKey);
-    document.addEventListener("pointerdown", closeOutside);
-    return () => {
-      window.removeEventListener("keydown", closeOnKey);
-      document.removeEventListener("pointerdown", closeOutside);
-    };
-  }, [actions]);
 
   if (!actions?.visible) return null;
   const automaticLocked = !actions.canGenerate;
   const actionCount = [actions.canUseLibrary, actions.canCreate, true, actions.canEditSettings].filter(Boolean).length;
   const modeLabel = generationModeLabel(actions.settings?.mode);
-  const modes = [
-    {
-      id: MENU_GENERATION_MODE_SIMILAR,
-      icon: Search,
-      title: "Buscar menú similar en biblioteca",
-      text: "Busca un menú completo cercano a tus calorías y macronutrientes.",
-      tone: "gold",
-    },
-    {
-      id: MENU_GENERATION_MODE_COMBINE,
-      icon: Layers3,
-      title: "Combinar comidas de la biblioteca",
-      text: "Selecciona comidas publicadas y las combina para completar el día.",
-      tone: "green",
-    },
-    {
-      id: MENU_GENERATION_MODE_SCRATCH,
-      icon: Sparkles,
-      title: "Generar desde cero",
-      text: "ZumaFit crea una combinación nueva según tus objetivos y preferencias.",
-      tone: "violet",
-    },
-  ];
 
   return (
-    <section ref={rootRef} className="mt-2.5" aria-label="Acciones rapidas de menu">
+    <section className="mt-2.5" aria-label="Acciones rapidas de menu">
       <div className="grid overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, actionCount)}, minmax(0, 1fr))` }}>
         {actions.canUseLibrary ? <QuickMenuAction icon={BookOpen} label="Biblioteca" tone="green" onClick={actions.onLibrary} /> : null}
         {actions.canCreate ? <QuickMenuAction icon={Plus} label="Crear menú" tone="violet" onClick={actions.onCreate} /> : null}
@@ -4316,55 +5141,17 @@ function AutonomousMenuQuickActions() {
         </div>
       ) : null}
 
-      {actions.settingsOpen ? (
-        <div id="menu-generation-settings" className="mt-1.5 overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/30 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_34%),linear-gradient(145deg,#111923,#080d13)] p-2 shadow-[0_14px_34px_rgba(0,0,0,.34)]">
-          <header className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1.5 text-[#FFD76B]">
-              <SlidersHorizontal size={15} aria-hidden="true" />
-              <div className="min-w-0"><strong className="block truncate text-[11px] font-black">Opciones de generación automática</strong><span className="block truncate text-[8.5px] font-bold text-zinc-500">Se guarda para los próximos cálculos.</span></div>
-            </div>
-            <button type="button" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-300" onClick={actions.onCloseSettings} aria-label="Cerrar ajustes automáticos"><ChevronUp size={15} /></button>
-          </header>
-
-          <div className="mt-1.5 grid gap-1.5" role="radiogroup" aria-label="Método principal de generación">
-            {modes.map((mode) => {
-              const Icon = mode.icon;
-              const selected = draft.mode === mode.id;
-              const tone = mode.tone === "gold" ? "text-[#FFD76B]" : mode.tone === "green" ? "text-lime-300" : "text-violet-300";
-              return (
-                <label key={mode.id} className={`grid min-h-[52px] cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2.5 py-1.5 ${selected ? "border-[#D4AF37]/65 bg-[#D4AF37]/[0.08]" : "border-white/10 bg-black/15"}`}>
-                  <input type="radio" name="menu-generation-mode" value={mode.id} checked={selected} onChange={() => setDraft((current) => ({ ...current, mode: mode.id }))} className="h-4 w-4 accent-[#D4AF37]" />
-                  <span className="min-w-0"><strong className="block text-[11px] font-black leading-tight text-white">{mode.title}</strong><span className="mt-0.5 block text-[9px] font-bold leading-tight text-zinc-400">{mode.text}</span></span>
-                  <Icon size={16} className={tone} aria-hidden="true" />
-                </label>
-              );
-            })}
-          </div>
-
-          <button type="button" className="mt-1.5 flex min-h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-2.5 text-[10px] font-black text-zinc-200" onClick={() => setAdvancedOpen((current) => !current)} aria-expanded={advancedOpen}>
-            Ajustes avanzados
-            {advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-
-          {advancedOpen ? (
-            <div className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-black/15 p-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Cantidad de comidas</span><select className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.mealCount} onChange={(event) => setDraft((current) => ({ ...current, mealCount: Number(event.target.value) }))}>{[3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} comidas{count === 4 ? " - recomendada" : ""}</option>)}</select></label>
-              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Distribucion del objetivo</span><select className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.distribution} onChange={(event) => setDraft((current) => ({ ...current, distribution: event.target.value }))}><option value="balanced">Segun tipo de comida</option><option value="equal">Partes iguales</option></select></label>
-              <label className="grid gap-1 text-[11px] font-black text-zinc-400"><span>Horario de la primera comida</span><input type="time" className="min-h-11 rounded-xl border border-white/10 bg-[#090e15] px-3 text-sm text-white" value={draft.firstMealTime} onChange={(event) => setDraft((current) => ({ ...current, firstMealTime: event.target.value }))} /></label>
-              <div className="grid gap-2 sm:pt-5">
-                <label className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-bold text-zinc-200"><input type="checkbox" checked={draft.allowRepeats} onChange={(event) => setDraft((current) => ({ ...current, allowRepeats: event.target.checked }))} /> Permitir repetir comidas</label>
-                <label className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-bold text-zinc-200"><input type="checkbox" checked={draft.preferFavorites} onChange={(event) => setDraft((current) => ({ ...current, preferFavorites: event.target.checked }))} /> Priorizar favoritas</label>
-              </div>
-            </div>
-          ) : null}
-
-          <footer className="mt-1.5 grid grid-cols-3 gap-1.5">
-            <button type="button" className="min-h-11 rounded-xl border border-white/10 bg-white/[0.035] px-2 text-[11px] font-black text-zinc-300" onClick={actions.onCloseSettings}>Cancelar</button>
-            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/[0.035] px-2 text-[11px] font-black text-zinc-200" onClick={() => setDraft(actions.onRestoreSettings?.() || DEFAULT_MENU_GENERATION_SETTINGS)}><RotateCcw size={14} /> Recomendados</button>
-            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/15 px-2 text-[11px] font-black text-[#FFE8A3]" onClick={() => actions.onSaveSettings?.(draft)}><Save size={14} /> Guardar</button>
-          </footer>
-        </div>
-      ) : null}
+      <MenuGenerationSettingsWizard
+        open={actions.settingsOpen}
+        settings={actions.settings}
+        target={actions.target}
+        hasMenu={actions.hasMenu}
+        purpose={actions.wizardPurpose}
+        onClose={actions.onCloseSettings}
+        onSave={actions.onSaveSettings}
+        onGenerate={actions.onGenerateFromSettings}
+        onRestore={actions.onRestoreSettings}
+      />
     </section>
   );
 }
@@ -4397,6 +5184,8 @@ function QuickMenuAction({ icon, label, detail = "", tone = "gold", onClick, bus
 
 function MobileDayMenu({
   row,
+  trackingDay = null,
+  dailyTargetItems = [],
   weekRows = [],
   activePlan = {},
   activePlanSource = "none",
@@ -4427,7 +5216,7 @@ function MobileDayMenu({
   const primary = choices[0] || null;
   const activeChoice = trackingChoice(row) || primary;
   const activeMeals = activeChoice ? choiceMeals(activeChoice) : [];
-  const effectiveMeals = effectiveMealEntriesForDay(displayRow, activeMeals, weekRows);
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, activeMeals, weekRows, trackingDay);
   const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
   const manualEntries = effectiveMeals.filter((entry) => entry.manual);
   const countableMeals = countableMealEntries(effectiveMeals);
@@ -4479,6 +5268,11 @@ function MobileDayMenu({
       />
 
       <AutonomousMenuQuickActions />
+
+      <DailyTargetTrackingDetails
+        items={dailyTargetItems}
+        remaining={remaining}
+      />
 
       {/*
             <p className="mt-1 text-sm font-bold leading-tight text-zinc-400">
@@ -4533,15 +5327,32 @@ function MobileDayMenu({
     })
   }
 
-  onGenerate={() =>
-    onOpenMeal({
-      row: displayRow,
-      meal,
-      baseMeal: meal,
-      mealIndex,
-      action: "replace",
-    })
-  }
+  onManage={() =>
+  onOpenMeal({
+    row: displayRow,
+    meal,
+    baseMeal: meal,
+    mealIndex,
+    action: "native_target",
+  })
+}
+
+
+
+onGenerate={(completionContext = {}) =>
+  onOpenMeal({
+    row: displayRow,
+    meal,
+    baseMeal: meal,
+    mealIndex,
+
+    action: "native_target_complete",
+
+    nativeTarget: true,
+
+    ...completionContext,
+  })
+}
 />
 
           ))}
@@ -4719,6 +5530,66 @@ function MobileGoalAccordion({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function DailyTargetTrackingDetails({ items = [], remaining = {} }) {
+  if (!Array.isArray(items) || !items.length) return null;
+
+  const totals = sumTotals(items);
+
+  return (
+    <section className="mt-3 overflow-hidden rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045]">
+      <header className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-3 py-2.5">
+        <div>
+          <span className="block text-[9px] font-black uppercase tracking-wide text-emerald-300">
+            Registrado hoy · Tracking real
+          </span>
+          <strong className="mt-0.5 block text-sm font-black text-white">
+            {items.length} alimento{items.length === 1 ? "" : "s"} · {displayKcal(totals.kcal)}
+          </strong>
+        </div>
+        <span className="text-right text-[10px] font-bold text-zinc-400">
+          Restante
+          <strong className="block text-xs font-black text-sky-200">
+            {displayKcal(Math.max(0, macro(remaining?.kcal)))}
+          </strong>
+        </span>
+      </header>
+
+      <div className="divide-y divide-white/[0.07]">
+        {items.map((item, index) => {
+          const totalsForItem = totalFromLike(item);
+          const name =
+            item?.nombreSnapshot ||
+            item?.nombre ||
+            item?.name ||
+            "Alimento";
+          const quantity = macro(item?.cantidad ?? item?.quantity);
+          const unit = item?.unidad || item?.unit || "g";
+          const id = item?.id || item?._id || `${name}-${index}`;
+
+          return (
+            <article key={id} className="flex items-start justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <strong className="block truncate text-xs font-black text-white">{name}</strong>
+                <span className="mt-0.5 block text-[10px] font-bold text-zinc-500">
+                  {formatNumber(quantity, 1)} {unit}
+                </span>
+              </div>
+              <div className="shrink-0 text-right">
+                <strong className="block text-xs font-black text-[#FFE8A3]">
+                  {displayKcal(totalsForItem.kcal)}
+                </strong>
+                <span className="block text-[9px] font-bold text-zinc-400">
+                  P {formatNumber(totalsForItem.proteina, 1)} · C {formatNumber(totalsForItem.carbs, 1)} · G {formatNumber(totalsForItem.grasas, 1)}
+                </span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -5190,6 +6061,7 @@ function MobileActiveMenuCard({ row, choice, onViewDetail }) {
 
 function MobileDayDetailView({
   row,
+  trackingDay = null,
   weekRows = [],
   activePlanSource = "none",
   detailChoiceKey = "",
@@ -5218,7 +6090,7 @@ function MobileDayDetailView({
   const detailChoice = choices.find((choice) => choice.key === detailChoiceKey) || choices[0] || null;
   const snapshot = detailChoice?.snapshot || null;
   const meals = detailChoice ? choiceMeals(detailChoice) : [];
-  const effectiveMeals = effectiveMealEntriesForDay(displayRow, meals, weekRows);
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, meals, weekRows, trackingDay);
   const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
   const manualEntries = effectiveMeals.filter((entry) => entry.manual);
   const detailStatus = detailChoice ? choiceStatus(row, detailChoice) : menuState(row);
@@ -5544,103 +6416,1323 @@ function MobileMealCard({
   onDeleteManual,
 }) {
   const mealChoiceActions = React.useContext(MealChoiceActionsContext);
+
   const trackingMeal = baseMeal || meal;
+
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
-  const manual = meal?.source === "manual_food";
-  const visual = mealVisualStyle(meal, mealIndex, { done, generated, manual });
-  const completedVisual = done || generated;
-  const statusLabel = manual ? "Registrado" : generated ? "Generada" : done ? "Hecha" : "Pendiente";
-  const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
+
+  const manual =
+    meal?.source === "manual_food";
+
+  const visual = mealVisualStyle(
+    meal,
+    mealIndex,
+    {
+      done,
+      generated,
+      manual,
+    }
+  );
+
+  const completedVisual =
+    done || generated;
+
+  const statusLabel = manual
+    ? "Registrado"
+    : generated
+      ? "Generada"
+      : done
+        ? "Hecha"
+        : "Pendiente";
+
+  const StatusIcon = manual
+    ? Utensils
+    : generated
+      ? Calculator
+      : done
+        ? CheckCircle2
+        : Square;
+
   const statusClass = manual
     ? visual.status
     : completedVisual
       ? "border-emerald-300/45 bg-emerald-300/14 text-emerald-100 shadow-[0_0_16px_rgba(16,185,129,.22)]"
       : "border-white/10 bg-black/30 text-zinc-500";
-  const [isExpanded, setIsExpanded] = useState(false);
-  const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
-  const canEditThisMeal = canQuickEdit && !manual && !generated;
-  const activeChoiceIndex = Math.max(0, mealChoices.findIndex((option) => option.active));
+
+  const [isExpanded, setIsExpanded] =
+    useState(false);
+
+  const detailPayload = {
+    row,
+    meal,
+    baseMeal: trackingMeal,
+    mealIndex,
+    generated,
+    manual,
+  };
+
+  const canEditThisMeal =
+    canQuickEdit &&
+    !manual &&
+    !generated;
+
+  const activeChoiceIndex = Math.max(
+    0,
+    mealChoices.findIndex(
+      (option) => option.active
+    )
+  );
+
+
+  /* =====================================================
+     CONTEXTO POR META
+     ===================================================== */
+
+  const targetExecution =
+    menuTargetExecutionContext(
+      row,
+      meal,
+      trackingMeal,
+      mealIndex
+    );
+
+  /*
+    Leemos el Tracking REAL del día.
+
+    Los registros creados desde Por meta tienen
+    un mealId especial:
+
+    menu_target_...
+  */
+  const targetTrackingQuery =
+    useTrackingDay(row?.date || "");
+
+  const targetTrackedItems =
+    React.useMemo(() => {
+      const trackingMeals =
+        targetTrackingQuery.data?.meals || {};
+
+      const items =
+        trackingMeals?.[
+          targetExecution.id
+        ];
+
+      return Array.isArray(items)
+        ? items
+        : [];
+    }, [
+      targetTrackingQuery.data,
+      targetExecution.id,
+    ]);
+
+      /*
+    El modo Por meta puede estar activo aunque
+    todavía no haya ningún alimento registrado.
+
+    targetMealIds = estado persistido.
+    targetTrackedItems = compatibilidad con registros
+    que ya existen en Tracking.
+  */
+  const targetModePersisted =
+    !manual &&
+    !generated &&
+    isMealTargetMode(
+      row,
+      trackingMeal,
+      mealIndex
+    );
+
+  const targetModeActive =
+    !manual &&
+    !generated &&
+    (
+      targetModePersisted ||
+      targetTrackedItems.length > 0
+    );
+
+
+  /* =====================================================
+     HELPERS TRACKING POR META
+     ===================================================== */
+
+  function targetTrackingItemTotals(
+    item = {}
+  ) {
+    const source =
+      item?.totals ||
+      item?.totales ||
+      item ||
+      {};
+
+    return {
+      kcal:
+        Number(source.kcal) || 0,
+
+      proteina:
+        Number(
+          source.proteina ??
+          source.protein ??
+          source.p
+        ) || 0,
+
+      carbs:
+        Number(
+          source.carbs ??
+          source.carbohidratos ??
+          source.c
+        ) || 0,
+
+      grasas:
+        Number(
+          source.grasas ??
+          source.fat ??
+          source.g
+        ) || 0,
+    };
+  }
+
+  function targetTrackingItemName(
+    item = {}
+  ) {
+    return (
+      item.nombreSnapshot ||
+      item.name ||
+      item.nombre ||
+      item.food?.nombre ||
+      item.food?.name ||
+      "Alimento"
+    );
+  }
+
+  function targetTrackingItemQuantity(
+    item = {}
+  ) {
+    const value = Number(
+      item.cantidad ??
+      item.quantity
+    );
+
+    return Number.isFinite(value)
+      ? value
+      : 0;
+  }
+
+  function targetTrackingItemUnit(
+    item = {}
+  ) {
+    return (
+      item.unidad ||
+      item.unit ||
+      "g"
+    );
+  }
+
+
+  const targetTrackedTotals =
+    React.useMemo(() => {
+      return targetTrackedItems.reduce(
+        (acc, item) => {
+          const itemTotals =
+            targetTrackingItemTotals(
+              item
+            );
+
+          return {
+            kcal:
+              acc.kcal +
+              itemTotals.kcal,
+
+            proteina:
+              acc.proteina +
+              itemTotals.proteina,
+
+            carbs:
+              acc.carbs +
+              itemTotals.carbs,
+
+            grasas:
+              acc.grasas +
+              itemTotals.grasas,
+          };
+        },
+        {
+          kcal: 0,
+          proteina: 0,
+          carbs: 0,
+          grasas: 0,
+        }
+      );
+    }, [targetTrackedItems]);
+
+
+  const targetGoal =
+    targetExecution.target || {
+      kcal: 0,
+      proteina: 0,
+      carbs: 0,
+      grasas: 0,
+    };
+
+
+  /*
+    Por ahora consideramos que la comida está
+    realmente en modo Por meta cuando existe
+    al menos un alimento confirmado en Tracking.
+
+    Más adelante podemos persistir también el
+    modo aunque todavía haya 0 alimentos.
+  */
+
+
+  const targetRemaining = {
+    kcal:
+      Number(targetGoal.kcal || 0) -
+      targetTrackedTotals.kcal,
+
+    proteina: Math.max(
+      0,
+      Number(
+        targetGoal.proteina || 0
+      ) -
+        targetTrackedTotals.proteina
+    ),
+
+    carbs: Math.max(
+      0,
+      Number(
+        targetGoal.carbs || 0
+      ) -
+        targetTrackedTotals.carbs
+    ),
+
+    grasas: Math.max(
+      0,
+      Number(
+        targetGoal.grasas || 0
+      ) -
+        targetTrackedTotals.grasas
+    ),
+  };
+
+
+  const targetProgress =
+    Number(targetGoal.kcal) > 0
+      ? Math.round(
+          (
+            targetTrackedTotals.kcal /
+            Number(targetGoal.kcal)
+          ) * 100
+        )
+      : 0;
+
+
+  const targetProgressWidth =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        targetProgress
+      )
+    );
+
+  const targetCompleted = isMealTargetCalorieComplete({
+    targetKcal: targetGoal.kcal,
+    consumedKcal: targetTrackedTotals.kcal,
+    trackedItemsCount: targetTrackedItems.length,
+  });
+
 
   function toggleExpanded() {
-    setIsExpanded((value) => !value);
+    setIsExpanded(
+      (value) => !value
+    );
   }
+
 
   function handlePrimaryAction(event) {
     event.stopPropagation();
+
     if (manual) {
-      onDeleteManual?.(row, manualEntry);
+      onDeleteManual?.(
+        row,
+        manualEntry
+      );
+
       return;
     }
+
     if (generated) return;
-    onToggleMeal(row, trackingMeal, mealIndex);
+
+    onToggleMeal(
+      row,
+      trackingMeal,
+      mealIndex
+    );
   }
 
-  function openMealDetail(event, action = "detail") {
+
+  function openMealDetail(
+    event,
+    action = "detail"
+  ) {
     event.stopPropagation();
-    onOpenMeal({ ...detailPayload, action });
+
+    onOpenMeal({
+      ...detailPayload,
+      action,
+    });
   }
+
 
   function saveAsMeal(event) {
     event.stopPropagation();
-    onSaveAsSavedMeal?.(meal, mealIndex);
+
+    onSaveAsSavedMeal?.(
+      meal,
+      mealIndex
+    );
   }
+
 
   function quickEditMeal(event) {
     event.stopPropagation();
-    onQuickEditMeal?.(detailPayload);
+
+    onQuickEditMeal?.(
+      detailPayload
+    );
   }
 
+
+  /* =====================================================
+     CARD ESPECIAL — POR META ACTIVO
+     ===================================================== */
+
+  if (targetModeActive) {
+    return (
+      <article
+        className="
+          relative
+          overflow-hidden
+
+          rounded-[1.05rem]
+
+          border
+          border-teal-300/35
+
+          bg-black
+
+          p-[1px]
+
+          ring-1
+          ring-teal-300/10
+
+          shadow-[0_16px_38px_rgba(0,0,0,.34),0_0_24px_rgba(45,212,191,.08)]
+
+          transition
+        "
+      >
+        <div
+          className="
+            relative
+            overflow-hidden
+
+            rounded-[calc(1.05rem-1px)]
+
+            bg-[radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_40%),linear-gradient(180deg,rgba(9,25,27,.98),rgba(7,15,18,.98))]
+
+            p-3
+          "
+        >
+
+          {/* HAZE */}
+
+          <span
+            className="
+              pointer-events-none
+              absolute
+              inset-0
+
+              bg-[radial-gradient(circle_at_95%_0,rgba(45,212,191,.10),transparent_35%)]
+            "
+            aria-hidden="true"
+          />
+
+
+          {/* RAIL */}
+
+          <span
+            className="
+              pointer-events-none
+
+              absolute
+              inset-y-2
+              left-0
+
+              w-1
+
+              rounded-r-full
+
+              bg-gradient-to-b
+              from-teal-200
+              via-teal-400
+              to-cyan-500
+
+              shadow-[0_0_20px_rgba(45,212,191,.55)]
+            "
+            aria-hidden="true"
+          />
+
+
+          {/* HEADER CARD */}
+
+          <div className="relative z-10 flex items-center gap-2.5">
+
+            <button
+              type="button"
+              onClick={toggleExpanded}
+              aria-expanded={
+                isExpanded
+              }
+              className="
+                grid
+                min-w-0
+                flex-1
+
+                grid-cols-[52px_minmax(0,1fr)]
+
+                items-center
+                gap-3
+
+                text-left
+
+                active:scale-[0.995]
+              "
+            >
+
+              <MealTypeIcon
+                meal={trackingMeal}
+                index={mealIndex}
+                done={targetCompleted}
+                size="lg"
+              />
+
+
+              <span className="min-w-0">
+
+                <span className="flex min-w-0 items-baseline gap-2">
+
+                  <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
+                    {targetExecution.label}
+                  </span>
+
+                  <span className="shrink-0 text-xs font-black text-[#FFE16B]">
+                    {displayKcal(
+                      targetGoal.kcal
+                    )}
+                  </span>
+
+                </span>
+
+
+                {/* BADGE */}
+
+                <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+
+                  <span
+                    className="
+                      inline-flex
+                      min-h-6
+                      items-center
+                      gap-1
+
+                      rounded-full
+
+                      border
+                      border-teal-300/30
+
+                      bg-teal-300/10
+
+                      px-2
+
+                      text-[10px]
+                      font-black
+                      uppercase
+                      tracking-wide
+                      text-teal-100
+                    "
+                  >
+                    <Target
+                      size={12}
+                      strokeWidth={2.6}
+                    />
+
+                    Por meta
+                  </span>
+
+
+                  <span
+                    className="
+                      inline-flex
+                      min-h-6
+                      items-center
+
+                      rounded-full
+
+                      border
+                      border-white/10
+
+                      bg-black/25
+
+                      px-2
+
+                      text-[10px]
+                      font-black
+                      text-zinc-300
+                    "
+                  >
+                    {targetCompleted ? "Hecha" : "En progreso"}
+                  </span>
+
+                </span>
+
+
+                {/* RESUMEN COLAPSADO */}
+
+                {!isExpanded ? (
+                  <span className="mt-2 block">
+
+                    <span className="block text-[11px] font-black text-zinc-200">
+                      {formatNumber(
+                        targetTrackedTotals.kcal,
+                        0
+                      )}{" "}
+                      /{" "}
+                      {formatNumber(
+                        targetGoal.kcal,
+                        0
+                      )}{" "}
+                      kcal
+                    </span>
+
+                    <span className="mt-1 block text-[10px] font-bold text-zinc-500">
+                      {targetCompleted
+                        ? "Meta alcanzada"
+                        : targetRemaining.kcal >= 0
+                        ? `Restan ${formatNumber(
+                            targetRemaining.kcal,
+                            0
+                          )} kcal`
+                        : `+${formatNumber(
+                            Math.abs(
+                              targetRemaining.kcal
+                            ),
+                            0
+                          )} kcal sobre la meta`}
+                    </span>
+
+
+                    {/* BARRA */}
+
+                    <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/10">
+
+                      <span
+                        className="
+                          block
+                          h-full
+
+                          rounded-full
+
+                          bg-teal-300
+
+                          transition-all
+                        "
+                        style={{
+                          width: `${targetProgressWidth}%`,
+                        }}
+                      />
+
+                    </span>
+
+                  </span>
+                ) : null}
+
+              </span>
+
+            </button>
+
+
+            {/* ACCIONES DERECHA */}
+
+            <div className="flex shrink-0 items-center gap-1.5">
+
+              {/* ABRIR POR META */}
+
+              <button
+                type="button"
+                onClick={(event) =>
+                  openMealDetail(
+                    event,
+                    "target"
+                  )
+                }
+                className="
+                  grid
+                  h-10
+                  w-10
+                  shrink-0
+                  place-items-center
+
+                  rounded-full
+
+                  border
+                  border-teal-300/35
+
+                  bg-teal-300/10
+
+                  text-teal-100
+
+                  shadow-[0_0_16px_rgba(45,212,191,.12)]
+
+                  transition
+
+                  active:scale-[0.96]
+                "
+                aria-label="Abrir registro por meta"
+                title="Abrir Por meta"
+              >
+                {targetCompleted ? (
+                  <CheckCircle2 size={19} strokeWidth={2.3} />
+                ) : (
+                  <Target size={19} strokeWidth={2.3} />
+                )}
+              </button>
+
+
+              {/* EXPANDIR */}
+
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  toggleExpanded();
+                }}
+                className="
+                  grid
+                  h-9
+                  w-8
+                  shrink-0
+                  place-items-center
+
+                  rounded-full
+
+                  border
+                  border-white/10
+
+                  bg-black/20
+
+                  text-zinc-400
+
+                  transition
+
+                  active:scale-[0.96]
+                "
+                aria-label={
+                  isExpanded
+                    ? "Contraer comida"
+                    : "Expandir comida"
+                }
+                aria-expanded={
+                  isExpanded
+                }
+              >
+                {isExpanded ? (
+                  <ChevronLeft
+                    size={18}
+                    className="rotate-90"
+                  />
+                ) : (
+                  <ChevronRight
+                    size={18}
+                    className="rotate-90"
+                  />
+                )}
+              </button>
+
+            </div>
+
+          </div>
+
+
+          {/* =================================================
+              EXPANDIDA POR META
+              ================================================= */}
+
+          {isExpanded ? (
+            <div
+              className="
+                relative
+                z-10
+
+                mt-3
+
+                overflow-hidden
+
+                rounded-[0.95rem]
+
+                border
+                border-teal-300/15
+
+                bg-black/20
+
+                p-3
+              "
+            >
+
+              {/* OBJETIVO */}
+
+              <div className="flex flex-wrap items-center gap-1.5">
+
+                <MobileMealMacroChip
+                  label="P"
+                  value={
+                    targetGoal.proteina
+                  }
+                />
+
+                <MobileMealMacroChip
+                  label="C"
+                  value={
+                    targetGoal.carbs
+                  }
+                />
+
+                <MobileMealMacroChip
+                  label="G"
+                  value={
+                    targetGoal.grasas
+                  }
+                />
+
+              </div>
+
+
+              {/* PROGRESO */}
+
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-3">
+
+                <div className="flex items-center justify-between gap-2">
+
+                  <span className="text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                    Consumido
+                  </span>
+
+                  <strong className="text-xs font-black text-white">
+                    {formatNumber(
+                      targetTrackedTotals.kcal,
+                      0
+                    )}{" "}
+                    /{" "}
+                    {formatNumber(
+                      targetGoal.kcal,
+                      0
+                    )}{" "}
+                    kcal
+                  </strong>
+
+                </div>
+
+
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+
+                  <span
+                    className="
+                      block
+                      h-full
+
+                      rounded-full
+
+                      bg-teal-300
+
+                      transition-all
+                    "
+                    style={{
+                      width: `${targetProgressWidth}%`,
+                    }}
+                  />
+
+                </div>
+
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+
+                  <span className="text-[10px] font-black text-teal-200">
+                    {targetProgress}%
+                  </span>
+
+                  <span className="text-[10px] font-bold text-zinc-500">
+
+                    {targetRemaining.kcal >=
+                    0
+                      ? `Restan ${formatNumber(
+                          targetRemaining.kcal,
+                          0
+                        )} kcal`
+                      : `+${formatNumber(
+                          Math.abs(
+                            targetRemaining.kcal
+                          ),
+                          0
+                        )} kcal`}
+
+                  </span>
+
+                </div>
+
+              </div>
+
+
+              {/* ALIMENTOS REALES */}
+
+              <div className="mt-3">
+
+                <div className="mb-2 flex items-center justify-between">
+
+                  <span className="text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                    Registrado
+                  </span>
+
+                  <span className="text-[9px] font-black text-teal-300">
+                    Tracking real
+                  </span>
+
+                </div>
+
+
+                <div className="grid gap-1.5">
+
+                  {targetTrackedItems.map(
+                    (item, itemIndex) => {
+                      const itemTotals =
+                        targetTrackingItemTotals(
+                          item
+                        );
+
+                      const quantity =
+                        targetTrackingItemQuantity(
+                          item
+                        );
+
+                      const unit =
+                        targetTrackingItemUnit(
+                          item
+                        );
+
+                      return (
+                        <div
+                          key={
+                            item?.id ||
+                            item?._id ||
+                            `${targetExecution.id}-${itemIndex}`
+                          }
+                          className="
+                            flex
+                            min-w-0
+                            items-center
+                            gap-2
+
+                            rounded-2xl
+
+                            border
+                            border-white/[0.07]
+
+                            bg-white/[0.035]
+
+                            px-2.5
+                            py-2
+                          "
+                        >
+
+                          <span
+                            className="
+                              grid
+                              h-9
+                              w-9
+                              shrink-0
+                              place-items-center
+
+                              rounded-xl
+
+                              border
+                              border-teal-300/15
+
+                              bg-teal-300/[0.07]
+
+                              text-teal-200
+                            "
+                          >
+                            <CheckCircle2
+                              size={15}
+                            />
+                          </span>
+
+
+                          <span className="min-w-0 flex-1">
+
+                            <span className="block truncate text-[12px] font-black text-zinc-100">
+                              {targetTrackingItemName(
+                                item
+                              )}
+                            </span>
+
+                            <span className="mt-0.5 block truncate text-[10px] font-bold text-zinc-500">
+                              {formatNumber(
+                                itemTotals.kcal,
+                                0
+                              )}{" "}
+                              kcal
+                            </span>
+
+                          </span>
+
+
+                          <span
+                            className="
+                              shrink-0
+
+                              rounded-full
+
+                              border
+                              border-teal-300/20
+
+                              bg-teal-300/[0.07]
+
+                              px-2
+                              py-1
+
+                              text-[10px]
+                              font-black
+                              text-teal-100
+                            "
+                          >
+                            {formatNumber(
+                              quantity,
+                              Number.isInteger(
+                                quantity
+                              )
+                                ? 0
+                                : 1
+                            )}{" "}
+                            {unit}
+                          </span>
+
+                        </div>
+                      );
+                    }
+                  )}
+
+                </div>
+
+              </div>
+
+
+              {/* RESTANTE */}
+
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5">
+
+                <span className="block text-[9px] font-black uppercase tracking-wide text-zinc-500">
+                  {targetRemaining.kcal >=
+                  0
+                    ? "Restante"
+                    : "Sobre la meta"}
+                </span>
+
+                <strong
+                  className={`mt-1 block text-sm font-black ${
+                    targetRemaining.kcal >=
+                    0
+                      ? "text-white"
+                      : "text-rose-200"
+                  }`}
+                >
+                  {targetRemaining.kcal >=
+                  0
+                    ? `${formatNumber(
+                        targetRemaining.kcal,
+                        0
+                      )} kcal`
+                    : `+${formatNumber(
+                        Math.abs(
+                          targetRemaining.kcal
+                        ),
+                        0
+                      )} kcal`}
+                </strong>
+
+
+                <span className="mt-1 block text-[10px] font-bold text-zinc-500">
+                  P{" "}
+                  {formatNumber(
+                    targetRemaining.proteina,
+                    0
+                  )}{" "}
+                  g · C{" "}
+                  {formatNumber(
+                    targetRemaining.carbs,
+                    0
+                  )}{" "}
+                  g · G{" "}
+                  {formatNumber(
+                    targetRemaining.grasas,
+                    0
+                  )}{" "}
+                  g
+                </span>
+
+              </div>
+
+
+              {/* BOTONES */}
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    openMealDetail(
+                      event,
+                      "target"
+                    )
+                  }
+                  className="
+                    inline-flex
+                    min-h-11
+                    items-center
+                    justify-center
+                    gap-2
+
+                    rounded-2xl
+
+                    border
+                    border-teal-300/30
+
+                    bg-teal-300/10
+
+                    px-3
+
+                    text-xs
+                    font-black
+                    text-teal-100
+                  "
+                >
+                  <Target size={15} />
+
+                  Abrir Por meta
+                </button>
+
+
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    openMealDetail(
+                      event,
+                      "detail"
+                    )
+                  }
+                  className="
+                    inline-flex
+                    min-h-11
+                    items-center
+                    justify-center
+                    gap-2
+
+                    rounded-2xl
+
+                    border
+                    border-white/10
+
+                    bg-white/[0.04]
+
+                    px-3
+
+                    text-xs
+                    font-black
+                    text-zinc-300
+                  "
+                >
+                  <Eye size={15} />
+
+                  Ver propuesta
+                </button>
+
+              </div>
+
+            </div>
+          ) : null}
+
+        </div>
+      </article>
+    );
+  }
+
+
+  /* =====================================================
+     CARD NORMAL ORIGINAL
+     ===================================================== */
+
   return (
-    <article className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] transition ${visual.frame} ${completedVisual ? "border-emerald-200/60 ring-2 ring-emerald-300/40 shadow-[0_0_28px_rgba(16,185,129,.22),0_18px_38px_rgba(0,0,0,.34)]" : "ring-1 ring-white/[0.035]"}`}>
-      <div className={`relative overflow-hidden rounded-[calc(1.05rem-1px)] p-3 ${visual.card}`}>
-        <span className={`pointer-events-none absolute inset-0 ${visual.haze}`} aria-hidden="true" />
-        {completedVisual ? <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(52,211,153,.16),transparent_38%),rgba(16,185,129,.07)]" aria-hidden="true" /> : null}
-        <span className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${completedVisual ? "bg-gradient-to-b from-emerald-100 via-emerald-300 to-emerald-500 shadow-[0_0_22px_rgba(16,185,129,.72)]" : visual.rail}`} aria-hidden="true" />
+    <article
+      className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] transition ${visual.frame} ${
+        completedVisual
+          ? "border-emerald-200/60 ring-2 ring-emerald-300/40 shadow-[0_0_28px_rgba(16,185,129,.22),0_18px_38px_rgba(0,0,0,.34)]"
+          : "ring-1 ring-white/[0.035]"
+      }`}
+    >
+      <div
+        className={`relative overflow-hidden rounded-[calc(1.05rem-1px)] p-3 ${visual.card}`}
+      >
+
+        <span
+          className={`pointer-events-none absolute inset-0 ${visual.haze}`}
+          aria-hidden="true"
+        />
+
+        {completedVisual ? (
+          <span
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(52,211,153,.16),transparent_38%),rgba(16,185,129,.07)]"
+            aria-hidden="true"
+          />
+        ) : null}
+
+        <span
+          className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${
+            completedVisual
+              ? "bg-gradient-to-b from-emerald-100 via-emerald-300 to-emerald-500 shadow-[0_0_22px_rgba(16,185,129,.72)]"
+              : visual.rail
+          }`}
+          aria-hidden="true"
+        />
+
+
         {mealChoices.length > 1 ? (
           <MealChoiceNavigator
             options={mealChoices}
             activeIndex={activeChoiceIndex}
             disabled={saving}
-            onSelect={(option) => mealChoiceActions?.select?.(row, trackingMeal, mealIndex, option)}
+            onSelect={(option) =>
+              mealChoiceActions?.select?.(
+                row,
+                trackingMeal,
+                mealIndex,
+                option
+              )
+            }
           />
         ) : null}
+
+
         <div className="relative z-10 flex items-center gap-2.5">
+
           <button
             type="button"
             onClick={toggleExpanded}
-            aria-expanded={isExpanded}
+            aria-expanded={
+              isExpanded
+            }
             className="grid min-w-0 flex-1 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 text-left active:scale-[0.995]"
           >
-            <MealTypeIcon meal={meal} index={mealIndex} done={completedVisual} size="lg" />
+
+            <MealTypeIcon
+              meal={meal}
+              index={mealIndex}
+              done={completedVisual}
+              size="lg"
+            />
+
             <span className="min-w-0">
+
               <span className="flex min-w-0 items-baseline gap-2">
-                <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">{mealName(meal, mealIndex)}</span>
-                <span className={`shrink-0 text-xs font-black ${visual.kcalText}`}>{displayKcal(totals.kcal)}</span>
+
+                <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
+                  {mealName(
+                    meal,
+                    mealIndex
+                  )}
+                </span>
+
+                <span
+                  className={`shrink-0 text-xs font-black ${visual.kcalText}`}
+                >
+                  {displayKcal(
+                    totals.kcal
+                  )}
+                </span>
+
               </span>
+
+
               <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
-                <span className={`inline-flex min-h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-black ${statusClass}`}>
-                  <StatusIcon size={12} strokeWidth={2.6} />
+
+                <span
+                  className={`inline-flex min-h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-black ${statusClass}`}
+                >
+                  <StatusIcon
+                    size={12}
+                    strokeWidth={2.6}
+                  />
+
                   {statusLabel}
                 </span>
+
               </span>
+
+
               {!isExpanded ? (
                 <span className="mt-2 flex min-h-[30px] items-center">
-                  <MobileFoodThumbStack foods={foods} compact maxVisible={5} />
+
+                  <MobileFoodThumbStack
+                    foods={foods}
+                    compact
+                    maxVisible={5}
+                  />
+
                 </span>
               ) : null}
-              {generatedEntry?.replacesMealNames?.length && isExpanded ? (
+
+
+              {generatedEntry?.replacesMealNames
+                ?.length &&
+              isExpanded ? (
+
                 <span className="mt-1 block truncate text-[11px] font-black text-emerald-200/90">
-                  Reemplaza {generatedEntry.replacesMealNames.join(" + ")}
+                  Reemplaza{" "}
+                  {generatedEntry.replacesMealNames.join(
+                    " + "
+                  )}
                 </span>
+
               ) : null}
+
             </span>
+
           </button>
+
+
           <div className="flex shrink-0 items-center gap-1.5">
+
             <button
               type="button"
-              disabled={manual ? saving : generated || !canMarkMeals || saving}
-              onClick={handlePrimaryAction}
+              disabled={
+                manual
+                  ? saving
+                  : generated ||
+                    !canMarkMeals ||
+                    saving
+              }
+              onClick={
+                handlePrimaryAction
+              }
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border text-xs font-black transition active:scale-[0.96] disabled:opacity-50 ${
                 manual
                   ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
@@ -5648,86 +7740,253 @@ function MobileMealCard({
                     ? `${visual.doneButton}`
                     : "border-white/15 bg-black/35 text-zinc-500"
               }`}
-              aria-pressed={manual ? undefined : done}
-              aria-label={manual ? "Eliminar registro manual" : generated ? "Comida generada para esta semana" : done ? "Comida completa" : "Marcar comida completa"}
+              aria-pressed={
+                manual
+                  ? undefined
+                  : done
+              }
+              aria-label={
+                manual
+                  ? "Eliminar registro manual"
+                  : generated
+                    ? "Comida generada para esta semana"
+                    : done
+                      ? "Comida completa"
+                      : "Marcar comida completa"
+              }
             >
-              {manual ? <Trash2 size={18} /> : generated ? <Calculator size={18} /> : done ? <CheckCircle2 size={20} /> : <Square size={18} />}
+
+              {manual ? (
+                <Trash2 size={18} />
+              ) : generated ? (
+                <Calculator
+                  size={18}
+                />
+              ) : done ? (
+                <CheckCircle2
+                  size={20}
+                />
+              ) : (
+                <Square size={18} />
+              )}
+
             </button>
+
+
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
+
                 toggleExpanded();
               }}
               className="grid h-9 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-400 transition active:scale-[0.96]"
-              aria-label={isExpanded ? "Contraer comida" : "Expandir comida"}
-              aria-expanded={isExpanded}
+              aria-label={
+                isExpanded
+                  ? "Contraer comida"
+                  : "Expandir comida"
+              }
+              aria-expanded={
+                isExpanded
+              }
             >
-              {isExpanded ? <ChevronLeft size={18} className="rotate-90" /> : <ChevronRight size={18} className="rotate-90" />}
+              {isExpanded ? (
+                <ChevronLeft
+                  size={18}
+                  className="rotate-90"
+                />
+              ) : (
+                <ChevronRight
+                  size={18}
+                  className="rotate-90"
+                />
+              )}
             </button>
+
           </div>
+
         </div>
+
 
         {isExpanded ? (
           <div className="relative z-10 mt-3 overflow-hidden rounded-[0.95rem] border border-white/10 bg-black/20 p-3 opacity-100 transition-[max-height,opacity] duration-200 ease-out">
+
             <div className="flex flex-wrap items-center gap-1.5">
-              <MobileMealMacroChip label="P" value={totals.proteina} />
-              <MobileMealMacroChip label="C" value={totals.carbs} />
-              <MobileMealMacroChip label="G" value={totals.grasas} />
+
+              <MobileMealMacroChip
+                label="P"
+                value={
+                  totals.proteina
+                }
+              />
+
+              <MobileMealMacroChip
+                label="C"
+                value={totals.carbs}
+              />
+
+              <MobileMealMacroChip
+                label="G"
+                value={totals.grasas}
+              />
+
             </div>
 
+
             <div className="mt-3 grid gap-1.5">
-              {foods.length ? foods.map((food, foodIndex) => {
-                const macroDetail = foodMacroLine(food);
-                return (
-                  <div key={`${food.id}-${foodIndex}`} className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2.5 py-2">
-                    <FoodThumb food={food} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-black text-zinc-100">{food.name}</span>
-                      {macroDetail ? (
-                        <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">{macroDetail}</span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-1 text-[11px] font-black text-[#FFE8A3]">
-                      {food.amount || "s/d"}
-                    </span>
-                  </div>
-                );
-              }) : (
+
+              {foods.length ? (
+                foods.map(
+                  (
+                    food,
+                    foodIndex
+                  ) => {
+                    const macroDetail =
+                      foodMacroLine(
+                        food
+                      );
+
+                    return (
+                      <div
+                        key={`${food.id}-${foodIndex}`}
+                        className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2.5 py-2"
+                      >
+
+                        <FoodThumb
+                          food={food}
+                          size="sm"
+                        />
+
+                        <span className="min-w-0 flex-1">
+
+                          <span className="block truncate text-[12px] font-black text-zinc-100">
+                            {food.name}
+                          </span>
+
+                          {macroDetail ? (
+                            <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">
+                              {macroDetail}
+                            </span>
+                          ) : null}
+
+                        </span>
+
+
+                        <span className="shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-2 py-1 text-[11px] font-black text-[#FFE8A3]">
+                          {food.amount ||
+                            "s/d"}
+                        </span>
+
+                      </div>
+                    );
+                  }
+                )
+              ) : (
+
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-sm font-bold text-zinc-500">
                   Todavia no agregaste alimentos.
                 </div>
+
               )}
+
             </div>
 
+
             <div className="mt-3 grid gap-2">
+
               {canEditThisMeal ? (
                 <button
                   type="button"
-                  onClick={quickEditMeal}
+                  onClick={
+                    quickEditMeal
+                  }
                   disabled={saving}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-55"
                 >
-                  {foods.length ? <PencilLine size={15} /> : <Plus size={15} />}
-                  {foods.length ? "Editar alimentos" : "Agregar alimentos"}
+
+                  {foods.length ? (
+                    <PencilLine
+                      size={15}
+                    />
+                  ) : (
+                    <Plus size={15} />
+                  )}
+
+                  {foods.length
+                    ? "Editar alimentos"
+                    : "Agregar alimentos"}
+
                 </button>
               ) : null}
+
+
               <MealCompactActions
-                onDetail={(event) => openMealDetail(event, "detail")}
-                onReplace={(event) => openMealDetail(event, "replace")}
-                onSettings={(event) => openMealDetail(event, "settings")}
-                onSave={onSaveAsSavedMeal ? saveAsMeal : null}
-                canReplace={!manual && !generated}
-                canConfigure={!manual && !generated}
-                saveDisabled={saving || !foods.length}
+                onDetail={(event) =>
+                  openMealDetail(
+                    event,
+                    "detail"
+                  )
+                }
+
+                onReplace={(event) =>
+                  openMealDetail(
+                    event,
+                    "replace"
+                  )
+                }
+
+                onSettings={(event) =>
+                  openMealDetail(
+                    event,
+                    "settings"
+                  )
+                }
+
+                onTarget={(event) =>
+                  openMealDetail(
+                    event,
+                    "target"
+                  )
+                }
+
+                onSave={
+                  onSaveAsSavedMeal
+                    ? saveAsMeal
+                    : null
+                }
+
+                canReplace={
+                  !manual &&
+                  !generated
+                }
+
+                canConfigure={
+                  !manual &&
+                  !generated
+                }
+
+                canUseTarget={
+                  !manual &&
+                  !generated &&
+                  !done
+                }
+
+                saveDisabled={
+                  saving ||
+                  !foods.length
+                }
               />
+
             </div>
+
           </div>
         ) : null}
-        </div>
+
+      </div>
     </article>
   );
 }
+
 
 function MobileMealMacroChip({ label, value }) {
   return (
@@ -5738,64 +7997,1214 @@ function MobileMealMacroChip({ label, value }) {
   );
 }
 
-function PlannedMealTargetCard({ row, meal, mealIndex, disabled,onSettings, onGenerate }) {
-  const generatedMeal = row ? mealWithTrackingReplacements(row, meal, mealIndex) : meal;
-  const hasGeneratedMeal = generatedMeal !== meal;
-  const totals = mealTotals(generatedMeal);
+
+
+
+
+
+function PlannedMealTargetCard({
+  row,
+  meal,
+  mealIndex,
+  disabled,
+  onSettings,
+  onManage,
+  onGenerate,
+}) {
+  const [expanded, setExpanded] =
+    useState(false);
+
+
+  /*
+   * =========================================
+   * META / COMIDA
+   * =========================================
+   */
+
+  /*
+   * =========================================
+   * MISMO ID QUE TRACKING
+   * =========================================
+   */
+
+  const targetExecution =
+    menuTargetExecutionContext(
+      row || {},
+      meal,
+      meal,
+      mealIndex
+    );
+
+
+  /*
+   * =========================================
+   * TRACKING REAL
+   * =========================================
+   */
+
+  const trackingDate =
+    row?.date ||
+    todayIso();
+
+  const trackingQuery =
+    useTrackingDay(
+      trackingDate
+    );
+
+  const trackingMeals =
+    trackingQuery.data?.meals ||
+    {};
+
+  const trackedItems =
+    Array.isArray(
+      trackingMeals[
+        targetExecution.id
+      ]
+    )
+      ? trackingMeals[
+          targetExecution.id
+        ]
+      : [];
+
+
+  /*
+   * =========================================
+   * TOTALES
+   * =========================================
+   */
+
+  const trackedTotals =
+    sumTotals(
+      trackedItems
+    );
+
+  const target =
+    totalFromLike(
+      targetExecution.target ||
+      meal?.target ||
+      mealTotals(meal)
+    );
+
+  const hasTrackedItems =
+    trackedItems.length > 0;
+
+
+  /*
+   * =========================================
+   * RESTANTE
+   * =========================================
+   */
+
+  const remaining = {
+    kcal:
+      target.kcal -
+      trackedTotals.kcal,
+
+    proteina:
+      target.proteina -
+      trackedTotals.proteina,
+
+    carbs:
+      target.carbs -
+      trackedTotals.carbs,
+
+    grasas:
+      target.grasas -
+      trackedTotals.grasas,
+  };
+
+
+  /*
+   * =========================================
+   * PROGRESO
+   * =========================================
+   */
+
+  const progress =
+    target.kcal > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              (
+                trackedTotals.kcal /
+                target.kcal
+              ) * 100
+            )
+          )
+        )
+      : 0;
+
+  const exceeded =
+    trackedTotals.kcal >
+    target.kcal + 0.5;
+
+  const completed =
+    target.kcal > 0 &&
+    trackedTotals.kcal >=
+      target.kcal - 5;
+
+  const statusLabel =
+    completed
+      ? "Objetivo alcanzado"
+      : hasTrackedItems
+        ? "En progreso"
+        : "Sin registrar";
+
+
+  /*
+   * =========================================
+   * ICONO
+   * =========================================
+   */
+
+  const handleCardClick = (
+    event
+  ) => {
+    /*
+     * Si toca un botón real,
+     * no expandimos/colapsamos la card.
+     */
+    if (
+      event.target?.closest?.(
+        "button,a,input,select,textarea"
+      )
+    ) {
+      return;
+    }
+
+    setExpanded(
+      (current) => !current
+    );
+  };
+
+
   return (
-    <article className="rounded-[1.05rem] border border-emerald-300/25 bg-[linear-gradient(145deg,rgba(8,38,41,.92),rgba(6,16,25,.96))] p-3 shadow-[0_12px_28px_rgba(0,0,0,.24)]">
-      <div className="flex items-center gap-3">
-        <MealTypeIcon meal={meal} index={mealIndex} size="lg" />
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-[16px] font-black text-white">{mealName(generatedMeal, mealIndex)}</h4>
-          <p className="mt-1 text-[11px] font-black text-[#FFD76B]">{displayKcal(totals.kcal)} · {displayMenuMacros(totals)}</p>
-          <span className="mt-2 inline-flex rounded-full border border-sky-300/20 bg-sky-300/[.07] px-2 py-1 text-[9px] font-black text-sky-100">
-            {hasGeneratedMeal ? `Generada para ${mealName(meal, mealIndex)}` : "Meta del coach"}
-          </span>
+    <article
+      onClick={
+        handleCardClick
+      }
+
+      className="
+        overflow-hidden
+        rounded-[1.15rem]
+
+        border
+        border-teal-300/30
+
+        bg-[radial-gradient(circle_at_0_0,rgba(20,184,166,.16),transparent_34%),linear-gradient(145deg,rgba(5,31,32,.98),rgba(5,14,21,.98))]
+
+        shadow-[0_14px_32px_rgba(0,0,0,.28)]
+      "
+    >
+
+      {/* =====================================
+          CABECERA
+          ===================================== */}
+
+      <div
+        className="
+          grid
+          grid-cols-[auto_minmax(0,1fr)_auto]
+          items-start
+          gap-3
+          p-3
+        "
+      >
+
+        <MealTypeIcon
+          meal={meal}
+          index={mealIndex}
+          size="lg"
+        />
+
+
+        <div className="min-w-0">
+
+          {/* NOMBRE + KCAL */}
+
+          <div
+            className="
+              flex
+              min-w-0
+              flex-wrap
+              items-baseline
+              gap-x-1.5
+              gap-y-0.5
+            "
+          >
+
+            <h4
+              className="
+                truncate
+                text-[16px]
+                font-black
+                leading-tight
+                text-white
+              "
+            >
+              {mealName(
+                meal,
+                mealIndex
+              )}
+            </h4>
+
+            <strong
+              className="
+                text-[11px]
+                font-black
+                text-[#FFD76B]
+              "
+            >
+              {formatNumber(
+                target.kcal,
+                0
+              )} kcal
+            </strong>
+
+          </div>
+
+
+          {/* BADGES */}
+
+          <div
+            className="
+              mt-1
+              flex
+              flex-wrap
+              items-center
+              gap-1.5
+            "
+          >
+
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1
+
+                rounded-full
+
+                border
+                border-teal-300/30
+
+                bg-teal-300/10
+
+                px-2
+                py-0.5
+
+                text-[8.5px]
+                font-black
+                uppercase
+                tracking-wide
+                text-teal-100
+              "
+            >
+              <Target
+                size={10}
+              />
+
+              Por meta
+            </span>
+
+
+            <span
+              className={`
+                inline-flex
+                rounded-full
+                border
+                px-2
+                py-0.5
+                text-[8.5px]
+                font-black
+
+                ${
+                  completed
+                    ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+
+                    : hasTrackedItems
+                      ? "border-white/10 bg-white/[0.045] text-zinc-300"
+
+                      : "border-white/10 bg-white/[0.035] text-zinc-400"
+                }
+              `}
+            >
+              {statusLabel}
+            </span>
+
+          </div>
+
+
+          {/* =================================
+              PROGRESO COMPACTO
+              ================================= */}
+
+          <div
+            className="
+              mt-2
+              flex
+              items-center
+              justify-between
+              gap-3
+            "
+          >
+
+            <strong
+              className="
+                text-[11px]
+                font-black
+                text-white
+              "
+            >
+              {formatNumber(
+                trackedTotals.kcal,
+                0
+              )}
+              {" / "}
+              {formatNumber(
+                target.kcal,
+                0
+              )}
+              {" kcal"}
+            </strong>
+
+
+            <span
+              className="
+                text-[9px]
+                font-bold
+                text-zinc-500
+              "
+            >
+              {exceeded
+                ? `Excedido ${formatNumber(
+                    Math.abs(
+                      remaining.kcal
+                    ),
+                    0
+                  )} kcal`
+
+                : `Restan ${formatNumber(
+                    Math.max(
+                      0,
+                      remaining.kcal
+                    ),
+                    0
+                  )} kcal`}
+            </span>
+
+          </div>
+
+
+          {/* BARRA */}
+
+          <div
+            className="
+              mt-1.5
+              h-1.5
+              overflow-hidden
+              rounded-full
+              bg-white/[0.09]
+            "
+          >
+
+            <div
+              className="
+                h-full
+                rounded-full
+                bg-teal-300
+                transition-all
+              "
+              style={{
+                width:
+                  `${progress}%`,
+              }}
+            />
+
+          </div>
+
         </div>
 
 
-   <div className="flex shrink-0 items-center gap-2">
+        {/* =================================
+            ACCIONES CABECERA
+            ================================= */}
+
+        <div
+          className="
+            flex
+            shrink-0
+            items-center
+            gap-2
+          "
+        >
+
+          <span
+            className="
+              grid
+              h-9
+              w-9
+              place-items-center
+
+              rounded-full
+
+              border
+              border-teal-300/30
+
+              bg-teal-300/10
+
+              text-teal-100
+            "
+            title="Meta del coach"
+          >
+            <Target
+              size={16}
+            />
+          </span>
+
+
+          <button
+            type="button"
+
+            onClick={() =>
+              setExpanded(
+                (current) =>
+                  !current
+              )
+            }
+
+            className="
+              grid
+              h-9
+              w-9
+              place-items-center
+
+              rounded-full
+
+              border
+              border-white/10
+
+              bg-white/[0.04]
+
+              text-zinc-200
+            "
+
+            aria-expanded={
+              expanded
+            }
+
+            aria-label={
+              expanded
+                ? "Ocultar detalle"
+                : "Ver detalle"
+            }
+          >
+            {expanded ? (
+              <ChevronUp
+                size={16}
+              />
+            ) : (
+              <ChevronDown
+                size={16}
+              />
+            )}
+          </button>
+
+        </div>
+
+      </div>
+
+
+      {/* =====================================
+          DETALLE EXPANDIDO
+          ===================================== */}
+
+      {expanded ? (
+
+        <div
+          className="
+            border-t
+            border-white/[0.08]
+
+            px-3
+            pb-3
+            pt-3
+          "
+        >
+
+          {/* =================================
+              MACROS OBJETIVO
+              ================================= */}
+
+          <div
+            className="
+              flex
+              flex-wrap
+              gap-2
+            "
+          >
+
+            <span
+              className="
+                rounded-full
+                border border-[#D4AF37]/20
+                bg-[#D4AF37]/[0.07]
+                px-2.5 py-1
+                text-[10px]
+                font-black
+                text-[#FFE8A3]
+              "
+            >
+              P{" "}
+              {formatNumber(
+                target.proteina,
+                1
+              )} g
+            </span>
+
+            <span
+              className="
+                rounded-full
+                border border-white/10
+                bg-white/[0.04]
+                px-2.5 py-1
+                text-[10px]
+                font-black
+                text-zinc-200
+              "
+            >
+              C{" "}
+              {formatNumber(
+                target.carbs,
+                1
+              )} g
+            </span>
+
+            <span
+              className="
+                rounded-full
+                border border-white/10
+                bg-white/[0.04]
+                px-2.5 py-1
+                text-[10px]
+                font-black
+                text-zinc-200
+              "
+            >
+              G{" "}
+              {formatNumber(
+                target.grasas,
+                1
+              )} g
+            </span>
+
+          </div>
+
+
+          {/* =================================
+              CONSUMIDO
+              ================================= */}
+
+          <div
+            className="
+              mt-3
+              rounded-xl
+
+              border
+              border-white/10
+
+              bg-black/20
+
+              p-3
+            "
+          >
+
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                gap-3
+              "
+            >
+
+              <span
+                className="
+                  text-[9px]
+                  font-black
+                  uppercase
+                  tracking-wide
+                  text-zinc-500
+                "
+              >
+                Consumido
+              </span>
+
+
+              <strong
+                className="
+                  text-[12px]
+                  font-black
+                  text-white
+                "
+              >
+                {formatNumber(
+                  trackedTotals.kcal,
+                  0
+                )}
+                {" / "}
+                {formatNumber(
+                  target.kcal,
+                  0
+                )}
+                {" kcal"}
+              </strong>
+
+            </div>
+
+
+            <div
+              className="
+                mt-2
+                h-1.5
+                overflow-hidden
+                rounded-full
+                bg-white/[0.09]
+              "
+            >
+              <div
+                className="
+                  h-full
+                  rounded-full
+                  bg-teal-300
+                "
+                style={{
+                  width:
+                    `${progress}%`,
+                }}
+              />
+            </div>
+
+
+            <div
+              className="
+                mt-1.5
+                flex
+                items-center
+                justify-between
+                gap-2
+              "
+            >
+
+              <strong
+                className="
+                  text-[10px]
+                  font-black
+                  text-teal-200
+                "
+              >
+                {progress}%
+              </strong>
+
+
+              <span
+                className="
+                  text-[9px]
+                  font-bold
+                  text-zinc-500
+                "
+              >
+                {exceeded
+                  ? `Excedido ${formatNumber(
+                      Math.abs(
+                        remaining.kcal
+                      ),
+                      0
+                    )} kcal`
+
+                  : `Restan ${formatNumber(
+                      Math.max(
+                        0,
+                        remaining.kcal
+                      ),
+                      0
+                    )} kcal`}
+              </span>
+
+            </div>
+
+          </div>
+
+
+          {/* =================================
+              REGISTRADO
+              ================================= */}
+
+          <div
+            className="
+              mt-3
+              flex
+              items-center
+              justify-between
+              gap-3
+            "
+          >
+
+            <span
+              className="
+                text-[9px]
+                font-black
+                uppercase
+                tracking-wide
+                text-zinc-500
+              "
+            >
+              Registrado
+            </span>
+
+
+            <span
+              className="
+                text-[9px]
+                font-black
+                text-teal-300
+              "
+            >
+              Tracking real
+            </span>
+
+          </div>
+
+
+          {/* =================================
+              ALIMENTOS
+              ================================= */}
+
+          {trackedItems.length ? (
+
+            <div
+              className="
+                mt-2
+                grid
+                gap-2
+              "
+            >
+
+              {trackedItems.map(
+                (
+                  item,
+                  itemIndex
+                ) => {
+
+                  const itemTotals =
+                    totalFromLike(
+                      item
+                    );
+
+                  const itemName =
+                    item?.nombreSnapshot ||
+                    item?.nombre ||
+                    item?.name ||
+                    "Alimento";
+
+                  const quantity =
+                    Number(
+                      item?.cantidad ??
+                      item?.quantity ??
+                      0
+                    );
+
+                  const unit =
+                    item?.unidad ||
+                    item?.unit ||
+                    "g";
+
+
+                  return (
+                    <div
+                      key={
+                        item?.id ||
+                        item?._id ||
+                        `${itemName}-${itemIndex}`
+                      }
+
+                      className="
+                        rounded-xl
+
+                        border
+                        border-white/[0.08]
+
+                        bg-white/[0.035]
+
+                        px-3
+                        py-2.5
+                      "
+                    >
+
+                      <div
+                        className="
+                          flex
+                          items-center
+                          justify-between
+                          gap-3
+                        "
+                      >
+
+                        <strong
+                          className="
+                            min-w-0
+                            truncate
+                            text-[12px]
+                            font-black
+                            text-white
+                          "
+                        >
+                          {itemName}
+                        </strong>
+
+
+                        <span
+                          className="
+                            shrink-0
+
+                            rounded-full
+
+                            border
+                            border-teal-300/25
+
+                            bg-teal-300/10
+
+                            px-2
+                            py-1
+
+                            text-[9px]
+                            font-black
+                            text-teal-100
+                          "
+                        >
+                          {formatNumber(
+                            quantity,
+                            quantity % 1
+                              ? 1
+                              : 0
+                          )}{" "}
+                          {unit}
+                        </span>
+
+                      </div>
+
+
+                      {/* KCAL + MACROS DEL ALIMENTO */}
+
+                      <p
+                        className="
+                          mt-1
+                          text-[9px]
+                          font-bold
+                          leading-relaxed
+                          text-zinc-400
+                        "
+                      >
+                        {formatNumber(
+                          itemTotals.kcal,
+                          0
+                        )} kcal
+
+                        {" · P "}
+
+                        {formatNumber(
+                          itemTotals.proteina,
+                          1
+                        )}
+
+                        {" · C "}
+
+                        {formatNumber(
+                          itemTotals.carbs,
+                          1
+                        )}
+
+                        {" · G "}
+
+                        {formatNumber(
+                          itemTotals.grasas,
+                          1
+                        )}
+                      </p>
+
+                    </div>
+                  );
+                }
+              )}
+
+            </div>
+
+          ) : (
+
+            <div
+              className="
+                mt-2
+                rounded-xl
+
+                border
+                border-white/[0.07]
+
+                bg-white/[0.025]
+
+                px-3
+                py-3
+
+                text-[11px]
+                font-bold
+                text-zinc-500
+              "
+            >
+              Todavía no registraste alimentos
+              en esta comida.
+            </div>
+
+          )}
+
+
+          {/* =================================
+              RESTANTE
+              ================================= */}
+
+          <div
+            className="
+              mt-3
+
+              rounded-xl
+
+              border
+              border-white/10
+
+              bg-black/20
+
+              p-3
+            "
+          >
+
+            <span
+              className="
+                text-[9px]
+                font-black
+                uppercase
+                tracking-wide
+                text-zinc-500
+              "
+            >
+              {exceeded
+                ? "Excedido"
+                : "Restante"}
+            </span>
+
+
+            <strong
+              className="
+                mt-1
+                block
+                text-[18px]
+                font-black
+                text-white
+              "
+            >
+              {formatNumber(
+                Math.abs(
+                  remaining.kcal
+                ),
+                0
+              )} kcal
+            </strong>
+
+
+            <p
+              className="
+                mt-1
+                text-[9px]
+                font-bold
+                leading-relaxed
+                text-zinc-500
+              "
+            >
+              P{" "}
+              {formatNumber(
+                remaining.proteina,
+                1
+              )}
+
+              {" · C "}
+
+              {formatNumber(
+                remaining.carbs,
+                1
+              )}
+
+              {" · G "}
+
+              {formatNumber(
+                remaining.grasas,
+                1
+              )}
+            </p>
+
+          </div>
+
+{/* =================================
+    ACCIONES
+    ================================= */}
+
+<div className="mt-3 grid gap-2">
 
   <button
     type="button"
-    onClick={onSettings}
+    onClick={onManage}
     disabled={disabled}
-    className="grid min-h-10 min-w-10 place-items-center rounded-xl
-      border border-[#D4AF37]/40
-      bg-[#D4AF37]/12
-      text-[#FFE16B]
-      disabled:opacity-50"
-    aria-label={`Ajustar generación de ${mealName(meal, mealIndex)}`}
-    title="Ajustes de generación"
+    className="
+      inline-flex
+      min-h-11
+      w-full
+      items-center
+      justify-center
+      gap-2
+
+      rounded-xl
+
+      border
+      border-teal-300/35
+
+      bg-teal-300/10
+
+      px-3
+
+      text-[11px]
+      font-black
+      text-teal-100
+
+      disabled:opacity-50
+    "
   >
-    <SlidersHorizontal size={16} />
+    <Plus size={15} />
+
+    {hasTrackedItems
+      ? "Administrar alimentos"
+      : "Agregar alimento"}
   </button>
 
-  <button
-    type="button"
-    onClick={onGenerate}
-    disabled={disabled}
-    className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl
-      border border-emerald-300/35
-      bg-emerald-300/10
-      px-3 text-[11px]
-      font-black text-emerald-100
-      disabled:opacity-50"
-    aria-label={`Generar ${mealName(meal, mealIndex)} según la meta del coach`}
-  >
-    <WandSparkles size={15} />
-    {hasGeneratedMeal ? "Cambiar" : "Generar"}
-  </button>
+
+  <div className="grid grid-cols-2 gap-2">
+
+    <button
+      type="button"
+      onClick={onSettings}
+      disabled={disabled}
+      className="
+        inline-flex
+        min-h-11
+        items-center
+        justify-center
+        gap-2
+
+        rounded-xl
+
+        border
+        border-[#D4AF37]/30
+
+        bg-[#D4AF37]/10
+
+        px-3
+
+        text-[11px]
+        font-black
+        text-[#FFE8A3]
+
+        disabled:opacity-50
+      "
+    >
+      <SlidersHorizontal size={15} />
+
+      Ajustes
+    </button>
+
+
+    <button
+      type="button"
+
+
+onClick={() => {
+  onGenerate?.({
+    completionMode: hasTrackedItems,
+
+    fixedTrackingItems:
+      trackedItems,
+
+    targetOverride:
+      target,
+
+    trackingExecutionId:
+      targetExecution.id,
+  });
+}}
+
+      disabled={
+        disabled ||
+        (
+          target.kcal > 0 &&
+          remaining.kcal <= 5
+        )
+      }
+
+      className="
+        inline-flex
+        min-h-11
+        items-center
+        justify-center
+        gap-2
+
+        rounded-xl
+
+        border
+        border-teal-300/35
+
+        bg-teal-300/10
+
+        px-3
+
+        text-[11px]
+        font-black
+        text-teal-100
+
+        disabled:opacity-50
+      "
+    >
+      <WandSparkles size={15} />
+
+      {hasTrackedItems
+        ? "Completar restante"
+        : "Generar"}
+    </button>
+
+  </div>
 
 </div>
 
 
 
-      </div>
+        </div>
+
+      ) : null}
+
     </article>
   );
 }
+
+
+
+
+
+
+
 
 function MealChoiceNavigator({ options = [], activeIndex = 0, disabled = false, onSelect }) {
   const scrollerRef = useRef(null);
@@ -6267,6 +9676,7 @@ function MobileFoodRow({ meal, mealIndex, food, foodIndex, onOpenFood, canReplac
 
 function TodayHero({
   row,
+  trackingDay = null,
   weekRows = [],
   activePlan = {},
   activePlanSource = "none",
@@ -6295,7 +9705,7 @@ function TodayHero({
   const activeTotals = choiceTotals(activeChoice);
   const snapshot = activeChoice?.snapshot || null;
   const baseMeals = activeChoice ? choiceMeals(activeChoice) : [];
-  const effectiveMeals = effectiveMealEntriesForDay(row, baseMeals, weekRows);
+  const effectiveMeals = effectiveMealEntriesForDay(row, baseMeals, weekRows, trackingDay);
   const countableMeals = countableMealEntries(effectiveMeals);
   const completedCount = completedCountableMeals(effectiveMeals);
   const targetKcal = targetTotals(row).kcal;
@@ -6486,6 +9896,7 @@ function TrackingMiniPanel({ label, totals, tone = "blue" }) {
 
 function DesktopMealsSection({
   row,
+  trackingDay = null,
   weekRows = [],
   onToggleMeal,
   onOpenMeal,
@@ -6502,7 +9913,7 @@ function DesktopMealsSection({
   const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
   const choice = trackingChoice(displayRow);
   const baseMeals = choice ? choiceMeals(choice) : [];
-  const effectiveMeals = effectiveMealEntriesForDay(displayRow, baseMeals, weekRows);
+  const effectiveMeals = effectiveMealEntriesForDay(displayRow, baseMeals, weekRows, trackingDay);
   const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
   const manualEntries = effectiveMeals.filter((entry) => entry.manual);
   const countableMeals = countableMealEntries(effectiveMeals);
@@ -6783,15 +10194,17 @@ function DesktopMealCard({
                 {foods.length ? "Editar alimentos" : "Agregar alimentos"}
               </button>
             ) : null}
-            <MealCompactActions
-              onDetail={(event) => openMealDetail(event, "detail")}
-              onReplace={(event) => openMealDetail(event, "replace")}
-              onSettings={(event) => openMealDetail(event, "settings")}
-              onSave={onSaveAsSavedMeal ? saveAsMeal : null}
-              canReplace={!manual && !generated}
-              canConfigure={!manual && !generated}
-              saveDisabled={saving || !foods.length}
-            />
+<MealCompactActions
+  onDetail={(event) => openMealDetail(event, "detail")}
+  onReplace={(event) => openMealDetail(event, "replace")}
+  onSettings={(event) => openMealDetail(event, "settings")}
+  onTarget={(event) => openMealDetail(event, "target")}
+  onSave={onSaveAsSavedMeal ? saveAsMeal : null}
+  canReplace={!manual && !generated}
+  canConfigure={!manual && !generated}
+  canUseTarget={!manual && !generated && !done}
+  saveDisabled={saving || !foods.length}
+/>
           </div>
         </div>
       ) : null}
@@ -6881,6 +10294,8 @@ function DayDetailDrawer({
   onUseAlternative,
   saving,
 }) {
+  const trackingQuery = useTrackingDay(row?.date || "");
+
   return (
     <section className="fixed inset-0 z-40 bg-black/70 p-1 backdrop-blur-sm sm:p-3" role="dialog" aria-modal="true">
       <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#090d13] shadow-2xl sm:rounded-[2rem]">
@@ -6896,6 +10311,7 @@ function DayDetailDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <DayDetail
             row={row}
+            trackingDay={trackingQuery.data}
             weekRows={weekRows}
             activePlanSource={activePlanSource}
             onMarkMissed={onMarkMissed}
@@ -6920,6 +10336,8 @@ function DayDetailDrawer({
 
 function DayDetail({
   row,
+  trackingDay = null,
+  dailyTargetItems = [],
   weekRows = [],
   activePlanSource = "none",
   onMarkMissed,
@@ -6970,10 +10388,16 @@ function DayDetail({
       </div>
 
       {hasTarget ? (
-        <div className="grid gap-2 rounded-3xl border border-white/10 bg-black/20 p-3 sm:grid-cols-3">
-          <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
-          <TrackingMiniPanel label="Consumido" totals={consumedTotals(row)} tone="green" />
-          <TrackingMiniPanel label="Faltante" totals={remainingTotals(row)} tone={remainingTotals(row).kcal < -20 ? "red" : "blue"} />
+        <div className="rounded-3xl border border-white/10 bg-black/20 p-3">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <TrackingMiniPanel label="Meta" totals={targetTotals(row)} tone="gold" />
+            <TrackingMiniPanel label="Consumido" totals={consumedTotals(row)} tone="green" />
+            <TrackingMiniPanel label="Faltante" totals={remainingTotals(row)} tone={remainingTotals(row).kcal < -20 ? "red" : "blue"} />
+          </div>
+          <DailyTargetTrackingDetails
+            items={dailyTargetItems}
+            remaining={remainingTotals(row)}
+          />
         </div>
       ) : (
         <div className="rounded-3xl border border-[#D4AF37]/20 bg-[#D4AF37]/10 p-4 text-sm font-bold text-[#FFE8A3]">
@@ -7009,6 +10433,7 @@ function DayDetail({
 
       <DesktopMealsSection
         row={row}
+        trackingDay={trackingDay}
         weekRows={weekRows}
         onToggleMeal={onToggleMeal}
         onOpenMeal={onOpenMeal}
@@ -7029,26 +10454,82 @@ function MealCompactActions({
   onDetail,
   onReplace,
   onSettings,
+  onTarget,
   onSave,
   canReplace = true,
   canConfigure = true,
+  canUseTarget = true,
   saveDisabled = false,
 }) {
-  const buttonClass = "group inline-flex h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-[10px] font-black transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto sm:px-3";
+  const buttonClass =
+    "group inline-flex h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-[10px] font-black transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 sm:w-auto sm:px-3";
+
   return (
-    <div className="flex w-fit max-w-full items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-black/25 p-1.5" role="group" aria-label="Acciones de la comida">
-      <button type="button" onClick={onDetail} className={`${buttonClass} border-white/10 bg-white/[0.05] text-zinc-100`} aria-label="Ver detalle de la comida" title="Detalle">
-        <Eye size={16} /><span className="hidden sm:inline">Detalle</span>
+    <div
+      className="flex w-fit max-w-full items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-black/25 p-1.5"
+      role="group"
+      aria-label="Acciones de la comida"
+    >
+      <button
+        type="button"
+        onClick={onDetail}
+        className={`${buttonClass} border-white/10 bg-white/[0.05] text-zinc-100`}
+        aria-label="Ver detalle de la comida"
+        title="Detalle"
+      >
+        <Eye size={16} />
+        <span className="hidden sm:inline">Detalle</span>
       </button>
-      <button type="button" onClick={onReplace} disabled={!canReplace} className={`${buttonClass} border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100`} aria-label="Armar otra comida equivalente" title="Armar alternativa">
-        <WandSparkles size={16} /><span className="hidden sm:inline">Alternativa</span>
+
+      <button
+        type="button"
+        onClick={onReplace}
+        disabled={!canReplace}
+        className={`${buttonClass} border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100`}
+        aria-label="Armar otra comida equivalente"
+        title="Armar alternativa"
+      >
+        <WandSparkles size={16} />
+        <span className="hidden sm:inline">Alternativa</span>
       </button>
-      <button type="button" onClick={onSettings} disabled={!canConfigure} className={`${buttonClass} border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#FFE16B] shadow-[inset_0_0_18px_rgba(212,175,55,.08),0_6px_18px_rgba(0,0,0,.18)]`} aria-label="Abrir ajustes de generación" title="Ajustes de generación">
-        <SlidersHorizontal size={16} /><span className="hidden sm:inline">Ajustar</span>
+
+      <button
+        type="button"
+        onClick={onSettings}
+        disabled={!canConfigure}
+        className={`${buttonClass} border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#FFE16B] shadow-[inset_0_0_18px_rgba(212,175,55,.08),0_6px_18px_rgba(0,0,0,.18)]`}
+        aria-label="Abrir ajustes de generación"
+        title="Ajustes de generación"
+      >
+        <SlidersHorizontal size={16} />
+        <span className="hidden sm:inline">Ajustar</span>
       </button>
+
+      {onTarget ? (
+        <button
+          type="button"
+          onClick={onTarget}
+          disabled={!canUseTarget}
+          className={`${buttonClass} border-teal-300/35 bg-teal-300/[0.10] text-teal-100 shadow-[inset_0_0_18px_rgba(45,212,191,.08)]`}
+          aria-label="Registrar esta comida por meta"
+          title="Registrar por meta"
+        >
+          <Target size={16} strokeWidth={2.4} />
+          <span className="hidden sm:inline">Por meta</span>
+        </button>
+      ) : null}
+
       {onSave ? (
-        <button type="button" onClick={onSave} disabled={saveDisabled} className={`${buttonClass} border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100`} aria-label="Guardar en Mis comidas" title="Guardar en Mis comidas">
-          <Save size={16} /><span className="hidden sm:inline">Guardar</span>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saveDisabled}
+          className={`${buttonClass} border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-100`}
+          aria-label="Guardar en Mis comidas"
+          title="Guardar en Mis comidas"
+        >
+          <Save size={16} />
+          <span className="hidden sm:inline">Guardar</span>
         </button>
       ) : null}
     </div>
@@ -8491,10 +11972,11 @@ function EmptyMenu({ row, onGenerateMeal }) {
               meal={meal}
               mealIndex={index}
               disabled={!onGenerateMeal}
+
               onGenerate={() => onGenerateMeal?.(meal, index)}
             />
           ))}
-        
+
         </div>
       </section>
     );
@@ -8534,6 +12016,10 @@ function EmptyMenu({ row, onGenerateMeal }) {
   );
 }
 
+
+
+
+
 function MobileMealDetailDrawer({
   context,
   onToggleMeal,
@@ -8549,214 +12035,1363 @@ function MobileMealDetailDrawer({
   readOnlyProfessionalMenu = false,
   onApplyMealReplacement,
   onSaveAsSavedMeal,
+
+  onSetMealTargetMode,
+  onTargetTrackingChanged,
+  onTargetToast,
+
   saving,
 }) {
   const row = useMemo(() => context?.row || {}, [context?.row]);
+
   const meal = context?.meal || {};
   const baseMeal = context?.baseMeal || meal;
   const mealIndex = context?.mealIndex || 0;
-  const manual = !!context?.manual || meal?.source === "manual_food";
-  const generated = !!context?.generated || meal?.source === "generated_remaining_meal";
-  const [replaceOpen, setReplaceOpen] = useState(context?.initialView === "replace");
-  const done = completedMealIdSet(row).has(mealId(baseMeal, mealIndex));
+
+  const nativeTarget =
+  context?.nativeTarget === true;
+
+  const manual =
+    !!context?.manual ||
+    meal?.source === "manual_food";
+
+  const generated =
+    !!context?.generated ||
+    meal?.source === "generated_remaining_meal";
+
+  const [replaceOpen, setReplaceOpen] = useState(
+    context?.initialView === "replace"
+  );
+
+  /* =====================================================
+     MODO POR META
+     ===================================================== */
+
+  const [targetMode, setTargetMode] = useState(
+    context?.initialView === "target"
+  );
+
+  const [
+  restoreProposalConfirm,
+  setRestoreProposalConfirm,
+] = useState(null);
+
+const [
+  restoreProposalSaving,
+  setRestoreProposalSaving,
+] = useState(false);
+
+  const done = completedMealIdSet(row).has(
+    mealId(baseMeal, mealIndex)
+  );
+
+  const isCurrentlyTargetMode =
+  isMealTargetMode(
+    row,
+    baseMeal,
+    mealIndex
+  );
+
   const foods = mealFoods(meal);
   const totals = mealTotals(meal);
-  const replacementOptions = useMemo(() => mealReplacementOptions(row, baseMeal, mealIndex), [row, baseMeal, mealIndex]);
-  const canEditThisMeal = canEditOwnMenuMeal && !manual && !generated;
 
+  const targetExecution = menuTargetExecutionContext(
+  row,
+  meal,
+  baseMeal,
+  mealIndex
+);
+
+const trackingDate =
+  row?.date ||
+  context?.date ||
+  todayIso();
+
+const targetTrackingQuery =
+  useTrackingDay(
+    trackingDate
+  );
+
+const targetDeleteMutation =
+  useDeleteFoodLog();
+
+const restoringProposal =
+  restoreProposalSaving ||
+  targetDeleteMutation.isPending;
+
+  const replacementOptions = useMemo(
+    () =>
+      mealReplacementOptions(
+        row,
+        baseMeal,
+        mealIndex
+      ),
+    [row, baseMeal, mealIndex]
+  );
+
+  const canEditThisMeal =
+    canEditOwnMenuMeal &&
+    !manual &&
+    !generated;
+
+  /*
+    Si cambia la vista inicial mientras el drawer
+    está montado, sincronizamos ambos modos.
+  */
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
+    setReplaceOpen(
+      context?.initialView === "replace"
+    );
+
+    setTargetMode(
+      context?.initialView === "target"
+    );
+  }, [context?.initialView]);
+
+  /*
+    Bloquear scroll del body mientras está abierto.
+  */
+  useEffect(() => {
+    const previousOverflow =
+      document.body.style.overflow;
+
     document.body.style.overflow = "hidden";
+
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow =
+        previousOverflow;
     };
   }, []);
 
+  async function restoreOriginalProposal(
+  itemsToDelete = []
+) {
+  if (
+    restoreProposalSaving ||
+    saving
+  ) {
+    return false;
+  }
+
+  setRestoreProposalSaving(true);
+
+  try {
+    /*
+     * =========================================
+     * 1. BORRAR TRACKING REAL
+     * =========================================
+     *
+     * Primero eliminamos los FoodLogs.
+     *
+     * Así nunca queda:
+     *
+     * Pendiente
+     * +
+     * FoodLogs Por meta todavía activos.
+     */
+
+    for (const item of itemsToDelete) {
+      if (!item?.id) continue;
+
+      await targetDeleteMutation
+        .mutateAsync({
+          logId: item.id,
+          date: trackingDate,
+        });
+    }
+
+
+    /*
+     * Refrescamos Tracking después
+     * de eliminar los registros.
+     */
+
+    if (itemsToDelete.length) {
+      await targetTrackingQuery
+        .refetch();
+    }
+
+
+    /*
+     * =========================================
+     * 2. SALIR DE POR META
+     * =========================================
+     */
+
+    const restored =
+      await onSetMealTargetMode?.({
+        row,
+        meal: baseMeal,
+        mealIndex,
+        active: false,
+      });
+
+
+    /*
+     * Si falló guardar targetMealIds,
+     * NO seguimos modificando la UI.
+     *
+     * En el peor caso quedará:
+     *
+     * Por meta
+     * 0 kcal
+     *
+     * que es consistente y recuperable.
+     */
+
+    if (restored === false) {
+      return false;
+    }
+
+
+    /*
+     * =========================================
+     * 3. ACTUALIZAR UI
+     * =========================================
+     */
+
+    setRestoreProposalConfirm(
+      null
+    );
+
+    setTargetMode(
+      false
+    );
+
+    await onTargetTrackingChanged?.();
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      "Error restaurando propuesta:",
+      error
+    );
+
+    onTargetToast?.(
+      error?.message ||
+      "No se pudo volver a la propuesta."
+    );
+
+    return false;
+
+  } finally {
+    setRestoreProposalSaving(
+      false
+    );
+  }
+}
+
+
+async function requestRestoreOriginalProposal() {
+  if (
+    restoreProposalSaving ||
+    saving
+  ) {
+    return;
+  }
+
+  try {
+    /*
+     * Traemos Tracking fresco.
+     *
+     * Esto evita decidir con datos viejos
+     * si acabás de agregar o borrar
+     * un alimento.
+     */
+
+    const refreshed =
+      await targetTrackingQuery
+        .refetch();
+
+    const freshItems =
+      trackingItemsForExecution(
+        refreshed.data,
+        targetExecution.id
+      );
+
+
+    /*
+     * =========================================
+     * HAY ALIMENTOS
+     * =========================================
+     *
+     * No restauramos todavía.
+     * Primero confirmación.
+     */
+
+    if (freshItems.length) {
+      setRestoreProposalConfirm({
+        items:
+          freshItems,
+
+        totals:
+          sumTotals(
+            freshItems
+          ),
+      });
+
+      return;
+    }
+
+
+    /*
+     * =========================================
+     * NO HAY ALIMENTOS
+     * =========================================
+     *
+     * Podemos volver directamente.
+     */
+
+    await restoreOriginalProposal(
+      []
+    );
+
+  } catch (error) {
+    onTargetToast?.(
+      error?.message ||
+      "No pudimos revisar los registros de esta comida."
+    );
+  }
+}
+
+
   return (
-    <section className="fixed inset-0 z-[100] flex items-end bg-black/80 p-0 backdrop-blur-md sm:items-center sm:px-3 sm:py-5" role="dialog" aria-modal="true">
-      <div className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_18%_0,rgba(45,212,191,.13),transparent_34%),radial-gradient(circle_at_100%_10%,rgba(212,175,55,.15),transparent_30%),linear-gradient(180deg,#111a25,#080d13)] shadow-[0_24px_80px_rgba(0,0,0,.62)] sm:h-auto sm:max-h-[82dvh] sm:rounded-[1.6rem]">
-        <header className="flex shrink-0 items-start justify-between gap-2.5 border-b border-white/10 bg-[#0d151f]/95 px-3 pb-3 pt-[calc(.75rem+env(safe-area-inset-top))] backdrop-blur-md sm:gap-3 sm:p-4">
+    <section
+      className="
+        fixed inset-0 z-[100]
+        flex items-end
+        bg-black/80
+        p-0
+        backdrop-blur-md
+
+        sm:items-center
+        sm:px-3
+        sm:py-5
+      "
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="
+          mx-auto
+          flex
+          h-[100dvh]
+          max-h-[100dvh]
+          w-full
+          max-w-2xl
+          flex-col
+          overflow-hidden
+
+          border
+          border-white/10
+
+          bg-[radial-gradient(circle_at_18%_0,rgba(45,212,191,.13),transparent_34%),radial-gradient(circle_at_100%_10%,rgba(212,175,55,.15),transparent_30%),linear-gradient(180deg,#111a25,#080d13)]
+
+          shadow-[0_24px_80px_rgba(0,0,0,.62)]
+
+          sm:h-auto
+          sm:max-h-[82dvh]
+          sm:rounded-[1.6rem]
+        "
+      >
+
+        {/* =================================================
+            HEADER — SIEMPRE VISIBLE
+            ================================================= */}
+
+        <header
+          className="
+            flex
+            shrink-0
+            items-start
+            justify-between
+            gap-2.5
+
+            border-b
+            border-white/10
+
+            bg-[#0d151f]/95
+
+            px-3
+            pb-3
+            pt-[calc(.75rem+env(safe-area-inset-top))]
+
+            backdrop-blur-md
+
+            sm:gap-3
+            sm:p-4
+          "
+        >
           <div className="flex min-w-0 items-center gap-3">
-            <MealTypeIcon meal={meal} index={mealIndex} done={done} />
+
+            <MealTypeIcon
+              meal={meal}
+              index={mealIndex}
+              done={done}
+            />
+
             <div className="min-w-0">
+
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-wide text-[#FFE8A3]">Comida</span>
-                {readOnlyProfessionalMenu ? (
-                  <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-0.5 text-[9px] font-black text-sky-100">
-                    Coach · Solo lectura
+
+                <span className="text-[10px] font-black uppercase tracking-wide text-[#FFE8A3]">
+                  Comida
+                </span>
+
+                {targetMode ? (
+                  <span className="rounded-full border border-teal-300/30 bg-teal-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-teal-100">
+                    Por meta
                   </span>
                 ) : null}
+
+
+
+{nativeTarget ? (
+  <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-0.5 text-[9px] font-black text-sky-100">
+    Meta del coach
+  </span>
+) : readOnlyProfessionalMenu ? (
+  <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-0.5 text-[9px] font-black text-sky-100">
+    Coach · Solo lectura
+  </span>
+) : null}
+
+
               </div>
-              <h3 className="mt-0.5 truncate text-xl font-black leading-tight text-white sm:mt-1 sm:text-2xl">{mealName(meal, mealIndex)}</h3>
+
+              <h3 className="mt-0.5 truncate text-xl font-black leading-tight text-white sm:mt-1 sm:text-2xl">
+                {mealName(meal, mealIndex)}
+              </h3>
+
               <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5">
+
                 <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-2.5 py-1 text-[11px] font-black text-[#FFE8A3]">
                   {displayKcal(totals.kcal)}
                 </span>
+
                 <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-bold text-zinc-300">
                   P {formatNumber(totals.proteina, 0)} g
                 </span>
+
                 <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-bold text-zinc-300">
                   C {formatNumber(totals.carbs, 0)} g
                 </span>
+
                 <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-bold text-zinc-300">
                   G {formatNumber(totals.grasas, 0)} g
                 </span>
+
               </div>
+
               {meal.replacementMeta?.type === "meal" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
+
                   <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-200">
                     Comida reemplazada
                   </span>
+
                   <span className="text-[11px] font-bold text-zinc-500">
                     Original: {meal.replacementMeta.originalName}
                   </span>
+
                 </div>
               ) : null}
+
             </div>
           </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/15 bg-white/[0.07] text-zinc-100 shadow-[0_8px_22px_rgba(0,0,0,.24)] sm:h-11 sm:w-11 sm:rounded-2xl" aria-label="Cerrar">
-            <X size={20} />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 overscroll-contain overflow-x-hidden overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:p-4">
-          {generated || manual ? (
-            <div className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] ${manual ? "border-sky-300/35 bg-sky-300/10 text-sky-100" : "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"}`}>
-              <span>{manual ? "Registro manual sumado al dia" : "Generada y guardada para esta semana"}</span>
-              {manual ? <Utensils size={20} /> : <CheckSquare2 size={20} />}
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={!canMarkMeals || saving}
-              onClick={() => {
-                onToggleMeal(row, baseMeal, mealIndex);
-                onClose();
-              }}
-              className={`mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.20)] transition active:scale-[0.99] disabled:opacity-50 ${done ? "border-emerald-300/45 bg-[linear-gradient(135deg,rgba(16,185,129,.22),rgba(212,175,55,.08))] text-emerald-50" : "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}
-              aria-pressed={done}
-            >
-              <span>{done ? "Comida completa" : "Marcar completo"}</span>
-              {done ? <CheckSquare2 size={20} /> : <Square size={20} />}
-            </button>
-          )}
-
-          {canEditThisMeal ? (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => onQuickEditMeal?.({ ...context, row, meal, baseMeal, mealIndex })}
-              className="mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55"
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                {foods.length ? <PencilLine size={17} className="shrink-0" /> : <Plus size={17} className="shrink-0" />}
-                <span className="truncate">{foods.length ? "Editar alimentos del menu" : "Agregar alimentos al menu"}</span>
-              </span>
-              <ChevronRight size={18} className="shrink-0" />
-            </button>
-          ) : null}
 
           <button
             type="button"
-            disabled={saving || !foods.length}
-            onClick={() => onSaveAsSavedMeal?.(meal, mealIndex)}
-            className="mb-3 flex min-h-12 w-full items-center justify-between rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3] shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55"
+            onClick={onClose}
+            className="
+              grid
+              h-10
+              w-10
+              shrink-0
+              place-items-center
+
+              rounded-xl
+              border
+              border-white/15
+
+              bg-white/[0.07]
+
+              text-zinc-100
+
+              shadow-[0_8px_22px_rgba(0,0,0,.24)]
+
+              sm:h-11
+              sm:w-11
+              sm:rounded-2xl
+            "
+            aria-label="Cerrar"
           >
-            <span className="flex min-w-0 items-center gap-2">
-              <Plus size={17} className="shrink-0" />
-              <span className="truncate">Guardar en Mis comidas</span>
-            </span>
-            {saving ? <RefreshCw size={18} className="shrink-0 animate-spin" /> : <ChevronRight size={18} className="shrink-0" />}
+            <X size={20} />
           </button>
 
-          {!generated && !manual ? (
-            <div className="mb-3">
+        </header>
+
+
+        {/* =================================================
+            VISTA POR META
+            ================================================= */}
+
+
+{targetMode ? (
+<MealTargetTrackingPanel
+  date={row?.date || context?.date}
+  mealId={targetExecution.id}
+  mealName={targetExecution.label}
+  mealType={targetExecution.type}
+  target={targetExecution.target}
+
+  nativeTarget={nativeTarget}
+
+  onBack={requestRestoreOriginalProposal}
+  onChanged={onTargetTrackingChanged}
+  onToast={onTargetToast}
+/>
+) : (
+
+          /* =================================================
+             VISTA NORMAL ACTUAL
+             ================================================= */
+
+          <div className="min-h-0 flex-1 overscroll-contain overflow-x-hidden overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:p-4">
+
+
+            {/* COMPLETADA / GENERADA / MANUAL */}
+
+            {generated || manual ? (
+
+              <div
+                className={`
+                  mb-3
+                  flex
+                  min-h-12
+                  w-full
+                  items-center
+                  justify-between
+                  rounded-2xl
+                  border
+                  px-4
+                  text-sm
+                  font-black
+                  shadow-[0_10px_24px_rgba(0,0,0,.20)]
+
+                  ${
+                    manual
+                      ? "border-sky-300/35 bg-sky-300/10 text-sky-100"
+                      : "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+                  }
+                `}
+              >
+
+                <span>
+                  {manual
+                    ? "Registro manual sumado al dia"
+                    : "Generada y guardada para esta semana"}
+                </span>
+
+                {manual ? (
+                  <Utensils size={20} />
+                ) : (
+                  <CheckSquare2 size={20} />
+                )}
+
+              </div>
+
+            ) : (
+
               <button
                 type="button"
-                disabled={!canReplaceMeals || saving}
-                onClick={() => setReplaceOpen((value) => !value)}
-                className={`flex min-h-12 w-full items-center justify-between rounded-2xl border px-4 text-sm font-black shadow-[0_10px_24px_rgba(0,0,0,.18)] transition active:scale-[0.99] disabled:opacity-55 ${
-                  canReplaceMeals
-                    ? "border-white/10 bg-white/[0.055] text-zinc-100"
-                    : "border-white/10 bg-white/[0.025] text-zinc-500"
-                }`}
+                disabled={!canMarkMeals || saving}
+                onClick={() => {
+                  onToggleMeal(
+                    row,
+                    baseMeal,
+                    mealIndex
+                  );
+
+                  onClose();
+                }}
+                className={`
+                  mb-3
+                  flex
+                  min-h-12
+                  w-full
+                  items-center
+                  justify-between
+
+                  rounded-2xl
+                  border
+
+                  px-4
+
+                  text-sm
+                  font-black
+
+                  shadow-[0_10px_24px_rgba(0,0,0,.20)]
+
+                  transition
+                  active:scale-[0.99]
+
+                  disabled:opacity-50
+
+                  ${
+                    done
+                      ? "border-emerald-300/45 bg-[linear-gradient(135deg,rgba(16,185,129,.22),rgba(212,175,55,.08))] text-emerald-50"
+                      : "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFE8A3]"
+                  }
+                `}
+                aria-pressed={done}
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <RefreshCw size={17} className="shrink-0 text-[#FFD76B]" />
-                  <span className="truncate">{canReplaceMeals ? "Cambiar para este día" : "Tu coach no habilitó cambios"}</span>
+
+                <span>
+                  {done
+                    ? "Comida completa"
+                    : "Marcar completo"}
                 </span>
-                <ChevronRight size={18} className={`shrink-0 transition ${replaceOpen ? "rotate-90" : ""}`} />
+
+                {done ? (
+                  <CheckSquare2 size={20} />
+                ) : (
+                  <Square size={20} />
+                )}
+
               </button>
-              {readOnlyProfessionalMenu && canReplaceMeals ? (
-                <p className="mt-1.5 px-1 text-[11px] font-bold leading-snug text-sky-100/65">
-                  Solo cambia tu tracking de hoy. El menú profesional del coach permanece intacto.
-                </p>
-              ) : null}
-              {meal.replacementMeta?.approvalStatus === "pending_review" ? (
-                <div className="mt-2 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[11px] font-black text-amber-100" role="status">
-                  Pendiente de aprobacion del coach. Todavia no se puede marcar como consumida.
-                </div>
-              ) : null}
-              {meal.replacementMeta?.approvalStatus === "rejected" ? (
-                <div className="mt-2 rounded-xl border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-[11px] font-black text-rose-100" role="alert">
-                  Rechazada por el coach{meal.replacementMeta.approvalReason ? `: ${meal.replacementMeta.approvalReason}` : ". Podes duplicarla y corregirla."}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
 
-          {replaceOpen ? (
-            <MobileMealReplacementPanel
-              row={row}
-              meal={baseMeal}
-              mealIndex={mealIndex}
-              options={replacementOptions}
-              saving={saving}
-              onApply={onApplyMealReplacement}
-              canCreateEquivalentMeal={canCreateEquivalentMeal}
-              onBrowseLibrary={() => onCreateEquivalentMeal?.({
-                ...context,
-                row,
-                meal,
-                baseMeal,
-                mealIndex,
-                initialSection: "library",
-              })}
-              onConfigureFoods={() => onCreateEquivalentMeal?.({
-                ...context,
-                row,
-                meal,
-                baseMeal,
-                mealIndex,
-                initialSection: "settings",
-              })}
-            />
-          ) : null}
-
-          <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025))] shadow-[inset_0_1px_0_rgba(255,255,255,.04),0_14px_32px_rgba(0,0,0,.22)]">
-            {foods.length ? (
-              <div className="divide-y divide-white/[0.07]">
-                {foods.map((food, foodIndex) => (
-                  <MobileFoodRow
-                    key={`${food.id}-${foodIndex}`}
-                    meal={baseMeal}
-                    mealIndex={mealIndex}
-                    food={food}
-                    foodIndex={foodIndex}
-                    onOpenFood={onOpenFood}
-                    canReplaceFoods={!manual && canReplaceFoods}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 text-sm font-bold text-zinc-500">Sin alimentos cargados.</div>
             )}
+
+
+            {/* EDITAR COMIDA */}
+
+            {canEditThisMeal ? (
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  onQuickEditMeal?.({
+                    ...context,
+                    row,
+                    meal,
+                    baseMeal,
+                    mealIndex,
+                  })
+                }
+                className="
+                  mb-3
+                  flex
+                  min-h-12
+                  w-full
+                  items-center
+                  justify-between
+
+                  rounded-2xl
+
+                  border
+                  border-emerald-300/25
+
+                  bg-emerald-300/10
+
+                  px-4
+
+                  text-sm
+                  font-black
+                  text-emerald-100
+
+                  shadow-[0_10px_24px_rgba(0,0,0,.18)]
+
+                  transition
+                  active:scale-[0.99]
+
+                  disabled:opacity-55
+                "
+              >
+
+                <span className="flex min-w-0 items-center gap-2">
+
+                  {foods.length ? (
+                    <PencilLine
+                      size={17}
+                      className="shrink-0"
+                    />
+                  ) : (
+                    <Plus
+                      size={17}
+                      className="shrink-0"
+                    />
+                  )}
+
+                  <span className="truncate">
+                    {foods.length
+                      ? "Editar alimentos del menu"
+                      : "Agregar alimentos al menu"}
+                  </span>
+
+                </span>
+
+                <ChevronRight
+                  size={18}
+                  className="shrink-0"
+                />
+
+              </button>
+
+            ) : null}
+
+
+            {/* GUARDAR EN MIS COMIDAS */}
+
+            <button
+              type="button"
+              disabled={
+                saving ||
+                !foods.length
+              }
+              onClick={() =>
+                onSaveAsSavedMeal?.(
+                  meal,
+                  mealIndex
+                )
+              }
+              className="
+                mb-3
+                flex
+                min-h-12
+                w-full
+                items-center
+                justify-between
+
+                rounded-2xl
+
+                border
+                border-[#D4AF37]/35
+
+                bg-[#D4AF37]/10
+
+                px-4
+
+                text-sm
+                font-black
+                text-[#FFE8A3]
+
+                shadow-[0_10px_24px_rgba(0,0,0,.18)]
+
+                transition
+                active:scale-[0.99]
+
+                disabled:opacity-55
+              "
+            >
+
+              <span className="flex min-w-0 items-center gap-2">
+
+                <Plus
+                  size={17}
+                  className="shrink-0"
+                />
+
+                <span className="truncate">
+                  Guardar en Mis comidas
+                </span>
+
+              </span>
+
+              {saving ? (
+                <RefreshCw
+                  size={18}
+                  className="shrink-0 animate-spin"
+                />
+              ) : (
+                <ChevronRight
+                  size={18}
+                  className="shrink-0"
+                />
+              )}
+
+            </button>
+
+
+            {/* CAMBIAR COMIDA */}
+
+            {!generated && !manual ? (
+
+              <div className="mb-3">
+
+                <button
+                  type="button"
+                  disabled={
+                    !canReplaceMeals ||
+                    saving
+                  }
+                  onClick={() =>
+                    setReplaceOpen(
+                      (value) => !value
+                    )
+                  }
+                  className={`
+                    flex
+                    min-h-12
+                    w-full
+                    items-center
+                    justify-between
+
+                    rounded-2xl
+                    border
+
+                    px-4
+
+                    text-sm
+                    font-black
+
+                    shadow-[0_10px_24px_rgba(0,0,0,.18)]
+
+                    transition
+                    active:scale-[0.99]
+
+                    disabled:opacity-55
+
+                    ${
+                      canReplaceMeals
+                        ? "border-white/10 bg-white/[0.055] text-zinc-100"
+                        : "border-white/10 bg-white/[0.025] text-zinc-500"
+                    }
+                  `}
+                >
+
+                  <span className="flex min-w-0 items-center gap-2">
+
+                    <RefreshCw
+                      size={17}
+                      className="shrink-0 text-[#FFD76B]"
+                    />
+
+                    <span className="truncate">
+                      {canReplaceMeals
+                        ? "Cambiar para este día"
+                        : "Tu coach no habilitó cambios"}
+                    </span>
+
+                  </span>
+
+                  <ChevronRight
+                    size={18}
+                    className={`
+                      shrink-0
+                      transition
+
+                      ${
+                        replaceOpen
+                          ? "rotate-90"
+                          : ""
+                      }
+                    `}
+                  />
+
+                </button>
+
+
+                {readOnlyProfessionalMenu &&
+                canReplaceMeals ? (
+
+                  <p className="mt-1.5 px-1 text-[11px] font-bold leading-snug text-sky-100/65">
+                    Solo cambia tu tracking de hoy.
+                    El menú profesional del coach
+                    permanece intacto.
+                  </p>
+
+                ) : null}
+
+
+                {meal.replacementMeta?.approvalStatus ===
+                "pending_review" ? (
+
+                  <div
+                    className="mt-2 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[11px] font-black text-amber-100"
+                    role="status"
+                  >
+                    Pendiente de aprobacion del coach.
+                    Todavia no se puede marcar como consumida.
+                  </div>
+
+                ) : null}
+
+
+                {meal.replacementMeta?.approvalStatus ===
+                "rejected" ? (
+
+                  <div
+                    className="mt-2 rounded-xl border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-[11px] font-black text-rose-100"
+                    role="alert"
+                  >
+                    Rechazada por el coach
+                    {meal.replacementMeta
+                      .approvalReason
+                      ? `: ${meal.replacementMeta.approvalReason}`
+                      : ". Podes duplicarla y corregirla."}
+                  </div>
+
+                ) : null}
+
+              </div>
+
+            ) : null}
+
+
+            {/* PANEL DE REEMPLAZO */}
+
+            {replaceOpen ? (
+
+              <MobileMealReplacementPanel
+                row={row}
+                meal={baseMeal}
+                mealIndex={mealIndex}
+                options={replacementOptions}
+                saving={saving}
+                onApply={
+                  onApplyMealReplacement
+                }
+                canCreateEquivalentMeal={
+                  canCreateEquivalentMeal
+                }
+                onBrowseLibrary={() =>
+                  onCreateEquivalentMeal?.({
+                    ...context,
+                    row,
+                    meal,
+                    baseMeal,
+                    mealIndex,
+                    initialSection: "library",
+                  })
+                }
+                onConfigureFoods={() =>
+                  onCreateEquivalentMeal?.({
+                    ...context,
+                    row,
+                    meal,
+                    baseMeal,
+                    mealIndex,
+                    initialSection: "settings",
+                  })
+                }
+              />
+
+            ) : null}
+
+
+            {/* LISTA DE ALIMENTOS */}
+
+            <div
+              className="
+                overflow-hidden
+
+                rounded-[1.25rem]
+
+                border
+                border-white/10
+
+                bg-[linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025))]
+
+                shadow-[inset_0_1px_0_rgba(255,255,255,.04),0_14px_32px_rgba(0,0,0,.22)]
+              "
+            >
+
+              {foods.length ? (
+
+                <div className="divide-y divide-white/[0.07]">
+
+                  {foods.map(
+                    (food, foodIndex) => (
+
+                      <MobileFoodRow
+                        key={`${food.id}-${foodIndex}`}
+                        meal={baseMeal}
+                        mealIndex={mealIndex}
+                        food={food}
+                        foodIndex={foodIndex}
+                        onOpenFood={onOpenFood}
+                        canReplaceFoods={
+                          !manual &&
+                          canReplaceFoods
+                        }
+                      />
+
+                    )
+                  )}
+
+                </div>
+
+              ) : (
+
+                <div className="p-4 text-sm font-bold text-zinc-500">
+                  Sin alimentos cargados.
+                </div>
+
+              )}
+
+            </div>
+
+
+            {/* =============================================
+                VOLVER DESDE LA PROPUESTA ORIGINAL
+                ============================================= */}
+
+            {isCurrentlyTargetMode ? (
+              <div className="mt-4 border-t border-white/10 pt-4">
+
+                <div className="
+                  rounded-2xl
+                  border border-[#D4AF37]/25
+                  bg-[#D4AF37]/[0.07]
+                  p-3
+                ">
+
+                  <div className="flex items-start gap-2.5">
+
+                    <span className="
+                      grid h-9 w-9 shrink-0 place-items-center
+                      rounded-xl
+                      border border-[#D4AF37]/30
+                      bg-[#D4AF37]/10
+                      text-[#FFE8A3]
+                    ">
+                      <RotateCcw size={17} />
+                    </span>
+
+                    <div className="min-w-0">
+
+                      <strong className="
+                        block
+                        text-sm
+                        font-black
+                        text-white
+                      ">
+                        ¿Querés volver a esta propuesta?
+                      </strong>
+
+                      <p className="
+                        mt-1
+                        text-[11px]
+                        font-bold
+                        leading-relaxed
+                        text-zinc-400
+                      ">
+                        Esta comida está actualmente en modo Por meta.
+                        Podés restaurar la propuesta original.
+                      </p>
+
+                    </div>
+
+                  </div>
+
+<button
+  type="button"
+
+  disabled={
+    saving ||
+    restoringProposal
+  }
+
+  onClick={
+    requestRestoreOriginalProposal
+  }
+
+  className="
+    mt-3
+    inline-flex
+    min-h-11
+    w-full
+    items-center
+    justify-center
+    gap-2
+
+    rounded-2xl
+
+    border
+    border-[#D4AF37]/40
+
+    bg-[#D4AF37]/10
+
+    px-4
+
+    text-sm
+    font-black
+    text-[#FFE8A3]
+
+    transition
+    active:scale-[0.99]
+
+    disabled:opacity-50
+  "
+>
+  {restoringProposal ? (
+    <RefreshCw
+      size={16}
+      className="animate-spin"
+    />
+  ) : (
+    <RotateCcw size={16} />
+  )}
+
+  {restoringProposal
+    ? "Revisando..."
+    : "Volver a esta propuesta"}
+</button>
+
+                </div>
+
+              </div>
+            ) : null}
+
+
           </div>
-        </div>
+
+        )}
+
       </div>
+
+
+{restoreProposalConfirm ? (
+  <section
+    className="
+      fixed inset-0 z-[190]
+      flex items-end justify-center
+      bg-black/80
+      px-3 pb-3 pt-10
+      backdrop-blur-md
+      sm:items-center sm:p-6
+    "
+    role="dialog"
+    aria-modal="true"
+  >
+
+    <button
+      type="button"
+      className="absolute inset-0 cursor-default"
+      disabled={restoringProposal}
+      onClick={() => {
+        if (!restoringProposal) {
+          setRestoreProposalConfirm(null);
+        }
+      }}
+      aria-label="Cancelar"
+    />
+
+
+    <div
+      className="
+        relative
+        w-full max-w-md
+
+        rounded-[1.6rem]
+
+        border border-rose-300/20
+
+        bg-[radial-gradient(circle_at_15%_0,rgba(244,63,94,.15),transparent_35%),linear-gradient(180deg,#121922,#080d13)]
+
+        p-4
+
+        shadow-[0_28px_90px_rgba(0,0,0,.75)]
+      "
+    >
+
+      <div className="flex items-start gap-3">
+
+        <span
+          className="
+            grid h-11 w-11 shrink-0 place-items-center
+            rounded-2xl
+            border border-rose-300/30
+            bg-rose-300/10
+            text-rose-200
+          "
+        >
+          <Trash2 size={19} />
+        </span>
+
+
+        <div className="min-w-0">
+
+          <span
+            className="
+              text-[10px]
+              font-black
+              uppercase
+              tracking-[0.1em]
+              text-rose-200
+            "
+          >
+            Registros existentes
+          </span>
+
+          <h3
+            className="
+              mt-1
+              text-lg
+              font-black
+              text-white
+            "
+          >
+            ¿Volver a la propuesta?
+          </h3>
+
+          <p
+            className="
+              mt-2
+              text-sm
+              font-bold
+              leading-relaxed
+              text-zinc-300
+            "
+          >
+            Ya registraste{" "}
+            <strong className="text-white">
+              {formatNumber(
+                restoreProposalConfirm?.totals?.kcal,
+                0
+              )} kcal
+            </strong>{" "}
+            en esta comida.
+          </p>
+
+          <p
+            className="
+              mt-1
+              text-xs
+              font-bold
+              leading-relaxed
+              text-zinc-500
+            "
+          >
+            Si volvés a la propuesta original,
+            esos alimentos se eliminarán también de Tracking.
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <div
+        className="
+          mt-4
+          flex items-center justify-between gap-3
+          rounded-2xl
+          border border-white/10
+          bg-black/20
+          px-3 py-2.5
+        "
+      >
+
+        <span className="text-xs font-bold text-zinc-400">
+          Registros a descartar
+        </span>
+
+        <strong className="text-xs font-black text-white">
+          {restoreProposalConfirm?.items?.length || 0} alimento{
+            (restoreProposalConfirm?.items?.length || 0) === 1
+              ? ""
+              : "s"
+          }
+        </strong>
+
+      </div>
+
+
+      <div className="mt-4 grid gap-2">
+
+        <button
+          type="button"
+
+          disabled={restoringProposal}
+
+          onClick={() => {
+            void restoreOriginalProposal(
+              restoreProposalConfirm?.items || []
+            );
+          }}
+
+          className="
+            inline-flex min-h-12
+            items-center justify-center gap-2
+
+            rounded-2xl
+
+            border border-rose-300/35
+            bg-rose-300/12
+
+            px-4
+
+            text-sm font-black
+            text-rose-100
+
+            disabled:opacity-50
+          "
+        >
+
+          {restoringProposal ? (
+            <RefreshCw
+              size={16}
+              className="animate-spin"
+            />
+          ) : (
+            <Trash2 size={16} />
+          )}
+
+          {restoringProposal
+            ? "Descartando..."
+            : "Descartar registros y volver"}
+
+        </button>
+
+
+        <button
+          type="button"
+
+          disabled={restoringProposal}
+
+          onClick={() =>
+            setRestoreProposalConfirm(null)
+          }
+
+          className="
+            min-h-11
+
+            rounded-2xl
+
+            border border-white/10
+            bg-white/[0.045]
+
+            px-4
+
+            text-sm font-black
+            text-zinc-200
+
+            disabled:opacity-50
+          "
+        >
+          Cancelar
+        </button>
+
+      </div>
+
+    </div>
+
+  </section>
+) : null}
+
+
+
     </section>
   );
 }
+
+
+
+
 
 function MobileMealReplacementPanel({
   row,

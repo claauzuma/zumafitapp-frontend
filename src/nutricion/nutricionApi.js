@@ -5,10 +5,12 @@ function alimentosQuery(filters = {}) {
   const params = new URLSearchParams();
   const search = String(filters.search || filters.q || "").trim();
   const category = String(filters.category || filters.categoria || "").trim();
+  const mode = String(filters.mode || filters.generationMode || "").trim().toUpperCase();
   const limit = Number(filters.limit);
 
   if (search) params.set("search", search);
   if (category && category !== "todos") params.set("category", category);
+  if (["EXPLICIT_ONLY", "GENERIC", "DISABLED"].includes(mode)) params.set("mode", mode);
   if (Number.isFinite(limit) && limit > 0) params.set("limit", String(Math.min(Math.trunc(limit), 50)));
 
   const query = params.toString();

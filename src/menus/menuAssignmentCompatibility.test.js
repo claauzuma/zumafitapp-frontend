@@ -21,18 +21,18 @@ test("permite deficit dentro del margen flexible", () => {
 });
 
 test("permite deficit exacto al limite flexible", () => {
-  const compatibility = getMenuDayCompatibility({ kcal: 1900, protein: 130, carbs: 220, fat: 60 }, { kcal: 2500, p: 150, c: 300, g: 80 });
+  const compatibility = getMenuDayCompatibility({ kcal: 1600, protein: 130, carbs: 220, fat: 60 }, { kcal: 2500, p: 150, c: 300, g: 80 });
 
   assert.equal(compatibility.canAssign, true);
   assert.equal(compatibility.flexibleCalories, MAX_FLEXIBLE_CALORIES);
 });
 
 test("bloquea deficit excesivo", () => {
-  const compatibility = getMenuDayCompatibility({ kcal: 1800, protein: 160, carbs: 180, fat: 50 }, { kcal: 2500, p: 180, c: 300, g: 80 });
+  const compatibility = getMenuDayCompatibility({ kcal: 1500, protein: 160, carbs: 180, fat: 50 }, { kcal: 2500, p: 180, c: 300, g: 80 });
 
   assert.equal(compatibility.key, "deficit_excessive");
   assert.equal(compatibility.canAssign, false);
-  assert.equal(compatibility.flexibleCalories, 700);
+  assert.equal(compatibility.flexibleCalories, 1000);
 });
 
 test("permite menu exacto sin margen flexible", () => {

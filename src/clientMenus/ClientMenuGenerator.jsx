@@ -10,7 +10,8 @@ import {
   generateClientMenuPreview,
   nutritionTargetForMenuGeneration,
 } from "./clientMenuGeneration.js";
-import { dayKeyFromIsoDate, mealTypesForCount } from "../entrenado/menu/menuQuickActions.js";
+import { dayKeyFromIsoDate, mealTypesForCount, normalizeMenuGenerationSettings } from "../entrenado/menu/menuQuickActions.js";
+import { foodSupportsMealType, isGenericGenerationFood } from "./clientMenuGenerationPolicy.js";
 
 const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const MEAL_LABELS = {
@@ -24,18 +25,19 @@ function foodKey(food = {}) {
 
 export default function ClientMenuGenerator({ user = {}, targetOverride = null, initialSettings = null, selectedDate = "", onGenerated, onCancel }) {
   const navigate = useNavigate();
+  const normalizedInitialSettings = useMemo(() => normalizeMenuGenerationSettings(initialSettings || {}), [initialSettings]);
   const target = useMemo(() => targetOverride?.kcal ? targetOverride : nutritionTargetForMenuGeneration(user), [targetOverride, user]);
   const [capabilities, setCapabilities] = useState(user?.nutritionCapabilities || null);
   const [name, setName] = useState("Mi menu generado");
   const [selectedDays, setSelectedDays] = useState([dayKeyFromIsoDate(selectedDate)]);
-  const [mealTypes, setMealTypes] = useState(() => mealTypesForCount(initialSettings?.mealCount || 4));
-  const [distribution, setDistribution] = useState(initialSettings?.distribution === "equal" ? "equal" : "balanced");
-  const [sourceMode, setSourceMode] = useState(initialSettings?.mode === "from_scratch" ? "foods" : "combined");
-  const [allowRepeats, setAllowRepeats] = useState(initialSettings?.allowRepeats === true);
+  const [mealTypes, setMealTypes] = useState(() => normalizedInitialSettings.mealTypes || mealTypesForCount(4));
+  const [distribution, setDistribution] = useState(normalizedInitialSettings.distribution);
+  const [sourceMode, setSourceMode] = useState(normalizedInitialSettings.foodPoolMode === "only" || normalizedInitialSettings.mode === "from_scratch" ? "foods" : normalizedInitialSettings.mode === "similar_menu" ? "library" : "combined");
+  const [allowRepeats, setAllowRepeats] = useState(normalizedInitialSettings.allowRepeats);
   const [assisted, setAssisted] = useState(false);
   const [foodSearch, setFoodSearch] = useState("");
   const [foodResults, setFoodResults] = useState([]);
-  const [selectedFoods, setSelectedFoods] = useState([]);
+  const [selectedFoods, setSelectedFoods] = useState(normalizedInitialSettings.includeFoods);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,12 +53,16 @@ export default function ClientMenuGenerator({ user = {}, targetOverride = null, 
     if (foodSearch.trim().length < 2) { setFoodResults([]); return undefined; }
     let active = true;
     const timer = window.setTimeout(() => {
-      listAlimentos({ search: foodSearch, limit: 12 })
-        .then((value) => { if (active) setFoodResults(value?.alimentos || []); })
+      listAlimentos({ search: foodSearch, limit: 12, mode: "GENERIC" })
+        .then((value) => {
+          if (active) setFoodResults((value?.alimentos || []).filter((food) => (
+            isGenericGenerationFood(food) && mealTypes.some((type) => foodSupportsMealType(food, type))
+          )));
+        })
         .catch(() => { if (active) setFoodResults([]); });
     }, 260);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [foodSearch]);
+  }, [foodSearch, mealTypes]);
 
   const plan = String(capabilities?.plan || user?.personalPlan || user?.plan || "free").toLowerCase();
   const allowed = capabilities?.canGenerateAutomaticMenu === true;
@@ -79,7 +85,7 @@ export default function ClientMenuGenerator({ user = {}, targetOverride = null, 
     const id = foodKey(food);
     setSelectedFoods((current) => current.some((value) => foodKey(value) === id)
       ? current.filter((value) => foodKey(value) !== id)
-      : current.length < maxFoods ? [...current, food] : current);
+      : current.length < maxFoods ? [...current, { ...food, mustAppear: true, targetMealType: "any" }] : current);
   }
 
   async function generate() {
@@ -99,8 +105,18 @@ export default function ClientMenuGenerator({ user = {}, targetOverride = null, 
       const preview = await generateClientMenuPreview({
         target, mealTypes, selectedDays, selectedDate, distribution, sourceMode, foods: selectedFoods,
         allowRepeats, assisted, name,
-        preferFavorites: initialSettings?.preferFavorites === true,
-        firstMealTime: initialSettings?.firstMealTime || "",
+        generationMode: normalizedInitialSettings.mode,
+        useOnlySelectedFoods: normalizedInitialSettings.foodPoolMode === "only",
+        excludedFoods: normalizedInitialSettings.excludeFoods,
+        preferFavorites: normalizedInitialSettings.preferFavorites,
+        firstMealTime: normalizedInitialSettings.firstMealTime,
+        generationSettings: {
+          generationProfile: normalizedInitialSettings.generationProfile,
+          variety: normalizedInitialSettings.variety,
+          algorithmTolerance: normalizedInitialSettings.algorithmTolerance,
+          prepTime: normalizedInitialSettings.prepTime,
+          budget: normalizedInitialSettings.budget,
+        },
       });
       onGenerated(preview);
     } catch (generationError) {

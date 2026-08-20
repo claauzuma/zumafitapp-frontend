@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildEquivalentMealRecalculationRequest,
+  buildCompletionTrackingBatch,
   equivalentMealComparison,
   equivalentMealDecisionWarning,
   equivalentMealDraftStorageKey,
@@ -13,6 +14,24 @@ import {
   nextGeneratedAlternativeIndex,
   resolveEquivalentMealAccess,
 } from "./menuEquivalentMeal.js";
+
+test("completionMode persiste sólo los alimentos nuevos con el executionId existente", () => {
+  const generated = [{ nombre: "Arroz", cantidad: 180, kcal: 230 }];
+  const batch = buildCompletionTrackingBatch({
+    date: "2026-08-20",
+    trackingExecutionId: "menu_target_almuerzo",
+    replacementMeal: {
+      requestId: "completion-stable-request",
+      mealType: "almuerzo",
+      originalMealName: "Almuerzo",
+      items: generated,
+    },
+  });
+  assert.equal(batch.mealId, "menu_target_almuerzo");
+  assert.equal(batch.requestId, "completion-stable-request");
+  assert.deepEqual(batch.items, generated);
+  assert.equal(batch.items.some((item) => item.nombre === "Pechuga ya registrada"), false);
+});
 
 test("los permisos del servidor prevalecen sobre el plan para equivalentes", () => {
   assert.deepEqual(resolveEquivalentMealAccess({
@@ -193,10 +212,15 @@ test("la advertencia prioritaria aparece solo ante diferencias nutricionales rel
 
   const protein = equivalentMealDecisionWarning({
     target,
-    proposal: { kcal: 776, proteina: 54.6, carbs: 94.6, grasas: 15.6 },
+    proposal: { kcal: 776, proteina: 52.6, carbs: 94.6, grasas: 15.6 },
   });
   assert.deepEqual(protein.codes, ["protein_target_not_reached"]);
-  assert.match(protein.reasons[0], /3 g/);
+  assert.match(protein.reasons[0], /5 g/);
+
+  assert.equal(equivalentMealDecisionWarning({
+    target,
+    proposal: { kcal: 776, proteina: 53.6, carbs: 94.6, grasas: 15.6 },
+  }), null);
 });
 
 test("el desbalance C/G requiere exceso proteico de al menos 6 g", () => {

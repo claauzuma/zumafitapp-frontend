@@ -40,6 +40,14 @@ export async function addCalculatedFoodLogs(payload) {
   });
 }
 
+export async function addFoodLogsBatch(payload) {
+  return await apiFetch("/api/tracking/day/logs/batch", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 18000,
+  });
+}
+
 export async function updateManualDayCompletion(date, payload = {}) {
   return await apiFetch(`/api/usuarios/me/menu-tracking/day/${encodeURIComponent(date)}/completion`, {
     method: "PATCH",
@@ -85,4 +93,27 @@ export async function deleteFoodLog(logId) {
     method: "DELETE",
     timeoutMs: 12000,
   });
+}
+
+
+export async function saveMenuTrackingDay(
+  payload = {}
+) {
+  if (
+    !payload ||
+    !payload.date
+  ) {
+    throw new Error(
+      "Falta la fecha del tracking del menú."
+    );
+  }
+
+  return await apiFetch(
+    "/api/usuarios/me/menu-tracking/day",
+    {
+      method: "POST",
+      body: payload,
+      timeoutMs: 12000,
+    }
+  );
 }

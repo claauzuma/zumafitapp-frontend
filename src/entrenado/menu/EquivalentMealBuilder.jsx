@@ -170,6 +170,123 @@ function signed(value, digits = 0) {
   return `${numeric > 0 ? "+" : ""}${format(numeric, digits)}`;
 }
 
+function normalizeNutritionTotals(value = {}) {
+  const source =
+    value?.target ||
+    value?.totals ||
+    value?.totales ||
+    value ||
+    {};
+
+  return {
+    kcal: Math.max(
+      0,
+      Number(
+        source?.kcal ??
+        source?.calorias ??
+        source?.calories ??
+        0
+      ) || 0
+    ),
+
+    proteina: Math.max(
+      0,
+      Number(
+        source?.proteina ??
+        source?.proteinas ??
+        source?.protein ??
+        source?.p ??
+        0
+      ) || 0
+    ),
+
+    carbs: Math.max(
+      0,
+      Number(
+        source?.carbs ??
+        source?.carbohidratos ??
+        source?.carbohydrates ??
+        source?.c ??
+        0
+      ) || 0
+    ),
+
+    grasas: Math.max(
+      0,
+      Number(
+        source?.grasas ??
+        source?.grasa ??
+        source?.fat ??
+        source?.g ??
+        0
+      ) || 0
+    ),
+  };
+}
+
+
+function sumTrackingItems(items = []) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (total, item) => {
+      const current = normalizeNutritionTotals(item);
+
+      return {
+        kcal: total.kcal + current.kcal,
+        proteina: total.proteina + current.proteina,
+        carbs: total.carbs + current.carbs,
+        grasas: total.grasas + current.grasas,
+      };
+    },
+    {
+      kcal: 0,
+      proteina: 0,
+      carbs: 0,
+      grasas: 0,
+    }
+  );
+}
+
+
+function remainingNutritionTotals(target = {}, consumed = {}) {
+  const goal = normalizeNutritionTotals(target);
+  const used = normalizeNutritionTotals(consumed);
+
+  return {
+    kcal: Math.max(
+      0,
+      goal.kcal - used.kcal
+    ),
+
+    proteina: Math.max(
+      0,
+      goal.proteina - used.proteina
+    ),
+
+    carbs: Math.max(
+      0,
+      goal.carbs - used.carbs
+    ),
+
+    grasas: Math.max(
+      0,
+      goal.grasas - used.grasas
+    ),
+  };
+}
+
+function addNutritionTotals(left = {}, right = {}) {
+  const a = normalizeNutritionTotals(left);
+  const b = normalizeNutritionTotals(right);
+  return {
+    kcal: a.kcal + b.kcal,
+    proteina: a.proteina + b.proteina,
+    carbs: a.carbs + b.carbs,
+    grasas: a.grasas + b.grasas,
+  };
+}
+
+
+
 function generationConstraintSignature({ strategy, requiredFoods, avoidedFoods } = {}) {
   const ids = (values) => (Array.isArray(values) ? values : [])
     .map((food) => String(food?.id || food?.foodId || food?.alimentoId || food || ""))
@@ -392,7 +509,108 @@ export default function EquivalentMealBuilder({
   const mealIndex = Number(context.mealIndex) || 0;
   const mealId = String(meal.id || meal._id || meal.nombre || meal.name || `meal-${mealIndex + 1}`);
   const mealTitle = meal.name || meal.nombre || `Comida ${mealIndex + 1}`;
-  const target = useMemo(() => equivalentMealTarget(meal), [meal]);
+
+ const completionMode =
+  context?.completionMode === true;
+
+
+const fixedTrackingItems = useMemo(
+  () =>
+    Array.isArray(context?.fixedTrackingItems)
+      ? context.fixedTrackingItems
+      : [],
+  [context?.fixedTrackingItems]
+);
+
+
+/*
+ * Meta completa de la comida.
+ *
+ * Ejemplo:
+ * 894 kcal
+ * P 56.1
+ * C 115.5
+ * G 23.1
+ */
+const fullTarget = useMemo(() => {
+  const override =
+    normalizeNutritionTotals(
+      context?.targetOverride || {}
+    );
+
+  const hasOverride =
+    Object.values(override).some(
+      (value) => Number(value) > 0
+    );
+
+  if (hasOverride) {
+    return override;
+  }
+
+  return normalizeNutritionTotals(
+    equivalentMealTarget(meal)
+  );
+}, [
+  context?.targetOverride,
+  meal,
+]);
+
+
+/*
+ * Lo que YA existe realmente en Tracking.
+ *
+ * Ejemplo:
+ * Pechuga 100 g
+ * 111 kcal
+ * P22 / C0 / G2.5
+ */
+const fixedTrackingTotals = useMemo(
+  () =>
+    sumTrackingItems(
+      fixedTrackingItems
+    ),
+  [fixedTrackingItems]
+);
+
+
+/*
+ * Lo que todavía falta consumir.
+ *
+ * Meta completa - Tracking real.
+ */
+const remainingTarget = useMemo(
+  () =>
+    remainingNutritionTotals(
+      fullTarget,
+      fixedTrackingTotals
+    ),
+  [
+    fullTarget,
+    fixedTrackingTotals,
+  ]
+);
+
+
+/*
+ * IMPORTANTE:
+ *
+ * El código viejo del builder ya usa `target`
+ * para generar, recalcular, buscar en biblioteca,
+ * comparar macros, etc.
+ *
+ * Entonces en completar restante:
+ * target = solamente lo que falta.
+ *
+ * En una alternativa normal:
+ * target = objetivo completo.
+ */
+const target =
+  completionMode
+    ? remainingTarget
+    : fullTarget;
+
+
+
   const [draftOwner] = useState(() => trackingDraftStorageOwner(getCachedUser() || {}));
   const menuId = String(
     context.menuId ||
@@ -409,8 +627,14 @@ export default function EquivalentMealBuilder({
     "1"
   );
   const storageKey = useMemo(
-    () => equivalentMealDraftStorageKey(draftOwner, row.date, mealId, menuId, "full_meal"),
-    [draftOwner, mealId, menuId, row.date]
+    () => equivalentMealDraftStorageKey(
+      draftOwner,
+      row.date,
+      mealId,
+      menuId,
+      completionMode ? "complete_remaining" : "full_meal"
+    ),
+    [completionMode, draftOwner, mealId, menuId, row.date]
   );
   const [initialDraftState] = useState(() => {
     const persisted = loadDraftState(storageKey, maxFoods);
@@ -466,12 +690,20 @@ export default function EquivalentMealBuilder({
   const titleId = `equivalent-meal-${mealIndex}-title`;
 
   const totals = useMemo(() => trackingDraftsNutritionTotals(drafts), [drafts]);
-  const comparison = useMemo(() => equivalentMealComparison(target, totals), [target, totals]);
+  const finalTotals = useMemo(
+    () => completionMode ? addNutritionTotals(fixedTrackingTotals, totals) : totals,
+    [completionMode, fixedTrackingTotals, totals]
+  );
+  const comparisonTarget = completionMode ? fullTarget : target;
+  const comparison = useMemo(
+    () => equivalentMealComparison(comparisonTarget, finalTotals),
+    [comparisonTarget, finalTotals]
+  );
   const nutritionDecisionWarning = useMemo(() => equivalentMealDecisionWarning({
-    target,
-    proposal: totals,
+    target: comparisonTarget,
+    proposal: finalTotals,
     optimization,
-  }), [optimization, target, totals]);
+  }), [comparisonTarget, finalTotals, optimization]);
   const nutritionWarningSignature = nutritionDecisionWarning?.codes.join("|") || "";
   useEffect(() => {
     setNutritionWarningAccepted(false);
@@ -1024,7 +1256,10 @@ export default function EquivalentMealBuilder({
         originalMeal: meal,
         replacementMeal: equivalentMeal,
         mealIndex,
-        saveTemplate,
+        saveTemplate: completionMode ? false : saveTemplate,
+        completionMode,
+        fixedTrackingItems,
+        trackingExecutionId: context?.trackingExecutionId || "",
       });
       if (storageKey) window.localStorage.removeItem(storageKey);
       setDrafts([]);
@@ -1188,21 +1423,192 @@ export default function EquivalentMealBuilder({
               <div className="min-w-0">
                 <span className="text-[9px] font-black uppercase tracking-[.14em] text-emerald-300">Mi equivalente</span>
                 <h3 id={titleId} className="truncate text-[20px] font-black leading-tight text-white">Armar alternativa</h3>
-                <p className="truncate text-[10px] font-bold text-zinc-400">{mealTitle} · <b className="text-emerald-200">{format(target.kcal)} kcal objetivo</b></p>
+
+                <p className="truncate text-[10px] font-bold text-zinc-400">
+  {mealTitle} ·{" "}
+
+  <b className="text-emerald-200">
+    {format(fullTarget.kcal)} kcal objetivo
+  </b>
+
+  {completionMode ? (
+    <>
+      {" · "}
+      <b className="text-[#FFE080]">
+        {format(target.kcal)} kcal restantes
+      </b>
+    </>
+  ) : null}
+</p>
+
+
               </div>
             </div>
             <button ref={closeRef} type="button" onClick={onClose} disabled={saving || calculating} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/12 bg-white/[0.045] text-zinc-200 disabled:opacity-50" aria-label="Cerrar y conservar borrador"><X size={19} /></button>
           </div>
           <div className="mt-2.5 grid grid-cols-3 gap-2 text-center text-[10px] font-black">
-            <span className="rounded-xl border border-rose-300/15 bg-rose-300/[0.045] px-2 py-1.5 text-rose-100">P&nbsp; {format(target.proteina, 1)} g</span>
-            <span className="rounded-xl border border-sky-300/15 bg-sky-300/[0.045] px-2 py-1.5 text-sky-100">C&nbsp; {format(target.carbs, 1)} g</span>
-            <span className="rounded-xl border border-amber-300/15 bg-amber-300/[0.045] px-2 py-1.5 text-amber-100">G&nbsp; {format(target.grasas, 1)} g</span>
+
+<span className="rounded-xl border border-rose-300/15 bg-rose-300/[0.045] px-2 py-1.5 text-rose-100">
+  P&nbsp; {format(fullTarget.proteina, 1)} g
+</span>
+
+<span className="rounded-xl border border-sky-300/15 bg-sky-300/[0.045] px-2 py-1.5 text-sky-100">
+  C&nbsp; {format(fullTarget.carbs, 1)} g
+</span>
+
+<span className="rounded-xl border border-amber-300/15 bg-amber-300/[0.045] px-2 py-1.5 text-amber-100">
+  G&nbsp; {format(fullTarget.grasas, 1)} g
+</span>
+
+
           </div>
         </header>
 
         <div className="min-h-0 flex-1 overscroll-contain overflow-x-hidden overflow-y-auto px-3 py-3 sm:p-5">
+
           <div className="grid gap-2.5">
+            {completionMode && fixedTrackingItems.length ? (
+  <section className="overflow-hidden rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.055]">
+
+    <header className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-3 py-2.5">
+      <div>
+        <strong className="flex items-center gap-2 text-[11px] font-black text-emerald-100">
+          <LockKeyhole size={14} />
+          Ya registrado
+        </strong>
+
+        <span className="mt-0.5 block text-[9px] font-bold text-zinc-500">
+          Ya está en Tracking y no se modifica desde acá.
+        </span>
+      </div>
+
+      <span className="shrink-0 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[8px] font-black uppercase text-emerald-200">
+        Fijo
+      </span>
+    </header>
+
+
+    <div className="divide-y divide-white/[0.07]">
+      {fixedTrackingItems.map((item, index) => {
+        const itemName =
+          item?.nombreSnapshot ||
+          item?.nombre ||
+          item?.name ||
+          "Alimento";
+
+        const quantity =
+          Number(
+            item?.cantidad ??
+            item?.quantity ??
+            0
+          ) || 0;
+
+        const unit =
+          item?.unidad ||
+          item?.unit ||
+          "g";
+
+        const itemTotals =
+          normalizeNutritionTotals(item);
+
+        const imageUrl =
+          getFoodImageUrl(
+            item?.food ||
+            item
+          );
+
+        return (
+          <article
+            key={
+              item?.id ||
+              item?._id ||
+              `fixed-${index}`
+            }
+            className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-2 p-2.5"
+          >
+            <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-emerald-300/20 bg-white">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-sm font-black text-zinc-700">
+                  {itemName.slice(0, 1)}
+                </span>
+              )}
+            </span>
+
+
+            <div className="min-w-0">
+              <strong className="block truncate text-[12px] font-black text-white">
+                {itemName}
+              </strong>
+
+              <span className="mt-0.5 block text-[9px] font-bold text-zinc-400">
+                {format(itemTotals.kcal)} kcal
+                {" · P "}
+                {format(itemTotals.proteina, 1)}
+                {" · C "}
+                {format(itemTotals.carbs, 1)}
+                {" · G "}
+                {format(itemTotals.grasas, 1)}
+              </span>
+            </div>
+
+
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-2 text-[10px] font-black text-emerald-100">
+                {format(
+                  quantity,
+                  quantity % 1 ? 1 : 0
+                )}{" "}
+                {unit}
+              </span>
+
+              <span
+                className="grid h-9 w-9 place-items-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200"
+                title="Ya registrado en Tracking"
+              >
+                <LockKeyhole size={14} />
+              </span>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+
+
+    <footer className="border-t border-white/[0.07] bg-black/15 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+
+        <span className="text-[9px] font-black uppercase tracking-wide text-zinc-500">
+          Restante a completar
+        </span>
+
+        <strong className="text-[12px] font-black text-[#FFE080]">
+          {format(target.kcal)} kcal
+        </strong>
+
+      </div>
+
+      <p className="mt-1 text-[9px] font-bold text-zinc-400">
+        P {format(target.proteina, 1)}
+        {" · C "}
+        {format(target.carbs, 1)}
+        {" · G "}
+        {format(target.grasas, 1)}
+      </p>
+    </footer>
+
+  </section>
+) : null}
+
+
             <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-1.5">
+
+
               <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Origen de la alternativa">
                 <button type="button" role="radio" aria-checked={settingsGenerationMode === "library"} onClick={() => setSettingsGenerationMode("library")} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-2 text-[11px] font-black transition ${settingsGenerationMode === "library" ? "border-emerald-300/40 bg-emerald-300/10 text-emerald-100" : "border-transparent bg-black/15 text-zinc-500"}`}>
                   <Database size={15} /> Usar de la base
@@ -1321,13 +1727,25 @@ export default function EquivalentMealBuilder({
             {drafts.length ? (
               <section className={`rounded-2xl border px-3 py-2.5 ${comparison.exceedsCalories ? "border-rose-400/30 bg-rose-400/[0.08]" : comparison.caloriesClose ? "border-emerald-300/30 bg-emerald-300/[0.07]" : "border-sky-300/25 bg-sky-300/[0.06]"}`}>
                 <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <strong className="shrink-0 text-[11px] font-black text-white">Resultado actual:</strong>
+                  <strong className="shrink-0 text-[11px] font-black text-white">{completionMode ? "Alimentos nuevos:" : "Resultado actual:"}</strong>
                   <b className="shrink-0 text-[12px] text-emerald-200">{format(totals.kcal)} kcal</b>
                   <span className="shrink-0 text-[10px] font-black text-rose-100">P {format(totals.proteina, 1)}</span>
                   <span className="shrink-0 text-[10px] font-black text-sky-100">C {format(totals.carbs, 1)}</span>
                   <span className="shrink-0 text-[10px] font-black text-amber-100">G {format(totals.grasas, 1)}</span>
-                  <span className="ml-auto shrink-0 rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-black text-zinc-300">{signed(comparison.diff.kcal)} kcal</span>
+                  {!completionMode ? <span className="ml-auto shrink-0 rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-black text-zinc-300">{signed(comparison.diff.kcal)} kcal</span> : null}
                 </div>
+                {completionMode ? (
+                  <div className="mt-2 rounded-xl border border-emerald-300/20 bg-black/20 p-2.5">
+                    <span className="block text-[9px] font-black uppercase tracking-wide text-emerald-300">Resultado total · fijo + generado</span>
+                    <div className="mt-1 flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <b className="shrink-0 text-[13px] text-[#FFE080]">{format(finalTotals.kcal)} kcal</b>
+                      <span className="shrink-0 text-[10px] font-black text-rose-100">P {format(finalTotals.proteina, 1)}</span>
+                      <span className="shrink-0 text-[10px] font-black text-sky-100">C {format(finalTotals.carbs, 1)}</span>
+                      <span className="shrink-0 text-[10px] font-black text-amber-100">G {format(finalTotals.grasas, 1)}</span>
+                      <span className="ml-auto shrink-0 rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[9px] font-black text-zinc-300">{signed(comparison.diff.kcal)} kcal</span>
+                    </div>
+                  </div>
+                ) : null}
                 {!optimization && !comparison.proteinReached && target.proteina > 0 ? (
                   <p className="mt-2 flex items-start gap-2 text-[10px] font-bold text-amber-100"><AlertTriangle size={14} className="shrink-0" /> Con esta selección faltan {format(Math.abs(comparison.diff.proteina), 1)} g de proteína.</p>
                 ) : comparison.caloriesClose ? (
@@ -1339,10 +1757,10 @@ export default function EquivalentMealBuilder({
             {error ? <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm font-bold text-rose-100" role="alert">{error}</div> : null}
             {generationNotice ? <div className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.07] p-3 text-[10px] font-bold leading-relaxed text-sky-100" role="status"><Info size={14} className="mr-1.5 inline" />{generationNotice}</div> : null}
 
-            <label className="flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.025] px-3 text-[11px] font-bold text-zinc-300">
+            {!completionMode ? <label className="flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.025] px-3 text-[11px] font-bold text-zinc-300">
               <input type="checkbox" checked={saveTemplate} onChange={(event) => setSaveTemplate(event.target.checked)} className="h-4 w-4 accent-emerald-400" />
               Guardar también en Mis comidas
-            </label>
+            </label> : null}
           </div>
         </div>
 

@@ -73,6 +73,23 @@ export function normalizeFood(raw = {}) {
   const tags = arrayFrom(raw?.tags);
   const allergens = arrayFrom(raw?.alergenos);
   const image = normalizeFoodImage(raw, name, normalizedSource);
+  const rawGeneration = raw?.generation && typeof raw.generation === "object" ? raw.generation : {};
+  const generation = {
+    mode: ["EXPLICIT_ONLY", "GENERIC", "DISABLED"].includes(rawGeneration.mode)
+      ? rawGeneration.mode
+      : "EXPLICIT_ONLY",
+    roles: Object.fromEntries(["P1", "P2", "C1", "C2", "V", "F", "G"].map((role) => [role, rawGeneration.roles?.[role] === true])),
+    mealTypes: Object.fromEntries(["breakfast", "lunch", "snack", "dinner", "extraSnack"].map((mealType) => [mealType, rawGeneration.mealTypes?.[mealType] === true])),
+    portionRule: {
+      unit: rawGeneration.portionRule?.unit || null,
+      min: toNumber(rawGeneration.portionRule?.min, null),
+      max: toNumber(rawGeneration.portionRule?.max, null),
+      step: toNumber(rawGeneration.portionRule?.step, null),
+      allowedValues: Array.isArray(rawGeneration.portionRule?.allowedValues)
+        ? rawGeneration.portionRule.allowedValues.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+        : [],
+    },
+  };
   const searchText = cleanText(`${name} ${normalizedSource} ${macroGroup} ${raw?.subcategoria || raw?.subcategoriaZumaFit || ""} ${tags.join(" ")} ${image.exactaKey} ${image.genericaKey}`);
 
   return {
@@ -126,6 +143,7 @@ export function normalizeFood(raw = {}) {
     esCarboPrincipal: raw?.esCarboPrincipal === true,
     esGrasaPrincipal: raw?.esGrasaPrincipal === true,
     esVegetalLibre: raw?.esVegetalLibre === true,
+    generation,
     _searchText: searchText,
     _categoryKey: cleanText(macroGroup),
     _normalizedFood: true,

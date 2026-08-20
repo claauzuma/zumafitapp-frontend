@@ -651,52 +651,135 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
     }
   }
 
-  async function persistAssignments(nextAssignments, successMessage = "Plan semanal actualizado.", nextMealTargets = mealTargetsByDay) {
-    setAssignments(nextAssignments);
+
+  async function persistAssignments(
+  nextAssignments,
+  successMessage = "Plan semanal actualizado.",
+  nextMealTargets = null
+) {
+  setAssignments(nextAssignments);
+
+  if (nextMealTargets !== null) {
     setMealTargetsByDay(nextMealTargets);
-    setBusy("weekly-save");
-    try {
-      const data = await updateProfessionalClientMenu(clientId, {
-        menu: {
-          mode: { type: defaultMode(access), lockedByCoach: client?.menu?.mode?.lockedByCoach },
-          weeklyPlan: {
-            assignedMenusByDay: nextAssignments,
-            mealTargetsByDay: nextMealTargets,
-          },
-          coachNotes: client?.menu?.coachNotes || "",
-        },
-      });
-      queryClient.setQueryData(queryKeys.professionalClientDetail(clientId), data);
-      await invalidateProfessionalClient(clientId, data?.client);
-      onToast?.({ type: "success", message: successMessage });
-    } catch (error) {
-      setAssignments(normalizeAssignments(client?.menu?.weeklyPlan?.assignedMenusByDay));
-      setMealTargetsByDay(client?.menu?.weeklyPlan?.mealTargetsByDay || {});
-      onToast?.({ type: "error", message: error?.message || "No se pudo guardar la asignación semanal." });
-    } finally {
-      setBusy("");
-    }
   }
 
-  async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
-    const row = weekRows.find((item) => item.day.key === dayKey);
-    const compatibility = getCompatibility(menu, row?.target);
-    if (!compatibility.canAssign) {
-      onToast?.({ type: "warning", message: compatibilityReason(compatibility) });
-      setPicker(null);
-      return;
-    }
-    const primaryMenu = menuToAssignment(menu, "coach", { target: row?.target, dayKey });
-    const current = hydratedAssignments[dayKey] || assignments[dayKey] || {};
-    const next = {
-      ...hydratedAssignments,
-      [dayKey]: replacePrimaryMenu(current, primaryMenu, MAX_MENU_ALTERNATIVES),
+  setBusy("weekly-save");
+
+  try {
+    const weeklyPlanPayload = {
+      assignedMenusByDay: nextAssignments,
     };
-    const nextMealTargets = { ...mealTargetsByDay };
-    delete nextMealTargets[dayKey];
-    setPicker(null);
-    await persistAssignments(next, message, nextMealTargets);
+
+    // Solo mandar mealTargetsByDay si realmente queremos modificarlos.
+    if (nextMealTargets !== null) {
+      weeklyPlanPayload.mealTargetsByDay = nextMealTargets;
+    }
+
+    const data = await updateProfessionalClientMenu(clientId, {
+      menu: {
+        mode: {
+          type: defaultMode(access),
+          lockedByCoach: client?.menu?.mode?.lockedByCoach,
+        },
+        weeklyPlan: weeklyPlanPayload,
+        coachNotes: client?.menu?.coachNotes || "",
+      },
+    });
+
+    queryClient.setQueryData(
+      queryKeys.professionalClientDetail(clientId),
+      data
+    );
+
+    await invalidateProfessionalClient(clientId, data?.client);
+
+    onToast?.({
+      type: "success",
+      message: successMessage,
+    });
+  } catch (error) {
+    setAssignments(
+      normalizeAssignments(
+        client?.menu?.weeklyPlan?.assignedMenusByDay
+      )
+    );
+
+    setMealTargetsByDay(
+      client?.menu?.weeklyPlan?.mealTargetsByDay || {}
+    );
+
+    onToast?.({
+      type: "error",
+      message:
+        error?.message ||
+        "No se pudo guardar la asignación semanal.",
+    });
+  } finally {
+    setBusy("");
   }
+}
+
+
+async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
+  const row = weekRows.find((item) => item.day.key === dayKey);
+  const compatibility = getCompatibility(menu, row?.target);
+
+  if (!compatibility.canAssign) {
+    onToast?.({
+      type: "warning",
+      message: compatibilityReason(compatibility),
+    });
+    setPicker(null);
+    return;
+  }
+
+  const primaryMenu = menuToAssignment(menu, "coach", {
+    target: row?.target,
+    dayKey,
+  });
+
+  const current =
+    hydratedAssignments[dayKey] ||
+    assignments[dayKey] ||
+    {};
+
+  const next = {
+    ...hydratedAssignments,
+    [dayKey]: replacePrimaryMenu(
+      current,
+      primaryMenu,
+      MAX_MENU_ALTERNATIVES
+    ),
+  };
+
+  let nextMealTargets = null;
+
+  if (
+    mealTargetsByDay &&
+    Object.keys(mealTargetsByDay).length > 0
+  ) {
+    nextMealTargets = { ...mealTargetsByDay };
+
+    // Si un día tiene menú asignado, no debe conservar
+    // simultáneamente una planificación "per_meal".
+    DAY_KEYS.forEach((key) => {
+      if (next[key]) {
+        delete nextMealTargets[key];
+      }
+    });
+  }
+
+  setPicker(null);
+
+  await persistAssignments(
+    next,
+    message,
+    nextMealTargets
+  );
+}
+
+
+
 
   async function addAlternative(dayKey, menu) {
     const current = hydratedAssignments[dayKey] || assignments[dayKey] || {};

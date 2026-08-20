@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, Crown, Edit3, Info, Target, Utensils } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Crown, Edit3, Info, Loader2, Moon, RefreshCw, SlidersHorizontal, Sparkles, Sun, Target, Utensils } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getCachedUser } from "../authCache.js";
@@ -8,6 +8,10 @@ import { normalizeGoalFromUser } from "../clientNutrition/nutritionState.js";
 import AppToast from "../ui/AppToast.jsx";
 import ClientMenusPanel from "./ClientMenusPanel.jsx";
 import ClientMenuGenerator from "./ClientMenuGenerator.jsx";
+import { authorizeClientMenuGeneration, createClientMenu } from "./clientMenusApi.js";
+import { generateClientMenuPreview } from "./clientMenuGeneration.js";
+import { buildGeneratedMenuActivationPayload, generatedMenuTotals, replaceGeneratedPreviewMeal } from "./clientMenuPreview.js";
+import { buildAutonomousMenuGenerationRequest, MENU_GENERATION_MODE_SIMILAR } from "../entrenado/menu/menuQuickActions.js";
 import "../nutritionLibrary/nutritionLibrary.css";
 
 function safeReturnPath(value) {
@@ -72,12 +76,23 @@ function targetLine(target = null) {
   return `${Math.round(target.kcal).toLocaleString("es-AR")} kcal · P${Math.round(target.proteina || 0)} · C${Math.round(target.carbs || 0)} · G${Math.round(target.grasas || 0)}`;
 }
 
+function signedDifference(value) {
+  const rounded = Math.round((Number(value) || 0) * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded.toLocaleString("es-AR", { maximumFractionDigits: 1 })}`;
+}
+
 export default function ClientMenuCreatePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [toast, setToast] = useState(null);
   const [generatedDraft, setGeneratedDraft] = useState(() => location.state?.generatedDraft || null);
+  const [generationRevision, setGenerationRevision] = useState(0);
+  const [regeneratingMeal, setRegeneratingMeal] = useState(null);
+  const [regenerationError, setRegenerationError] = useState("");
+  const [editingGenerated, setEditingGenerated] = useState(false);
+  const [expandedReviewMeal, setExpandedReviewMeal] = useState(null);
+  const [usingGenerated, setUsingGenerated] = useState(false);
   const [manualMealCount, setManualMealCount] = useState(null);
   const [manualSetup, setManualSetup] = useState(null);
   const cachedUser = useMemo(() => getCachedUser(), []);
@@ -96,6 +111,10 @@ export default function ClientMenuCreatePage() {
   const wizardTarget = targetForWizard(user, dailyTarget);
   const generationSettings = location.state?.generationSettings || null;
   const activeMenuComparison = location.state?.activeMenuComparison || null;
+  const generatedTotals = useMemo(() => generatedMenuTotals(generatedDraft), [generatedDraft]);
+  const generatedComparison = activeMenuComparison?.current && generatedDraft
+    ? { current: activeMenuComparison.current, proposed: generatedTotals }
+    : activeMenuComparison;
   const editMenuId = location.state?.editMenuId || location.state?.menuId || "";
   const editMenuRequest = editMenuId
     ? {
@@ -112,6 +131,84 @@ export default function ClientMenuCreatePage() {
     const next = new URLSearchParams(searchParams);
     next.delete("mode");
     setSearchParams(next, { replace: true });
+  }
+
+  async function regeneratePreview(mealIndex = null) {
+    if (!generationSettings || !generatedDraft || regeneratingMeal !== null) return;
+    setRegeneratingMeal(mealIndex === null ? "all" : mealIndex);
+    setRegenerationError("");
+    try {
+      const authorization = await authorizeClientMenuGeneration();
+      if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
+        throw new Error("El servidor no autorizó una vista previa segura.");
+      }
+      const request = buildAutonomousMenuGenerationRequest({
+        settings: generationSettings,
+        target: wizardTarget || dailyTarget || generatedDraft.menuTarget,
+        selectedDate: selectedDate || generatedDraft.fechaInicio,
+        name: generatedDraft.nombre,
+      });
+      let preview;
+      if (mealIndex === null) {
+        preview = await generateClientMenuPreview(request);
+      } else {
+        const currentMeal = generatedDraft.comidas?.[mealIndex];
+        if (!currentMeal) throw new Error("No encontramos la comida que querés regenerar.");
+        const type = currentMeal.tipoComida || currentMeal.mealType || request.mealTypes[mealIndex];
+        const mealTarget = currentMeal.target || currentMeal.totales;
+        const single = await generateClientMenuPreview({
+          ...request,
+          target: mealTarget,
+          mealTypes: [type],
+          mealTargets: [{ type, label: currentMeal.nombre, target: mealTarget }],
+          generationMode: request.generationMode === MENU_GENERATION_MODE_SIMILAR ? "combine_library" : request.generationMode,
+          sourceMode: request.sourceMode === "library" ? "combined" : request.sourceMode,
+          name: currentMeal.nombre,
+        });
+        const replacement = single.comidas?.[0];
+        if (!replacement) throw new Error(`No pudimos regenerar ${currentMeal.nombre || "esta comida"}.`);
+        preview = replaceGeneratedPreviewMeal(generatedDraft, mealIndex, replacement);
+      }
+      setGeneratedDraft({
+        ...preview,
+        fechaInicio: selectedDate || generatedDraft.fechaInicio || preview.fechaInicio,
+        objectiveMode: "custom",
+        menuTarget: wizardTarget || dailyTarget || generatedDraft.menuTarget,
+      });
+      setGenerationRevision((current) => current + 1);
+    } catch (error) {
+      setRegenerationError(error?.message || "No pudimos regenerar la propuesta.");
+    } finally {
+      setRegeneratingMeal(null);
+    }
+  }
+
+  function editGenerationSettings() {
+    navigate(returnTo || "/app/menu", {
+      replace: true,
+      state: { openGenerationSettings: true, selectedDate: selectedDate || generatedDraft?.fechaInicio },
+    });
+  }
+
+  async function useGeneratedMenu() {
+    if (!generatedDraft || usingGenerated) return;
+    setUsingGenerated(true);
+    setRegenerationError("");
+    try {
+      await createClientMenu(buildGeneratedMenuActivationPayload(
+        generatedDraft,
+        wizardTarget || dailyTarget || generatedDraft.menuTarget
+      ));
+      setToast({ type: "success", message: "Menú guardado y activado para el día." });
+      navigate(returnTo || "/app/menu", {
+        replace: true,
+        state: { selectedDate: selectedDate || generatedDraft.fechaInicio, refreshMenu: true },
+      });
+    } catch (error) {
+      setRegenerationError(error?.error || error?.message || "No pudimos guardar y activar este menú.");
+    } finally {
+      setUsingGenerated(false);
+    }
   }
 
   return (
@@ -151,7 +248,35 @@ export default function ClientMenuCreatePage() {
             onContinue={setManualSetup}
           />
         ) : (
-          <ClientMenusPanel
+          <>
+          {generatedDraft && generationSettings && editingGenerated ? (
+            <section className="mb-3 rounded-3xl border border-[#D4AF37]/35 bg-[radial-gradient(circle_at_100%_0,rgba(45,212,191,.10),transparent_35%),#0b1118] p-3 text-white shadow-xl">
+              <div className="flex items-start justify-between gap-3"><div><span className="text-[10px] font-black uppercase tracking-wide text-[#FFD75E]">Vista previa automática</span><h2 className="mt-1 text-lg font-black">Revisá antes de usar</h2></div><button type="button" onClick={() => navigate(returnTo, { replace: true })} className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/10 px-2 text-[9px] font-black text-zinc-300"><SlidersHorizontal size={13} /> Ajustes</button></div>
+              <div className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-xl border border-white/10 bg-black/20 p-2"><small className="text-[8px] font-black text-zinc-500">META</small><strong className="block text-sm font-black text-[#FFD75E]">{Math.round(wizardTarget?.kcal || 0)} kcal</strong></div><div className="rounded-xl border border-teal-300/20 bg-teal-300/[0.06] p-2"><small className="text-[8px] font-black text-teal-200/60">GENERADO</small><strong className="block text-sm font-black text-teal-200">{Math.round(generatedTotals.kcal)} kcal</strong></div></div>
+              <p className="mt-2 text-[9px] font-bold text-zinc-400">Diferencia: {signedDifference(generatedTotals.kcal - Number(wizardTarget?.kcal || 0))} kcal · P {signedDifference(generatedTotals.proteina - Number(wizardTarget?.proteina || 0))} · C {signedDifference(generatedTotals.carbs - Number(wizardTarget?.carbs || 0))} · G {signedDifference(generatedTotals.grasas - Number(wizardTarget?.grasas || 0))}</p>
+              <div className="mt-3 grid gap-1.5 sm:grid-cols-2">{(generatedDraft.comidas || []).map((meal, index) => <button key={meal.id || index} type="button" disabled={regeneratingMeal !== null} onClick={() => regeneratePreview(index)} className="inline-flex min-h-10 items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-3 text-left text-[9px] font-black text-zinc-200 disabled:opacity-50"><span className="truncate">Regenerar {meal.nombre || `Comida ${index + 1}`}</span>{regeneratingMeal === index ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}</button>)}</div>
+              <button type="button" disabled={regeneratingMeal !== null} onClick={() => regeneratePreview(null)} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[10px] font-black text-[#FFE8A3] disabled:opacity-50">{regeneratingMeal === "all" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Regenerar todo</button>
+              {regenerationError ? <div className="mt-2 rounded-xl border border-rose-300/25 bg-rose-300/10 p-2 text-[9px] font-bold text-rose-100">{regenerationError}</div> : null}
+            </section>
+          ) : null}
+          {generatedDraft && generationSettings && !editingGenerated ? (
+            <GeneratedMenuReview
+              draft={generatedDraft}
+              target={wizardTarget || dailyTarget || generatedDraft.menuTarget}
+              totals={generatedTotals}
+              expandedMeal={expandedReviewMeal}
+              onToggleMeal={(index) => setExpandedReviewMeal((current) => current === index ? null : index)}
+              onRegenerate={regeneratePreview}
+              regeneratingMeal={regeneratingMeal}
+              error={regenerationError}
+              onSettings={editGenerationSettings}
+              onEdit={() => setEditingGenerated(true)}
+              onUse={useGeneratedMenu}
+              using={usingGenerated}
+            />
+          ) : null}
+          {!generatedDraft || !generationSettings || editingGenerated ? <ClientMenusPanel
+            key={`generated-preview-${generationRevision}`}
             directCreate
             editMenuRequest={editMenuRequest}
             initialDraft={generatedDraft}
@@ -161,13 +286,107 @@ export default function ClientMenuCreatePage() {
             initialTarget={dailyTarget}
             initialMealCount={manualMealCount || 4}
             initialSetup={manualSetup}
-            activeMenuComparison={activeMenuComparison}
+            activeMenuComparison={generatedComparison}
             onToast={setToast}
-          />
+          /> : null}
+          </>
         )}
       </section>
       <AppToast toast={toast} onClose={() => setToast(null)} />
     </div>
+  );
+}
+
+const REVIEW_MEAL_ICONS = {
+  desayuno: Sun,
+  almuerzo: Utensils,
+  merienda: Sparkles,
+  cena: Moon,
+};
+
+function mealReviewTotals(meal = {}) {
+  return generatedMenuTotals({ comidas: [meal] });
+}
+
+function GeneratedMenuReview({
+  draft,
+  target,
+  totals,
+  expandedMeal,
+  onToggleMeal,
+  onRegenerate,
+  regeneratingMeal,
+  error,
+  onSettings,
+  onEdit,
+  onUse,
+  using,
+}) {
+  const targetKcal = Number(target?.kcal) || 0;
+  const distributed = targetKcal > 0 ? Math.round((Number(totals?.kcal) || 0) / targetKcal * 100) : 0;
+
+  return (
+    <section className="generated-menu-review" aria-labelledby="generated-menu-review-title">
+      <header className="generated-review-ready">
+        <span className="generated-review-spark"><Sparkles size={24} /></span>
+        <div><h1 id="generated-menu-review-title">Menú generado automáticamente</h1><p>Tu plan del día está listo para vos.</p></div>
+        <span className="generated-review-status"><CheckCircle2 size={15} /> Listo</span>
+      </header>
+
+      <section className="generated-review-target">
+        <span className="generated-review-target-icon"><Target size={24} /></span>
+        <div><small>Meta del día</small><strong>{Math.round(targetKcal).toLocaleString("es-AR")} kcal</strong><p>P{Math.round(target?.proteina || 0)} / C{Math.round(target?.carbs || 0)} / G{Math.round(target?.grasas || 0)}</p></div>
+        <div className="generated-review-percent"><strong>{distributed}%</strong><small>distribuido</small></div>
+      </section>
+
+      <div className="generated-review-meals">
+        {(draft?.comidas || []).map((meal, index) => {
+          const type = meal.tipoComida || "otra";
+          const Icon = REVIEW_MEAL_ICONS[type] || Utensils;
+          const mealTotals = mealReviewTotals(meal);
+          const expanded = expandedMeal === index;
+          return (
+            <article key={meal.id || index} className={`generated-review-meal ${type}`}>
+              <button type="button" className="generated-review-meal-main" onClick={() => onToggleMeal(index)} aria-expanded={expanded}>
+                <span className="generated-review-meal-icon"><Icon size={23} /></span>
+                <span className="generated-review-meal-copy">
+                  <span className="generated-review-meal-title"><strong>{meal.nombre || `Comida ${index + 1}`}</strong><b>{Math.round(mealTotals.kcal)} kcal</b></span>
+                  <small>P{Math.round(mealTotals.proteina)} / C{Math.round(mealTotals.carbs)} / G{Math.round(mealTotals.grasas)}</small>
+                  <span className="generated-review-food-chips">
+                    {(meal.items || []).slice(0, 4).map((item, itemIndex) => <i key={item.id || itemIndex}>{item.nombreSnapshot || item.nombre || "Alimento"}</i>)}
+                    {(meal.items || []).length > 4 ? <i>+{meal.items.length - 4}</i> : null}
+                  </span>
+                </span>
+                <span className="generated-review-chevron">{expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</span>
+              </button>
+              {expanded ? (
+                <div className="generated-review-detail">
+                  {(meal.items || []).map((item, itemIndex) => (
+                    <div key={item.id || itemIndex} className="generated-review-food-detail">
+                      <span><strong>{item.nombreSnapshot || item.nombre || "Alimento"}</strong><small>{Math.round((Number(item.kcal) || 0) * 10) / 10} kcal · P{Math.round((Number(item.proteina) || 0) * 10) / 10} · C{Math.round((Number(item.carbs) || 0) * 10) / 10} · G{Math.round((Number(item.grasas) || 0) * 10) / 10}</small></span>
+                      <b>{Number(item.cantidad) || 0} {item.unidadSnapshot || item.unidad || "g"}</b>
+                    </div>
+                  ))}
+                  <button type="button" disabled={regeneratingMeal !== null} onClick={() => onRegenerate(index)} className="generated-review-regenerate-meal">
+                    {regeneratingMeal === index ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Regenerar esta comida
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+
+      <p className="generated-review-difference">Diferencia vs. meta: {signedDifference(totals.kcal - targetKcal)} kcal · P {signedDifference(totals.proteina - Number(target?.proteina || 0))} · C {signedDifference(totals.carbs - Number(target?.carbs || 0))} · G {signedDifference(totals.grasas - Number(target?.grasas || 0))}</p>
+      {error ? <div className="generated-review-error">{error}</div> : null}
+
+      <footer className="generated-review-actions">
+        <button type="button" disabled={regeneratingMeal !== null || using} onClick={() => onRegenerate(null)}>{regeneratingMeal === "all" ? <Loader2 size={17} className="animate-spin" /> : <RefreshCw size={17} />} Regenerar todo</button>
+        <button type="button" disabled={regeneratingMeal !== null || using} onClick={onEdit}><Edit3 size={17} /> Editar comidas</button>
+        <button type="button" className="generated-review-use" disabled={regeneratingMeal !== null || using} onClick={onUse}>{using ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} Usar este menú <ArrowRight size={18} /></button>
+      </footer>
+      <button type="button" className="generated-review-settings" onClick={onSettings}><SlidersHorizontal size={15} /> Editar ajustes de generación</button>
+    </section>
   );
 }
 

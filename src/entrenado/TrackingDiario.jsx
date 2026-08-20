@@ -1,9 +1,27 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+
+import {
+  addFoodLogsBatch,
+  calculateTrackingQuantities,
+  saveMenuTrackingDay,
+} from "../tracking/trackingApi.js";
+
+import {
+  buildTrackingMenuDestinations,
+} from "../tracking/trackingMenuDestinations.js";
+import {
+  buildTrackingDestinationFit,
+} from "../tracking/trackingDestinationFit.js";
+import {
+  reviewTrackingRegistration,
+  suggestTrackingAllocations,
+} from "../tracking/trackingRegistrationReview.js";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Calculator,
+  Sparkles,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -12,6 +30,7 @@ import {
   ChevronUp,
   Crosshair,
   Flag,
+  Layers3,
   Loader2,
   Lock,
   MoreVertical,
@@ -47,7 +66,7 @@ import {
   useUpdateFoodLog,
   useUpdateTrackingMealsConfig,
 } from "../tracking/trackingQueries.js";
-import { calculateTrackingQuantities } from "../tracking/trackingApi.js";
+
 import { getCachedUser } from "../authCache.js";
 import {
   buildRemainingMomentTargets,
@@ -120,6 +139,9 @@ const MEAL_TYPE_OPTIONS = [
   { value: "otra", label: "Otra" },
 ];
 
+const GENERAL_TRACKING_REGISTRATION_ID =
+  "__tracking_registration__";
+
 export default function TrackingDiario() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentDate = useCurrentLocalDate();
@@ -133,6 +155,29 @@ export default function TrackingDiario() {
   const [foodSearchError, setFoodSearchError] = useState("");
   const [selectedFood, setSelectedFood] = useState(null);
   const [quantity, setQuantity] = useState("100");
+  const [
+  pendingTrackingRegistration,
+  setPendingTrackingRegistration,
+] = useState(null);
+
+const [
+  trackingRegistrationItems,
+  setTrackingRegistrationItems,
+] = useState([]);
+const [
+  destinationModalOpen,
+  setDestinationModalOpen,
+] = useState(false);
+
+const [
+  destinationWarning,
+  setDestinationWarning,
+] = useState(null);
+const [postCalculationWarning, setPostCalculationWarning] = useState(null);
+const [combinationPlan, setCombinationPlan] = useState(null);
+const [registrationSaving, setRegistrationSaving] = useState(false);
+
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState([]);
   const [openMealMenu, setOpenMealMenu] = useState("");
@@ -146,6 +191,7 @@ export default function TrackingDiario() {
     trackingDraftBrowserStorage(),
     trackingDraftOwner
   ));
+const [, setSelectedTrackingDestination] = useState(null);
   const [trackingFoodDrafts, setTrackingFoodDrafts] = useState(
     () => restoredTrackingDraftState.draftsByMeal
   );
@@ -157,12 +203,22 @@ export default function TrackingDiario() {
   );
   const [toast, setToast] = useState(null);
   const activeDateRef = useRef(date);
+
   const deleteMealDialogRef = useRef(null);
   const foodPickerDialogRef = useRef(null);
+  const destinationDialogRef = useRef(null);
+
+
 
   const weekStart = useMemo(() => mondayOfWeek(date), [date]);
   const trackingQuery = useTrackingDay(date);
   const menuTrackingQuery = useMenuTrackingWeek(weekStart);
+
+useEffect(() => {
+  void menuTrackingQuery.refetch();
+}, [weekStart]);
+
+
   const addMutation = useAddFoodLog();
   const addCalculatedMutation = useAddCalculatedFoodLogs();
   const updateMutation = useUpdateFoodLog();
@@ -187,6 +243,21 @@ export default function TrackingDiario() {
     disabled: addMutation.isPending,
   });
 
+
+useTrackingDialogKeyboard(
+  destinationDialogRef,
+  destinationModalOpen,
+  {
+    onClose: closeTrackingDestinationModal,
+    disabled:
+      addMutation.isPending ||
+      addCalculatedMutation.isPending,
+  }
+);
+
+
+
+
   const isSaving =
     addMutation.isPending ||
     updateMutation.isPending ||
@@ -195,30 +266,296 @@ export default function TrackingDiario() {
     deleteMealMutation.isPending ||
     manualCompletionMutation.isPending ||
     autoQuantitySaving ||
+    registrationSaving ||
     Boolean(autoQuantityCalculatingDraftKey);
   const tracking = trackingQuery.data || emptyTrackingDay(date);
   const configuredMeals = useMemo(() => normalizeMealSettings(tracking.mealsConfig || []), [tracking.mealsConfig]);
   const log = useMemo(() => normalizeMeals(tracking.meals, configuredMeals), [tracking.meals, configuredMeals]);
   const baseMeals = useMemo(() => mealsWithLoggedExtras(configuredMeals, log), [configuredMeals, log]);
-  const trackedTotals = tracking.totals || emptyTotals();
-  const menuTrackingDay = useMemo(
-    () => (menuTrackingQuery.data?.days || []).find((day) => day.date === date) || null,
-    [date, menuTrackingQuery.data]
+
+const trackedTotals = useMemo(
+  () => trackingFoodLogTotals(tracking),
+  [tracking]
+);
+
+
+/* =========================================================
+   DÍA DEL MENÚ PARA LA FECHA ACTUAL
+   ========================================================= */
+
+const menuTrackingDay = useMemo(
+  () =>
+    (menuTrackingQuery.data?.days || []).find(
+      (day) => day.date === date
+    ) || null,
+  [date, menuTrackingQuery.data]
+);
+
+
+const trackingMenuDestinations =
+  useMemo(
+    () =>
+      buildTrackingMenuDestinations(
+        menuTrackingDay
+      ),
+    [menuTrackingDay]
   );
-  const menuConsumedTotals = useMemo(() => menuTrackingConsumedTotals(menuTrackingDay), [menuTrackingDay]);
-  const totals = useMemo(() => addTotals(trackedTotals, menuConsumedTotals), [menuConsumedTotals, trackedTotals]);
-  const pendingDraftTotals = useMemo(
-    () => trackingDateDraftProjectedDelta(trackingFoodDrafts, date),
-    [date, trackingFoodDrafts]
+
+  const trackingDestinationFit =
+  useMemo(
+    () =>
+      buildTrackingDestinationFit({
+        destinations:
+          trackingMenuDestinations,
+
+        registration:
+          pendingTrackingRegistration,
+
+        trackingMeals:
+          tracking?.meals || {},
+        allocations:
+          tracking?.allocations || [],
+        allocationTotalsByDestination:
+          tracking?.allocationTotalsByDestination || {},
+      }),
+
+    [
+      trackingMenuDestinations,
+      pendingTrackingRegistration,
+      tracking?.meals,
+      tracking?.allocations,
+      tracking?.allocationTotalsByDestination,
+    ]
   );
-  const projectedTotals = useMemo(
-    () => addTotals(totals, pendingDraftTotals),
-    [pendingDraftTotals, totals]
+
+/* =========================================================
+   COMIDAS DEL MENÚ MARCADAS COMO HECHAS
+   ========================================================= */
+
+const completedMenuMeals = useMemo(() => {
+  const entries =
+    menuTrackingDay?.tracking?.completedMenuMeals;
+
+  return Array.isArray(entries)
+    ? entries
+    : [];
+}, [menuTrackingDay]);
+
+
+/* =========================================================
+   TOTAL QUE VIENE DE COMIDAS DEL MENÚ HECHAS
+   ========================================================= */
+
+const menuConsumedTotals = useMemo(
+  () =>
+    menuTrackingConsumedTotals(
+      menuTrackingDay
+    ),
+  [menuTrackingDay]
+);
+
+
+/* =========================================================
+   TOTAL REAL DEL DÍA
+
+   Tracking manual / Por meta
+   +
+   comidas marcadas como hechas desde Menú
+   ========================================================= */
+
+const totals = useMemo(
+  () =>
+    addTotals(
+      trackedTotals,
+      menuConsumedTotals
+    ),
+  [
+    trackedTotals,
+    menuConsumedTotals,
+  ]
+);
+
+
+/* =========================================================
+   BORRADORES TODAVÍA NO CONFIRMADOS
+
+   IMPORTANTE:
+   esto NO forma parte del consumo real todavía
+   ========================================================= */
+
+const pendingDraftTotals = useMemo(
+  () =>
+    trackingDateDraftProjectedDelta(
+      trackingFoodDrafts,
+      date
+    ),
+  [
+    date,
+    trackingFoodDrafts,
+  ]
+);
+
+
+/* =========================================================
+   TOTAL PROYECTADO
+
+   consumo real + borradores
+   ========================================================= */
+
+const projectedTotals = useMemo(
+  () =>
+    addTotals(
+      totals,
+      pendingDraftTotals
+    ),
+  [
+    pendingDraftTotals,
+    totals,
+  ]
+);
+
+
+ const menuObjective = useMemo(
+  () => objectiveFromMenuTrackingDay(menuTrackingDay),
+  [menuTrackingDay]
+);
+
+const objective =
+  hasConfiguredNutritionTarget(menuObjective)
+    ? menuObjective
+    : tracking.objetivo || null;
+
+const remaining =
+  remainingTotals(
+    objective,
+    totals
   );
-  const menuObjective = useMemo(() => objectiveFromMenuTrackingDay(menuTrackingDay), [menuTrackingDay]);
-  const objective = hasConfiguredNutritionTarget(menuObjective) ? menuObjective : tracking.objetivo || null;
-  const remaining = remainingTotals(objective, totals);
-  const manualCompletionActive = menuTrackingDay?.tracking?.dayCompletionMode === "manual_completion";
+
+
+/* =========================================================
+   DESTINO FALLBACK: OBJETIVO DIARIO
+   =========================================================
+
+   Sólo existe cuando:
+
+   - hay meta diaria
+   - NO hay menú estructurado
+   - NO hay metas por comida
+   - NO hay comidas disponibles del menú
+   - NO hay calorías libres provenientes de un menú
+
+   Esto NO modifica los flujos existentes.
+   ========================================================= */
+
+const dailyTargetDestination = useMemo(
+  () => {
+    if (!objective) {
+      return null;
+    }
+
+
+    /*
+     * Si ya existe una estructura concreta,
+     * NO ofrecemos el objetivo diario genérico.
+     */
+
+    const hasStructuredDestinations =
+      Boolean(
+        trackingMenuDestinations?.hasMenu
+      ) ||
+      Boolean(
+        trackingMenuDestinations?.hasMealTargets
+      ) ||
+      Boolean(
+        trackingMenuDestinations?.menuChoice
+      ) ||
+      Boolean(
+        trackingMenuDestinations?.meals?.length
+      ) ||
+      Boolean(
+        trackingMenuDestinations
+          ?.freeCalories
+          ?.available
+      );
+
+
+    if (hasStructuredDestinations) {
+      return null;
+    }
+
+
+    /*
+     * Si el builder ya preparó dailyTarget,
+     * aprovechamos todo lo que traiga.
+     *
+     * Si no, construimos el fallback acá.
+     */
+
+    const existing =
+      trackingMenuDestinations
+        ?.dailyTarget ||
+      {};
+
+
+    const dailyRemaining =
+      positiveTotals(
+        remaining ||
+        emptyTotals()
+      );
+
+
+    return {
+      ...existing,
+
+      kind:
+        "daily_target",
+
+      label:
+        existing.label ||
+        "Objetivo diario",
+
+      type:
+        "otra",
+
+      status:
+        "target",
+
+      targetMode:
+        true,
+
+      nativeTarget:
+        true,
+
+      executionId:
+        existing.executionId ||
+        `daily_target_${date}`,
+
+      target:
+        existing.target ||
+        totalsFromAny(
+          objective
+        ),
+
+      remaining:
+        dailyRemaining,
+    };
+  },
+  [
+    date,
+    objective,
+    remaining,
+    trackingMenuDestinations,
+  ]
+);
+
+
+const manualCompletionActive =
+  menuTrackingDay
+    ?.tracking
+    ?.dayCompletionMode ===
+  "manual_completion";
+
+
   const manualCompletionPlan = menuTrackingDay?.tracking?.manualCompletion?.plan || null;
   const manualProgress = useMemo(() => manualCompletionActive
     ? calculateManualDayProgress({
@@ -434,80 +771,1184 @@ export default function TrackingDiario() {
     });
   }
 
-  function addFood() {
-    if (!modalMeal || !selectedFood || addMutation.isPending) return;
-    const selectedMeal = meals.find((meal) => meal.id === modalMeal);
-    if (!selectedMeal) {
-      setToast({ type: "error", message: "Primero crea la comida donde queres cargar el alimento." });
+function closeTrackingDestinationModal() {
+  setDestinationModalOpen(false);
+  setPendingTrackingRegistration(null);
+  setDestinationWarning(null);
+  setPostCalculationWarning(null);
+  setCombinationPlan(null);
+}
+
+
+function trackingRegistrationHasPendingAuto(
+  registration = null
+) {
+  const items =
+    Array.isArray(registration?.items)
+      ? registration.items
+      : [];
+
+  return items.some(
+    (item) =>
+      !item?.hasEnteredQuantity ||
+      !Number.isFinite(
+        Number(item?.quantity)
+      ) ||
+      Number(item?.quantity) <= 0
+  );
+}
+
+
+function buildMenuTargetTrackingPayload(
+  destination
+) {
+  /*
+   * =========================================
+   * ESTA FUNCIÓN ES SÓLO PARA MENU_MEAL
+   * =========================================
+   *
+   * Es decir:
+   *
+   * propuesta concreta
+   * Pendiente
+   * ↓
+   * 🎯 Por meta
+   *
+   * Las metas puras del coach y el objetivo
+   * diario NO deben tocar targetMealIds.
+   */
+
+  if (
+    destination?.kind &&
+    destination.kind !== "menu_meal"
+  ) {
+    return null;
+  }
+
+
+  const currentTracking =
+    menuTrackingDay?.tracking || {};
+
+  const menuMealId =
+    String(
+      destination?.menuMealId || ""
+    ).trim();
+
+  if (!menuMealId) {
+    return null;
+  }
+
+
+  /*
+   * =========================================
+   * POR META
+   * =========================================
+   */
+
+  const targetIds =
+    new Set(
+      (
+        Array.isArray(
+          currentTracking.targetMealIds
+        )
+          ? currentTracking.targetMealIds
+          : []
+      ).map(String)
+    );
+
+  targetIds.add(
+    menuMealId
+  );
+
+
+  /*
+   * =========================================
+   * HECHAS
+   * =========================================
+   *
+   * Una propuesta concreta no puede quedar:
+   *
+   * ✓ Hecha
+   * +
+   * 🎯 Por meta
+   */
+
+  const completedIds =
+    (
+      Array.isArray(
+        currentTracking
+          .completedMenuMealIds
+      )
+        ? currentTracking
+            .completedMenuMealIds
+        : []
+    )
+      .map(String)
+      .filter(
+        (id) =>
+          id !== menuMealId
+      );
+
+
+  /*
+   * =========================================
+   * PAYLOAD COMPLETO
+   * =========================================
+   */
+
+  return {
+    date,
+
+    dayKey:
+      menuTrackingDay?.dayKey ||
+      currentTracking?.dayKey ||
+      undefined,
+
+    completedMenuMealIds:
+      completedIds,
+
+    targetMealIds:
+      [...targetIds],
+
+    manualEntries:
+      Array.isArray(
+        currentTracking.manualEntries
+      )
+        ? currentTracking.manualEntries
+        : [],
+
+    generatedRemainingMeals:
+      Array.isArray(
+        currentTracking
+          .generatedRemainingMeals
+      )
+        ? currentTracking
+            .generatedRemainingMeals
+        : [],
+
+    mealReplacements:
+      Array.isArray(
+        currentTracking.mealReplacements
+      )
+        ? currentTracking
+            .mealReplacements
+        : [],
+
+    foodReplacements:
+      Array.isArray(
+        currentTracking.foodReplacements
+      )
+        ? currentTracking
+            .foodReplacements
+        : [],
+
+    selectedAlternative:
+      currentTracking
+        .selectedAlternative ||
+      null,
+  };
+}
+
+
+async function saveTrackingRegistrationToMenuMeal(
+  destination,
+  registrationOverride = null,
+  { allocations = [], allocationDestinations = [] } = {}
+) {
+  const registration = registrationOverride || pendingTrackingRegistration;
+  if (
+    !destination ||
+    !registration
+  ) {
+    return false;
+  }
+
+
+  /*
+   * =========================================
+   * TIPO DE DESTINO
+   * =========================================
+   *
+   * menu_meal:
+   *   propuesta concreta del menú
+   *
+   * meal_target:
+   *   meta por comida pura del coach
+   *
+   * daily_target:
+   *   sólo objetivo diario
+   */
+
+  const destinationKind =
+    String(
+      destination?.kind ||
+      "menu_meal"
+    );
+
+
+  /*
+   * =========================================
+   * ALIMENTOS
+   * =========================================
+   */
+
+  const registrationItems =
+    Array.isArray(
+      registration
+        ?.items
+    ) &&
+    registration
+      .items.length
+      ? registration
+          .items
+      : registration?.food
+        ? [
+            {
+              food:
+                registration
+                  .food,
+
+              quantity:
+                registration
+                  .quantity,
+
+              unit:
+                registration
+                  .unit,
+
+              hasEnteredQuantity:
+                registration
+                  .hasEnteredQuantity,
+            },
+          ]
+        : [];
+
+
+  if (!registrationItems.length) {
+    setToast({
+      type: "error",
+
+      message:
+        "No hay alimentos para registrar.",
+    });
+
+    return false;
+  }
+
+
+  /*
+   * =========================================
+   * IDENTIDADES
+   * =========================================
+   */
+
+  const menuMealId =
+    String(
+      destination?.menuMealId || ""
+    ).trim();
+
+  const executionId =
+    String(
+      destination?.executionId || ""
+    ).trim();
+
+
+  /*
+   * executionId sí es obligatorio SIEMPRE.
+   *
+   * Ej:
+   *
+   * menu_target_<id>
+   *
+   * o:
+   *
+   * daily_target_2026-08-19
+   */
+
+  if (!executionId) {
+    setToast({
+      type: "error",
+
+      message:
+        "No pudimos identificar el destino del registro.",
+    });
+
+    return false;
+  }
+
+
+  /*
+   * Sólo menu_meal necesita obligatoriamente
+   * un ID de comida concreta del menú.
+   */
+
+  if (
+    destinationKind === "menu_meal" &&
+    !menuMealId
+  ) {
+    setToast({
+      type: "error",
+
+      message:
+        "No pudimos vincular esta comida con el menú.",
+    });
+
+    return false;
+  }
+
+
+  /*
+   * =========================================
+   * AUTO
+   * =========================================
+   *
+   * Lo dejamos igual.
+   *
+   * AUTO se implementa después.
+   */
+
+  const hasPendingAuto =
+    trackingRegistrationHasPendingAuto(
+      registration
+    );
+
+  if (hasPendingAuto) {
+    return false;
+  }
+
+
+  /*
+   * =========================================
+   * SNAPSHOTS REALES
+   * =========================================
+   */
+
+  const items =
+    registrationItems.map(
+      (item) =>
+        buildMenuItemSnapshot(
+          item.food,
+
+          Number(
+            item.quantity
+          ),
+
+          item.unit ||
+            item.food?.unidad ||
+            item.food?.unit ||
+            "g"
+        )
+    );
+
+
+  try {
+    setRegistrationSaving(true);
+
+    /*
+     * =========================================
+     * PASO 1
+     * ¿HAY QUE CAMBIAR ESTADO DEL MENÚ?
+     * =========================================
+     *
+     * SOLAMENTE:
+     *
+     * kind === menu_meal
+     *
+     * porque es una propuesta concreta que
+     * pasa a 🎯 Por meta.
+     *
+     *
+     * meal_target:
+     * ya nació siendo una meta.
+     *
+     * daily_target:
+     * no pertenece a ninguna comida.
+     */
+
+    const destinationsThatActivateTarget = [
+      destination,
+      ...(Array.isArray(allocationDestinations) ? allocationDestinations : []),
+    ].filter((entry, index, entries) => (
+      entry?.kind === "menu_meal" &&
+      entries.findIndex((candidate) => candidate?.menuMealId === entry?.menuMealId) === index
+    ));
+
+    if (destinationsThatActivateTarget.length) {
+      const menuPayload =
+        buildMenuTargetTrackingPayload(
+          destinationsThatActivateTarget[0]
+        );
+
+      if (!menuPayload) {
+        throw new Error(
+          "No pudimos preparar el estado Por meta."
+        );
+      }
+
+
+      const activatedIds = new Set(destinationsThatActivateTarget.map((entry) => String(entry.menuMealId)));
+      await saveMenuTrackingDay({
+        ...menuPayload,
+        targetMealIds: [
+          ...new Set([...(menuPayload.targetMealIds || []), ...activatedIds]),
+        ],
+        completedMenuMealIds: (menuPayload.completedMenuMealIds || []).filter((id) => !activatedIds.has(String(id))),
+      });
+    }
+
+
+    /*
+     * =========================================
+     * PASO 2
+     * FOODLOG REAL
+     * =========================================
+     *
+     * Los tres casos terminan acá.
+     *
+     *
+     * menu_meal
+     * ----------
+     * menu_target_<id comida>
+     *
+     *
+     * meal_target
+     * -----------
+     * menu_target_<id meta>
+     *
+     *
+     * daily_target
+     * ------------
+     * daily_target_<fecha>
+     */
+
+    const batchPayload = {
+        requestId:
+          createWriteRequestId(
+            date,
+            executionId,
+            registrationItems
+          ),
+
+        date,
+
+        mealId:
+          executionId,
+
+        mealType:
+          destination.type ||
+          (
+            destinationKind ===
+            "daily_target"
+              ? "otra"
+              : "otra"
+          ),
+
+        mealName:
+          destination.label ||
+          (
+            destinationKind ===
+            "daily_target"
+              ? "Objetivo diario"
+              : "Comida"
+          ),
+
+        items,
+        ...(Array.isArray(allocations) && allocations.length ? { allocations } : {}),
+      };
+
+    if (registration.autoCalculated === true) {
+      await addCalculatedMutation.mutateAsync(batchPayload);
+    } else {
+      await addFoodLogsBatch(batchPayload);
+    }
+
+
+    /*
+     * =========================================
+     * PASO 3
+     * REFRESCAR
+     * =========================================
+     */
+
+    await Promise.all([
+      trackingQuery.refetch(),
+      menuTrackingQuery.refetch(),
+    ]);
+
+
+    /*
+     * =========================================
+     * LIMPIEZA UI
+     * =========================================
+     */
+
+    setTrackingRegistrationItems(
+      []
+    );
+
+    setPendingTrackingRegistration(
+      null
+    );
+
+    setSelectedTrackingDestination(
+      null
+    );
+
+    setDestinationWarning(
+      null
+    );
+
+    setDestinationModalOpen(
+      false
+    );
+    setPostCalculationWarning(null);
+    setCombinationPlan(null);
+
+
+    /*
+     * =========================================
+     * MENSAJE
+     * =========================================
+     */
+
+    let successMessage =
+      `${items.length} alimento${
+        items.length === 1
+          ? ""
+          : "s"
+      } registrado${
+        items.length === 1
+          ? ""
+          : "s"
+      }.`;
+
+    if (
+      destinationKind === "menu_meal"
+    ) {
+      successMessage =
+        `${
+          destination.label ||
+          "Comida"
+        } pasó a Por meta y se registraron ${
+          items.length
+        } alimento${
+          items.length === 1
+            ? ""
+            : "s"
+        }.`;
+    }
+
+    if (
+      destinationKind === "meal_target"
+    ) {
+      successMessage =
+        `Registrado en ${
+          destination.label ||
+          "la meta de la comida"
+        }.`;
+    }
+
+    if (
+      destinationKind === "daily_target"
+    ) {
+      successMessage =
+        "Registrado en el objetivo diario.";
+    }
+
+    if (allocations.length > 1) {
+      successMessage = `Consumo registrado una sola vez y distribuido entre ${allocations.length} destinos.`;
+    }
+
+
+    setToast({
+      type: "success",
+
+      message:
+        successMessage,
+    });
+
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Error registrando destino de Tracking:",
+      error
+    );
+
+    setToast({
+      type: "error",
+
+      message:
+        error?.message ||
+        "No se pudo registrar la comida.",
+    });
+
+
+    /*
+     * NO limpiamos el registro pendiente.
+     *
+     * Así puede reintentar.
+     */
+
+    return false;
+  } finally {
+    setRegistrationSaving(false);
+  }
+}
+
+
+
+
+
+
+function selectTrackingDestination(
+  destination
+) {
+  if (
+    !destination ||
+    !pendingTrackingRegistration
+  ) {
+    return;
+  }
+
+  const level =
+    destination?.fit?.level ||
+    "neutral";
+
+
+  /*
+   * Amarillo / rojo:
+   * primero pedimos confirmación.
+   */
+  if (
+    level === "warning" ||
+    level === "over"
+  ) {
+    setDestinationWarning(
+      destination
+    );
+
+    return;
+  }
+
+
+  /*
+   * Verde:
+   * seguimos directamente.
+   */
+  void continueWithTrackingDestination(
+    destination
+  );
+}
+
+
+
+
+
+async function continueWithTrackingDestination(
+  destination
+) {
+  if (
+    !destination ||
+    !pendingTrackingRegistration
+  ) {
+    return;
+  }
+
+
+  /*
+   * Por ahora Calorías libres
+   * sigue con su flujo específico.
+   */
+  const resolvedDestination = destination.kind === "free" && !destination.executionId
+    ? { ...destination, executionId: "flexible_margin" }
+    : destination;
+
+
+  /*
+   * Guardamos qué comida eligió.
+   *
+   * Esto es especialmente importante
+   * para AUTO.
+   */
+  setSelectedTrackingDestination(
+    resolvedDestination
+  );
+
+
+  const hasPendingAuto =
+    trackingRegistrationHasPendingAuto(
+      pendingTrackingRegistration
+    );
+
+
+  /*
+   * =========================================
+   * AUTO
+   * =========================================
+   *
+   * NO guardamos todavía.
+   *
+   * Primero tenemos que calcular
+   * las cantidades contra la meta
+   * de esta comida.
+   */
+  if (hasPendingAuto) {
+    setDestinationWarning(null);
+
+    setDestinationModalOpen(false);
+
+    await calculatePendingTrackingRegistration(resolvedDestination);
+    return;
+  }
+
+
+  /*
+   * =========================================
+   * TODO FIJO
+   * =========================================
+   *
+   * Ya conocemos kcal/P/C/G reales.
+   * Podemos registrar directamente.
+   */
+  if (resolvedDestination.kind === "free") {
+    const candidate = trackingDestinationFit?.candidate || {};
+    const plan = suggestTrackingAllocations({ candidate, freeCalories: resolvedDestination, meals: [] });
+    await saveTrackingRegistrationToMenuMeal(
+      resolvedDestination,
+      pendingTrackingRegistration,
+      plan.valid ? { allocations: plan.allocations, allocationDestinations: plan.eligible } : {}
+    );
+    return;
+  }
+
+  await saveTrackingRegistrationToMenuMeal(resolvedDestination);
+}
+
+function registrationDrafts(registration = null) {
+  return (Array.isArray(registration?.items) ? registration.items : []).map((item, index) => {
+    const base = createTrackingFoodDraft(
+      item.food,
+      item.hasEnteredQuantity ? Number(item.quantity) : "",
+      item.id || `registration-${index + 1}`,
+      "calorie_fill"
+    );
+    return item.quantityMode === "auto" || item.quantityMode === "calculated" || !item.hasEnteredQuantity
+      ? markTrackingDraftAutomatic(base)
+      : markTrackingDraftManual(base);
+  });
+}
+
+function destinationAvailableTarget(destination = {}) {
+  if (destination.kind === "free") {
+    return { kcal: Math.max(0, Number(destination.remainingKcal) || 0), proteina: 0, carbs: 0, grasas: 0 };
+  }
+  if (destination.kind === "daily_target") {
+    return positiveTotals(destination.remaining || destination.target || {});
+  }
+  return positiveTotals(subtractTotals(destination.target || {}, destination.consumed || {}));
+}
+
+async function calculatePendingTrackingRegistration(destination) {
+  const registration = pendingTrackingRegistration;
+  const drafts = registrationDrafts(registration);
+  const input = trackingDraftCalculationPayload(drafts);
+  if (!input.pendingFoods.length) {
+    await saveTrackingRegistrationToMenuMeal(destination, registration);
+    return;
+  }
+  const availableTarget = destinationAvailableTarget(destination);
+  try {
+    setRegistrationSaving(true);
+    const response = await calculateTrackingQuantities(buildTrackingQuantityCalculationRequest({
+      date,
+      target: availableTarget,
+      trackingQuantityMode: trackingDraftsQuantityMode(drafts),
+      fixedFoods: input.fixedFoods,
+      pendingFoods: input.pendingFoods,
+    }));
+    const invalidFoodsMessage = trackingQuantityInvalidFoodsMessage(response?.optimization);
+    if (invalidFoodsMessage) throw new Error(invalidFoodsMessage);
+    if (response?.status === "error" || !Array.isArray(response?.foods) || !response.foods.length) {
+      throw new Error(response?.message || "No encontramos cantidades válidas para los alimentos Auto.");
+    }
+    const proposals = trackingDraftProposals(drafts, response.foods);
+    if (proposals.length !== drafts.length) throw new Error("No se calculó una cantidad para todos los alimentos Auto.");
+    const calculatedDrafts = applyTrackingDraftProposals(drafts, proposals, "calorie_fill");
+    if (!trackingDraftsReadyToConfirm(calculatedDrafts)) {
+      throw new Error("Revisá las cantidades: quedó un alimento Auto sin resolver.");
+    }
+    const resolvedItems = registration.items.map((item, index) => ({
+      ...item,
+      quantity: Number(calculatedDrafts[index]?.quantity),
+      hasEnteredQuantity: true,
+      quantityMode: item.hasEnteredQuantity ? "fixed" : "calculated",
+    }));
+    const resolvedRegistration = { ...registration, items: resolvedItems, autoCalculated: true };
+    const result = totalItems(resolvedItems.map((item) => buildMenuItemSnapshot(
+      item.food,
+      Number(item.quantity),
+      item.unit || item.food?.unidad || item.food?.unit || "g"
+    )));
+    const review = reviewTrackingRegistration({
+      target: availableTarget,
+      result,
+      destinationLabel: destination.label || "esta comida",
+    });
+    setPendingTrackingRegistration(resolvedRegistration);
+    if (review.issues.length) {
+      setPostCalculationWarning({ destination, registration: resolvedRegistration, review });
       return;
     }
-    const hasEnteredQuantity = String(quantity).trim() !== "";
-    const quantityValue = Number(quantity);
-    if ((!canAutoCalculateTrackingQuantities || hasEnteredQuantity)
-      && (!Number.isFinite(quantityValue) || quantityValue <= 0)) {
-      setToast({ type: "warning", message: "Ingresa una cantidad valida." });
-      return;
-    }
-    const selectedUnit = selectedFood.unidad || selectedFood.unit || "g";
-    if (hasEnteredQuantity && !isTrackingFoodQuantityPhysicallyValid(
+    await saveTrackingRegistrationToMenuMeal(destination, resolvedRegistration);
+  } catch (error) {
+    setToast({ type: "error", message: error?.message || "No pudimos calcular las cantidades Auto." });
+    setDestinationModalOpen(true);
+  } finally {
+    setRegistrationSaving(false);
+  }
+}
+
+function confirmTrackingDestinationWarning() {
+  if (
+    !destinationWarning ||
+    !pendingTrackingRegistration
+  ) {
+    return;
+  }
+
+  const destination =
+    destinationWarning;
+
+  setDestinationWarning(null);
+
+  void continueWithTrackingDestination(
+    destination
+  );
+}
+
+function resolvedRegistrationTotals(registration = null) {
+  return totalItems((Array.isArray(registration?.items) ? registration.items : []).map((item) => (
+    buildMenuItemSnapshot(
+      item.food,
+      Number(item.quantity),
+      item.unit || item.food?.unidad || item.food?.unit || "g"
+    )
+  )));
+}
+
+function openTrackingCombination(destination, registration = pendingTrackingRegistration) {
+  const candidate = resolvedRegistrationTotals(registration);
+  if (!(candidate.kcal > 0)) {
+    setToast({ type: "warning", message: "Primero resolvé las cantidades Auto para poder combinar destinos." });
+    return;
+  }
+  const normalizedDestination = destination?.kind === "free" && !destination?.executionId
+    ? { ...destination, executionId: "flexible_margin" }
+    : destination;
+  const plan = suggestTrackingAllocations({
+    candidate,
+    freeCalories: trackingDestinationFit?.freeCalories,
+    meals: trackingDestinationFit?.meals || [],
+    preferredExecutionId: normalizedDestination?.executionId || "",
+  });
+  setDestinationWarning(null);
+  setPostCalculationWarning(null);
+  setCombinationPlan({ plan, destination: normalizedDestination, registration });
+}
+
+async function confirmTrackingCombination() {
+  if (!combinationPlan?.plan?.valid) return;
+  const allocatedIds = new Set(combinationPlan.plan.allocations.map((entry) => entry.executionId));
+  const allocationDestinations = combinationPlan.plan.eligible.filter((entry) => allocatedIds.has(entry.executionId));
+  await saveTrackingRegistrationToMenuMeal(
+    combinationPlan.destination || allocationDestinations[0],
+    combinationPlan.registration,
+    { allocations: combinationPlan.plan.allocations, allocationDestinations }
+  );
+}
+
+
+
+
+function addFood() {
+  if (
+    !modalMeal ||
+    !selectedFood ||
+    addMutation.isPending
+  ) {
+    return;
+  }
+
+
+const isGeneralRegistration =
+  modalMeal ===
+  GENERAL_TRACKING_REGISTRATION_ID;
+
+const selectedMeal =
+  isGeneralRegistration
+    ? {
+        id:
+          GENERAL_TRACKING_REGISTRATION_ID,
+
+        label:
+          "Registro del día",
+
+        type:
+          "otra",
+
+        generalTrackingRegistration:
+          true,
+      }
+    : meals.find(
+        (meal) =>
+          meal.id === modalMeal
+      );
+
+if (!selectedMeal) {
+  setToast({
+    type: "error",
+    message:
+      "No pudimos preparar el registro.",
+  });
+
+  return;
+}
+
+
+
+  const hasEnteredQuantity =
+    String(quantity).trim() !== "";
+
+  const quantityValue =
+    Number(quantity);
+
+  /*
+   * Si NO podemos usar AUTO,
+   * la cantidad es obligatoria.
+   *
+   * Si podemos usar AUTO:
+   * - con cantidad = FIJO
+   * - sin cantidad = AUTO
+   */
+  if (
+    (
+      !canAutoCalculateTrackingQuantities ||
+      hasEnteredQuantity
+    ) &&
+    (
+      !Number.isFinite(quantityValue) ||
+      quantityValue <= 0
+    )
+  ) {
+    setToast({
+      type: "warning",
+      message:
+        "Ingresa una cantidad valida.",
+    });
+
+    return;
+  }
+
+  const selectedUnit =
+    selectedFood.unidad ||
+    selectedFood.unit ||
+    "g";
+
+  if (
+    hasEnteredQuantity &&
+    !isTrackingFoodQuantityPhysicallyValid(
       selectedFood,
       selectedUnit,
       quantityValue
-    )) {
-      setToast({
-        type: "warning",
-        message: `${selectedFood.nombre || selectedFood.name || "Este alimento"} se mide en unidades enteras.`,
-      });
-      return;
-    }
+    )
+  ) {
+    setToast({
+      type: "warning",
 
-    if (canAutoCalculateTrackingQuantities) {
-      const draftKey = trackingDraftKey(date, selectedMeal.id);
-      const currentMealDrafts = trackingFoodDrafts[draftKey] || [];
-      const draft = createTrackingFoodDraft(
-        selectedFood,
-        hasEnteredQuantity ? quantityValue : "",
-        createWriteRequestId(date, `${selectedMeal.id}-draft`),
-        trackingDraftsQuantityMode(currentMealDrafts)
-      );
-      setTrackingFoodDrafts((current) => ({
-        ...current,
-        [draftKey]: [...(current[draftKey] || []), draft],
-      }));
-      setQuantityCalculationFeedback((current) => {
-        if (!current[draftKey]) return current;
-        const next = { ...current };
-        delete next[draftKey];
-        return next;
-      });
-      closeFoodPicker();
-      return;
-    }
+      message:
+        `${
+          selectedFood.nombre ||
+          selectedFood.name ||
+          "Este alimento"
+        } se mide en unidades enteras.`,
+    });
 
-    const payload = {
-      date,
-      mealId: selectedMeal.id,
-      mealType: selectedMeal.type,
-      mealName: selectedMeal.label,
-      food: foodPayload(selectedFood),
-      cantidad: quantityValue,
-      unidad: selectedFood.unidad || selectedFood.unit || "g",
-    };
-
-    closeFoodPicker();
-
-    addMutation.mutate(
-      payload,
-      {
-        onSuccess: () => {
-          setToast({ type: "success", message: "Alimento guardado en tu diario." });
-        },
-        onError: (error) => {
-          setToast({ type: "error", message: error?.message || "No se pudo agregar el alimento." });
-        },
-      }
-    );
+    return;
   }
+
+  /*
+   * =========================================
+   * NUEVO FLUJO
+   * =========================================
+   *
+   * TODAVÍA NO:
+   *
+   * - creamos FoodLog
+   * - creamos draft
+   * - elegimos mealId técnico
+   *
+   * Primero guardamos temporalmente
+   * qué quiere registrar el usuario.
+   */
+  const nextItem = {
+  id:
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`,
+
+  food: selectedFood,
+
+  foodPayload:
+    foodPayload(selectedFood),
+
+  quantity:
+    hasEnteredQuantity
+      ? quantityValue
+      : "",
+
+  hasEnteredQuantity,
+
+  unit:
+    selectedUnit,
+
+  quantityMode:
+    hasEnteredQuantity
+      ? "fixed"
+      : "auto",
+
+  canAutoCalculate:
+    canAutoCalculateTrackingQuantities,
+};
+
+
+/*
+ * Si estamos entrando desde
+ * "Registrar comida",
+ * acumulamos alimentos.
+ */
+if (
+  modalMeal ===
+  GENERAL_TRACKING_REGISTRATION_ID
+) {
+  setTrackingRegistrationItems(
+    (current) => [
+      ...current,
+      nextItem,
+    ]
+  );
+
+  /*
+   * Limpiamos solamente el alimento
+   * actual para poder buscar otro.
+   *
+   * NO cerramos el modal.
+   */
+  setSelectedFood(null);
+
+  setQuantity(
+    canAutoCalculateTrackingQuantities
+      ? ""
+      : "100"
+  );
+
+  setSearch("");
+  setDebouncedSearch("");
+  setFoodResults([]);
+  setFoodSearchError("");
+
+  return;
+}
+
+
+/*
+ * Si agregamos desde una comida
+ * concreta del Tracking,
+ * mantenemos por ahora el flujo normal.
+ */
+setPendingTrackingRegistration({
+  sourceMeal: selectedMeal,
+
+  items: [
+    nextItem,
+  ],
+
+  createdAt:
+    Date.now(),
+});
+  /*
+   * Cerramos solamente el picker
+   * de alimentos.
+   */
+  closeFoodPicker();
+
+  /*
+   * Y abrimos el nuevo selector:
+   *
+   * ¿Dónde querés registrarlo?
+   */
+  setDestinationModalOpen(true);
+}
+
+
+function continueTrackingRegistration() {
+  if (!trackingRegistrationItems.length) {
+    setToast({
+      type: "warning",
+      message:
+        "Agregá al menos un alimento antes de continuar.",
+    });
+
+    return;
+  }
+
+  const invalidItem = trackingRegistrationItems.find((item) => (
+    (!canAutoCalculateTrackingQuantities && !item.hasEnteredQuantity) ||
+    (item.hasEnteredQuantity && !isTrackingFoodQuantityPhysicallyValid(
+      item.food,
+      item.unit,
+      item.quantity
+    ))
+  ));
+  if (invalidItem) {
+    setToast({
+      type: "warning",
+      message: `Revisá la cantidad de ${invalidItem.food?.nombre || invalidItem.food?.name || "un alimento"}.`,
+    });
+    return;
+  }
+
+  setPendingTrackingRegistration({
+    sourceMeal: {
+      id:
+        GENERAL_TRACKING_REGISTRATION_ID,
+
+      label:
+        "Registro del día",
+
+      type:
+        "otra",
+
+      generalTrackingRegistration:
+        true,
+    },
+
+    items:
+      trackingRegistrationItems,
+
+    createdAt:
+      Date.now(),
+  });
+
+  closeFoodPicker();
+
+  setDestinationModalOpen(true);
+}
+
+
+
 
   function openSettings() {
     setSettingsDraft(editableTrackingMeals());
@@ -1228,8 +2669,8 @@ export default function TrackingDiario() {
               <CalendarDays size={15} strokeWidth={2.3} aria-hidden="true" />
               {diaryStatusText}
             </div>
-            <h1>Tracking diario</h1>
-            <p>Registrá lo que comiste y compará tus macros reales contra tu objetivo diario.</p>
+<h1>Tracking</h1>
+<p>Registrá lo que comés y controlá tu objetivo del día.</p>
           </div>
         </header>
 
@@ -1286,27 +2727,35 @@ export default function TrackingDiario() {
           />
         ) : null}
 
-        {!manualCompletionActive ? (
-          <button
-            type="button"
-            className="td-calcRemainingBtn"
-            onClick={calculateRemainingTargets}
-            disabled={!canAutoCompleteRemainingMeals || !objective || updateMealsMutation.isPending}
-            title={!canAutoCompleteRemainingMeals ? "Disponible en Pro" : !objective ? "Configurá tus objetivos" : undefined}
-          >
-            <Crosshair size={18} strokeWidth={2.3} aria-hidden="true" />
-            <span>
-              <strong>Distribuir restante</strong>
-              <small>
-                {!canAutoCompleteRemainingMeals
-                  ? "Disponible en Pro"
-                  : !objective
-                    ? "Configurá tus objetivos para calcular el restante"
-                    : "Repartir la meta restante entre comidas pendientes"}
-              </small>
-            </span>
-          </button>
+        {!manualCompletionActive && Array.isArray(tracking?.allocations) && tracking.allocations.length ? (
+          <TrackingAllocationSummary groups={tracking.allocations} />
         ) : null}
+
+
+{!manualCompletionActive ? (
+  <button
+    type="button"
+    className="td-registerMealBtn"
+    onClick={() =>
+      openAdd(
+        GENERAL_TRACKING_REGISTRATION_ID
+      )
+    }
+  >
+    <Plus
+      size={23}
+      strokeWidth={2.7}
+      aria-hidden="true"
+    />
+
+    <span>Registrar comida</span>
+  </button>
+) : null}
+
+
+
+
+
 
         {manualCompletionActive && remainingMoments.some((moment) => moment.state === "planned") && Number(manualProgress?.remaining?.kcal) <= 0 ? (
           <div className="td-manualCompletionOptional" role="status">
@@ -1326,6 +2775,53 @@ export default function TrackingDiario() {
             <span>Agregá alimentos desde el + de la comida correspondiente.</span>
           </div>
         ) : null}
+
+
+        {completedMenuMeals.length ? (
+  <section className="td-menuConsumed">
+    <div className="td-menuConsumedHeader">
+      <div>
+        <strong>Consumido desde tu menú</strong>
+        <span>Estas comidas ya están incluidas en el total del Tracking.</span>
+      </div>
+    </div>
+
+    <div className="td-menuConsumedList">
+      {completedMenuMeals.map((entry, index) => {
+        const entryTotals = entry?.totals || {};
+
+        return (
+          <article
+            className="td-menuConsumedCard"
+            key={entry?.mealId || `menu-consumed-${index}`}
+          >
+            <div className="td-menuConsumedIcon">
+              <CheckCircle2 size={20} strokeWidth={2.4} aria-hidden="true" />
+            </div>
+
+            <div className="td-menuConsumedMain">
+              <div className="td-menuConsumedTop">
+                <strong>{entry?.name || "Comida del menú"}</strong>
+                <span className="td-menuConsumedBadge">Desde menú</span>
+              </div>
+
+              <div className="td-menuConsumedNutrition">
+                <b>{formatNumber(entryTotals.kcal || 0, 0)} kcal</b>
+                <small>
+                  P {formatNumber(entryTotals.proteina || 0, 0)} g
+                  {" · "}
+                  C {formatNumber(entryTotals.carbs || 0, 0)} g
+                  {" · "}
+                  G {formatNumber(entryTotals.grasas || 0, 0)} g
+                </small>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  </section>
+) : null}
 
         <section className={`td-meals ${meals.length ? "" : "is-empty"}`}>
           {meals.length ? meals.map((meal) => {
@@ -1651,19 +3147,29 @@ export default function TrackingDiario() {
               </article>
             );
           }) : (
-            <div className="td-dayEmpty">
-              <span className="td-addMealIcon">
-                <Plus size={22} strokeWidth={2.6} aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Todavia no hay comidas en este dia</strong>
-                <p>Agrega la primera seccion y carga alimentos cuando los registres.</p>
-              </div>
-              <button type="button" className="td-primaryBtn" onClick={() => setAddMealOpen(true)}>
-                <Plus size={17} />
-                Agregar comida
-              </button>
-            </div>
+
+<div className="td-dayEmpty td-dayEmptyV3">
+
+  <span className="td-dayEmptyV3Icon">
+    <Utensils
+      size={25}
+      strokeWidth={1.9}
+      aria-hidden="true"
+    />
+  </span>
+
+  <div>
+    <strong>
+      Todavía no registraste comidas hoy
+    </strong>
+
+    <p>
+      Cuando empieces a comer, tus registros van a aparecer acá.
+    </p>
+  </div>
+
+</div>
+
           )}
 
           {meals.length && (!manualCompletionActive || canPlanRemainingIntake) ? (
@@ -1680,6 +3186,64 @@ export default function TrackingDiario() {
           ) : null}
         </section>
       </section>
+
+      {!manualCompletionActive ? (
+  <button
+    type="button"
+    className="td-calcRemainingBtn td-planRemainingBtn"
+    onClick={
+      meals.length
+        ? calculateRemainingTargets
+        : () => setAddMealOpen(true)
+    }
+    disabled={
+      !canAutoCompleteRemainingMeals ||
+      !objective ||
+      updateMealsMutation.isPending
+    }
+    title={
+      !canAutoCompleteRemainingMeals
+        ? "Disponible en Pro"
+        : !objective
+          ? "Configurá tus objetivos"
+          : undefined
+    }
+  >
+    <span className="td-planRemainingIcon">
+      <Sparkles
+        size={21}
+        strokeWidth={2.2}
+        aria-hidden="true"
+      />
+    </span>
+
+    <span className="td-planRemainingCopy">
+      <strong>
+        Planificar lo que falta
+      </strong>
+
+      <small>
+        {!canAutoCompleteRemainingMeals
+          ? "Disponible en Pro"
+          : !objective
+            ? "Configurá tus objetivos nutricionales"
+            : meals.length
+              ? "Repartí tus kcal y macros restantes entre las comidas pendientes."
+              : "Creá comidas para completar tus kcal y macros restantes."}
+      </small>
+    </span>
+
+    <ChevronRight
+      className="td-planRemainingChevron"
+      size={21}
+      strokeWidth={2.4}
+      aria-hidden="true"
+    />
+  </button>
+) : null}
+
+
+
 
       {deleteMealCandidate ? (
         <div className="td-modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-delete-meal-title">
@@ -1742,7 +3306,19 @@ export default function TrackingDiario() {
                   <Utensils size={14} strokeWidth={2.3} aria-hidden="true" />
                   Agregar alimento
                 </span>
-                <h3 id="td-food-picker-title">{meals.find((meal) => meal.id === modalMeal)?.label}</h3>
+
+
+                <h3 id="td-food-picker-title">
+  {modalMeal ===
+  GENERAL_TRACKING_REGISTRATION_ID
+    ? "¿Qué comiste?"
+    : meals.find(
+        (meal) =>
+          meal.id === modalMeal
+      )?.label}
+</h3>
+
+
               </div>
               <button type="button" className="td-iconBtn" onClick={closeFoodPicker} aria-label="Cerrar">
                 <X size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -1791,17 +3367,42 @@ export default function TrackingDiario() {
                 {foodResults.map((food) => {
                   const active = selectedFood && foodIdOf(selectedFood) === foodIdOf(food);
                 return (
+
+
                   <button
-                    type="button"
-                    className={`td-pickCard ${active ? "active" : ""}`}
-                    key={foodIdOf(food)}
-                    onClick={() => setSelectedFood(food)}
-                    disabled={addMutation.isPending}
-                  >
-                    <strong>{food.nombre || food.name}</strong>
-                    <span>{foodMacroPreview(food)}</span>
-                    {active ? <CheckCircle2 size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
-                  </button>
+  type="button"
+  className={`td-pickCard td-foodSearchPickCard ${
+    active ? "active" : ""
+  }`}
+  key={foodIdOf(food)}
+  onClick={() => setSelectedFood(food)}
+  disabled={addMutation.isPending}
+>
+  <div className="td-foodSearchPickMain">
+    <strong>
+      {food.nombre || food.name}
+    </strong>
+
+    <small>
+      {food.unidad || food.unit || "g"}
+    </small>
+  </div>
+
+  <span className="td-foodSearchPickIcon">
+    {active ? (
+      <CheckCircle2
+        size={18}
+        aria-hidden="true"
+      />
+    ) : (
+      <Plus
+        size={18}
+        aria-hidden="true"
+      />
+    )}
+  </span>
+</button>
+
                 );
                 })}
               </div>
@@ -1848,15 +3449,203 @@ export default function TrackingDiario() {
 
             {projectedIssues.length ? <TrackingIssueList issues={projectedIssues} compact /> : null}
 
-            <button
-              type="button"
-              className="td-primaryBtn"
-              disabled={!selectedFood || addMutation.isPending}
-              onClick={addFood}
+{modalMeal ===
+GENERAL_TRACKING_REGISTRATION_ID &&
+trackingRegistrationItems.length ? (
+  <section className="td-registrationBasket">
+    <div className="td-registrationBasketHead">
+      <div>
+        <span>Tu registro</span>
+
+        <strong>
+          {trackingRegistrationItems.length}{" "}
+          alimento
+          {trackingRegistrationItems.length === 1
+            ? ""
+            : "s"}
+        </strong>
+      </div>
+
+      <small>
+        Podés seguir agregando
+      </small>
+    </div>
+
+    <div className="td-registrationBasketList">
+      {trackingRegistrationItems.map(
+        (item) => {
+          const itemName =
+            item?.food?.nombre ||
+            item?.food?.name ||
+            "Alimento";
+
+          let itemSnapshot = null;
+
+          if (
+            item.hasEnteredQuantity &&
+            Number(item.quantity) > 0
+          ) {
+            itemSnapshot =
+              buildMenuItemSnapshot(
+                item.food,
+                Number(item.quantity),
+                item.unit || "g"
+              );
+          }
+
+          return (
+            <div
+              className="td-registrationBasketItem"
+              key={item.id}
             >
-              {addMutation.isPending ? <Loader2 size={17} className="td-spin" /> : <Plus size={17} />}
-              {canAutoCalculateTrackingQuantities ? "Agregar a la comida" : "Agregar al diario"}
-            </button>
+              <div>
+                <strong>
+                  {itemName}
+                </strong>
+
+                <span>
+                  {item.hasEnteredQuantity
+                    ? `${formatNumber(
+                        item.quantity,
+                        1
+                      )} ${item.unit}`
+                    : "Cantidad Auto"}
+
+                  {itemSnapshot
+                    ? ` · ${formatNumber(
+                        itemSnapshot.kcal,
+                        0
+                      )} kcal`
+                    : ""}
+                </span>
+              </div>
+
+              <label className="td-registrationBasketQuantity">
+                <input
+                  value={item.quantity}
+                  inputMode="decimal"
+                  step={trackingFoodRequiresWholeQuantity(item.food, item.unit) ? "1" : "any"}
+                  placeholder={canAutoCalculateTrackingQuantities ? "Auto" : undefined}
+                  aria-label={`Cantidad de ${itemName}`}
+                  aria-invalid={item.hasEnteredQuantity && !isTrackingFoodQuantityPhysicallyValid(
+                    item.food,
+                    item.unit,
+                    item.quantity
+                  )}
+                  onChange={(event) => {
+                    const nextQuantity = event.target.value;
+                    const hasQuantity = String(nextQuantity).trim() !== "";
+                    setTrackingRegistrationItems((current) => current.map((currentItem) => (
+                      currentItem.id === item.id
+                        ? {
+                            ...currentItem,
+                            quantity: nextQuantity,
+                            hasEnteredQuantity: hasQuantity,
+                            quantityMode: hasQuantity ? "fixed" : "auto",
+                          }
+                        : currentItem
+                    )));
+                  }}
+                />
+                <span>{item.unit}</span>
+              </label>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setTrackingRegistrationItems(
+                    (current) =>
+                      current.filter(
+                        (currentItem) =>
+                          currentItem.id !==
+                          item.id
+                      )
+                  )
+                }
+                aria-label={`Quitar ${itemName}`}
+              >
+                <X
+                  size={15}
+                  strokeWidth={2.5}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+          );
+        }
+      )}
+    </div>
+  </section>
+) : null}
+
+
+{modalMeal ===
+GENERAL_TRACKING_REGISTRATION_ID ? (
+  <>
+    {selectedFood ? (
+      <button
+        type="button"
+        className="td-secondaryBtn td-registrationAddFoodBtn"
+        onClick={addFood}
+        disabled={addMutation.isPending}
+      >
+        <Plus
+          size={17}
+          strokeWidth={2.5}
+          aria-hidden="true"
+        />
+
+        Agregar alimento
+      </button>
+    ) : null}
+
+    {trackingRegistrationItems.length ? (
+      <button
+        type="button"
+        className="td-primaryBtn"
+        onClick={
+          continueTrackingRegistration
+        }
+      >
+        <ChevronRight
+          size={18}
+          strokeWidth={2.5}
+          aria-hidden="true"
+        />
+
+        Continuar con{" "}
+        {trackingRegistrationItems.length}{" "}
+        alimento
+        {trackingRegistrationItems.length === 1
+          ? ""
+          : "s"}
+      </button>
+    ) : null}
+  </>
+) : (
+  <button
+    type="button"
+    className="td-primaryBtn"
+    disabled={
+      !selectedFood ||
+      addMutation.isPending
+    }
+    onClick={addFood}
+  >
+    {addMutation.isPending ? (
+      <Loader2
+        size={17}
+        className="td-spin"
+      />
+    ) : (
+      <Plus size={17} />
+    )}
+
+    {canAutoCalculateTrackingQuantities
+      ? "Agregar a la comida"
+      : "Agregar al diario"}
+  </button>
+)}
             {canAutoCalculateTrackingQuantities ? (
               <p className="td-foodDraftFootnote">
                 Podés seguir agregando alimentos. Cuando cierres, calculá las cantidades o confirmá desde la comida.
@@ -1865,6 +3654,764 @@ export default function TrackingDiario() {
           </div>
         </div>
       ) : null}
+
+{destinationModalOpen &&
+pendingTrackingRegistration &&
+!destinationWarning ? (
+  <div
+    className="td-modalBackdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="td-tracking-destination-title"
+  >
+    <div
+      className="td-modal td-compactModal td-destinationModal"
+      ref={destinationDialogRef}
+      tabIndex={-1}
+    >
+      {/* =========================================
+          HEADER
+          ========================================= */}
+
+      <div className="td-modalTop">
+        <div>
+          <span className="td-kicker">
+            <Crosshair
+              size={14}
+              strokeWidth={2.4}
+              aria-hidden="true"
+            />
+
+            Registrar consumo
+          </span>
+
+          <h3 id="td-tracking-destination-title">
+            ¿Dónde querés registrarlo?
+          </h3>
+
+          <p className="td-destinationIntro">
+            Te mostramos dónde encaja mejor según las kcal y macros
+            disponibles.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="td-iconBtn"
+          onClick={closeTrackingDestinationModal}
+          aria-label="Cerrar"
+        >
+          <X
+            size={18}
+            strokeWidth={2.4}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+
+      {/* =========================================
+          ALIMENTO SELECCIONADO
+          ========================================= */}
+
+
+<section className="td-destinationFood">
+  <div className="td-destinationFoodTop">
+    <span>Vas a registrar</span>
+
+    <strong>
+      {Array.isArray(
+        pendingTrackingRegistration?.items
+      ) &&
+      pendingTrackingRegistration.items.length
+        ? `${
+            pendingTrackingRegistration.items.length
+          } alimento${
+            pendingTrackingRegistration.items.length === 1
+              ? ""
+              : "s"
+          }`
+        : pendingTrackingRegistration
+            ?.food
+            ?.nombre ||
+          pendingTrackingRegistration
+            ?.food
+            ?.name ||
+          "Alimento"}
+    </strong>
+  </div>
+
+
+  {/* =========================================
+      TOTAL COMBINADO
+      ========================================= */}
+
+  {trackingDestinationFit?.candidate ? (
+    <div className="td-destinationFoodMacros">
+      <b>
+        {formatNumber(
+          trackingDestinationFit.candidate.kcal,
+          0
+        )}{" "}
+        kcal
+      </b>
+
+      <span>
+        P{" "}
+        {formatNumber(
+          trackingDestinationFit.candidate.proteina,
+          1
+        )}
+      </span>
+
+      <span>
+        C{" "}
+        {formatNumber(
+          trackingDestinationFit.candidate.carbs,
+          1
+        )}
+      </span>
+
+      <span>
+        G{" "}
+        {formatNumber(
+          trackingDestinationFit.candidate.grasas,
+          1
+        )}
+      </span>
+    </div>
+  ) : (
+    <small>
+      Hay cantidades pendientes. El encaje definitivo
+      se calculará cuando estén resueltas.
+    </small>
+  )}
+
+
+  {/* =========================================
+      LISTA DE ALIMENTOS
+      ========================================= */}
+
+  {Array.isArray(
+    pendingTrackingRegistration?.items
+  ) &&
+  pendingTrackingRegistration.items.length ? (
+    <div className="td-destinationFoodItems">
+      {pendingTrackingRegistration.items.map(
+        (item, index) => {
+          const itemName =
+            item?.food?.nombre ||
+            item?.food?.name ||
+            `Alimento ${index + 1}`;
+
+          let itemSnapshot = null;
+
+          if (
+            item?.hasEnteredQuantity &&
+            Number(item?.quantity) > 0
+          ) {
+            itemSnapshot =
+              buildMenuItemSnapshot(
+                item.food,
+                Number(item.quantity),
+                item.unit ||
+                  item.food?.unidad ||
+                  item.food?.unit ||
+                  "g"
+              );
+          }
+
+          return (
+            <div
+              className="td-destinationFoodItem"
+              key={
+                item.id ||
+                `${itemName}-${index}`
+              }
+            >
+              <div>
+                <strong>
+                  {itemName}
+                </strong>
+
+                <span>
+                  {item?.hasEnteredQuantity
+                    ? `${formatNumber(
+                        item.quantity,
+                        1
+                      )} ${item.unit}`
+                    : "Cantidad Auto"}
+                </span>
+              </div>
+
+              <small>
+                {itemSnapshot
+                  ? `${formatNumber(
+                      itemSnapshot.kcal,
+                      0
+                    )} kcal`
+                  : "Pendiente"}
+              </small>
+            </div>
+          );
+        }
+      )}
+    </div>
+  ) : pendingTrackingRegistration
+      ?.hasEnteredQuantity ? (
+    <small className="td-destinationFoodQty">
+      {formatNumber(
+        pendingTrackingRegistration.quantity,
+        1
+      )}{" "}
+      {pendingTrackingRegistration.unit}
+    </small>
+  ) : null}
+</section>
+
+
+{/* =========================================
+    OBJETIVO DIARIO
+
+    Se muestra solamente cuando no existe
+    ninguna estructura de comidas.
+    ========================================= */}
+
+{dailyTargetDestination ? (
+  <section className="td-destinationSection">
+
+    <span className="td-destinationSectionTitle">
+      Meta disponible
+    </span>
+
+
+    <button
+      type="button"
+      className="td-destinationCard is-good"
+      onClick={() =>
+        selectTrackingDestination(
+          dailyTargetDestination
+        )
+      }
+    >
+
+      <div className="td-destinationCardStatus">
+        <Crosshair
+          size={18}
+          strokeWidth={2.5}
+          aria-hidden="true"
+        />
+      </div>
+
+
+      <div className="td-destinationCardMain">
+
+        <div className="td-destinationCardTop">
+
+          <strong>
+            Objetivo diario
+          </strong>
+
+          <span className="td-destinationMode">
+            Por meta
+          </span>
+
+        </div>
+
+
+        <span className="td-destinationFitTitle">
+          Registrar contra la meta del día
+        </span>
+
+
+        <small>
+          {formatNumber(
+            dailyTargetDestination
+              .remaining
+              ?.kcal,
+            0
+          )}{" "}
+          kcal disponibles
+        </small>
+
+
+        <div className="td-destinationMacros">
+
+          <span>
+            P{" "}
+            {formatNumber(
+              dailyTargetDestination
+                .remaining
+                ?.proteina,
+              1
+            )}
+          </span>
+
+
+          <span>
+            C{" "}
+            {formatNumber(
+              dailyTargetDestination
+                .remaining
+                ?.carbs,
+              1
+            )}
+          </span>
+
+
+          <span>
+            G{" "}
+            {formatNumber(
+              dailyTargetDestination
+                .remaining
+                ?.grasas,
+              1
+            )}
+          </span>
+
+        </div>
+
+
+        <p className="td-destinationHint">
+          No hay comidas definidas para este día.
+          Este consumo se descuenta directamente
+          de tu objetivo diario.
+        </p>
+
+      </div>
+
+
+      <ChevronRight
+        size={19}
+        aria-hidden="true"
+      />
+
+    </button>
+
+  </section>
+) : null}
+
+
+
+      {/* =========================================
+          MEJOR OPCIÓN
+          ========================================= */}
+
+      {trackingDestinationFit
+        ?.meals
+        ?.some(
+          (destination) =>
+            destination.recommended
+        ) ? (
+        <section className="td-destinationSection">
+          <span className="td-destinationSectionTitle">
+            Mejor opción
+          </span>
+
+          {trackingDestinationFit.meals
+            .filter(
+              (destination) =>
+                destination.recommended
+            )
+            .map((destination) => (
+              <button
+                type="button"
+                className="td-destinationCard is-good is-recommended"
+                key={destination.menuMealId}
+                onClick={() =>
+                  selectTrackingDestination(
+                    destination
+                  )
+                }
+              >
+                <div className="td-destinationCardStatus">
+                  <CheckCircle2
+                    size={18}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                  />
+                </div>
+
+                <div className="td-destinationCardMain">
+                  <div className="td-destinationCardTop">
+                    <strong>
+                      {destination.label}
+                    </strong>
+
+                    <span className="td-destinationRecommended">
+                      Recomendado
+                    </span>
+                  </div>
+
+                  <span className="td-destinationFitTitle">
+                    {destination.fit?.title}
+                  </span>
+
+                  <small>
+                    {formatNumber(
+                      destination.remaining?.kcal,
+                      0
+                    )}{" "}
+                    kcal disponibles
+                  </small>
+
+                  <div className="td-destinationMacros">
+                    <span>
+                      P{" "}
+                      {formatNumber(
+                        destination.remaining?.proteina,
+                        1
+                      )}
+                    </span>
+
+                    <span>
+                      C{" "}
+                      {formatNumber(
+                        destination.remaining?.carbs,
+                        1
+                      )}
+                    </span>
+
+                    <span>
+                      G{" "}
+                      {formatNumber(
+                        destination.remaining?.grasas,
+                        1
+                      )}
+                    </span>
+                  </div>
+
+                  {destination.fit?.subtitle ? (
+                    <p className="td-destinationHint">
+                      {destination.fit.subtitle}
+                    </p>
+                  ) : null}
+                </div>
+
+                <ChevronRight
+                  size={19}
+                  aria-hidden="true"
+                />
+              </button>
+            ))}
+        </section>
+      ) : null}
+
+
+      {/* =========================================
+          CALORÍAS LIBRES
+          ========================================= */}
+
+      {trackingDestinationFit
+        ?.freeCalories
+        ?.available ? (
+        <section className="td-destinationSection">
+          <span className="td-destinationSectionTitle">
+            Margen disponible
+          </span>
+
+          <button
+            type="button"
+            className={`td-destinationCard is-${
+              trackingDestinationFit
+                .freeCalories
+                ?.fit
+                ?.level || "neutral"
+            }`}
+            onClick={() =>
+              selectTrackingDestination(
+                trackingDestinationFit.freeCalories
+              )
+            }
+          >
+            <div className="td-destinationCardStatus">
+              <Sparkles
+                size={18}
+                aria-hidden="true"
+              />
+            </div>
+
+            <div className="td-destinationCardMain">
+              <div className="td-destinationCardTop">
+                <strong>
+                  Calorías libres
+                </strong>
+              </div>
+
+              <span className="td-destinationFitTitle">
+                {
+                  trackingDestinationFit
+                    .freeCalories
+                    ?.fit
+                    ?.title
+                }
+              </span>
+
+              <small>
+                {formatNumber(
+                  trackingDestinationFit
+                    .freeCalories
+                    .remainingKcal,
+                  0
+                )}{" "}
+                kcal disponibles
+              </small>
+
+              {trackingDestinationFit
+                .freeCalories
+                ?.fit
+                ?.subtitle ? (
+                <p className="td-destinationHint">
+                  {
+                    trackingDestinationFit
+                      .freeCalories
+                      .fit
+                      .subtitle
+                  }
+                </p>
+              ) : null}
+            </div>
+
+            <ChevronRight
+              size={19}
+              aria-hidden="true"
+            />
+          </button>
+        </section>
+      ) : null}
+
+
+      {/* =========================================
+          OTRAS COMIDAS
+          ========================================= */}
+
+      {trackingDestinationFit
+        ?.meals
+        ?.filter(
+          (destination) =>
+            !destination.recommended
+        )
+        .length ? (
+        <section className="td-destinationSection">
+          <span className="td-destinationSectionTitle">
+            Otras comidas disponibles
+          </span>
+
+          <div className="td-destinationList">
+            {trackingDestinationFit.meals
+              .filter(
+                (destination) =>
+                  !destination.recommended
+              )
+              .map((destination) => {
+                const level =
+                  destination.fit?.level ||
+                  "neutral";
+
+                const Icon =
+                  level === "good"
+                    ? CheckCircle2
+                    : AlertTriangle;
+
+                return (
+                  <button
+                    type="button"
+                    className={`td-destinationCard is-${level}`}
+                    key={destination.menuMealId}
+                    onClick={() =>
+                      selectTrackingDestination(
+                        destination
+                      )
+                    }
+                  >
+                    <div className="td-destinationCardStatus">
+                      <Icon
+                        size={18}
+                        strokeWidth={2.4}
+                        aria-hidden="true"
+                      />
+                    </div>
+
+                    <div className="td-destinationCardMain">
+                      <div className="td-destinationCardTop">
+                        <strong>
+                          {destination.label}
+                        </strong>
+
+                        <span className="td-destinationMode">
+                          {destination.status ===
+                          "target"
+                            ? "Por meta"
+                            : "Pendiente"}
+                        </span>
+                      </div>
+
+                      <span className="td-destinationFitTitle">
+                        {destination.fit?.title}
+                      </span>
+
+                      <small>
+                        {formatNumber(
+                          destination.remaining?.kcal,
+                          0
+                        )}{" "}
+                        kcal disponibles
+                      </small>
+
+                      <div className="td-destinationMacros">
+                        <span>
+                          P{" "}
+                          {formatNumber(
+                            destination
+                              .remaining
+                              ?.proteina,
+                            1
+                          )}
+                        </span>
+
+                        <span>
+                          C{" "}
+                          {formatNumber(
+                            destination
+                              .remaining
+                              ?.carbs,
+                            1
+                          )}
+                        </span>
+
+                        <span>
+                          G{" "}
+                          {formatNumber(
+                            destination
+                              .remaining
+                              ?.grasas,
+                            1
+                          )}
+                        </span>
+                      </div>
+
+                      {destination.fit?.subtitle ? (
+                        <p className="td-destinationHint">
+                          {destination.fit.subtitle}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <ChevronRight
+                      size={19}
+                      aria-hidden="true"
+                    />
+                  </button>
+                );
+              })}
+          </div>
+        </section>
+      ) : null}
+
+
+      {/* =========================================
+          SIN DESTINOS
+          ========================================= */}
+
+{!dailyTargetDestination &&
+!trackingDestinationFit
+  ?.meals
+  ?.length &&
+!trackingDestinationFit
+  ?.freeCalories
+  ?.available ? (
+  <div className="td-empty compact">
+    No hay destinos disponibles para este registro.
+  </div>
+) : null}
+
+
+      {/* =========================================
+          CANCELAR
+          ========================================= */}
+
+      <button
+        type="button"
+        className="td-secondaryBtn td-destinationCancel"
+        onClick={closeTrackingDestinationModal}
+      >
+        Cancelar
+      </button>
+    </div>
+  </div>
+) : null}
+
+{destinationWarning &&
+pendingTrackingRegistration ? (
+  <TrackingDestinationWarningModal
+    destination={destinationWarning}
+
+    registration={
+      pendingTrackingRegistration
+    }
+
+    onBack={() =>
+      setDestinationWarning(null)
+    }
+
+    onCombine={() => {
+      openTrackingCombination(destinationWarning);
+    }}
+
+    onConfirm={
+      confirmTrackingDestinationWarning
+    }
+
+    onClose={
+      closeTrackingDestinationModal
+    }
+  />
+) : null}
+
+{postCalculationWarning ? (
+  <TrackingPostCalculationModal
+    data={postCalculationWarning}
+    saving={registrationSaving}
+    onRecalculate={() => {
+      const current = postCalculationWarning;
+      setPostCalculationWarning(null);
+      void calculatePendingTrackingRegistration(current.destination);
+    }}
+    onEdit={() => {
+      setTrackingRegistrationItems(postCalculationWarning.registration.items || []);
+      setPostCalculationWarning(null);
+      setModalMeal(GENERAL_TRACKING_REGISTRATION_ID);
+    }}
+    onChooseDestination={() => {
+      setPostCalculationWarning(null);
+      setDestinationModalOpen(true);
+    }}
+    onCombine={() => openTrackingCombination(
+      postCalculationWarning.destination,
+      postCalculationWarning.registration
+    )}
+    onConfirm={() => void saveTrackingRegistrationToMenuMeal(
+      postCalculationWarning.destination,
+      postCalculationWarning.registration
+    )}
+    onClose={closeTrackingDestinationModal}
+  />
+) : null}
+
+{combinationPlan ? (
+  <TrackingCombinationModal
+    data={combinationPlan}
+    saving={registrationSaving}
+    onBack={() => {
+      setCombinationPlan(null);
+      setDestinationModalOpen(true);
+    }}
+    onConfirm={() => void confirmTrackingCombination()}
+    onClose={closeTrackingDestinationModal}
+  />
+) : null}
+
+
 
       {settingsOpen ? (
         <MealSettingsDrawer
@@ -1967,6 +4514,585 @@ function MealOptionsMenu({
           <span>Eliminar comida</span>
         </button>
       ) : null}
+    </div>
+  );
+}
+function TrackingDestinationWarningModal({
+  destination,
+  registration,
+  onBack,
+  onCombine,
+  onConfirm,
+  onClose,
+}) {
+  const panelRef = useRef(null);
+
+  useTrackingDialogKeyboard(
+    panelRef,
+    true,
+    {
+      onClose: onBack,
+    }
+  );
+
+  const fit =
+    destination?.fit || {};
+
+  const excess =
+    fit?.excess || {};
+
+  const isFree =
+    destination?.kind === "free";
+
+  const registrationItems = Array.isArray(registration?.items) && registration.items.length
+    ? registration.items
+    : registration?.food ? [registration] : [];
+  const foodName = registrationItems.length > 1
+    ? `${registrationItems.length} alimentos`
+    : registrationItems[0]?.food?.nombre ||
+      registrationItems[0]?.food?.name ||
+      "Alimento";
+
+  const onlyItem = registrationItems.length === 1 ? registrationItems[0] : null;
+  const quantityLabel = onlyItem?.hasEnteredQuantity
+    ? `${formatNumber(onlyItem.quantity, 1)} ${onlyItem.unit}`
+    : "";
+
+  /*
+   * Calculamos kcal/macros del alimento
+   * que el usuario está por registrar.
+   */
+  const candidate = totalItems(registrationItems
+    .filter((item) => item?.food && item?.hasEnteredQuantity && Number(item.quantity) > 0)
+    .map((item) => buildMenuItemSnapshot(
+      item.food,
+      Number(item.quantity),
+      item.unit || item.food?.unidad || item.food?.unit || "g"
+    )));
+
+  const candidateKcal =
+    Number(candidate?.kcal || 0);
+
+  const freeAvailable =
+    Math.max(
+      0,
+      Number(
+        destination?.remainingKcal || 0
+      )
+    );
+
+  const kcalExcess =
+    isFree
+      ? Math.max(
+          0,
+          Number(
+            fit?.overflowKcal || 0
+          )
+        )
+      : Math.max(
+          0,
+          Number(
+            excess?.kcal || 0
+          )
+        );
+
+  const serious =
+    fit?.level === "over";
+
+  return (
+    <div
+      className="td-modalBackdrop td-overflowBackdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="td-destination-warning-title"
+    >
+      <div
+        className={`td-modal td-overflowModal ${
+          serious
+            ? "is-over"
+            : "is-warning"
+        }`}
+        ref={panelRef}
+        tabIndex={-1}
+      >
+        <span
+          className="td-overflowHandle"
+          aria-hidden="true"
+        />
+
+        <button
+          type="button"
+          className="td-overflowClose"
+          onClick={onClose}
+          aria-label="Cerrar"
+        >
+          <X
+            size={19}
+            strokeWidth={2.4}
+          />
+        </button>
+
+
+        {/* =====================================
+            CALORÍAS LIBRES
+            ===================================== */}
+
+        {isFree ? (
+          <>
+            <div className="td-overflowBadge">
+              <Sparkles
+                size={16}
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
+
+              Calorías libres
+            </div>
+
+            <h3
+              id="td-destination-warning-title"
+              className="td-overflowTitle"
+            >
+              No entra completo
+            </h3>
+
+
+            <div className="td-overflowFood">
+              <div className="td-overflowFoodMain">
+                <Utensils
+                  size={18}
+                  strokeWidth={2.1}
+                  aria-hidden="true"
+                />
+
+                <strong>
+                  {foodName}
+                </strong>
+
+                {quantityLabel ? (
+                  <span>
+                    · {quantityLabel}
+                  </span>
+                ) : null}
+              </div>
+
+              {candidateKcal > 0 ? (
+                <b>
+                  {formatNumber(
+                    candidateKcal,
+                    0
+                  )} kcal
+                </b>
+              ) : null}
+            </div>
+
+
+            <p className="td-overflowSummary">
+              Tus calorías libres cubren{" "}
+              <strong className="is-covered">
+                {formatNumber(
+                  freeAvailable,
+                  0
+                )} kcal
+              </strong>
+              .
+
+              <br />
+
+              Quedan{" "}
+              <strong className="is-rest">
+                {formatNumber(
+                  kcalExcess,
+                  0
+                )} kcal
+              </strong>{" "}
+              por ubicar.
+            </p>
+
+
+            <div className="td-overflowSplit">
+              <span className="is-free">
+                {formatNumber(
+                  freeAvailable,
+                  0
+                )} kcal libres
+              </span>
+
+              <b>+</b>
+
+              <span className="is-rest">
+                {formatNumber(
+                  kcalExcess,
+                  0
+                )} kcal restantes
+              </span>
+            </div>
+
+
+            <div className="td-overflowInfo">
+              <span aria-hidden="true">
+                i
+              </span>
+
+              <p>
+                Podés combinar el excedente
+                con otra comida pendiente o
+                Por meta.
+              </p>
+            </div>
+
+
+            <div className="td-overflowActions">
+
+              {/* COMBINAR */}
+
+              <button
+                type="button"
+                className="td-overflowAction is-primary"
+                onClick={onCombine}
+              >
+                <span className="td-overflowActionIcon">
+                  <Crosshair
+                    size={20}
+                    strokeWidth={2.2}
+                  />
+                </span>
+
+                <span className="td-overflowActionCopy">
+                  <strong>
+                    Combinar con otra comida
+                  </strong>
+
+                  <small>
+                    Usar{" "}
+                    {formatNumber(
+                      freeAvailable,
+                      0
+                    )} kcal libres y elegir
+                    dónde va el resto
+                  </small>
+                </span>
+
+                <ChevronRight
+                  size={18}
+                  aria-hidden="true"
+                />
+              </button>
+
+
+              {/* ELEGIR OTRO */}
+
+              <button
+                type="button"
+                className="td-overflowAction"
+                onClick={onBack}
+              >
+                <span className="td-overflowActionIcon">
+                  <RefreshCw
+                    size={19}
+                    strokeWidth={2.1}
+                  />
+                </span>
+
+                <span className="td-overflowActionCopy">
+                  <strong>
+                    Elegir otro destino
+                  </strong>
+
+                  <small>
+                    No usar calorías libres
+                  </small>
+                </span>
+
+                <ChevronRight
+                  size={18}
+                  aria-hidden="true"
+                />
+              </button>
+
+
+              {/* REGISTRAR EXCESO */}
+
+              <button
+                type="button"
+                className="td-overflowAction is-muted"
+                onClick={onConfirm}
+              >
+                <span className="td-overflowActionIcon">
+                  <Plus
+                    size={19}
+                    strokeWidth={2.2}
+                  />
+                </span>
+
+                <span className="td-overflowActionCopy">
+                  <strong>
+                    Registrar igualmente
+                  </strong>
+
+                  <small>
+                    Contarlo como exceso
+                    del día
+                  </small>
+                </span>
+
+                <ChevronRight
+                  size={18}
+                  aria-hidden="true"
+                />
+              </button>
+
+            </div>
+          </>
+        ) : (
+
+          /*
+           * =====================================
+           * COMIDA NORMAL CON EXCESO
+           * =====================================
+           */
+
+          <>
+            <div className="td-overflowBadge is-warning">
+              <AlertTriangle
+                size={16}
+                strokeWidth={2.3}
+              />
+
+              Revisar registro
+            </div>
+
+            <h3
+              id="td-destination-warning-title"
+              className="td-overflowTitle"
+            >
+              {serious
+                ? `Supera ${destination.label}`
+                : `Revisá ${destination.label}`}
+            </h3>
+
+
+            <div className="td-overflowFood">
+              <div className="td-overflowFoodMain">
+                <Utensils
+                  size={18}
+                  strokeWidth={2.1}
+                />
+
+                <strong>
+                  {foodName}
+                </strong>
+
+                {quantityLabel ? (
+                  <span>
+                    · {quantityLabel}
+                  </span>
+                ) : null}
+              </div>
+
+              {candidateKcal > 0 ? (
+                <b>
+                  {formatNumber(
+                    candidateKcal,
+                    0
+                  )} kcal
+                </b>
+              ) : null}
+            </div>
+
+
+            <div className="td-overflowInfo is-warning">
+              <AlertTriangle
+                size={18}
+                strokeWidth={2.3}
+              />
+
+              <p>
+                Este consumo supera lo disponible
+                en {destination.label}. Tracking
+                puede registrarlo igualmente porque
+                representa lo que realmente comiste.
+              </p>
+            </div>
+
+
+            <div className="td-overflowActions">
+              <button
+                type="button"
+                className="td-overflowAction"
+                onClick={onBack}
+              >
+                <span className="td-overflowActionCopy">
+                  <strong>
+                    Elegir otro destino
+                  </strong>
+
+                  <small>
+                    Volver a comparar las comidas
+                  </small>
+                </span>
+
+                <ChevronRight
+                  size={18}
+                />
+              </button>
+
+
+              <button
+                type="button"
+                className="td-overflowAction is-primary"
+                onClick={onConfirm}
+              >
+                <span className="td-overflowActionCopy">
+                  <strong>
+                    Registrar igualmente
+                  </strong>
+
+                  <small>
+                    Guardar el consumo real
+                  </small>
+                </span>
+
+                <ChevronRight
+                  size={18}
+                />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+function TrackingAllocationSummary({ groups = [] }) {
+  const entries = (Array.isArray(groups) ? groups : []).filter((group) => (
+    Array.isArray(group?.allocations) && group.allocations.length
+  ));
+  if (!entries.length) return null;
+
+  return (
+    <section className="td-allocationSummary" aria-label="Distribución de consumos">
+      <div className="td-allocationSummaryHead">
+        <span><Layers3 size={17} aria-hidden="true" /></span>
+        <div>
+          <strong>Consumos distribuidos</strong>
+          <small>Cada bloque corresponde a un único consumo real.</small>
+        </div>
+      </div>
+      {entries.map((group, groupIndex) => (
+        <article className="td-allocationGroup" key={group.writeRequestId || `allocation-${groupIndex}`}>
+          <div className="td-allocationGroupTotal">
+            <span>Consumo total</span>
+            <b>{formatNumber(group.total?.kcal, 0)} kcal</b>
+          </div>
+          <div className="td-allocationRows">
+            {group.allocations.map((allocation) => (
+              <div className="td-allocationRow" key={`${group.writeRequestId || groupIndex}:${allocation.executionId}`}>
+                <span>{allocation.label || (allocation.kind === "free" ? "Calorías libres" : "Comida")}</span>
+                <b>{formatNumber(allocation.totals?.kcal, 0)} kcal</b>
+                <small>
+                  P {formatNumber(allocation.totals?.proteina, 1)} · C {formatNumber(allocation.totals?.carbs, 1)} · G {formatNumber(allocation.totals?.grasas, 1)}
+                </small>
+              </div>
+            ))}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function TrackingPostCalculationModal({
+  data,
+  saving = false,
+  onRecalculate,
+  onEdit,
+  onChooseDestination,
+  onCombine,
+  onConfirm,
+  onClose,
+}) {
+  const review = data?.review || {};
+  const destination = data?.destination || {};
+  return (
+    <div className="td-modalBackdrop td-overflowBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-auto-review-title">
+      <section className={`td-modal td-overflowModal is-${review.level || "warning"}`}>
+        <button type="button" className="td-overflowClose" onClick={onClose} aria-label="Cerrar"><X size={19} /></button>
+        <div className="td-overflowBadge is-warning"><AlertTriangle size={16} /> Validación posterior a Auto</div>
+        <h3 id="td-auto-review-title" className="td-overflowTitle">Revisá esta combinación</h3>
+        <p className="td-overflowSummary">
+          Calculamos las cantidades contra el restante real de <strong>{destination.label || "la comida"}</strong>, pero encontramos diferencias que conviene revisar.
+        </p>
+        <div className="td-destinationFoodMacros">
+          <b>{formatNumber(review.result?.kcal, 0)} kcal</b>
+          <span>P {formatNumber(review.result?.proteina, 1)}</span>
+          <span>C {formatNumber(review.result?.carbs, 1)}</span>
+          <span>G {formatNumber(review.result?.grasas, 1)}</span>
+        </div>
+        <div className="td-overflowInfo">
+          <span aria-hidden="true">!</span>
+          <div>
+            {(review.issues || []).map((issue) => (
+              <p key={issue.code}><strong>{issue.label}:</strong> {issue.message}</p>
+            ))}
+          </div>
+        </div>
+        <div className="td-overflowSplit">
+          <span>Meta {formatNumber(review.target?.kcal, 0)} kcal</span>
+          <b>→</b>
+          <span>Resultado {formatNumber(review.result?.kcal, 0)} kcal</span>
+        </div>
+        <div className="td-overflowActions">
+          <button type="button" className="td-overflowAction is-primary" onClick={onRecalculate} disabled={saving}><RefreshCw size={19} /><span className="td-overflowActionCopy"><strong>Recalcular</strong><small>Intentar otro ajuste Auto</small></span></button>
+          <button type="button" className="td-overflowAction" onClick={onEdit} disabled={saving}><SlidersHorizontal size={19} /><span className="td-overflowActionCopy"><strong>Editar cantidades</strong><small>Volver al registro antes de guardar</small></span></button>
+          <button type="button" className="td-overflowAction" onClick={onChooseDestination} disabled={saving}><Crosshair size={19} /><span className="td-overflowActionCopy"><strong>Elegir otro destino</strong><small>Calcular contra otra meta disponible</small></span></button>
+          <button type="button" className="td-overflowAction" onClick={onCombine} disabled={saving}><Layers3 size={19} /><span className="td-overflowActionCopy"><strong>Combinar con otra comida</strong><small>Repartir imputación, no el FoodLog</small></span></button>
+          <button type="button" className="td-overflowAction is-muted" onClick={onConfirm} disabled={saving}><Plus size={19} /><span className="td-overflowActionCopy"><strong>Registrar igualmente</strong><small>Tracking conserva lo que realmente comiste</small></span></button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TrackingCombinationModal({ data, saving = false, onBack, onConfirm, onClose }) {
+  const plan = data?.plan || {};
+  return (
+    <div className="td-modalBackdrop td-overflowBackdrop" role="dialog" aria-modal="true" aria-labelledby="td-combination-title">
+      <section className="td-modal td-overflowModal is-warning">
+        <button type="button" className="td-overflowClose" onClick={onClose} aria-label="Cerrar"><X size={19} /></button>
+        <div className="td-overflowBadge"><Layers3 size={16} /> Imputación combinada</div>
+        <h3 id="td-combination-title" className="td-overflowTitle">Distribuir un solo consumo</h3>
+        <p className="td-overflowSummary">
+          Consumo real: <strong>{formatNumber(plan.total?.kcal, 0)} kcal</strong>. Se guardará una sola tanda de FoodLogs.
+        </p>
+        {plan.valid ? (
+          <div className="td-destinationList">
+            {(plan.allocations || []).map((allocation) => (
+              <div className="td-destinationCard is-good" key={allocation.executionId}>
+                <div className="td-destinationCardStatus"><CheckCircle2 size={18} /></div>
+                <div className="td-destinationCardMain">
+                  <div className="td-destinationCardTop"><strong>{allocation.label}</strong><span className="td-destinationMode">{allocation.kind === "free" ? "Libres" : "Por meta"}</span></div>
+                  <small>{formatNumber(allocation.totals?.kcal, 0)} kcal · P {formatNumber(allocation.totals?.proteina, 1)} · C {formatNumber(allocation.totals?.carbs, 1)} · G {formatNumber(allocation.totals?.grasas, 1)}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="td-overflowInfo" role="alert">
+            <span aria-hidden="true">!</span>
+            <p>No encontramos otra comida disponible que absorba el restante sin superar tus metas. Quedan {formatNumber(plan.unallocatedKcal, 0)} kcal sin asignar.</p>
+          </div>
+        )}
+        <div className="td-overflowActions">
+          <button type="button" className="td-overflowAction" onClick={onBack} disabled={saving}><ChevronLeft size={19} /><span className="td-overflowActionCopy"><strong>Elegir otros destinos</strong><small>Volver al selector</small></span></button>
+          {plan.valid ? <button type="button" className="td-overflowAction is-primary" onClick={onConfirm} disabled={saving}><CheckCircle2 size={19} /><span className="td-overflowActionCopy"><strong>Confirmar distribución</strong><small>Las asignaciones suman exactamente {formatNumber(plan.total?.kcal, 0)} kcal</small></span></button> : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2324,15 +5450,24 @@ function DailySummaryCard({
 }) {
   if (!objective) {
     return (
-      <section className="td-objectivePending" aria-label="Meta diaria pendiente">
+      <section
+        className="td-objectivePending"
+        aria-label="Meta diaria pendiente"
+      >
         <span className="td-actionIcon">
           <Flag size={20} strokeWidth={2.2} aria-hidden="true" />
         </span>
+
         <div>
           <strong>Meta diaria pendiente</strong>
-          <p>Configurá tus objetivos para ver kcal y macros del día.</p>
+          <p>
+            Configurá tus objetivos para ver kcal y macros del día.
+          </p>
         </div>
-        <Link to="/app/objetivos">Configurar objetivos</Link>
+
+        <Link to="/app/objetivos">
+          Configurar objetivos
+        </Link>
       </section>
     );
   }
@@ -2340,103 +5475,248 @@ function DailySummaryCard({
   const target = objective || emptyTotals();
   const consumed = totals || emptyTotals();
   const rest = remaining || emptyTotals();
-  const hasMenuTotals = hasPositiveTotals(menuTotals);
-  const hasPendingTotals = Number(pendingTotals?.kcal) > 0;
-  const progress = macroProgressPct(consumed.kcal, target.kcal);
+
+  const consumedKcal = Number(consumed.kcal) || 0;
+  const targetKcal = Number(target.kcal) || 0;
+  const remainingKcal = Number(rest.kcal) || 0;
+
+  const progress = macroProgressPct(
+    consumedKcal,
+    targetKcal
+  );
+
   const progressLabel = Math.round(progress);
-  const hasKcalTarget = Number(target.kcal) > 0;
-  const ChevronIcon = expanded ? ChevronUp : ChevronDown;
-  const primaryMetrics = [
+
+  const progressWidth = Math.max(
+    0,
+    Math.min(100, progress)
+  );
+
+  const hasPendingTotals =
+    Number(pendingTotals?.kcal) > 0;
+
+  const hasMenuTotals =
+    hasPositiveTotals(menuTotals);
+
+  const macros = [
     {
-      label: "Objetivo",
-      value: hasKcalTarget ? displayCompactKcal(target.kcal) : "Libre",
-      tone: "goal",
+      key: "proteina",
+      label: "Proteína",
+      short: "P",
+      tone: "protein",
     },
     {
-      label: "Consumido",
-      value: displayCompactKcal(consumed.kcal),
-      tone: "consumed",
+      key: "carbs",
+      label: "Carbs",
+      short: "C",
+      tone: "carbs",
     },
     {
-      label: "Restante",
-      value: hasKcalTarget ? displayCompactKcal(rest.kcal) : "-",
-      tone: Number(rest.kcal) < 0 ? "remaining over" : "remaining",
+      key: "grasas",
+      label: "Grasas",
+      short: "G",
+      tone: "fat",
     },
   ];
 
   return (
-    <section className={`td-dailySummary ${expanded ? "expanded" : ""}`}>
-      <button
-        type="button"
-        className="td-dailySummaryToggle"
-        aria-expanded={expanded}
-        aria-controls="td-daily-summary-detail"
-        onClick={onToggle}
-      >
-        <span className="td-dailySummaryContent">
-          <span className="td-dailySummaryLabelRow">
-            <span className="td-dailySummaryTitle">Resumen diario</span>
-          </span>
-          <span className="td-dailySummaryMetrics" aria-label="Resumen de calorias">
-            {primaryMetrics.map((metric) => (
-              <span className={`td-dailyMetric ${metric.tone}`} key={metric.label}>
-                <strong>{metric.value}</strong>
-                <span>{metric.label.toLowerCase()}</span>
-              </span>
-            ))}
-          </span>
-          <span className="td-dailySummaryMacroPills">
-            <DailyMacroRow label="Consumidos" totals={consumed} tone="consumed" />
-            {hasPendingTotals ? (
-              <span className="pending" role="status">
-                <small>+ {displayCompactKcal(pendingTotals.kcal)} por confirmar</small>
-                <strong>Total proyectado {displayCompactKcal(projectedTotals.kcal)} · {macroLineCurrent(projectedTotals)}</strong>
-              </span>
-            ) : null}
-            {hasKcalTarget ? (
-              <DailyMacroRow label="Restantes" totals={rest} tone="remaining" />
-            ) : null}
-            {hasMenuTotals ? (
-              <span className="menu">
-                <small>Menú realizado{Number.isFinite(Number(menuAdherence)) ? ` · ${formatNumber(menuAdherence, 0)}%` : ""}</small>
-                <strong>{displayCompactKcal(menuTotals.kcal)} · {macroLineCurrent(menuTotals)}</strong>
-              </span>
-            ) : null}
-          </span>
-        </span>
-        <span className="td-dailySummarySide">
-          <span
-            className="td-dailySummaryPct"
-            style={{
-              background: `conic-gradient(#ffe25e ${progress * 3.6}deg, rgba(255,255,255,0.13) 0deg)`,
-            }}
-            aria-hidden="true"
-          >
-            <span>
-              <strong>{progressLabel}%</strong>
-              <small>nutrición</small>
-            </span>
-          </span>
-          <span className="td-dailySummaryChevron">
-            <ChevronIcon size={20} strokeWidth={2.5} aria-hidden="true" />
-          </span>
-        </span>
-      </button>
+    <section className="td-dailySummary td-dailySummaryV3">
 
-      {expanded ? (
-        <div className="td-dailySummaryDetail" id="td-daily-summary-detail">
-          <span className="td-dailySummaryDetailTitle">Progreso de macros</span>
-          <div className="td-summaryMetricGrid">
-            <MacroProgress label="Calorías" value={consumed.kcal} target={target.kcal} suffix="kcal" tone="kcal" />
-            <MacroProgress label="Proteína" value={consumed.proteina} target={target.proteina} suffix="g" tone="protein" />
-            <MacroProgress label="Carbs" value={consumed.carbs} target={target.carbs} suffix="g" tone="carbs" />
-            <MacroProgress label="Grasas" value={consumed.grasas} target={target.grasas} suffix="g" tone="fat" />
+      <div className="td-summaryV3Top">
+
+        <div className="td-summaryV3Main">
+
+          <span className="td-summaryV3Eyebrow">
+            Resumen del día
+          </span>
+
+          <div className="td-summaryV3Calories">
+
+            <strong>
+              {formatNumber(consumedKcal, 0)}
+            </strong>
+
+            <span>/</span>
+
+            <b>
+              {formatNumber(targetKcal, 0)}
+            </b>
+
+            <em>kcal</em>
+
           </div>
+
+          <div
+            className={`td-summaryV3Remaining ${
+              remainingKcal < 0 ? "over" : ""
+            }`}
+          >
+            {remainingKcal >= 0 ? (
+              <>
+                <strong>
+                  {formatNumber(remainingKcal, 0)}
+                </strong>
+                <span> kcal restantes</span>
+              </>
+            ) : (
+              <>
+                <strong>
+                  +{formatNumber(Math.abs(remainingKcal), 0)}
+                </strong>
+                <span> kcal sobre el objetivo</span>
+              </>
+            )}
+          </div>
+
+          <div
+            className="td-summaryV3Progress"
+            aria-label={`${progressLabel}% del objetivo diario`}
+          >
+            <span
+              style={{
+                width: `${progressWidth}%`,
+              }}
+            />
+          </div>
+
+          <div className="td-summaryV3ProgressMeta">
+            <span>{progressLabel}%</span>
+
+            <span>
+              Objetivo: {formatNumber(targetKcal, 0)} kcal
+            </span>
+          </div>
+
+        </div>
+
+        <div
+          className="td-summaryV3Ring"
+          style={{
+            background: `conic-gradient(
+              #ffd85a ${progressWidth * 3.6}deg,
+              rgba(255,255,255,.10) 0deg
+            )`,
+          }}
+          aria-hidden="true"
+        >
+          <span>
+            <strong>{progressLabel}%</strong>
+            <small>completado</small>
+          </span>
+        </div>
+
+      </div>
+
+      <div className="td-summaryV3Macros">
+
+        {macros.map((macro) => {
+
+          const value =
+            Number(consumed?.[macro.key]) || 0;
+
+          const macroTarget =
+            Number(target?.[macro.key]) || 0;
+
+          const macroPct =
+            macroProgressPct(value, macroTarget);
+
+          return (
+            <div
+              className={`td-summaryV3Macro ${macro.tone}`}
+              key={macro.key}
+            >
+
+              <span className="td-summaryV3MacroLabel">
+                {macro.label}
+              </span>
+
+              <div className="td-summaryV3MacroValue">
+
+                <b>
+                  {macro.short}
+                </b>
+
+                <strong>
+                  {formatNumber(value, 1)}
+                </strong>
+
+                <span>
+                  /
+                  {" "}
+                  {macroTarget > 0
+                    ? `${formatNumber(macroTarget, 1)} g`
+                    : "sin meta"}
+                </span>
+
+              </div>
+
+              <div className="td-summaryV3MacroBar">
+                <span
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, macroPct)
+                    )}%`,
+                  }}
+                />
+              </div>
+
+            </div>
+          );
+        })}
+
+      </div>
+
+      {hasPendingTotals || hasMenuTotals ? (
+        <div className="td-summaryV3Secondary">
+
+          {hasPendingTotals ? (
+            <span>
+              <small>Por confirmar</small>
+
+              <strong>
+                + {displayCompactKcal(
+                  pendingTotals.kcal
+                )}
+              </strong>
+            </span>
+          ) : null}
+
+          {hasMenuTotals ? (
+            <span>
+              <small>
+                Menú realizado
+                {Number.isFinite(
+                  Number(menuAdherence)
+                )
+                  ? ` · ${formatNumber(
+                      menuAdherence,
+                      0
+                    )}%`
+                  : ""}
+              </small>
+
+              <strong>
+                {displayCompactKcal(
+                  menuTotals.kcal
+                )}
+              </strong>
+            </span>
+          ) : null}
+
         </div>
       ) : null}
+
     </section>
   );
 }
+
+
+
+
+
+
+
 
 function DailyMacroRow({ label, totals = {}, tone = "" }) {
   const macros = [
@@ -3055,6 +6335,31 @@ function addTotals(a, b) {
   };
 }
 
+function subtractTotals(a = {}, b = {}) {
+  return {
+    kcal: round((a.kcal || 0) - (b.kcal || 0)),
+    proteina: round((a.proteina || 0) - (b.proteina || 0)),
+    carbs: round((a.carbs || 0) - (b.carbs || 0)),
+    grasas: round((a.grasas || 0) - (b.grasas || 0)),
+  };
+}
+
+function trackingFoodLogTotals(tracking = {}) {
+  const items = Object.values(tracking?.meals || {})
+    .flatMap((mealItems) => (Array.isArray(mealItems) ? mealItems : []));
+
+  if (!items.length) {
+    return totalsFromAny(tracking?.totals || emptyTotals());
+  }
+
+  return items
+    .filter((item) => item?.source !== "menu_equivalent_consumption")
+    .reduce(
+      (totals, item) => addTotals(totals, item),
+      emptyTotals()
+    );
+}
+
 function totalsFromAny(value = {}) {
   const safe = value && typeof value === "object" ? value : {};
   const nested = safe.totals || safe.totales || safe.macros || safe.macrosTotales || {};
@@ -3275,11 +6580,15 @@ function foodPayload(food = {}) {
   };
 }
 
-function createWriteRequestId(date = "", mealId = "") {
-  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
-    ? globalThis.crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `manual-completion:${date}:${String(mealId || "moment").slice(0, 60)}:${randomPart}`;
+function createWriteRequestId(date = "", mealId = "", items = []) {
+  const registrationId = String(items?.[0]?.id || "").trim();
+  const stablePart = registrationId || (
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
+  return `tracking-registration:${date}:${String(mealId || "moment").slice(0, 45)}:${stablePart.slice(0, 40)}`;
 }
 
 function trackingDraftBrowserStorage() {

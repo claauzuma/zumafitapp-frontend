@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  Info,
+Lock,
+Unlock,
   Activity,
   AlertTriangle,
   Apple,
@@ -510,19 +513,55 @@ export default function ClienteDetalleProfesional() {
     }
   }
 
-  function applyNutritionPreview() {
-    if (!nutritionPreview?.ready) return;
-    const target = nutritionPreview.target || {};
-    setNutritionDraft((current) => ({
-      ...current,
-      kcal: valueOrEmpty(target.kcal),
-      p: valueOrEmpty(target.macros?.p),
-      c: valueOrEmpty(target.macros?.c),
-      g: valueOrEmpty(target.macros?.g),
-    }));
-    setNutritionPreview(null);
-    setOk("Propuesta aplicada al borrador. Revisala y guardá la planificación para confirmar.");
-  }
+
+
+async function applyNutritionPreview(editedTarget = null) {
+  if (!nutritionPreview?.ready) return;
+
+  const target =
+    editedTarget ||
+    nutritionPreview.target ||
+    {};
+
+  const macros = target.macros || {};
+
+  const calculatedKcal = calculateMacroKcal(
+    macros.p,
+    macros.c,
+    macros.g
+  );
+
+  const nextDraft = {
+    ...nutritionDraft,
+
+    // Guardamos las kcal que realmente corresponden
+    // a los macros finales elegidos.
+    kcal: valueOrEmpty(
+      calculatedKcal ?? target.kcal
+    ),
+
+    p: valueOrEmpty(macros.p),
+    c: valueOrEmpty(macros.c),
+    g: valueOrEmpty(macros.g),
+  };
+
+  // Reflejar inmediatamente en pantalla.
+  setNutritionDraft(nextDraft);
+
+  // Cerrar calculadora.
+  setNutritionPreview(null);
+
+  // IMPORTANTE:
+  // persistir realmente en backend.
+  await requestNutritionSave(
+    nextDraft,
+    "Planificación nutricional aplicada al cliente."
+  );
+}
+
+
+
+
 
   async function viewAsClient() {
     try {
@@ -566,43 +605,92 @@ export default function ClienteDetalleProfesional() {
   ];
 
   return (
+    
     <div className="prof-page">
-      <section className="prof-shell">
-        <div className="prof-detailHero">
-          <Avatar user={client} size="large" />
-          <div className="prof-detailInfo">
-            <div className="prof-kicker"><UserRound size={14} /> Alumno asignado</div>
-            <h1 className="prof-title">{fullName(client)}</h1>
-            <div className="prof-clientEmail">{client?.email || "Sin email"}</div>
-            <div className="prof-chipRow">
-              <span className="prof-chip info"><Target size={14} /> {goalLabel(client?.goal?.type)}</span>
-              <span className="prof-chip"><Flame size={14} /> {fmtKcal(client?.metasActuales?.kcal)}</span>
-              <span className="prof-chip good">Estado: {client?.estado || "activo"}</span>
-              <span className="prof-chip">Asignado: {fmtDate(client?.coach?.assignedAt)}</span>
-            </div>
-          </div>
-          <button type="button" className="prof-btn compact" onClick={viewAsClient} disabled={saving === "impersonation"}>
-            {saving === "impersonation" ? <RefreshCw size={16} className="spin" /> : <Eye size={16} />}
-            Ver como cliente
-          </button>
+  <section className="prof-shell">
+
+    <div className="prof-detailHero prof-detailHeroCompact">
+
+      <Avatar user={client} size="large" />
+
+      <div className="prof-detailInfo">
+
+        <div className="prof-kicker">
+          <UserRound size={13} />
+          Alumno asignado
         </div>
 
-        <div className="prof-tabs">
-          {tabs.map((tab) => {
-            const TabIcon = tab.icon;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                className={`prof-tab ${activeTab === tab.key ? "active" : ""}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                <TabIcon size={17} strokeWidth={2.35} aria-hidden="true" />
-                {tab.label}
-              </button>
-            );
-          })}
+        <h1 className="prof-title">
+          {fullName(client)}
+        </h1>
+
+        <div className="prof-clientEmail">
+          {client?.email || "Sin email"}
         </div>
+
+        <div className="prof-chipRow">
+          <span className="prof-chip info">
+            <Target size={13} />
+            {goalLabel(client?.goal?.type)}
+          </span>
+
+          <span className="prof-chip">
+            <Flame size={13} />
+            {fmtKcal(client?.metasActuales?.kcal)}
+          </span>
+
+          <span className="prof-chip good">
+            Estado: {client?.estado || "activo"}
+          </span>
+
+          <span className="prof-chip">
+            Asignado: {fmtDate(client?.coach?.assignedAt)}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="prof-btn compact prof-viewClientCompact"
+          onClick={viewAsClient}
+          disabled={saving === "impersonation"}
+        >
+          {saving === "impersonation" ? (
+            <RefreshCw size={15} className="spin" />
+          ) : (
+            <Eye size={15} />
+          )}
+
+          Ver como cliente
+        </button>
+
+      </div>
+    </div>
+
+    <div className="prof-tabs">
+      {tabs.map((tab) => {
+        const TabIcon = tab.icon;
+
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            className={`prof-tab ${
+              activeTab === tab.key ? "active" : ""
+            }`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            <TabIcon
+              size={17}
+              strokeWidth={2.35}
+              aria-hidden="true"
+            />
+
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+
 
         {detailQuery.isFetching && !detailQuery.isLoading ? <div className="prof-empty compact">Actualizando datos...</div> : null}
         {loadErr ? <div className="prof-error">{loadErr}</div> : null}
@@ -652,43 +740,52 @@ export default function ClienteDetalleProfesional() {
             onCompleteOnboarding={() => setEditingOnboarding(true)}
           />
         )}
+{activeTab === "nutricion" && (
+  <EditablePanel
+    title=""
+    icon={null}
+    locked={!access.nutrition}
+    lockedText="No disponible: tu perfil no tiene especialidad de nutrición o tu plan no permite gestión nutricional."
+  >
 
-        {activeTab === "nutricion" && (
-          <EditablePanel
-            title="Planificación nutricional"
-            icon={Apple}
-            locked={!access.nutrition}
-            lockedText="No disponible: tu perfil no tiene especialidad de nutrición o tu plan no permite gestión nutricional."
-          >
-            <NutritionGeneralSection
-              draft={nutritionDraft}
-              onEdit={() => setEditingMacros(true)}
-              onCalculate={openNutritionCalculator}
-              calculating={saving === "nutrition-preview"}
-            />
 
-            <DailyTargetsSection
-              client={client}
-              nutritionDraft={nutritionDraft}
-              onEditDay={setEditingNutritionDay}
-              onApplyGeneral={applyGeneralToWeek}
-              onRecalculateWeek={recalculateNutritionWeek}
-            />
 
-            {nutritionAssignmentImpact.affectedDays.length ? (
-              <NutritionAssignmentImpactNotice
-                impact={nutritionAssignmentImpact}
-                onReview={() => setPendingNutritionSave({
-                  draft: nutritionDraft,
-                  okMessage: "Asignaciones nutricionales revisadas.",
-                  impact: nutritionAssignmentImpact,
-                })}
-              />
-            ) : null}
 
-            <SaveRow onSave={saveNutrition} saving={saving === "nutrition"} label="Guardar planificación" />
-          </EditablePanel>
-        )}
+    <NutritionGeneralSection
+      draft={nutritionDraft}
+      onEdit={() => setEditingMacros(true)}
+      onCalculate={openNutritionCalculator}
+      calculating={saving === "nutrition-preview"}
+    />
+
+    <DailyTargetsSection
+      client={client}
+      nutritionDraft={nutritionDraft}
+      onEditDay={setEditingNutritionDay}
+      onApplyGeneral={applyGeneralToWeek}
+      onRecalculateWeek={recalculateNutritionWeek}
+    />
+
+    {nutritionAssignmentImpact.affectedDays.length ? (
+      <NutritionAssignmentImpactNotice
+        impact={nutritionAssignmentImpact}
+        onReview={() =>
+          setPendingNutritionSave({
+            draft: nutritionDraft,
+            okMessage: "Asignaciones nutricionales revisadas.",
+            impact: nutritionAssignmentImpact,
+          })
+        }
+      />
+    ) : null}
+
+    <SaveRow
+      onSave={saveNutrition}
+      saving={saving === "nutrition"}
+      label="Guardar planificación"
+    />
+  </EditablePanel>
+)}
 
         {activeTab === "menu" && (
           <EditablePanel
@@ -1108,14 +1205,38 @@ function formatKcalChange(previous, next) {
   return `${from} → ${to} kcal`;
 }
 
-function EditablePanel({ title, icon: Icon, locked, lockedText, children }) {
+function EditablePanel({
+  title,
+  icon: Icon,
+  locked,
+  lockedText,
+  children,
+}) {
   return (
     <div className="prof-panel">
-      <div className="prof-sectionTitle">
-        {Icon ? <Icon size={18} strokeWidth={2.3} aria-hidden="true" /> : null}
-        {title}
-      </div>
-      {locked ? <div className="prof-lock">{lockedText}</div> : children}
+
+      {title ? (
+        <div className="prof-sectionTitle">
+          {Icon ? (
+            <Icon
+              size={18}
+              strokeWidth={2.3}
+              aria-hidden="true"
+            />
+          ) : null}
+
+          {title}
+        </div>
+      ) : null}
+
+      {locked ? (
+        <div className="prof-lock">
+          {lockedText}
+        </div>
+      ) : (
+        children
+      )}
+
     </div>
   );
 }
@@ -1512,161 +1633,448 @@ function ClientProgressTimeline({ progress }) {
   );
 }
 
-function NutritionGeneralSection({ draft, onEdit, onCalculate, calculating = false }) {
-  const calculatedKcal = calculateMacroKcal(draft.p, draft.c, draft.g);
-  const hasMacros = calculatedKcal !== null;
-  return (
-    <section className="prof-nutritionBlock prof-macroBaseCard">
-      <div className="prof-nutritionBlockHead">
-        <div>
-          <span className="prof-nutritionEyebrow">Base del plan</span>
-          <h3>Macros base</h3>
-          <p>Los días sin configuración propia heredan esta distribución.</p>
-        </div>
-        <div className="prof-actions compact">
-          <button type="button" className="prof-btn compact" onClick={onCalculate} disabled={calculating}>
-            {calculating ? <RefreshCw size={15} className="spin" /> : <Calculator size={15} />}
-            Calcular
-          </button>
-          <button type="button" className="prof-btn compact" onClick={onEdit}>
-            <Pencil size={15} /> Editar
-          </button>
-        </div>
-      </div>
+function NutritionGeneralSection({
+  draft,
+  onEdit,
+  onCalculate,
+  calculating = false,
+}) {
+  const calculatedKcal = calculateMacroKcal(
+    draft.p,
+    draft.c,
+    draft.g
+  );
 
-      <div className="prof-macroBaseSummary">
-        <div className="prof-calculatedKcal featured">
-          <span className="prof-macroIcon"><Flame size={17} strokeWidth={2.5} /></span>
-          <span>{hasMacros ? "Kcal calculadas" : "Completá los macros base"}</span>
-          <strong>{hasMacros ? displayTargetValue(calculatedKcal, "kcal") : "Pendiente"}</strong>
-          <small>{hasMacros ? "Según proteína, carbohidratos y grasas" : "Completá P/C/G para calcular kcal"}</small>
-        </div>
-        <NutritionMacro icon={Beef} tone="protein" label="Proteína" value={draft.p} suffix=" g" />
-        <NutritionMacro icon={Wheat} tone="carbs" label="Carbs" value={draft.c} suffix=" g" />
-        <NutritionMacro icon={Droplets} tone="fat" label="Grasas" value={draft.g} suffix=" g" />
+  const hasMacros = calculatedKcal !== null;
+
+  return (
+    <section className="prof-nutritionBlock prof-nutritionBaseV3">
+
+  <div className="prof-nutritionBaseCompactHead">
+    <div className="prof-nutritionBaseCompactTitle">
+      <Apple size={20} />
+      <h3>Macros base</h3>
+    </div>
+
+    <div className="prof-actions compact">
+      <button
+        type="button"
+        className="prof-btn compact"
+        onClick={onCalculate}
+        disabled={calculating}
+      >
+        {calculating ? (
+          <RefreshCw size={15} className="spin" />
+        ) : (
+          <Calculator size={15} />
+        )}
+
+        Calcular
+      </button>
+
+      <button
+        type="button"
+        className="prof-btn compact"
+        onClick={onEdit}
+      >
+        <Pencil size={15} />
+        Editar
+      </button>
+    </div>
+  </div>
+
+  <div className="prof-nutritionBaseV3Grid">
+
+    <div className="prof-calculatedKcal prof-baseMacroKcalV3">
+      <span className="prof-macroIcon">
+        <Flame size={17} strokeWidth={2.5} />
+      </span>
+
+      <div>
+        <span>Kcal calculadas</span>
+
+        <strong>
+          {hasMacros
+            ? displayTargetValue(calculatedKcal, "kcal")
+            : "Pendiente"}
+        </strong>
+
+        <small>
+          {hasMacros
+            ? "Según proteína, carbohidratos y grasas"
+            : "Completá P/C/G para calcular kcal"}
+        </small>
       </div>
-      <div className="prof-macroBaseGoal"><span>Objetivo nutricional</span><strong>{goalLabel(draft.goalType)}</strong></div>
-    </section>
+    </div>
+
+    <NutritionMacro
+      icon={Beef}
+      tone="protein"
+      label="Proteína"
+      value={draft.p}
+      suffix=" g"
+    />
+
+    <NutritionMacro
+      icon={Wheat}
+      tone="carbs"
+      label="Carbs"
+      value={draft.c}
+      suffix=" g"
+    />
+
+    <NutritionMacro
+      icon={Droplets}
+      tone="fat"
+      label="Grasas"
+      value={draft.g}
+      suffix=" g"
+    />
+
+  </div>
+
+  <div className="prof-macroBaseGoal">
+    <span>Objetivo nutricional</span>
+    <strong>{goalLabel(draft.goalType)}</strong>
+  </div>
+
+</section>
+
   );
 }
 
-function DailyTargetsSection({ client, nutritionDraft, onEditDay, onApplyGeneral, onRecalculateWeek }) {
-  const weekPlan = useMemo(() => resolveNutritionWeek(nutritionDraft), [nutritionDraft]);
-  const baseKcal = weekPlan.summary.baseDailyKcal;
+
+function DailyTargetsSection({
+  client,
+  nutritionDraft,
+  onEditDay,
+  onApplyGeneral,
+  onRecalculateWeek,
+}) {
+  const weekPlan = useMemo(
+    () => resolveNutritionWeek(nutritionDraft),
+    [nutritionDraft]
+  );
+
+  const baseKcal = Number(
+    weekPlan.summary.baseDailyKcal || 0
+  );
+
   const weeklyDiff = weekPlan.summary.difference;
-  const hasWeeklyWarning = weeklyDiff !== null && Math.abs(weeklyDiff) > 5;
-  const trainingDays = getTrainingDaysPerWeek(client);
+
+  const hasWeeklyWarning =
+    weeklyDiff !== null &&
+    Math.abs(weeklyDiff) > 5;
+
+  /*
+    Escala común para TODAS las barras.
+
+    Ejemplo:
+    - días de 2150
+    - días de 2710
+
+    chartMaxKcal = 3000
+
+    Así 2710 se ve realmente más alto que 2150.
+  */
+  const highestDayKcal = Math.max(
+    baseKcal,
+    ...NUTRITION_WEEK_DAYS.map((day) =>
+      Number(
+        weekPlan.targets?.[day.key]?.kcal || 0
+      )
+    )
+  );
+
+  const chartMaxKcal = Math.max(
+    3000,
+    Math.ceil(
+      (highestDayKcal * 1.08) / 500
+    ) * 500
+  );
+
   return (
-    <section className="prof-nutritionBlock prof-dailyTargetsSection">
-      <div className="prof-nutritionBlockHead">
+    <section className="prof-nutritionBlock prof-dailyTargetsV3">
+      <div className="prof-dailyTargetsV3Head">
         <div>
-          <span className="prof-nutritionEyebrow">Semana flexible</span>
+          <span className="prof-nutritionEyebrow">
+            Semana flexible
+          </span>
+
           <h3>Distribución diaria</h3>
-          <p>Personalizá días de entrenamiento, descanso o refeeds sin perder la referencia general.</p>
+
+          <p>
+            Definí el objetivo calórico de cada día.
+            Ajustá según tu actividad, descanso o preferencia.
+          </p>
         </div>
-        <div className="prof-nutritionActions">
-          <button type="button" className="prof-btn compact" onClick={onRecalculateWeek}>
-            <RefreshCw size={15} />
-            Recalcular semana
-          </button>
-          <button type="button" className="prof-btn compact" onClick={onApplyGeneral}>
-            <RotateCcw size={15} />
-            Aplicar general a toda la semana
-          </button>
+
+        <div className="prof-dailyTargetsV3Right">
+          <div className="prof-dailyChartLegend">
+            <span />
+            La altura de la barra representa las calorías del día
+          </div>
+
+          <div className="prof-nutritionActions">
+            <button
+              type="button"
+              className="prof-btn compact"
+              onClick={onRecalculateWeek}
+            >
+              <RefreshCw size={15} />
+              Recalcular semana
+            </button>
+
+            <button
+              type="button"
+              className="prof-btn compact"
+              onClick={onApplyGeneral}
+            >
+              <RotateCcw size={15} />
+              Aplicar general
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="prof-weekSignalGrid" aria-label="Resumen semanal">
-        <div className="prof-weekSignalItem kcal">
-          <Flame size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Base diaria</span>
-          <strong>{baseKcal ? displayTargetValue(baseKcal, "kcal") : "Pendiente"}</strong>
-        </div>
-        <div className="prof-weekSignalItem">
-          <CalendarDays size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Objetivo semanal</span>
-          <strong>{weekPlan.summary.weeklyKcalTarget ? displayTargetValue(weekPlan.summary.weeklyKcalTarget, "kcal") : "Pendiente"}</strong>
-        </div>
-        <div className={`prof-weekSignalItem ${hasWeeklyWarning ? "warning" : "good"}`}>
-          <Target size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Actual semanal</span>
-          <strong>{weekPlan.summary.currentWeeklyKcal ? displayTargetValue(weekPlan.summary.currentWeeklyKcal, "kcal") : "Pendiente"}</strong>
-        </div>
-        <div className={`prof-weekSignalItem ${hasWeeklyWarning ? "warning" : "good"}`}>
-          <TrendingUp size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Diferencia semanal</span>
-          <strong>{weeklyDiff === null ? "Sin base" : `${weeklyDiff > 0 ? "+" : ""}${formatNumber(weeklyDiff, 0)} kcal`}</strong>
-        </div>
-        <div className="prof-weekSignalItem">
-          <CalendarDays size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Personalizados</span>
-          <strong>{weekPlan.summary.customizedDays}/7</strong>
-        </div>
-        <div className="prof-weekSignalItem adjusted">
-          <RefreshCw size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Generales ajustados</span>
-          <strong>{weekPlan.summary.adjustedGeneralDays}</strong>
-        </div>
-        <div className="prof-weekSignalItem gym">
-          <Dumbbell size={16} strokeWidth={2.4} aria-hidden="true" />
-          <span>Gym estimado</span>
-          <strong>{trainingDays ? `${trainingDays} días` : "Sin definir"}</strong>
-        </div>
-      </div>
       {hasWeeklyWarning ? (
         <div className="prof-weekWarning">
-          La semana queda {weeklyDiff > 0 ? "+" : ""}{formatNumber(weeklyDiff, 0)} kcal respecto del objetivo. Revisá los días personalizados o restaurá la semana.
+          La semana queda{" "}
+          {weeklyDiff > 0 ? "+" : ""}
+          {formatNumber(weeklyDiff, 0)} kcal respecto
+          del objetivo.
         </div>
       ) : null}
 
-      <div className="prof-dailyTargetGrid">
+      <div className="prof-dailyBarGridV3">
         {NUTRITION_WEEK_DAYS.map((day) => (
           <DailyTargetCard
             key={day.key}
             day={day}
             target={weekPlan.targets[day.key]}
             baseKcal={baseKcal}
+            chartMaxKcal={chartMaxKcal}
             onEdit={onEditDay}
           />
         ))}
+      </div>
+
+      <div className="prof-nutritionGuideV3">
+        <div className="prof-nutritionGuideMain">
+          <span className="prof-nutritionGuideIcon">
+            <Target size={26} />
+          </span>
+
+          <div>
+            <strong>
+              En Nutrición definís <em>QUÉ</em> debe lograr cada día
+            </strong>
+
+            <p>
+              ZumaFit distribuye las calorías y macronutrientes
+              de acuerdo a tu plan y objetivos.
+            </p>
+
+            <small>
+              La planificación de menús después toma estos
+              objetivos como referencia.
+            </small>
+          </div>
+        </div>
+
+        <div className="prof-nutritionGuideMini">
+          <BarChart3 size={22} />
+
+          <div>
+            <strong>Planificación inteligente</strong>
+            <span>
+              Adaptá tus calorías a actividad y recuperación.
+            </span>
+          </div>
+        </div>
+
+        <div className="prof-nutritionGuideMini">
+          <Check size={22} />
+
+          <div>
+            <strong>Flexible y personal</strong>
+            <span>
+              Personalizá los días que quieras y mantené el resto
+              sobre la base.
+            </span>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-const DailyTargetCard = React.memo(function DailyTargetCard({ day, target, baseKcal, onEdit }) {
-  const targetKcal = Number(target.kcal);
-  const hasTarget = Number.isFinite(targetKcal) && targetKcal > 0;
-  const statusClass = target.customized ? "custom" : target.adjusted ? "adjusted" : "";
-  const statusLabel = target.statusLabel || (target.customized ? "Personalizado" : target.adjusted ? "General ajustado" : "General");
-  return (
-    <button type="button" className={`prof-dailyTargetCard ${statusClass}`} onClick={() => onEdit(day.key)}>
-      <div className="prof-dailyTargetTop">
-        <div>
-          <span className="prof-dailyTargetDay">{day.label}</span>
-          <span className={`prof-dailyTargetBadge ${statusClass}`}>
-            {statusLabel}
-          </span>
+const DailyTargetCard = React.memo(
+  function DailyTargetCard({
+    day,
+    target,
+    baseKcal,
+    chartMaxKcal,
+    onEdit,
+  }) {
+    const targetKcal = Number(target.kcal);
+
+    const hasTarget =
+      Number.isFinite(targetKcal) &&
+      targetKcal > 0;
+
+    const base = Number(baseKcal);
+
+    const hasBase =
+      Number.isFinite(base) &&
+      base > 0;
+
+    const statusClass = target.customized
+      ? "custom"
+      : target.adjusted
+        ? "adjusted"
+        : "";
+
+    const statusLabel =
+      target.statusLabel ||
+      (target.customized
+        ? "Personalizado"
+        : target.adjusted
+          ? "General ajustado"
+          : "General");
+
+    const delta = hasBase
+      ? Math.round(targetKcal - base)
+      : 0;
+
+    const basePercent = hasBase
+      ? Math.round(
+          (targetKcal / base) * 100
+        )
+      : 0;
+
+    const barPercent =
+      hasTarget && chartMaxKcal > 0
+        ? Math.max(
+            4,
+            Math.min(
+              100,
+              (targetKcal / chartMaxKcal) * 100
+            )
+          )
+        : 0;
+
+    const chartTicks = [
+      chartMaxKcal,
+      Math.round(chartMaxKcal * 0.75),
+      Math.round(chartMaxKcal * 0.5),
+      Math.round(chartMaxKcal * 0.25),
+      0,
+    ];
+
+    return (
+      <button
+        type="button"
+        className={`prof-dailyBarCardV3 ${statusClass}`}
+        onClick={() => onEdit(day.key)}
+      >
+        <div className="prof-dailyBarCardHead">
+          <div>
+            <strong>{day.label}</strong>
+
+            <span
+              className={`prof-dailyTargetBadge ${statusClass}`}
+            >
+              {statusLabel}
+            </span>
+          </div>
+
+          <Pencil
+            size={15}
+            aria-hidden="true"
+          />
         </div>
-        <Pencil size={16} aria-hidden="true" />
-      </div>
-      {hasTarget ? (
-        <>
-          <strong>{displayTargetValue(target.kcal, "kcal")}</strong>
-          <span className="prof-dailyTargetMacros">{targetMacroLine(target)}</span>
-          <DailyKcalBar targetKcal={targetKcal} baseKcal={baseKcal} customized={target.customized} adjusted={target.adjusted} />
-        </>
-      ) : (
-        <div className="prof-dailyTargetEmpty">
-          <strong>Sin macros base</strong>
-          <span>Completá P/C/G para calcular kcal</span>
-        </div>
-      )}
-      {target.warning ? <small className="warning">{target.warning}</small> : null}
-      {target.note ? <small>{target.note}</small> : <small className="muted">Sin nota específica</small>}
-    </button>
-  );
-});
+
+        {hasTarget ? (
+          <>
+            <div className="prof-dailyBarKcal">
+              {displayTargetValue(
+                targetKcal,
+                "kcal"
+              )}
+            </div>
+
+            <div className="prof-dailyVerticalChart">
+              <div className="prof-dailyVerticalAxis">
+                {chartTicks.map(
+                  (value, index) => (
+                    <span
+                      key={`${day.key}-${value}-${index}`}
+                    >
+                      {formatNumber(value, 0)}
+                    </span>
+                  )
+                )}
+              </div>
+
+              <div className="prof-dailyVerticalPlot">
+                <div
+                  className="prof-dailyVerticalBar"
+                  style={{
+                    height: `${barPercent}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="prof-dailyBarDetails">
+              <strong>
+                {targetMacroLine(target)}
+              </strong>
+
+              <span>
+                {hasBase
+                  ? `${basePercent}% de la base${
+                      delta
+                        ? ` / ${
+                            delta > 0
+                              ? "+"
+                              : ""
+                          }${delta} kcal`
+                        : ""
+                    }`
+                  : "Sin referencia base"}
+              </span>
+
+              {target.warning ? (
+                <small className="warning">
+                  {target.warning}
+                </small>
+              ) : target.note ? (
+                <small>{target.note}</small>
+              ) : (
+                <small className="muted">
+                  Sin nota específica
+                </small>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="prof-dailyTargetEmpty">
+            <strong>Sin macros base</strong>
+            <span>
+              Completá P/C/G para calcular kcal
+            </span>
+          </div>
+        )}
+      </button>
+    );
+  }
+);
+
+
+
+
 
 function DailyKcalBar({ targetKcal, baseKcal, customized, adjusted }) {
   const base = Number(baseKcal);
@@ -1731,30 +2139,364 @@ function MacroBaseEditor({ nutritionDraft, onSave, onClose }) {
   );
 }
 
-function DailyTargetEditor({ dayKey, nutritionDraft, onSave, onReset, onClose }) {
-  const day = NUTRITION_WEEK_DAYS.find((item) => item.key === dayKey);
-  const resolved = resolveNutritionTarget(nutritionDraft, dayKey);
-  const [localDraft, setLocalDraft] = useState(() => ({
+
+
+const DAILY_MACRO_KCAL = {
+  p: 4,
+  c: 4,
+  g: 9,
+};
+
+function dailyMacroNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
+function dailyMacroExactKcal(draft = {}) {
+  return (
+    dailyMacroNumber(draft.p) * 4 +
+    dailyMacroNumber(draft.c) * 4 +
+    dailyMacroNumber(draft.g) * 9
+  );
+}
+
+function roundDailyMacro(value) {
+  return Math.round(Math.max(0, Number(value) || 0) * 10) / 10;
+}
+
+function adjustDailyMacrosToKcal(draft, locked, targetKcal) {
+  const target = Number(targetKcal);
+
+  if (!Number.isFinite(target) || target <= 0) {
+    return {
+      next: draft,
+      error: "",
+    };
+  }
+
+  const keys = ["p", "c", "g"];
+  const unlocked = keys.filter((key) => !locked[key]);
+
+  if (!unlocked.length) {
+    return {
+      next: draft,
+      error: "Desbloqueá al menos un macro para ajustar las calorías.",
+    };
+  }
+
+  const lockedCalories = keys
+    .filter((key) => locked[key])
+    .reduce(
+      (sum, key) =>
+        sum + dailyMacroNumber(draft[key]) * DAILY_MACRO_KCAL[key],
+      0
+    );
+
+  const remainingCalories = target - lockedCalories;
+
+  if (remainingCalories < 0) {
+    return {
+      next: draft,
+      error:
+        "Los macros bloqueados ya superan el objetivo calórico. Bajá alguno o desbloquealo.",
+    };
+  }
+
+  const next = { ...draft };
+
+  // Un solo macro libre:
+  // todo el ajuste calórico va a ese macro.
+  if (unlocked.length === 1) {
+    const key = unlocked[0];
+
+    next[key] = String(
+      roundDailyMacro(
+        remainingCalories / DAILY_MACRO_KCAL[key]
+      )
+    );
+
+    return {
+      next,
+      error: "",
+    };
+  }
+
+  // Dos o tres macros libres:
+  // mantenemos aproximadamente la proporción calórica actual.
+  const currentCalories = unlocked.reduce(
+    (sum, key) =>
+      sum + dailyMacroNumber(draft[key]) * DAILY_MACRO_KCAL[key],
+    0
+  );
+
+  unlocked.forEach((key) => {
+    const currentContribution =
+      dailyMacroNumber(draft[key]) * DAILY_MACRO_KCAL[key];
+
+    const ratio =
+      currentCalories > 0
+        ? currentContribution / currentCalories
+        : 1 / unlocked.length;
+
+    const assignedCalories = remainingCalories * ratio;
+
+    next[key] = String(
+      roundDailyMacro(
+        assignedCalories / DAILY_MACRO_KCAL[key]
+      )
+    );
+  });
+
+  // Corrección final para acercarnos todavía más al objetivo.
+  // Si carbohidratos está libre, usamos C para absorber el pequeño redondeo.
+  const correctionKey = unlocked.includes("c")
+    ? "c"
+    : unlocked[unlocked.length - 1];
+
+  const difference = target - dailyMacroExactKcal(next);
+
+  if (Math.abs(difference) > 0.05) {
+    next[correctionKey] = String(
+      roundDailyMacro(
+        dailyMacroNumber(next[correctionKey]) +
+          difference / DAILY_MACRO_KCAL[correctionKey]
+      )
+    );
+  }
+
+  return {
+    next,
+    error: "",
+  };
+}
+
+
+
+function DailyTargetEditor({
+  dayKey,
+  nutritionDraft,
+  onSave,
+  onReset,
+  onClose,
+}) {
+  const day = NUTRITION_WEEK_DAYS.find(
+    (item) => item.key === dayKey
+  );
+
+  const resolved = resolveNutritionTarget(
+    nutritionDraft,
+    dayKey
+  );
+
+  const initialMacros = {
     p: valueOrEmpty(resolved.p),
     c: valueOrEmpty(resolved.c),
     g: valueOrEmpty(resolved.g),
     note: resolved.note || "",
-  }));
+  };
+
+  const initialKcal =
+    calculateMacroKcal(
+      initialMacros.p,
+      initialMacros.c,
+      initialMacros.g
+    ) ?? resolved.kcal ?? "";
+
+  const [localDraft, setLocalDraft] = useState(initialMacros);
+
+  const [targetKcal, setTargetKcal] = useState(
+    valueOrEmpty(initialKcal)
+  );
+
+  // Default práctico:
+  // proteína y grasas fijas, carbohidratos ajustables.
+  const [lockedMacros, setLockedMacros] = useState({
+    p: true,
+    c: false,
+    g: true,
+  });
+
+  const [adjustError, setAdjustError] = useState("");
   const [copyToDays, setCopyToDays] = useState([]);
-  const calculatedKcal = calculateMacroKcal(localDraft.p, localDraft.c, localDraft.g);
+
+  const calculatedKcal = calculateMacroKcal(
+    localDraft.p,
+    localDraft.c,
+    localDraft.g
+  );
+
+  const targetNumber = Number(targetKcal);
+
+  const difference =
+    Number.isFinite(Number(calculatedKcal)) &&
+    Number.isFinite(targetNumber)
+      ? Number(calculatedKcal) - targetNumber
+      : null;
+
+  const absoluteDifference =
+    difference === null ? null : Math.abs(difference);
+
+  const differenceTone =
+    absoluteDifference === null
+      ? "neutral"
+      : absoluteDifference <= 10
+        ? "good"
+        : absoluteDifference <= 50
+          ? "warning"
+          : "bad";
+
+  const lockedCount = Object.values(lockedMacros).filter(
+    Boolean
+  ).length;
+
+  const editableCount = 3 - lockedCount;
 
   function toggleCopyDay(key) {
-    setCopyToDays((current) => (
+    setCopyToDays((current) =>
       current.includes(key)
         ? current.filter((item) => item !== key)
         : [...current, key]
-    ));
+    );
+  }
+
+  function toggleMacroLock(key) {
+    setLockedMacros((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+
+    setAdjustError("");
+  }
+
+  function unlockAllMacros() {
+    setLockedMacros({
+      p: false,
+      c: false,
+      g: false,
+    });
+
+    setAdjustError("");
+  }
+
+  function restoreDefaultLocks() {
+    setLockedMacros({
+      p: true,
+      c: false,
+      g: true,
+    });
+
+    setAdjustError("");
+  }
+
+  function updateMacro(key, value) {
+    setLocalDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+
+    setAdjustError("");
+  }
+
+  function updateTargetKcal(value) {
+    setTargetKcal(value);
+
+    const target = Number(value);
+
+    // Mientras el usuario está borrando/escribiendo,
+    // no hacemos cálculos con valores incompletos.
+    if (
+      !Number.isFinite(target) ||
+      target < 500 ||
+      target > 7000
+    ) {
+      return;
+    }
+
+    setLocalDraft((current) => {
+      const result = adjustDailyMacrosToKcal(
+        current,
+        lockedMacros,
+        target
+      );
+
+      setAdjustError(result.error);
+
+      return result.next;
+    });
+  }
+
+  function renderMacroCard({
+    key,
+    label,
+    tone,
+    kcalPerGram,
+  }) {
+    const locked = lockedMacros[key];
+
+    return (
+      <div
+        className={`prof-dailyMacroEditor ${tone} ${
+          locked ? "locked" : "editable"
+        }`}
+      >
+        <div className="prof-dailyMacroEditorHead">
+          <span>{label}</span>
+          <small>(g)</small>
+        </div>
+
+        <div className="prof-dailyMacroEditorControl">
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            inputMode="decimal"
+            value={localDraft[key]}
+            onChange={(event) =>
+              updateMacro(key, event.target.value)
+            }
+            aria-label={`${label} en gramos`}
+          />
+
+          <button
+            type="button"
+            className={`prof-macroLock ${
+              locked ? "locked" : "unlocked"
+            }`}
+            onClick={() => toggleMacroLock(key)}
+            aria-label={
+              locked
+                ? `Desbloquear ${label}`
+                : `Bloquear ${label}`
+            }
+            title={
+              locked
+                ? "Fijo durante el ajuste automático"
+                : "Puede cambiar al editar las kcal"
+            }
+          >
+            {locked ? (
+              <Lock size={17} />
+            ) : (
+              <Unlock size={17} />
+            )}
+          </button>
+        </div>
+
+        <small className="prof-dailyMacroHint">
+          {kcalPerGram} kcal por gramo
+        </small>
+      </div>
+    );
   }
 
   return (
-    <div className="prof-dailyDrawerBackdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className="prof-dailyDrawerBackdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
       <section
-        className="prof-dailyDrawer"
+        className="prof-dailyDrawer prof-dailyTargetEditor"
         role="dialog"
         aria-modal="true"
         aria-labelledby="prof-dailyDrawerTitle"
@@ -1766,63 +2508,293 @@ function DailyTargetEditor({ dayKey, nutritionDraft, onSave, onReset, onClose })
               <CalendarDays size={14} />
               Meta diaria
             </span>
-            <h3 id="prof-dailyDrawerTitle">{day?.label || "Día"}</h3>
-            <p>Los cambios se aplican recién al guardar este día.</p>
+
+            <h3 id="prof-dailyDrawerTitle">
+              {day?.label || "Día"}
+            </h3>
+
+            <p>
+              Los cambios se aplican recién al guardar este día.
+            </p>
           </div>
-          <button type="button" className="prof-iconBtn" onClick={onClose} aria-label="Cerrar edición del día">
+
+          <button
+            type="button"
+            className="prof-iconBtn"
+            onClick={onClose}
+            aria-label="Cerrar edición del día"
+          >
             <X size={18} />
           </button>
         </div>
 
         <div className="prof-dailyDrawerBody">
-          <CalculatedKcalPreview kcal={calculatedKcal} />
-          <div className="prof-formGrid">
-            <Field label="Proteína (g)" inputMode="decimal" value={localDraft.p} onChange={(value) => setLocalDraft((current) => ({ ...current, p: value }))} />
-            <Field label="Carbohidratos (g)" inputMode="decimal" value={localDraft.c} onChange={(value) => setLocalDraft((current) => ({ ...current, c: value }))} />
-            <Field label="Grasas (g)" inputMode="decimal" value={localDraft.g} onChange={(value) => setLocalDraft((current) => ({ ...current, g: value }))} />
-          </div>
+          <section className="prof-dailyKcalTargetBlock">
+            <label className="prof-dailyKcalTargetField">
+              <span>Objetivo calórico</span>
 
-          <label className="prof-field">
-            <span>Nota corta del día</span>
+              <div>
+                <input
+                  type="number"
+                  min="500"
+                  max="7000"
+                  step="10"
+                  inputMode="numeric"
+                  value={targetKcal}
+                  onChange={(event) =>
+                    updateTargetKcal(event.target.value)
+                  }
+                  aria-label="Objetivo calórico"
+                />
+
+                <strong>kcal</strong>
+              </div>
+            </label>
+
+            <div className="prof-dailyKcalHelp">
+              <Info size={17} />
+
+              <div>
+                <strong>
+                  Editá las calorías o los macros.
+                </strong>
+
+                <span>
+                  ZumaFit ajusta automáticamente los macros
+                  desbloqueados para acercarse al objetivo.
+                  Los bloqueados no cambian automáticamente.
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section className="prof-dailyMacroSection">
+            <div className="prof-dailyMacroSectionHead">
+              <strong>Macros</strong>
+
+              <div>
+                <span>
+                  {lockedCount}{" "}
+                  {lockedCount === 1
+                    ? "bloqueado"
+                    : "bloqueados"}{" "}
+                  · {editableCount}{" "}
+                  {editableCount === 1
+                    ? "editable"
+                    : "editables"}
+                </span>
+
+                {lockedCount ? (
+                  <button
+                    type="button"
+                    className="prof-dailyMacroUtility"
+                    onClick={unlockAllMacros}
+                  >
+                    <Unlock size={14} />
+                    Desbloquear todos
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="prof-dailyMacroUtility"
+                    onClick={restoreDefaultLocks}
+                  >
+                    <Lock size={14} />
+                    Fijar P y G
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="prof-dailyMacroGrid">
+              {renderMacroCard({
+                key: "p",
+                label: "Proteína",
+                tone: "protein",
+                kcalPerGram: 4,
+              })}
+
+              {renderMacroCard({
+                key: "c",
+                label: "Carbohidratos",
+                tone: "carbs",
+                kcalPerGram: 4,
+              })}
+
+              {renderMacroCard({
+                key: "g",
+                label: "Grasas",
+                tone: "fat",
+                kcalPerGram: 9,
+              })}
+            </div>
+
+            {adjustError ? (
+              <div className="prof-dailyMacroError">
+                <AlertTriangle size={16} />
+                {adjustError}
+              </div>
+            ) : null}
+          </section>
+
+          <section
+            className={`prof-dailyKcalSummary ${differenceTone}`}
+          >
+            <div className="prof-dailyKcalResult">
+              <span>Resumen calórico</span>
+
+              <strong>
+                {calculatedKcal !== null
+                  ? `${formatNumber(calculatedKcal, 0)} kcal`
+                  : "Pendiente"}
+              </strong>
+            </div>
+
+            <div className="prof-dailyKcalDifference">
+              <span>Diferencia</span>
+
+              <strong>
+                {difference === null
+                  ? "—"
+                  : `${
+                      difference > 0 ? "+" : ""
+                    }${formatNumber(difference, 0)} kcal`}
+              </strong>
+
+              {differenceTone === "good" ? (
+                <Check size={18} />
+              ) : differenceTone === "bad" ? (
+                <AlertTriangle size={18} />
+              ) : null}
+            </div>
+
+            <div className="prof-dailyKcalCompare">
+              <div>
+                <span>Objetivo</span>
+                <strong>
+                  {Number.isFinite(targetNumber)
+                    ? `${formatNumber(targetNumber, 0)} kcal`
+                    : "—"}
+                </strong>
+              </div>
+
+              <div>
+                <span>Calculadas</span>
+                <strong>
+                  {calculatedKcal !== null
+                    ? `${formatNumber(
+                        calculatedKcal,
+                        0
+                      )} kcal`
+                    : "—"}
+                </strong>
+              </div>
+
+              <em>
+                {differenceTone === "good"
+                  ? "Dentro del rango ±10 kcal"
+                  : differenceTone === "warning"
+                    ? "Cerca del objetivo"
+                    : differenceTone === "bad"
+                      ? "Revisá la distribución"
+                      : ""}
+              </em>
+            </div>
+          </section>
+
+          <label className="prof-field prof-dailyNoteField">
+            <div className="prof-dailyNoteHead">
+              <span>Nota corta del día</span>
+              <small>{localDraft.note.length}/180</small>
+            </div>
+
             <textarea
               maxLength={180}
               placeholder="Ej: pierna, descanso o día libre controlado"
               value={localDraft.note}
-              onChange={(event) => setLocalDraft((current) => ({ ...current, note: event.target.value }))}
+              onChange={(event) =>
+                setLocalDraft((current) => ({
+                  ...current,
+                  note: event.target.value,
+                }))
+              }
             />
           </label>
 
           <div className="prof-copyDays">
             <div>
               <strong>Copiar también a otros días</strong>
-              <span>Opcional. Se guardarán con esta misma distribución.</span>
+              <span>
+                Opcional. Se guardarán con esta misma
+                distribución.
+              </span>
             </div>
+
             <div className="prof-copyDayGrid">
-              {NUTRITION_WEEK_DAYS.filter((item) => item.key !== dayKey).map((item) => {
-                const selected = copyToDays.includes(item.key);
-                return (
-                  <button
-                    type="button"
-                    className={selected ? "selected" : ""}
-                    key={item.key}
-                    onClick={() => toggleCopyDay(item.key)}
-                  >
-                    {selected ? <Check size={14} /> : <Copy size={14} />}
-                    {item.label}
-                  </button>
-                );
-              })}
+              {NUTRITION_WEEK_DAYS
+                .filter((item) => item.key !== dayKey)
+                .map((item) => {
+                  const selected = copyToDays.includes(
+                    item.key
+                  );
+
+                  return (
+                    <button
+                      type="button"
+                      className={
+                        selected ? "selected" : ""
+                      }
+                      key={item.key}
+                      onClick={() =>
+                        toggleCopyDay(item.key)
+                      }
+                    >
+                      {selected ? (
+                        <Check size={14} />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+
+                      {item.label}
+                    </button>
+                  );
+                })}
             </div>
           </div>
         </div>
 
         <div className="prof-dailyDrawerFooter">
-          <button type="button" className="prof-btn" onClick={() => onReset(dayKey)}>
+          <button
+            type="button"
+            className="prof-btn"
+            onClick={() => onReset(dayKey)}
+          >
             <RotateCcw size={16} />
             Restaurar general
           </button>
-          <button type="button" className="prof-btn" onClick={onClose}>Cancelar</button>
-          <button type="button" className="prof-btn gold" onClick={() => onSave(dayKey, localDraft, copyToDays)}>
+
+          <button
+            type="button"
+            className="prof-btn"
+            onClick={onClose}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className="prof-btn gold"
+            onClick={() =>
+              onSave(
+                dayKey,
+                {
+                  ...localDraft,
+                  kcal: calculatedKcal,
+                },
+                copyToDays
+              )
+            }
+          >
             <Save size={16} />
             Guardar cambios
           </button>
@@ -1831,6 +2803,20 @@ function DailyTargetEditor({ dayKey, nutritionDraft, onSave, onReset, onClose })
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function ProgressCheckinDrawer({ client, saving, onSave, onClose }) {
   const latest = getLatestProgressCheckin(client);
@@ -1998,47 +2984,557 @@ function CoachOnboardingDrawer({ client, saving, onSave, onClose }) {
   );
 }
 
-function NutritionCalculatorDrawer({ preview, onApply, onCompleteData, onClose }) {
+
+
+
+function NutritionCalculatorDrawer({
+  preview,
+  onApply,
+  onCompleteData,
+  onClose,
+}) {
   const used = preview?.usedData || {};
-  const target = preview?.target || {};
+  const originalTarget = preview?.target || {};
+  const originalMacros = originalTarget.macros || {};
+
+  const [targetKcal, setTargetKcal] = useState(() =>
+    valueOrEmpty(originalTarget.kcal)
+  );
+
+  const [editableMacros, setEditableMacros] = useState(() => ({
+    p: valueOrEmpty(originalMacros.p),
+    c: valueOrEmpty(originalMacros.c),
+    g: valueOrEmpty(originalMacros.g),
+  }));
+
+  // Por defecto:
+  // proteína fija
+  // carbohidratos y grasas ajustables
+  const [lockedMacros, setLockedMacros] = useState({
+    p: true,
+    c: false,
+    g: false,
+  });
+
+  const [adjustError, setAdjustError] = useState("");
+
+  const calculatedKcal = calculateMacroKcal(
+    editableMacros.p,
+    editableMacros.c,
+    editableMacros.g
+  );
+
+  const targetNumber = Number(targetKcal);
+  const originalKcal = Number(originalTarget.kcal);
+
+  const targetDifference =
+    Number.isFinite(Number(calculatedKcal)) &&
+    Number.isFinite(targetNumber)
+      ? Number(calculatedKcal) - targetNumber
+      : null;
+
+  const originalDifference =
+    Number.isFinite(targetNumber) &&
+    Number.isFinite(originalKcal)
+      ? targetNumber - originalKcal
+      : 0;
+
+  const absDifference =
+    targetDifference === null
+      ? null
+      : Math.abs(targetDifference);
+
+  const status =
+    absDifference === null
+      ? "neutral"
+      : absDifference <= 10
+        ? "good"
+        : absDifference <= 50
+          ? "warning"
+          : "bad";
+
+  function changeTargetKcal(value) {
+    setTargetKcal(value);
+
+    const numeric = Number(value);
+
+    if (
+      !Number.isFinite(numeric) ||
+      numeric < 500 ||
+      numeric > 7000
+    ) {
+      return;
+    }
+
+    setEditableMacros((current) => {
+      const result = adjustDailyMacrosToKcal(
+        current,
+        lockedMacros,
+        numeric
+      );
+
+      setAdjustError(result.error);
+
+      return result.next;
+    });
+  }
+
+  function changeMacro(key, value) {
+    setEditableMacros((current) => ({
+      ...current,
+      [key]: value,
+    }));
+
+    setAdjustError("");
+  }
+
+  function toggleMacro(key) {
+    setLockedMacros((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+
+    setAdjustError("");
+  }
+
+  function restoreOriginalProposal() {
+    setTargetKcal(
+      valueOrEmpty(originalTarget.kcal)
+    );
+
+    setEditableMacros({
+      p: valueOrEmpty(originalMacros.p),
+      c: valueOrEmpty(originalMacros.c),
+      g: valueOrEmpty(originalMacros.g),
+    });
+
+    setLockedMacros({
+      p: true,
+      c: false,
+      g: false,
+    });
+
+    setAdjustError("");
+  }
+
+  function applyEditedProposal() {
+    onApply({
+      kcal: targetNumber,
+      macros: {
+        p: editableMacros.p,
+        c: editableMacros.c,
+        g: editableMacros.g,
+      },
+    });
+  }
+
+  function macroShare(key) {
+    const kcalPerGram =
+      key === "g" ? 9 : 4;
+
+    const grams =
+      dailyMacroNumber(editableMacros[key]);
+
+    const total =
+      Number(calculatedKcal);
+
+    if (!total) return 0;
+
+    return Math.round(
+      ((grams * kcalPerGram) / total) * 100
+    );
+  }
+
   return (
     <DrawerShell
+      className="prof-nutritionCalculatorDrawer"
       eyebrow="Vista previa"
       title="Calculadora de objetivos y macros"
       description="La propuesta no se guarda hasta que la apliques al borrador y confirmes la planificación."
       onClose={onClose}
-      footer={preview?.ready ? (
-        <><button type="button" className="prof-btn" onClick={onClose}>Cancelar</button><button type="button" className="prof-btn gold" onClick={onApply}><Check size={16} /> Usar propuesta</button></>
-      ) : (
-        <><button type="button" className="prof-btn" onClick={onClose}>Cerrar</button><button type="button" className="prof-btn gold" onClick={onCompleteData}><ClipboardCheck size={16} /> Completar datos</button></>
-      )}
+      footer={
+        preview?.ready ? (
+          <>
+            <button
+              type="button"
+              className="prof-btn"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              className="prof-btn gold"
+              onClick={applyEditedProposal}
+            >
+              <Check size={16} />
+              Aplicar planificación
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="prof-btn"
+              onClick={onClose}
+            >
+              Cerrar
+            </button>
+
+            <button
+              type="button"
+              className="prof-btn gold"
+              onClick={onCompleteData}
+            >
+              <ClipboardCheck size={16} />
+              Completar datos
+            </button>
+          </>
+        )
+      }
     >
       {!preview?.ready ? (
-        <div className="prof-error"><strong>Faltan datos reales para calcular:</strong> {(preview?.missingFields || []).join(", ") || "datos del cliente"}.</div>
+        <div className="prof-error">
+          <strong>
+            Faltan datos reales para calcular:
+          </strong>{" "}
+          {(preview?.missingFields || []).join(", ") ||
+            "datos del cliente"}.
+        </div>
       ) : (
-        <div className="prof-stack">
-          <div className="prof-grid">
-            <Metric icon={Flame} label="TMB promedio" value={`${preview.bmr?.average || 0} kcal`} />
-            <Metric icon={Activity} label="Gasto estimado" value={`${preview.maintenanceKcal || 0} kcal`} />
-            <Metric icon={Target} label="Ajuste" value={`${preview.adjustment?.percent > 0 ? "+" : ""}${preview.adjustment?.percent || 0}%`} />
-            <Metric icon={Calculator} label="Propuesta" value={`${target.kcal || 0} kcal`} />
+        <div className="prof-calcPreview">
+          {/* MÉTRICAS ORIGINALES */}
+
+          <div className="prof-calcPreviewMetrics">
+            <Metric
+              icon={Flame}
+              label="TMB promedio"
+              value={`${preview.bmr?.average || 0} kcal`}
+            />
+
+            <Metric
+              icon={Activity}
+              label="Gasto estimado"
+              value={`${preview.maintenanceKcal || 0} kcal`}
+            />
+
+            <Metric
+              icon={Target}
+              label="Ajuste"
+              value={`${
+                preview.adjustment?.percent > 0
+                  ? "+"
+                  : ""
+              }${preview.adjustment?.percent || 0}%`}
+            />
+
+            <Metric
+              icon={Calculator}
+              label="Propuesta original"
+              value={`${originalTarget.kcal || 0} kcal`}
+            />
           </div>
-          <div className="prof-panel twoCol">
-            <InfoBlock title="Datos utilizados" lines={[`${used.age} años · ${used.sex}`, `${used.weightKg} kg · ${used.heightCm} cm`, `Factor ${used.activityFactor} · ${goalLabel(used.goalType)}`]} />
-            <InfoBlock title="Macros propuestos" lines={[`Proteína: ${target.macros?.p || 0} g`, `Carbohidratos: ${target.macros?.c || 0} g`, `Grasas: ${target.macros?.g || 0} g`]} />
+
+          <div className="prof-calcPreviewMain">
+            {/* IZQUIERDA */}
+
+            <section className="prof-calcEditable">
+              <div className="prof-calcSectionTitle">
+                <strong>Propuesta editable</strong>
+
+                <span>
+                  Arranca con la propuesta automática.
+                  Podés ajustarla antes de aplicar.
+                </span>
+              </div>
+
+              <label className="prof-calcKcalInput">
+                <span>Objetivo final</span>
+
+                <div>
+                  <input
+                    type="number"
+                    min="500"
+                    max="7000"
+                    step="10"
+                    value={targetKcal}
+                    onChange={(event) =>
+                      changeTargetKcal(
+                        event.target.value
+                      )
+                    }
+                  />
+
+                  <strong>kcal</strong>
+                </div>
+              </label>
+
+              <div className="prof-calcMacroGrid">
+                {[
+                  {
+                    key: "p",
+                    label: "Proteína",
+                    tone: "protein",
+                  },
+                  {
+                    key: "c",
+                    label: "Carbohidratos",
+                    tone: "carbs",
+                  },
+                  {
+                    key: "g",
+                    label: "Grasas",
+                    tone: "fat",
+                  },
+                ].map((macro) => {
+                  const locked =
+                    lockedMacros[macro.key];
+
+                  return (
+                    <div
+                      key={macro.key}
+                      className={`prof-calcMacro ${macro.tone}`}
+                    >
+                      <div className="prof-calcMacroHead">
+                        <span>{macro.label}</span>
+
+                        <button
+                          type="button"
+                          className={
+                            locked
+                              ? "locked"
+                              : "unlocked"
+                          }
+                          onClick={() =>
+                            toggleMacro(
+                              macro.key
+                            )
+                          }
+                          title={
+                            locked
+                              ? "No cambia automáticamente"
+                              : "Puede cambiar automáticamente"
+                          }
+                        >
+                          {locked ? (
+                            <Lock size={15} />
+                          ) : (
+                            <Unlock size={15} />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="prof-calcMacroInput">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={
+                            editableMacros[
+                              macro.key
+                            ]
+                          }
+                          onChange={(event) =>
+                            changeMacro(
+                              macro.key,
+                              event.target.value
+                            )
+                          }
+                        />
+
+                        <span>g</span>
+                      </div>
+
+                      <small>
+                        {macro.key === "p"
+                          ? `${
+                              used.weightKg
+                                ? (
+                                    dailyMacroNumber(
+                                      editableMacros.p
+                                    ) /
+                                    Number(
+                                      used.weightKg
+                                    )
+                                  ).toFixed(1)
+                                : "—"
+                            } g/kg`
+                          : `${macroShare(
+                              macro.key
+                            )}% kcal`}
+                      </small>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="prof-calcLockHelp">
+                <Lock size={14} />
+
+                <span>
+                  Los macros bloqueados no cambian
+                  automáticamente al editar las kcal,
+                  pero siempre podés editarlos
+                  manualmente.
+                </span>
+              </div>
+
+              {adjustError ? (
+                <div className="prof-dailyMacroError">
+                  <AlertTriangle size={16} />
+                  {adjustError}
+                </div>
+              ) : null}
+
+              <div
+                className={`prof-calcResult ${status}`}
+              >
+                <div>
+                  <span>Kcal calculadas</span>
+
+                  <strong>
+                    {calculatedKcal !== null
+                      ? formatNumber(
+                          calculatedKcal,
+                          0
+                        )
+                      : "—"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Diferencia</span>
+
+                  <strong>
+                    {targetDifference === null
+                      ? "—"
+                      : `${
+                          targetDifference > 0
+                            ? "+"
+                            : ""
+                        }${formatNumber(
+                          targetDifference,
+                          0
+                        )} kcal`}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Estado</span>
+
+                  <strong className="prof-calcStatus">
+                    {status === "good"
+                      ? "✓ Dentro del rango"
+                      : status === "warning"
+                        ? "Cerca del objetivo"
+                        : status === "bad"
+                          ? "Fuera del rango"
+                          : "—"}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            {/* DERECHA */}
+
+            <div className="prof-calcPreviewSide">
+              <section>
+                <h4>Datos utilizados</h4>
+
+                <p>
+                  {used.age} años · {used.sex}
+                </p>
+
+                <p>
+                  {used.weightKg} kg ·{" "}
+                  {used.heightCm} cm
+                </p>
+
+                <p>
+                  Factor {used.activityFactor} ·{" "}
+                  {goalLabel(used.goalType)}
+                </p>
+              </section>
+
+              <section>
+                <h4>Cómo se calculó</h4>
+
+                <p>
+                  <strong>TMB promedio:</strong>{" "}
+                  {preview.formula}.
+                </p>
+
+                <p>
+                  <strong>
+                    Gasto estimado:
+                  </strong>{" "}
+                  TMB promedio × factor de
+                  actividad ({used.activityFactor}).
+                </p>
+
+                <p>
+                  <strong>
+                    Propuesta original:
+                  </strong>{" "}
+                  gasto estimado aplicando el ajuste
+                  nutricional.
+                </p>
+              </section>
+            </div>
           </div>
-          <p className="prof-muted">Fórmula: {preview.formula}. TMB Mifflin {preview.bmr?.mifflin} kcal; Harris-Benedict {preview.bmr?.harrisBenedict} kcal.</p>
+
+          <div className="prof-calcPreviewBottom">
+            <button
+              type="button"
+              className="prof-calcRestore"
+              onClick={restoreOriginalProposal}
+            >
+              <RotateCcw size={16} />
+              Restaurar propuesta
+            </button>
+
+            <span>
+              Diferencia respecto de la propuesta
+              original:{" "}
+              <strong>
+                {originalDifference > 0
+                  ? "+"
+                  : ""}
+                {formatNumber(
+                  originalDifference,
+                  0
+                )}{" "}
+                kcal
+              </strong>
+            </span>
+          </div>
         </div>
       )}
     </DrawerShell>
   );
 }
 
-function DrawerShell({ eyebrow, title, description, onClose, footer, children }) {
+
+
+
+
+function DrawerShell({
+  eyebrow,
+  title,
+  description,
+  onClose,
+  footer,
+  children,
+  className = "",
+}) {
   return (
     <div className="prof-dailyDrawerBackdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="prof-dailyDrawer"
+
+<section
+  className={`prof-dailyDrawer ${className}`}
+
+
         role="dialog"
         aria-modal="true"
         aria-labelledby="prof-sharedDrawerTitle"
