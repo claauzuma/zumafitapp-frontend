@@ -24,6 +24,14 @@ test("los controles inline solo cambian draft y el PATCH vive dentro de Guardar"
   assert.doesNotMatch(component, /onChange=\{[^}]*mutateAsync/);
 });
 
+test("Generador presenta los cinco momentos juntos y cada toggle edita mealTypes", () => {
+  assert.match(component, /className="nf-inlineMealTypes"/);
+  assert.match(component, /GENERATION_MEAL_TYPES\.map\(\(\[key, label\]\)/);
+  assert.match(component, /setValue\(\["mealTypes", key\], event\.target\.checked\)/);
+  assert.match(component, /role="group" aria-label=\{`Momentos permitidos para/);
+  assert.match(css, /\.nf-inlineMealTypes\s*\{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/s);
+});
+
 test("el PATCH existente conserva ruta y contrato Admin generation", () => {
   assert.match(api, /\/api\/admin\/alimentos\/\$\{encodeURIComponent\(foodId\)\}\/generation/);
   assert.match(api, /method: "PATCH"/);

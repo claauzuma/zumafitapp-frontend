@@ -11,8 +11,8 @@ function foodIdentity(item = {}) {
   return String(item.alimentoId || item.foodId || item.nombreSnapshot || item.nombre || item.name || item.id || "").trim().toLowerCase();
 }
 
-export const MENU_MEAL_PROTEIN_MIN = 15;
-export const MENU_MEAL_PROTEIN_MAX = 65;
+export const MENU_MEAL_PROTEIN_MIN = 5;
+export const MENU_MEAL_PROTEIN_MAX = 70;
 
 const GENERATION_MEAL_TYPE_BY_MENU_TYPE = Object.freeze({
   desayuno: "breakfast",
@@ -86,21 +86,48 @@ export function generatedMealFingerprint(meal = {}) {
   }).sort().join("|");
 }
 
+/**
+ * Identidad semántica de una comida generada. Las cantidades no participan:
+ * pollo 120 g + arroz 80 g y pollo 150 g + arroz 70 g siguen siendo la misma
+ * composición.
+ */
+export function generatedMealComposition(meal = {}) {
+  const byFood = new Map();
+  foodItems(meal).forEach((item) => {
+    const id = foodIdentity(item);
+    if (!id) return;
+    const role = String(
+      item.generationRole || item.role || item.structuralRole || ""
+    ).trim().toUpperCase();
+    const current = byFood.get(id);
+    if (!current || (!current.role && role)) byFood.set(id, { foodId: id, role });
+  });
+  const entries = [...byFood.values()].sort((left, right) => (
+    left.foodId.localeCompare(right.foodId) || left.role.localeCompare(right.role)
+  ));
+  const foodIds = entries.map((entry) => entry.foodId);
+  const roleFoodPairs = entries.map((entry) => `${entry.foodId}:${entry.role || "_"}`);
+  return {
+    foodIds,
+    roleFoodPairs,
+    fingerprint: foodIds.join("|"),
+    roleFingerprint: roleFoodPairs.join("|"),
+  };
+}
+
+export function generatedMealCompositionFingerprint(meal = {}) {
+  return generatedMealComposition(meal).fingerprint;
+}
+
 export function menuPreferredFoodMatches(menuMeals = [], preferredFoods = []) {
   return menuMeals.reduce((sum, meal) => sum + preferredFoodMatches(meal, preferredFoods), 0);
 }
 
 export function validateMenuGenerationPolicy({ generationMode = "", foods = [], useOnlySelectedFoods = false } = {}) {
-  if (useOnlySelectedFoods && !foods.length) {
-    const error = new Error("Elegí al menos un alimento para usar la opción Sólo estos alimentos.");
-    error.code = "MENU_SELECTED_FOODS_REQUIRED";
-    throw error;
-  }
   if (generationMode === "similar_menu" && useOnlySelectedFoods) {
-    const error = new Error("Sólo estos alimentos no puede buscar un menú completo de biblioteca. Elegí Generar desde cero o permití combinar otros alimentos.");
-    error.code = "MENU_SELECTED_ONLY_LIBRARY_CONFLICT";
-    throw error;
+    return { generationMode, foods, useOnlySelectedFoods, fallback: "automatic_meal" };
   }
+  return { generationMode, foods, useOnlySelectedFoods };
 }
 
 export function exactMealTypesMatch(meals = [], requestedTypes = []) {
@@ -139,30 +166,178 @@ export function foodSupportsMealType(food = {}, mealType = "") {
   return !hasExplicitSuitability || !requestedField || source[requestedField] === true;
 }
 
-export function buildIncludedFoodAssignments(foods = [], mealTypes = []) {
-  const types = Array.isArray(mealTypes) ? mealTypes.map(String) : [];
-  const byMeal = Object.fromEntries(types.map((type) => [type, { required: [], preferred: [], allowed: [] }]));
+export function buildIncludedFoodAssignments(
+  foods = [],
+  mealTypes = []
+) {
+  const types = [
+    ...new Set(
+      (Array.isArray(mealTypes) ? mealTypes : [])
+        .map(String)
+        .filter(Boolean)
+    ),
+  ];
+
+  const byMeal = Object.fromEntries(
+    types.map((type) => [
+      type,
+      {
+        required: [],
+        preferred: [],
+        allowed: [],
+      },
+    ])
+  );
+
   let anyCursor = 0;
-  foods.filter(isGenericGenerationFood).forEach((food) => {
-    const compatibleTypes = types.filter((type) => foodSupportsMealType(food, type));
-    if (!compatibleTypes.length) return;
-    const requestedType = types.includes(food.targetMealType) && compatibleTypes.includes(food.targetMealType)
-      ? food.targetMealType
-      : "any";
-    const requiredType = requestedType === "any"
-      ? compatibleTypes[anyCursor++ % compatibleTypes.length]
-      : requestedType;
-    compatibleTypes.forEach((type) => {
-      if (requestedType === "any" || requestedType === type) byMeal[type].allowed.push(food);
-      if (food.mustAppear !== true && (requestedType === "any" || requestedType === type)) byMeal[type].preferred.push(food);
-    });
-    if (food.mustAppear === true && requiredType && byMeal[requiredType]) {
-      byMeal[requiredType].required.push(food);
-      byMeal[requiredType].preferred.push(food);
+
+  function addUnique(list, food) {
+    const identity = foodIdentity(food);
+
+    if (!identity) {
+      if (!list.includes(food)) {
+        list.push(food);
+      }
+
+      return;
     }
-  });
+
+    const alreadyExists = list.some(
+      (entry) =>
+        foodIdentity(entry) === identity
+    );
+
+    if (!alreadyExists) {
+      list.push(food);
+    }
+  }
+
+  (Array.isArray(foods) ? foods : []).forEach(
+    (food) => {
+      const requestedType = String(
+        food?.targetMealType || "any"
+      );
+
+      /*
+       * ==========================================
+       * ALIMENTO ELEGIDO EXPLÍCITAMENTE
+       * ==========================================
+       *
+       * Si el usuario eligió:
+       *
+       * Pan -> Desayuno
+       *
+       * entra en Desayuno aunque:
+       *
+       * - no sea GENERIC
+       * - breakfast sea false
+       *
+       * La elección explícita tiene prioridad.
+       */
+      const explicitMealType =
+        requestedType !== "any" &&
+        types.includes(requestedType)
+          ? requestedType
+          : "";
+
+      if (explicitMealType) {
+        const assignment =
+          byMeal[explicitMealType];
+
+        if (!assignment) return;
+
+        addUnique(
+          assignment.allowed,
+          food
+        );
+
+        addUnique(
+          assignment.preferred,
+          food
+        );
+
+        /*
+         * En la nueva UI:
+         *
+         * si el usuario agregó el alimento
+         * en "Incluir", debe aparecer.
+         *
+         * Sólo deja de ser obligatorio si
+         * explícitamente viene:
+         *
+         * mustAppear: false
+         */
+        if (food?.mustAppear !== false) {
+          addUnique(
+            assignment.required,
+            food
+          );
+        }
+
+        return;
+      }
+
+      /*
+       * ==========================================
+       * "CUALQUIER COMIDA"
+       * ==========================================
+       *
+       * También es una selección explícita del
+       * usuario.
+       *
+       * Por eso NO usamos foodSupportsMealType().
+       *
+       * Puede participar en cualquiera de las
+       * comidas configuradas.
+       */
+      types.forEach((type) => {
+        addUnique(
+          byMeal[type].allowed,
+          food
+        );
+
+        addUnique(
+          byMeal[type].preferred,
+          food
+        );
+      });
+
+      /*
+       * Si tiene que aparecer pero no se indicó
+       * una comida concreta, lo hacemos obligatorio
+       * en UNA sola comida.
+       *
+       * No queremos:
+       *
+       * Pan -> desayuno + almuerzo + cena
+       *
+       * sólo porque decía "Cualquier comida".
+       */
+      if (
+        food?.mustAppear !== false &&
+        types.length
+      ) {
+        const requiredType =
+          types[
+            anyCursor % types.length
+          ];
+
+        anyCursor += 1;
+
+        if (byMeal[requiredType]) {
+          addUnique(
+            byMeal[requiredType].required,
+            food
+          );
+        }
+      }
+    }
+  );
+
   return byMeal;
 }
+
+
 
 export function generatedMealNutritionTotals(meal = {}) {
   const items = foodItems(meal);

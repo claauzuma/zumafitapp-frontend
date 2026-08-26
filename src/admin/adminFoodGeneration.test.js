@@ -23,6 +23,12 @@ test("el dropdown ofrece exactamente los tres modos permitidos", () => {
   assert.deepEqual(GENERATION_MODES, ["EXPLICIT_ONLY", "GENERIC", "DISABLED"]);
 });
 
+test("los meal types de UI coinciden exactamente con el contrato del generador", () => {
+  assert.deepEqual(GENERATION_MEAL_TYPES.map(([key]) => key), [
+    "breakfast", "lunch", "snack", "dinner", "extraSnack",
+  ]);
+});
+
 test("roles y momentos se pueden alternar sin modificar otros flags", () => {
   let draft = createFoodDraft();
   draft = toggleGenerationFlag(draft, "roles", "C1");
@@ -68,6 +74,22 @@ test("crear alimento parte de EXPLICIT_ONLY y conserva flags apagados", () => {
   assert.equal(draft.generation.mode, "EXPLICIT_ONLY");
   assert.equal(Object.values(draft.generation.roles).some(Boolean), false);
   assert.equal(Object.values(draft.generation.mealTypes).some(Boolean), false);
+});
+
+test("editar un alimento sin mealTypes aplica el default de lectura sin mutar el documento", () => {
+  const food = {
+    generation: {
+      mode: "EXPLICIT_ONLY",
+      roles: { C1: true },
+      portionRule: { unit: "g", min: 10, max: 300, step: 5, allowedValues: [] },
+    },
+  };
+  const before = structuredClone(food);
+  const draft = editFoodDraft(food);
+
+  assert.equal(Object.values(draft.generation.mealTypes).some(Boolean), false);
+  assert.deepEqual(draft.generation.portionRule, before.generation.portionRule);
+  assert.deepEqual(food, before);
 });
 
 test("crear alimento valida datos nutricionales antes de llamar al backend", () => {

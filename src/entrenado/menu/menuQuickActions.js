@@ -4,6 +4,13 @@ export const MENU_GENERATION_MODE_SCRATCH = "from_scratch";
 
 export const DEFAULT_MENU_GENERATION_SETTINGS = Object.freeze({
   generationProfile: "recommended",
+  calorieDistributionMode: "balanced",
+
+calorieDistributionPercents: {},
+
+lockedCalorieMeals: {},
+
+freeCalories: 0,
   mode: MENU_GENERATION_MODE_COMBINE,
   mealCount: 4,
   mealTypes: ["desayuno", "almuerzo", "merienda", "cena"],
@@ -85,7 +92,7 @@ function normalizedFoodSelections(value = []) {
       esCarboPrincipal: source.esCarboPrincipal === true,
       esGrasaPrincipal: source.esGrasaPrincipal === true,
       esVegetalLibre: source.esVegetalLibre === true,
-      mustAppear: source.mustAppear === true,
+      mustAppear: source.mustAppear !== false,
       targetMealType,
       generation: {
         mode: generationSource.mode || "EXPLICIT_ONLY",
@@ -110,40 +117,288 @@ function enumValue(value, allowed, fallback) {
 }
 
 export function normalizeMenuGenerationSettings(value = {}) {
-  const requestedMealCount = Math.max(3, Math.min(6, Math.round(Number(value.mealCount) || 4)));
+  const requestedMealCount = Math.max(
+    3,
+    Math.min(
+      6,
+      Math.round(Number(value.mealCount) || 4)
+    )
+  );
+
   const selectedMealTypes = Array.isArray(value.mealTypes)
-    ? [...new Set(value.mealTypes.map(String).filter((type) => VALID_MEAL_TYPES.has(type)))].slice(0, 6)
+    ? [
+        ...new Set(
+          value.mealTypes
+            .map(String)
+            .filter((type) =>
+              VALID_MEAL_TYPES.has(type)
+            )
+        ),
+      ].slice(0, 6)
     : [];
-  const mealTypes = selectedMealTypes.length >= 3 ? selectedMealTypes : mealTypesForCount(requestedMealCount);
+
+  const mealTypes =
+    selectedMealTypes.length >= 3
+      ? selectedMealTypes
+      : mealTypesForCount(requestedMealCount);
+
   const mealCount = mealTypes.length;
-  const firstMealTime = /^\d{2}:\d{2}$/.test(String(value.firstMealTime || ""))
-    ? String(value.firstMealTime)
-    : "";
+
+  const firstMealTime =
+    /^\d{2}:\d{2}$/.test(
+      String(value.firstMealTime || "")
+    )
+      ? String(value.firstMealTime)
+      : "";
+
+  /*
+   * ==========================================
+   * NUEVA DISTRIBUCIÓN DE CALORÍAS
+   * ==========================================
+   */
+
+  const calorieDistributionMode = enumValue(
+    value.calorieDistributionMode,
+    [
+      "balanced",
+      "more_breakfast",
+      "more_lunch",
+      "more_dinner",
+      "custom",
+    ],
+    "balanced"
+  );
+
+  /*
+   * Conservamos únicamente porcentajes de
+   * comidas que realmente están seleccionadas.
+   *
+   * También limitamos cada porcentaje a 0-100.
+   */
+  const rawCaloriePercents =
+    value.calorieDistributionPercents &&
+    typeof value.calorieDistributionPercents === "object"
+      ? value.calorieDistributionPercents
+      : {};
+
+  const calorieDistributionPercents =
+    mealTypes.reduce((result, type) => {
+      const raw = Number(
+        rawCaloriePercents[type]
+      );
+
+      if (Number.isFinite(raw)) {
+        result[type] = Math.max(
+          0,
+          Math.min(100, Math.round(raw))
+        );
+      }
+
+      return result;
+    }, {});
+
+  /*
+   * ==========================================
+   * COMIDAS BLOQUEADAS
+   * ==========================================
+   *
+   * Sólo guardamos locks de comidas que
+   * realmente existen en este día.
+   */
+
+  const rawLockedMeals =
+    value.lockedCalorieMeals &&
+    typeof value.lockedCalorieMeals === "object"
+      ? value.lockedCalorieMeals
+      : {};
+
+  const lockedCalorieMeals =
+    mealTypes.reduce((result, type) => {
+      if (rawLockedMeals[type] === true) {
+        result[type] = true;
+      }
+
+      return result;
+    }, {});
+
+  /*
+   * ==========================================
+   * CALORÍAS LIBRES
+   * ==========================================
+   */
+
+  const freeCalories = Math.max(
+    0,
+    Number(value.freeCalories || 0)
+  );
+
+  /*
+   * ==========================================
+   * ALIMENTOS INCLUIDOS
+   * ==========================================
+   */
+
+  const includeFoods =
+    normalizedFoodSelections(
+      value.includeFoods
+    ).map((food) => ({
+      ...food,
+
+      /*
+       * Si está asociado a una comida válida,
+       * la conservamos.
+       *
+       * Si no, queda como "any".
+       */
+      targetMealType:
+        food.targetMealType === "any" ||
+        mealTypes.includes(
+          food.targetMealType
+        )
+          ? food.targetMealType
+          : "any",
+
+      /*
+       * En la UI nueva ya no existe
+       * "Debe aparecer".
+       *
+       * Todo alimento incluido es obligatorio.
+       */
+      mustAppear:
+        food.mustAppear !== false,
+    }));
+
+  /*
+   * ==========================================
+   * ALIMENTOS EXCLUIDOS
+   * ==========================================
+   *
+   * Antes no normalizábamos targetMealType.
+   * Ahora sí, porque "Evitar" es por comida.
+   */
+
+  const excludeFoods =
+    normalizedFoodSelections(
+      value.excludeFoods
+    ).map((food) => ({
+      ...food,
+
+      targetMealType:
+        food.targetMealType === "any" ||
+        mealTypes.includes(
+          food.targetMealType
+        )
+          ? food.targetMealType
+          : "any",
+    }));
+
   return {
     generationProfile: enumValue(
       value.generationProfile,
-      ["recommended", "custom", "library"],
-      DEFAULT_MENU_GENERATION_SETTINGS.generationProfile
+      [
+        "recommended",
+        "custom",
+        "library",
+      ],
+      DEFAULT_MENU_GENERATION_SETTINGS
+        .generationProfile
     ),
-    mode: VALID_MODES.has(value.mode) ? value.mode : DEFAULT_MENU_GENERATION_SETTINGS.mode,
+
+    mode: VALID_MODES.has(value.mode)
+      ? value.mode
+      : DEFAULT_MENU_GENERATION_SETTINGS.mode,
+
     mealCount,
+
     mealTypes,
-    allowRepeats: value.allowRepeats === true,
-    distribution: value.distribution === "equal" ? "equal" : "balanced",
-    preferFavorites: value.preferFavorites === true,
+
+    allowRepeats:
+      value.allowRepeats === true,
+
+    /*
+     * Campo legacy.
+     * Lo mantenemos todavía porque partes
+     * del generador actual lo utilizan.
+     */
+    distribution:
+      value.distribution === "equal"
+        ? "equal"
+        : "balanced",
+
+    /*
+     * ======================================
+     * CAMPOS NUEVOS
+     * ======================================
+     */
+
+    calorieDistributionMode,
+
+    calorieDistributionPercents,
+
+    lockedCalorieMeals,
+
+    freeCalories,
+
+    /*
+     * ======================================
+     * RESTO DE AJUSTES
+     * ======================================
+     */
+
+    preferFavorites:
+      value.preferFavorites === true,
+
     firstMealTime,
-    includeFoods: normalizedFoodSelections(value.includeFoods).map((food) => ({
-      ...food,
-      targetMealType: food.targetMealType === "any" || mealTypes.includes(food.targetMealType)
-        ? food.targetMealType
-        : "any",
-    })),
-    excludeFoods: normalizedFoodSelections(value.excludeFoods),
-    foodPoolMode: enumValue(value.foodPoolMode, ["combine", "only"], "combine"),
-    variety: enumValue(value.variety, ["low", "medium", "high"], "medium"),
-    algorithmTolerance: enumValue(value.algorithmTolerance, ["strict", "balanced", "flexible"], "balanced"),
-    prepTime: enumValue(value.prepTime, ["quick", "normal", "elaborate"], "quick"),
-    budget: enumValue(value.budget, ["low", "medium", "high"], "medium"),
+
+    includeFoods,
+
+    excludeFoods,
+
+    foodPoolMode: enumValue(
+      value.foodPoolMode,
+      ["combine", "only"],
+      "combine"
+    ),
+
+    variety: enumValue(
+      value.variety,
+      ["low", "medium", "high"],
+      "medium"
+    ),
+
+    algorithmTolerance: enumValue(
+      value.algorithmTolerance,
+      [
+        "strict",
+        "balanced",
+        "flexible",
+      ],
+      "balanced"
+    ),
+
+    /*
+     * Los mantenemos por compatibilidad,
+     * aunque ya no los mostremos en el wizard.
+     */
+    prepTime: enumValue(
+      value.prepTime,
+      [
+        "quick",
+        "normal",
+        "elaborate",
+      ],
+      "quick"
+    ),
+
+    budget: enumValue(
+      value.budget,
+      [
+        "low",
+        "medium",
+        "high",
+      ],
+      "medium"
+    ),
   };
 }
 
@@ -208,45 +463,233 @@ export function buildAutonomousMenuGenerationRequest({
   target = {},
   selectedDate = "",
   coachMealTargets = [],
+  plannedMeals = [],
   allowCalorieTopUp = false,
   name = "Mi menu generado",
+  variantSeed: requestedVariantSeed = "",
 } = {}) {
-  const normalized = normalizeMenuGenerationSettings(settings);
-  const coachTargets = Array.isArray(coachMealTargets) ? coachMealTargets : [];
+  const normalized =
+    normalizeMenuGenerationSettings(settings);
+
+  const coachTargets =
+    Array.isArray(coachMealTargets)
+      ? coachMealTargets
+      : [];
+
   const coachTypes = coachTargets
-    .map((meal) => String(meal?.type || meal?.tipo || "").trim().toLowerCase())
-    .filter((type) => VALID_MEAL_TYPES.has(type));
-  const mealTypes = coachTypes.length === coachTargets.length && coachTypes.length
-    ? coachTypes
-    : normalized.mealTypes;
-  const sourceMode = normalized.foodPoolMode === "only" || normalized.mode === MENU_GENERATION_MODE_SCRATCH
-    ? "foods"
-    : normalized.mode === MENU_GENERATION_MODE_SIMILAR
-      ? "library"
-      : "combined";
+    .map((meal) =>
+      String(
+        meal?.type ||
+        meal?.tipo ||
+        ""
+      )
+        .trim()
+        .toLowerCase()
+    )
+    .filter((type) =>
+      VALID_MEAL_TYPES.has(type)
+    );
+
+  const hasValidCoachTargets =
+    coachTypes.length === coachTargets.length &&
+    coachTypes.length > 0;
+
+  // Los targets por comida pueden orientar nombres/metas, pero no cambian la
+  // cantidad total que el usuario eligió en Ajustes.
+  const mealTypes = normalized.mealTypes;
+
+  const sourceMode =
+    normalized.foodPoolMode === "only" ||
+    normalized.mode ===
+      MENU_GENERATION_MODE_SCRATCH
+      ? "foods"
+      : normalized.mode ===
+          MENU_GENERATION_MODE_SIMILAR
+        ? "library"
+        : "combined";
+
+  /*
+   * ==========================================
+   * DISTRIBUCIÓN PERSONALIZADA
+   * ==========================================
+   *
+   * Conservamos solamente porcentajes de
+   * las comidas que realmente se van a generar.
+   */
+  const calorieDistributionPercents =
+    mealTypes.reduce((result, type) => {
+      const raw =
+        normalized
+          .calorieDistributionPercents?.[
+          type
+        ];
+
+      const value = Number(raw);
+
+      if (Number.isFinite(value)) {
+        result[type] = value;
+      }
+
+      return result;
+    }, {});
+
+  /*
+   * Lo mismo con los locks.
+   */
+  const lockedCalorieMeals =
+    mealTypes.reduce((result, type) => {
+      if (
+        normalized.lockedCalorieMeals?.[
+          type
+        ] === true
+      ) {
+        result[type] = true;
+      }
+
+      return result;
+    }, {});
+
+  /*
+   * Cada request obtiene un seed distinto.
+   *
+   * Más adelante lo vamos a usar para que:
+   *
+   * Regenerar todo
+   * ->
+   * genere otra solución válida.
+   */
+  const variantSeed = requestedVariantSeed ||
+    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
   return {
     target,
+
     mealTypes,
-    mealTargets: coachTypes.length === coachTargets.length ? coachTargets : [],
-    selectedDays: [dayKeyFromIsoDate(selectedDate)],
+
+    mealTargets:
+      hasValidCoachTargets
+        ? coachTargets
+        : [],
+
+    plannedMeals:
+      (Array.isArray(plannedMeals) ? plannedMeals : []),
+
+    selectedDays: [
+      dayKeyFromIsoDate(selectedDate),
+    ],
+
     selectedDate,
-    distribution: normalized.distribution,
+
+    /*
+     * ========================================
+     * LEGACY
+     * ========================================
+     *
+     * Todavía lo usa generatorMealSpecs.
+     * No lo sacamos.
+     */
+    distribution:
+      normalized.distribution,
+
+    /*
+     * ========================================
+     * NUEVA DISTRIBUCIÓN
+     * ========================================
+     */
+
+    calorieDistributionMode:
+      normalized.calorieDistributionMode,
+
+    calorieDistributionPercents,
+
+    lockedCalorieMeals,
+
+    /*
+     * Calorías reservadas fuera del menú.
+     *
+     * Ej:
+     * target 2132
+     * freeCalories 200
+     * menú automático ≈ 1932
+     */
+    freeCalories: Math.max(
+      0,
+      Number(
+        normalized.freeCalories || 0
+      )
+    ),
+
     sourceMode,
-    generationMode: normalized.mode,
-    foods: normalized.includeFoods,
-    excludedFoods: normalized.excludeFoods,
-    useOnlySelectedFoods: normalized.foodPoolMode === "only",
-    allowRepeats: normalized.allowRepeats,
-    preferFavorites: normalized.preferFavorites,
-    firstMealTime: normalized.firstMealTime,
+
+    generationMode:
+      normalized.mode,
+
+    foods:
+      normalized.includeFoods,
+
+    excludedFoods:
+      normalized.excludeFoods,
+
+    useOnlySelectedFoods:
+      normalized.foodPoolMode ===
+      "only",
+
+    allowRepeats:
+      normalized.allowRepeats,
+
+    preferFavorites:
+      normalized.preferFavorites,
+
+    firstMealTime:
+      normalized.firstMealTime,
+
     allowCalorieTopUp,
+
     name,
+
+    /*
+     * No es una preferencia persistente.
+     * Se renueva en cada generación.
+     */
+    variantSeed,
+
+    /*
+     * Metadata completa de cómo se generó.
+     * Después nos sirve también para guardar
+     * información junto al preview.
+     */
     generationSettings: {
-      generationProfile: normalized.generationProfile,
-      variety: normalized.variety,
-      algorithmTolerance: normalized.algorithmTolerance,
-      prepTime: normalized.prepTime,
-      budget: normalized.budget,
+      generationProfile:
+        normalized.generationProfile,
+
+      variety:
+        normalized.variety,
+
+      algorithmTolerance:
+        normalized.algorithmTolerance,
+
+      prepTime:
+        normalized.prepTime,
+
+      budget:
+        normalized.budget,
+
+      calorieDistributionMode:
+        normalized.calorieDistributionMode,
+
+      calorieDistributionPercents,
+
+      lockedCalorieMeals,
+
+      freeCalories: Math.max(
+        0,
+        Number(
+          normalized.freeCalories || 0
+        )
+      ),
+
+      foodPoolMode:
+        normalized.foodPoolMode,
     },
   };
 }

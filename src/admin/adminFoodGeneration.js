@@ -15,7 +15,7 @@ export const GENERATION_MEAL_TYPES = Object.freeze([
   ["lunch", "Almuerzo"],
   ["snack", "Merienda"],
   ["dinner", "Cena"],
-  ["extraSnack", "Snack"],
+  ["extraSnack", "Snack extra"],
 ]);
 
 export const PORTION_UNITS = Object.freeze(["g", "unidad", "ml", "porcion"]);

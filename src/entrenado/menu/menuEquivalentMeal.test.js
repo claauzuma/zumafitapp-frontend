@@ -8,12 +8,14 @@ import {
   equivalentMealDecisionWarning,
   equivalentMealDraftStorageKey,
   equivalentMealGenerationFeedback,
+  equivalentMealRecalculationPreflight,
   equivalentLibrarySourceLabel,
   filterEquivalentLibraryMeals,
   generatedAlternativeToDrafts,
   nextGeneratedAlternativeIndex,
   resolveEquivalentMealAccess,
 } from "./menuEquivalentMeal.js";
+import { createTrackingFoodDraft } from "../../tracking/trackingQuantityDrafts.js";
 
 test("completionMode persiste sólo los alimentos nuevos con el executionId existente", () => {
   const generated = [{ nombre: "Arroz", cantidad: 180, kcal: 230 }];
@@ -55,17 +57,14 @@ test("Pro y VIP reciben limites explicitos sin cambiar la calidad del calculo", 
   assert.deepEqual(vip, { canCreate: true, canAuto: true, canReplaceFoods: true, maxFoods: 10 });
 });
 
-test("la comparacion usa un techo calorico estricto y proteina neutral en cero", () => {
-  const close = equivalentMealComparison(
+test("la comparacion legacy conserva diferencias para borradores sin evaluacion central", () => {
+  const comparison = equivalentMealComparison(
     { kcal: 600, proteina: 40, carbs: 65, grasas: 20 },
     { kcal: 599, proteina: 38, carbs: 64, grasas: 21 }
   );
-  assert.equal(close.caloriesClose, true);
-  assert.equal(close.exceedsCalories, false);
-  assert.equal(close.proteinReached, true);
-
-  const neutral = equivalentMealComparison({ kcal: 500, proteina: 0 }, { kcal: 500, proteina: 0 });
-  assert.equal(neutral.proteinReached, true);
+  assert.deepEqual(comparison.diff, { kcal: -1, proteina: -2, carbs: -1, grasas: 1 });
+  assert.equal(comparison.caloriesClose, true);
+  assert.equal(comparison.proteinReached, true);
 });
 
 test("el borrador queda aislado por fecha y comida", () => {
@@ -162,6 +161,25 @@ test("los niveles de porcion producen avisos discretos y no-solution bloquea el 
   });
   assert.equal(none.usable, false);
   assert.match(none.error, /No se puede alcanzar esta meta/);
+
+  const bestEffort = equivalentMealGenerationFeedback({
+    status: "SUCCESS",
+    alternative: {
+      foods: [{ foodId: "arroz" }],
+      nutrition: {
+        status: "BEST_EFFORT",
+        recommended: false,
+        usable: true,
+        warning: {
+          code: "MEAL_NUTRITION_BEST_EFFORT",
+          summary: "Las calorías están alineadas, pero el reparto de macros queda desbalanceado.",
+        },
+      },
+    },
+  });
+  assert.equal(bestEffort.usable, true);
+  assert.equal(bestEffort.classification, "BEST_EFFORT");
+  assert.equal(bestEffort.warning.summary, "Las calorías están alineadas, pero el reparto de macros queda desbalanceado.");
 });
 
 test("recalcular envia una seleccion cerrada, cantidades actuales y candados sin candidatos", () => {
@@ -187,67 +205,98 @@ test("recalcular envia una seleccion cerrada, cantidades actuales y candados sin
   ]);
   assert.deepEqual(request.fixedFoods, [{ foodId: "pollo", quantity: 250 }]);
   assert.deepEqual(request.target, { kcal: 775, proteina: 58, carbs: 99, grasas: 16 });
-  assert.equal(request.generateVariant, true);
+  assert.equal(request.generateVariant, false);
   assert.equal(request.variantSeed, 7);
   assert.equal("candidateFoods" in request, false);
   assert.equal("generationStrategy" in request, false);
 });
 
-test("la advertencia prioritaria aparece solo ante diferencias nutricionales relevantes", () => {
-  const target = { kcal: 776, proteina: 57.6, carbs: 94.6, grasas: 15.6 };
+test("todos los alimentos con candado cerrado siguen habilitando la evaluacion central", () => {
+  const drafts = [
+    createTrackingFoodDraft({
+      id: "pollo",
+      nombre: "Pollo",
+      unidad: "unidad",
+      macroBasis: "perUnit",
+      kcal: 400,
+      proteina: 60,
+      carbs: 0,
+      grasas: 16,
+    }, 1, "locked-chicken"),
+    createTrackingFoodDraft({
+      id: "arroz",
+      nombre: "Arroz",
+      unidad: "unidad",
+      macroBasis: "perUnit",
+      kcal: 300,
+      proteina: 6,
+      carbs: 65,
+      grasas: 2,
+    }, 1, "locked-rice"),
+  ];
+  const preflight = equivalentMealRecalculationPreflight({ canAuto: true, drafts });
 
-  assert.equal(equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 775.4, proteina: 56, carbs: 92, grasas: 16.5 },
-    optimization: { calorieTolerance: 1 },
-  }), null);
+  assert.equal(preflight.allowed, true);
+  assert.deepEqual(preflight.input.pendingFoods, []);
+  assert.deepEqual(preflight.input.fixedFoods.map((food) => [food.foodId, food.quantity]), [
+    ["pollo", 1],
+    ["arroz", 1],
+  ]);
+  assert.equal(preflight.input.fixedTotals.kcal, 700);
 
-  const calories = equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 760, proteina: 58, carbs: 90, grasas: 16 },
-    optimization: { calorieTolerance: 1 },
+  const request = buildEquivalentMealRecalculationRequest({
+    menuId: "menu-locked",
+    mealId: "almuerzo-locked",
+    mealType: "almuerzo",
+    target: { kcal: 600, proteina: 50, carbs: 60, grasas: 15 },
+    drafts,
+    fixedFoods: preflight.input.fixedFoods,
   });
-  assert.deepEqual(calories.codes, ["calorie_target_not_reached"]);
-  assert.match(calories.reasons[0], /16 kcal/);
-
-  const protein = equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 776, proteina: 52.6, carbs: 94.6, grasas: 15.6 },
-  });
-  assert.deepEqual(protein.codes, ["protein_target_not_reached"]);
-  assert.match(protein.reasons[0], /5 g/);
-
-  assert.equal(equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 776, proteina: 53.6, carbs: 94.6, grasas: 15.6 },
-  }), null);
+  assert.equal(request.fixedFoods.length, request.selectedFoodIds.length);
+  assert.equal(preflight.input.fixedTotals.kcal > request.target.kcal, true);
 });
 
-test("el desbalance C/G requiere exceso proteico de al menos 6 g", () => {
-  const target = { kcal: 776, proteina: 57.6, carbs: 94.6, grasas: 15.6 };
-  const withoutProteinExcess = equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 776, proteina: 60, carbs: 41.5, grasas: 27.5 },
-  });
-  assert.equal(withoutProteinExcess, null);
+test("preflight de recalculo conserva solamente los bloqueos de permiso y seleccion vacia", () => {
+  assert.equal(equivalentMealRecalculationPreflight({ canAuto: false, drafts: [{}] }).allowed, false);
+  assert.equal(equivalentMealRecalculationPreflight({ canAuto: true, drafts: [] }).allowed, false);
+});
 
-  const exactThreshold = equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 776, proteina: 63.6, carbs: 41.5, grasas: 27.5 },
+test("la advertencia de equivalencia reproduce BEST_EFFORT del backend sin umbrales locales", () => {
+  const warning = equivalentMealDecisionWarning({
+    response: {
+      nutrition: {
+        status: "BEST_EFFORT",
+        usable: true,
+        recommended: false,
+        target: { kcal: 776, proteina: 57.6, carbs: 94.6, grasas: 15.6 },
+        totals: { kcal: 772, proteina: 86.2, carbs: 76.5, grasas: 13.5 },
+        warning: {
+          code: "MEAL_NUTRITION_BEST_EFFORT",
+          title: "Revisá esta alternativa",
+          summary: "Las calorías están alineadas, pero el reparto de macros queda desbalanceado.",
+          reasons: ["Proteína: sobran 28,6 g"],
+          reasonCodes: ["PROTEIN_ABOVE_REASONABLE_RANGE"],
+        },
+      },
+    },
   });
-  assert.deepEqual(exactThreshold.codes, ["macro_distribution_far_with_protein_excess"]);
 
-  const strong = equivalentMealDecisionWarning({
-    target,
-    proposal: { kcal: 776, proteina: 90.6, carbs: 41.5, grasas: 27.5 },
-  });
-  assert.deepEqual(strong.codes, ["macro_distribution_far_with_protein_excess"]);
-  assert.match(strong.reasons[0], /33 g/);
-  assert.match(strong.reasons[0], /Carbohidratos/);
-  assert.match(strong.reasons[0], /Grasas/);
+  assert.equal(warning.summary, "Las calorías están alineadas, pero el reparto de macros queda desbalanceado.");
+  assert.deepEqual(warning.codes, [
+    "MEAL_NUTRITION_BEST_EFFORT",
+    "PROTEIN_ABOVE_REASONABLE_RANGE",
+  ]);
+  assert.equal(warning.proposal.proteina, 86.2);
 
   assert.equal(equivalentMealDecisionWarning({
-    target: { ...target, proteina: 0 },
-    proposal: { kcal: 776, proteina: 90, carbs: 41.5, grasas: 27.5 },
+    response: {
+      nutrition: {
+        status: "RECOMMENDED",
+        usable: true,
+        recommended: true,
+        target: { kcal: 1 },
+        totals: { kcal: 999, proteina: 999 },
+      },
+    },
   }), null);
 });

@@ -12,6 +12,7 @@ import {
 } from "./clientMenuGeneration.js";
 import { dayKeyFromIsoDate, mealTypesForCount, normalizeMenuGenerationSettings } from "../entrenado/menu/menuQuickActions.js";
 import { foodSupportsMealType, isGenericGenerationFood } from "./clientMenuGenerationPolicy.js";
+import { MEAL_NUTRITION_POLICY } from "../nutricion/mealNutritionResult.js";
 
 const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const MEAL_LABELS = {
@@ -99,7 +100,7 @@ export default function ClientMenuGenerator({ user = {}, targetOverride = null, 
     setError("");
     try {
       const authorization = await authorizeClientMenuGeneration();
-      if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
+      if (authorization?.policy !== MEAL_NUTRITION_POLICY || authorization?.previewOnly !== true) {
         throw new Error("El servidor no autorizo una vista previa segura.");
       }
       const preview = await generateClientMenuPreview({

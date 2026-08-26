@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { listAlimentos } from "../../nutricion/nutricionApi.js";
+import { MEAL_NUTRITION_CLASSIFICATION } from "../../nutricion/mealNutritionResult.js";
 import { getFoodImageUrl } from "../../nutricion/nutricionUtils.js";
 import { getCachedUser } from "../../authCache.js";
 import { listLibraryMeals } from "../../nutritionLibrary/nutritionLibraryApi.js";
@@ -38,7 +39,6 @@ import {
   isTrackingDraftAutomatic,
   markTrackingDraftAutomatic,
   markTrackingDraftManual,
-  trackingDraftCalculationPayload,
   trackingDraftProposals,
   trackingDraftStorageOwner,
   trackingDraftsNutritionTotals,
@@ -54,6 +54,7 @@ import {
   equivalentMealDecisionWarning,
   equivalentMealDraftStorageKey,
   equivalentMealGenerationFeedback,
+  equivalentMealRecalculationPreflight,
   equivalentMealTarget,
   equivalentLibrarySourceLabel,
   filterEquivalentLibraryMeals,
@@ -91,7 +92,7 @@ function resultsFrom(response = {}) {
 }
 
 function loadDraftState(storageKey, maxFoods) {
-  const empty = { drafts: [], strategy: "selected_only", rejectedSuggestionFoodIds: [], requestId: "", warnings: [], favoriteOriginId: "", generatedConstraintSignature: "" };
+  const empty = { drafts: [], strategy: "selected_only", rejectedSuggestionFoodIds: [], requestId: "", warnings: [], favoriteOriginId: "", generatedConstraintSignature: "", nutritionResult: null };
   if (!storageKey) return empty;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "null");
@@ -108,6 +109,9 @@ function loadDraftState(storageKey, maxFoods) {
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings.slice(0, 20) : [],
       favoriteOriginId: String(parsed.favoriteOriginId || "").slice(0, 120),
       generatedConstraintSignature: String(parsed.generatedConstraintSignature || "").slice(0, 1000),
+      nutritionResult: parsed.nutritionResult && typeof parsed.nutritionResult === "object"
+        ? parsed.nutritionResult
+        : null,
     };
   } catch {
     return empty;
@@ -659,9 +663,9 @@ const target =
   const [generationNotice, setGenerationNotice] = useState("");
   const [generationBlockingError, setGenerationBlockingError] = useState("");
   const [calculating, setCalculating] = useState(false);
-  const [optimization, setOptimization] = useState(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [confirmOverage, setConfirmOverage] = useState(false);
+  const [nutritionResult, setNutritionResult] = useState(initialDraftState.nutritionResult);
   const [nutritionWarningOpen, setNutritionWarningOpen] = useState(false);
   const [nutritionWarningAccepted, setNutritionWarningAccepted] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -700,16 +704,31 @@ const target =
     [comparisonTarget, finalTotals]
   );
   const nutritionDecisionWarning = useMemo(() => equivalentMealDecisionWarning({
-    target: comparisonTarget,
-    proposal: finalTotals,
-    optimization,
-  }), [comparisonTarget, finalTotals, optimization]);
-  const nutritionWarningSignature = nutritionDecisionWarning?.codes.join("|") || "";
+    nutritionResult,
+  }), [nutritionResult]);
+  const nutritionWarningSignature = nutritionDecisionWarning
+    ? `${nutritionDecisionWarning.codes.join("|")}:${nutritionDecisionWarning.summary}`
+    : "";
   useEffect(() => {
     setNutritionWarningAccepted(false);
     setNutritionWarningOpen(false);
   }, [nutritionWarningSignature, totals.kcal, totals.proteina, totals.carbs, totals.grasas]);
-  const ready = trackingDraftsReadyToConfirm(drafts) && !generationBlockingError;
+  const ready = trackingDraftsReadyToConfirm(drafts) &&
+    !generationBlockingError &&
+    nutritionResult?.usable !== false;
+  const resultToneClass = nutritionResult?.classification === MEAL_NUTRITION_CLASSIFICATION.RECOMMENDED
+    ? "border-emerald-300/30 bg-emerald-300/[0.07]"
+    : nutritionResult?.classification === MEAL_NUTRITION_CLASSIFICATION.BEST_EFFORT
+      ? "border-amber-300/30 bg-amber-300/[0.07]"
+      : nutritionResult?.classification === MEAL_NUTRITION_CLASSIFICATION.NO_SOLUTION
+        ? "border-rose-400/30 bg-rose-400/[0.08]"
+        : nutritionResult
+          ? "border-sky-300/25 bg-sky-300/[0.06]"
+          : comparison.exceedsCalories
+          ? "border-rose-400/30 bg-rose-400/[0.08]"
+          : comparison.caloriesClose
+            ? "border-emerald-300/30 bg-emerald-300/[0.07]"
+            : "border-sky-300/25 bg-sky-300/[0.06]";
   const visibleLibraryMeals = useMemo(() => filterEquivalentLibraryMeals(libraryMeals, {
     include: libraryInclude,
     exclude: libraryExclude,
@@ -763,6 +782,7 @@ const target =
         warnings,
         favoriteOriginId,
         generatedConstraintSignature,
+        nutritionResult,
         target,
         menuId,
         menuVersion,
@@ -771,7 +791,7 @@ const target =
     } catch {
       // El flujo sigue funcionando aunque el navegador bloquee storage.
     }
-  }, [drafts, favoriteOriginId, generatedConstraintSignature, menuId, menuVersion, rejectedSuggestionFoodIds, requestId, storageKey, strategy, target, warnings]);
+  }, [drafts, favoriteOriginId, generatedConstraintSignature, menuId, menuVersion, nutritionResult, rejectedSuggestionFoodIds, requestId, storageKey, strategy, target, warnings]);
 
   useEffect(() => {
     const term = search.trim();
@@ -849,7 +869,7 @@ const target =
   }, [settingsAvoidedFoods, settingsFilterInput, settingsRequiredFoods, settingsSheetOpen]);
 
   function clearResult() {
-    setOptimization(null);
+    setNutritionResult(null);
     setConfirmOverage(false);
     setNutritionWarningOpen(false);
     setNutritionWarningAccepted(false);
@@ -882,26 +902,24 @@ const target =
     }, maxFoods, optionIndex);
   }
 
-  function showGeneratedAlternative(alternatives, index) {
+  function showGeneratedAlternative(alternatives, index, response = null) {
     const selected = alternatives[index];
     if (!selected) return false;
+    const feedback = equivalentMealGenerationFeedback(response
+      ? { ...response, alternative: selected }
+      : selected);
+    if (!feedback.usable) return false;
     const nextDrafts = draftsFromGeneratedAlternative(selected, index);
     if (!nextDrafts.length || !trackingDraftsReadyToConfirm(nextDrafts)) return false;
     setDrafts(nextDrafts);
     setStrategy(selected.foods.length > settingsRequiredFoods.length
       ? "assisted_food_addition"
       : strategy);
-    setOptimization(selected.optimization || null);
+    setNutritionResult(feedback.nutritionResult);
     setWarnings(Array.isArray(selected.warnings) ? selected.warnings : []);
     setGeneratedAlternativeIndex(index);
     setDraftState("SUCCESS");
     setError("");
-    const feedback = equivalentMealGenerationFeedback({
-      status: "SUCCESS",
-      recommended: selected.recommended === true,
-      alternative: selected,
-      relaxation: selected.relaxation,
-    });
     setGenerationBlockingError("");
     setGenerationNotice(feedback.notice);
     return true;
@@ -980,23 +998,12 @@ const target =
   }
 
   async function calculate() {
-    if (!canAuto) {
-      setError("El calculo automatico no esta incluido en este acceso. Podes definir las cantidades manualmente.");
+    const preflight = equivalentMealRecalculationPreflight({ canAuto, drafts });
+    if (!preflight.allowed) {
+      setError(preflight.error);
       return;
     }
-    if (!drafts.length) {
-      setError("Agrega al menos un alimento.");
-      return;
-    }
-    const input = trackingDraftCalculationPayload(drafts);
-    if (!input.pendingFoods.length) {
-      setError("Marca al menos un alimento como Auto para recalcularlo.");
-      return;
-    }
-    if (input.fixedTotals.kcal >= target.kcal && target.kcal > 0) {
-      setError("Las cantidades Manuales ya completan o superan las calorias de esta comida.");
-      return;
-    }
+    const input = preflight.input;
     try {
       setCalculating(true);
       setError("");
@@ -1011,8 +1018,10 @@ const target =
       }));
       const feedback = equivalentMealGenerationFeedback(response);
       if (!feedback.usable || !Array.isArray(response?.alternative?.foods)) {
+        setNutritionResult(feedback.nutritionResult);
         setGenerationBlockingError(feedback.error);
-        throw new Error(feedback.error || "No se encontro una combinacion valida.");
+        setError("");
+        return;
       }
       const proposals = trackingDraftProposals(drafts, response.alternative.foods);
       if (proposals.length !== drafts.length) {
@@ -1023,7 +1032,7 @@ const target =
         throw new Error("Revisa los alimentos: alguna cantidad no es fisicamente valida.");
       }
       setDrafts(nextDrafts);
-      setOptimization(response.alternative.optimization || null);
+      setNutritionResult(feedback.nutritionResult);
       setWarnings(Array.isArray(response.alternative.warnings) ? response.alternative.warnings : []);
       setGenerationBlockingError("");
       setGenerationNotice(feedback.notice || (
@@ -1109,7 +1118,7 @@ const target =
       if (!feedback.usable || !alternatives.length) {
         setDraftState("NO_SOLUTION");
         setDrafts([]);
-        setOptimization(null);
+        setNutritionResult(feedback.nutritionResult);
         setGeneratedAlternatives([]);
         setGeneratedAlternativeIndex(-1);
         setGeneratedConstraintSignature("");
@@ -1118,7 +1127,7 @@ const target =
       }
       setGeneratedAlternatives(alternatives);
       setGeneratedConstraintSignature(signature);
-      if (!showGeneratedAlternative(alternatives, 0)) {
+      if (!showGeneratedAlternative(alternatives, 0, response)) {
         throw new Error("La alternativa no devolvio cantidades fisicamente validas.");
       }
     } catch (generationError) {
@@ -1193,7 +1202,7 @@ const target =
     setDrafts(next);
     setFavoriteOriginId(String(libraryMeal.id || ""));
     setStrategy("selected_only");
-    setOptimization(null);
+    setNutritionResult(null);
     setWarnings([]);
     setLibraryOpen(false);
     setError(libraryMeal?.equivalence?.requiresAdjustment && !adjust
@@ -1208,7 +1217,8 @@ const target =
         : "Completa una cantidad valida para cada alimento.");
       return;
     }
-    if (comparison.exceedsCalories && !confirmOverage) {
+    const requiresLegacyOverageConfirmation = !nutritionResult && comparison.exceedsCalories;
+    if (requiresLegacyOverageConfirmation && !confirmOverage) {
       setConfirmOverage(true);
       setError(`La propuesta supera la meta por ${format(comparison.diff.kcal, 0)} kcal. Revisa las cantidades o toca Guardar igualmente.`);
       return;
@@ -1235,7 +1245,7 @@ const target =
       setError("No pudimos preparar una comida valida para guardar.");
       return;
     }
-    if (comparison.exceedsCalories && confirmOverage) {
+    if (requiresLegacyOverageConfirmation && confirmOverage) {
       equivalentMeal.warningAccepted = true;
       equivalentMeal.acceptedWarnings = [
         ...new Set([...(equivalentMeal.acceptedWarnings || []), "calorie_over_target"]),
@@ -1725,7 +1735,7 @@ const target =
             ) : null}
 
             {drafts.length ? (
-              <section className={`rounded-2xl border px-3 py-2.5 ${comparison.exceedsCalories ? "border-rose-400/30 bg-rose-400/[0.08]" : comparison.caloriesClose ? "border-emerald-300/30 bg-emerald-300/[0.07]" : "border-sky-300/25 bg-sky-300/[0.06]"}`}>
+              <section className={`rounded-2xl border px-3 py-2.5 ${resultToneClass}`}>
                 <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   <strong className="shrink-0 text-[11px] font-black text-white">{completionMode ? "Alimentos nuevos:" : "Resultado actual:"}</strong>
                   <b className="shrink-0 text-[12px] text-emerald-200">{format(totals.kcal)} kcal</b>
@@ -1746,9 +1756,11 @@ const target =
                     </div>
                   </div>
                 ) : null}
-                {!optimization && !comparison.proteinReached && target.proteina > 0 ? (
+                {nutritionResult?.classification === MEAL_NUTRITION_CLASSIFICATION.RECOMMENDED ? (
+                  <p className="mt-2 flex items-center gap-2 text-[10px] font-bold text-emerald-100"><Check size={14} /> Alternativa recomendada por la evaluación nutricional.</p>
+                ) : !nutritionResult && !comparison.proteinReached && target.proteina > 0 ? (
                   <p className="mt-2 flex items-start gap-2 text-[10px] font-bold text-amber-100"><AlertTriangle size={14} className="shrink-0" /> Con esta selección faltan {format(Math.abs(comparison.diff.proteina), 1)} g de proteína.</p>
-                ) : comparison.caloriesClose ? (
+                ) : !nutritionResult && comparison.caloriesClose ? (
                   <p className="mt-2 flex items-center gap-2 text-[10px] font-bold text-emerald-100"><Check size={14} /> Calorías alineadas con la comida original.</p>
                 ) : null}
               </section>
@@ -1797,7 +1809,7 @@ const target =
             <button type="button" onClick={discard} disabled={saving || calculating} className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-rose-400/20 bg-rose-400/[0.055] px-2 text-[10px] font-black text-rose-100 disabled:opacity-50"><X size={14} /> Cancelar</button>
             <button type="button" onClick={apply} disabled={saving || calculating || !ready} className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[linear-gradient(135deg,#FFE38A,#D4AF37)] px-3 text-[11px] font-black text-black shadow-[0_9px_24px_rgba(212,175,55,.18)] disabled:opacity-40">
               {saving ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />}
-              {confirmOverage && comparison.exceedsCalories ? "Usar igualmente" : "Usar alternativa"}
+              {!nutritionResult && confirmOverage && comparison.exceedsCalories ? "Usar igualmente" : "Usar alternativa"}
             </button>
           </div>
           <p className="mt-1.5 text-center text-[9px] font-bold text-zinc-600">Cerrar conserva el borrador. Cancelar lo descarta.</p>

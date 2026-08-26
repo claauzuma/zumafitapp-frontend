@@ -6,6 +6,8 @@ import {
   exactMealTypesMatch,
   curateGenerationFoodPool,
   foodSupportsMealType,
+  generatedMealComposition,
+  generatedMealCompositionFingerprint,
   generatedMealFingerprint,
   generatedMealNutritionTotals,
   isGenericGenerationFood,
@@ -53,19 +55,16 @@ test("la tolerancia cambia el peso nutricional real del scoring", () => {
   assert.ok(libraryMealScore(meal, target, [], "balanced") > libraryMealScore(meal, target, [], "flexible"));
 });
 
-test("solo estos alimentos exige seleccion y no deriva a menu similar", () => {
-  assert.throws(
-    () => validateMenuGenerationPolicy({ useOnlySelectedFoods: true, foods: [] }),
-    (error) => error?.code === "MENU_SELECTED_FOODS_REQUIRED"
+test("solo elegidos sin alimentos en un slot habilita fallback automatico", () => {
+  assert.deepEqual(
+    validateMenuGenerationPolicy({ useOnlySelectedFoods: true, foods: [] }),
+    { generationMode: "", foods: [], useOnlySelectedFoods: true }
   );
-  assert.throws(
-    () => validateMenuGenerationPolicy({
-      generationMode: "similar_menu",
-      useOnlySelectedFoods: true,
-      foods: [{ id: "rice" }],
-    }),
-    (error) => error?.code === "MENU_SELECTED_ONLY_LIBRARY_CONFLICT"
-  );
+  assert.equal(validateMenuGenerationPolicy({
+    generationMode: "similar_menu",
+    useOnlySelectedFoods: true,
+    foods: [{ id: "rice" }],
+  }).fallback, "automatic_meal");
 });
 
 test("variedad alta penaliza mas ingredientes ya usados", () => {
@@ -130,12 +129,12 @@ test("Debe aparecer se asigna una vez y una comida concreta no se filtra a las d
   assert.equal(assignments.cena.preferred.some((food) => food.id === "rice"), true);
 });
 
-test("la validacion proteica usa los totales reales y el rango inclusivo 15 a 65", () => {
-  const minimum = { items: [{ kcal: 100, proteina: 15, carbs: 5, grasas: 2 }] };
-  const maximum = { items: [{ kcal: 500, protein: 65, carbs: 40, fat: 12 }] };
-  const below = { items: [{ proteina: 14.9 }] };
-  const above = { items: [{ proteina: 65.1 }] };
-  assert.deepEqual(generatedMealNutritionTotals(minimum), { kcal: 100, proteina: 15, carbs: 5, grasas: 2 });
+test("la validacion proteica compartida conserva el rango inclusivo 5 a 70", () => {
+  const minimum = { items: [{ kcal: 100, proteina: 5, carbs: 5, grasas: 2 }] };
+  const maximum = { items: [{ kcal: 500, protein: 70, carbs: 40, fat: 12 }] };
+  const below = { items: [{ proteina: 4.9 }] };
+  const above = { items: [{ proteina: 70.1 }] };
+  assert.deepEqual(generatedMealNutritionTotals(minimum), { kcal: 100, proteina: 5, carbs: 5, grasas: 2 });
   assert.equal(mealProteinWithinGenerationRange(minimum), true);
   assert.equal(mealProteinWithinGenerationRange(maximum), true);
   assert.equal(mealProteinWithinGenerationRange(below), false);
@@ -154,4 +153,26 @@ test("la huella de comida distingue cantidades pero no el orden de los items", (
   ] };
   assert.equal(generatedMealFingerprint(first), generatedMealFingerprint(same));
   assert.notEqual(generatedMealFingerprint(first), generatedMealFingerprint(differentQuantity));
+});
+
+test("la huella semántica considera iguales los mismos alimentos con otros gramos", () => {
+  const first = { items: [
+    { alimentoId: "rice", cantidad: 80, unidad: "g", generationRole: "C1" },
+    { alimentoId: "chicken", cantidad: 150, unidad: "g", generationRole: "P1" },
+  ] };
+  const otherQuantities = { items: [
+    { alimentoId: "chicken", cantidad: 220, unidad: "g", generationRole: "P1" },
+    { alimentoId: "rice", cantidad: 110, unidad: "g", generationRole: "C1" },
+  ] };
+
+  assert.equal(
+    generatedMealCompositionFingerprint(first),
+    generatedMealCompositionFingerprint(otherQuantities),
+  );
+  assert.deepEqual(generatedMealComposition(first), {
+    foodIds: ["chicken", "rice"],
+    roleFoodPairs: ["chicken:P1", "rice:C1"],
+    fingerprint: "chicken|rice",
+    roleFingerprint: "chicken:P1|rice:C1",
+  });
 });

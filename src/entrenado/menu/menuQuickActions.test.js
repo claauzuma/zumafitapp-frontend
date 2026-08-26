@@ -111,7 +111,7 @@ test("construye el request con exactamente los tipos y alimentos elegidos", () =
   assert.deepEqual(request.selectedDays, ["thursday"]);
 });
 
-test("las metas por comida del coach reemplazan la distribucion autonoma", () => {
+test("las metas del coach no reemplazan la cantidad total elegida", () => {
   const coachMealTargets = [
     { type: "desayuno", target: { kcal: 450 } },
     { type: "almuerzo", target: { kcal: 800 } },
@@ -122,8 +122,20 @@ test("las metas por comida del coach reemplazan la distribucion autonoma", () =>
     target: { kcal: 1900 },
     coachMealTargets,
   });
-  assert.deepEqual(request.mealTypes, ["desayuno", "almuerzo", "cena"]);
+  assert.deepEqual(request.mealTypes, ["almuerzo", "merienda", "cena"]);
   assert.equal(request.mealTargets, coachMealTargets);
+});
+
+test("propaga planificación conservada y un seed reproducible", () => {
+  const plannedMeals = [{ id: "fixed", items: [{ alimentoId: "rice", cantidad: 100 }] }];
+  const request = buildAutonomousMenuGenerationRequest({
+    settings: { mealTypes: ["desayuno", "almuerzo", "cena"] },
+    target: { kcal: 2100, proteina: 150, carbs: 240, grasas: 60 },
+    plannedMeals,
+    variantSeed: "run-reproducible",
+  });
+  assert.strictEqual(request.plannedMeals, plannedMeals);
+  assert.equal(request.variantSeed, "run-reproducible");
 });
 
 test("storage bloqueado no rompe la pantalla ni mezcla configuraciones", () => {

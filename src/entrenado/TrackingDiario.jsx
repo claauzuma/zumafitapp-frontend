@@ -2045,16 +2045,147 @@ function continueTrackingRegistration() {
     });
   }
 
-  function removeFood(item) {
-    if (!item?.id || deleteMutation.isPending) return;
-    deleteMutation.mutate(
-      { logId: item.id, date },
-      {
-        onSuccess: () => setToast({ type: "success", message: "Alimento eliminado." }),
-        onError: (error) => setToast({ type: "error", message: error?.message || "No se pudo eliminar." }),
-      }
-    );
+async function removeFood(meal, item) {
+  const logId =
+    item?.id ||
+    item?._id;
+
+  if (
+    !meal?.id ||
+    !logId ||
+    deleteMutation.isPending ||
+    deleteMealMutation.isPending
+  ) {
+    return;
   }
+
+  const mealId =
+    String(meal.id);
+
+  /*
+   * Alimentos reales que hay
+   * actualmente en esta comida.
+   */
+  const currentItems =
+    Array.isArray(log?.[mealId])
+      ? log[mealId]
+      : [];
+
+  /*
+   * Simulamos cómo quedaría
+   * después de borrar este alimento.
+   */
+  const remainingItems =
+    currentItems.filter(
+      (entry) =>
+        String(
+          entry?.id ||
+          entry?._id ||
+          ""
+        ) !==
+        String(logId)
+    );
+
+  /*
+   * Si existen borradores pendientes,
+   * la comida todavía tiene contenido
+   * y NO debe desaparecer.
+   */
+  const draftCount =
+    (
+      trackingFoodDrafts[
+        trackingDraftKey(
+          date,
+          mealId
+        )
+      ] || []
+    ).length;
+
+  /*
+   * Comprobamos si además existe
+   * dentro de mealsConfig.
+   */
+  const isConfiguredMeal =
+    configuredMeals.some(
+      (entry) =>
+        String(entry.id) ===
+        mealId
+    );
+
+  /*
+   * Estas comidas NO se eliminan
+   * automáticamente aunque queden
+   * temporalmente sin alimentos.
+   */
+  const protectedMeal =
+    meal.manualCompletionMoment === true ||
+    meal.manualCompletionGeneral === true ||
+    hasMealTarget(meal.target) ||
+    mealId.startsWith(
+      "menu_target_"
+    ) ||
+    mealId.startsWith(
+      "daily_target_"
+    ) ||
+    mealId.startsWith(
+      "flexible_"
+    );
+
+  /*
+   * Si este era el último alimento,
+   * no hay borradores y es una comida
+   * normal de Tracking:
+   * también eliminamos la comida vacía.
+   */
+  const shouldDeleteEmptyMeal =
+    remainingItems.length === 0 &&
+    draftCount === 0 &&
+    !protectedMeal;
+
+  try {
+    /*
+     * Primero eliminamos el alimento.
+     */
+    await deleteMutation.mutateAsync({
+      logId,
+      date,
+    });
+
+    /*
+     * Si la comida quedó vacía
+     * y estaba guardada en mealsConfig,
+     * eliminamos también esa configuración.
+     *
+     * Si NO estaba configurada,
+     * desaparecerá sola al no tener logs.
+     */
+    if (
+      shouldDeleteEmptyMeal &&
+      isConfiguredMeal
+    ) {
+      await deleteMealMutation.mutateAsync({
+        date,
+        mealId,
+        confirmDeleteLogs: false,
+      });
+    }
+
+    setToast({
+      type: "success",
+      message:
+        shouldDeleteEmptyMeal
+          ? "Alimento eliminado. La comida vacía también se quitó."
+          : "Alimento eliminado.",
+    });
+  } catch (error) {
+    setToast({
+      type: "error",
+      message:
+        error?.message ||
+        "No se pudo eliminar.",
+    });
+  }
+}
 
   function clearMeal(mealId, items = []) {
     const draftCount = (trackingFoodDrafts[trackingDraftKey(date, mealId)] || []).length;
@@ -2931,7 +3062,12 @@ function continueTrackingRegistration() {
                           </label>
                           <button
                             type="button"
-                            onClick={() => removeFood(item)}
+                            onClick={() =>
+  removeFood(
+    meal,
+    item
+  )
+}
                             aria-label={`Eliminar ${item.nombreSnapshot}`}
                             disabled={deleteMutation.isPending}
                           >

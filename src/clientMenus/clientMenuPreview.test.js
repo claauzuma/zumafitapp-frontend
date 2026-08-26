@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildGeneratedMenuActivationPayload, generatedMenuTotals, replaceGeneratedPreviewMeal } from "./clientMenuPreview.js";
+import {
+  buildGeneratedMenuActivationPayload,
+  generatedMenuReviewPresentation,
+  generatedMenuTotals,
+  replaceGeneratedPreviewMeal,
+} from "./clientMenuPreview.js";
 
 test("recalcula los totales reales de los alimentos de la preview", () => {
   const totals = generatedMenuTotals({
@@ -48,4 +53,141 @@ test("usar el menu crea y activa el plan sin registrar consumo", () => {
   assert.equal(Object.hasOwn(payload, "menuTarget"), false);
   assert.equal(Object.hasOwn(payload, "objectiveMode"), false);
   assert.equal(Object.hasOwn(payload, "foodLogs"), false);
+});
+
+test("review RECOMMENDED queda verde por contrato aunque los numeros sean extremos", () => {
+  const presentation = generatedMenuReviewPresentation({
+    comidas: [{
+      classification: "RECOMMENDED",
+      usable: true,
+      nutrition: {
+        status: "RECOMMENDED",
+        recommended: true,
+        usable: true,
+        totals: { kcal: 1, proteina: 999, carbs: 0, grasas: 0 },
+      },
+    }],
+  });
+
+  assert.equal(presentation.classification, "RECOMMENDED");
+  assert.equal(presentation.tone, "success");
+  assert.equal(presentation.label, "Recomendado");
+  assert.equal(presentation.usable, true);
+});
+
+test("review BEST_EFFORT es amber, usable y muestra una sola copia del warning central", () => {
+  const warning = {
+    code: "MEAL_NUTRITION_BEST_EFFORT",
+    message: "Las calorías están alineadas, pero el reparto de macros queda desbalanceado.",
+  };
+  const presentation = generatedMenuReviewPresentation({
+    comidas: [
+      { id: "preserved", items: [{ id: "existing" }] },
+      {
+        classification: "BEST_EFFORT",
+        usable: true,
+        nutrition: {
+          status: "BEST_EFFORT",
+          recommended: false,
+          usable: true,
+          warning,
+          totals: { kcal: 772, proteina: 86.2, carbs: 76.5, grasas: 13.5 },
+        },
+      },
+    ],
+    warnings: [
+      warning,
+      { ...warning },
+      { ...warning, message: "El mismo diagnÃ³stico con otra redacciÃ³n." },
+    ],
+    generationMeta: {
+      trace: [
+        { slotIndex: 0, status: "preserved" },
+        { slotIndex: 1, status: "generated", solver: { classification: "BEST_EFFORT" } },
+      ],
+    },
+  });
+
+  assert.equal(presentation.classification, "BEST_EFFORT");
+  assert.equal(presentation.tone, "warning");
+  assert.equal(presentation.label, "Mejor opción disponible");
+  assert.equal(presentation.usable, true);
+  assert.equal(presentation.warnings.length, 1);
+  assert.equal(presentation.warnings[0].code, "MEAL_NUTRITION_BEST_EFFORT");
+});
+
+test("warnings con el mismo codigo conservan el origen de cada comida", () => {
+  const warning = (mealType, message) => ({
+    code: "MEAL_NUTRITION_BEST_EFFORT",
+    mealType,
+    message,
+  });
+  const preview = {
+    comidas: [
+      {
+        tipoComida: "desayuno",
+        classification: "BEST_EFFORT",
+        usable: true,
+        nutrition: {
+          status: "BEST_EFFORT",
+          recommended: false,
+          usable: true,
+          warning: warning("desayuno", "Desvio del desayuno."),
+        },
+      },
+      {
+        tipoComida: "cena",
+        classification: "BEST_EFFORT",
+        usable: true,
+        nutrition: {
+          status: "BEST_EFFORT",
+          recommended: false,
+          usable: true,
+          warning: warning("cena", "Desvio de la cena."),
+        },
+      },
+    ],
+    warnings: [
+      warning("desayuno", "Desvio del desayuno."),
+      warning("cena", "Desvio de la cena."),
+    ],
+  };
+
+  const presentation = generatedMenuReviewPresentation(preview);
+  assert.deepEqual(
+    presentation.warnings.map((entry) => [entry.mealType, entry.message]),
+    [
+      ["desayuno", "Desvio del desayuno."],
+      ["cena", "Desvio de la cena."],
+    ],
+  );
+});
+
+test("review NO_SOLUTION queda bloqueada y no puede construir el payload de activacion", () => {
+  const preview = {
+    comidas: [{
+      classification: "NO_SOLUTION",
+      recommended: false,
+      usable: false,
+      nutrition: { status: "NO_SOLUTION", recommended: false, usable: false },
+    }],
+  };
+  const presentation = generatedMenuReviewPresentation(preview);
+
+  assert.equal(presentation.classification, "NO_SOLUTION");
+  assert.equal(presentation.tone, "danger");
+  assert.equal(presentation.usable, false);
+  assert.throws(
+    () => buildGeneratedMenuActivationPayload(preview, { kcal: 2000 }),
+    (error) => error?.code === "MENU_PREVIEW_NO_SOLUTION"
+  );
+});
+
+test("preview legacy sin assessment queda neutral y conserva el CTA habilitado", () => {
+  const presentation = generatedMenuReviewPresentation({
+    comidas: [{ items: [{ alimentoId: "rice", cantidad: 100 }] }],
+  });
+  assert.equal(presentation.classification, "UNKNOWN");
+  assert.equal(presentation.tone, "neutral");
+  assert.equal(presentation.usable, true);
 });

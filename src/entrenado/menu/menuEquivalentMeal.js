@@ -1,7 +1,12 @@
 import { buildMenuItemSnapshot } from "../../nutricion/nutricionUtils.js";
 import {
+  adaptMealNutritionResult,
+  mealNutritionDecisionWarning,
+} from "../../nutricion/mealNutritionResult.js";
+import {
   hasTrackingDraftPhysicallyValidQuantity,
   trackingDraftProposals,
+  trackingDraftCalculationPayload,
   trackingDraftsNutritionTotals,
   trackingDraftsReadyToConfirm,
 } from "../../tracking/trackingQuantityDrafts.js";
@@ -64,81 +69,17 @@ export function equivalentMealComparison(targetValue = {}, proposalValue = {}) {
   };
 }
 
-function differenceText(label, difference, unit = "g") {
-  const value = Math.abs(number(difference));
-  const formatted = new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 0,
-  }).format(value);
-  return `${label ? `${label}: ` : ""}${difference < 0 ? "faltan" : "sobran"} ${formatted} ${unit}`;
-}
-
 /**
  * Decide si una alternativa necesita una confirmacion nutricional visible.
  * Es solamente una regla de presentacion: no cambia el ranking ni el solver.
  */
 export function equivalentMealDecisionWarning({
-  target: targetValue = {},
-  proposal: proposalValue = {},
-  optimization = null,
+  response = {},
+  alternative = null,
+  nutritionResult = null,
 } = {}) {
-  const target = equivalentMealTarget(targetValue);
-  const proposal = equivalentMealTarget(proposalValue);
-  if (!(target.kcal > 0) || !(proposal.kcal > 0)) return null;
-
-  const difference = {
-    kcal: proposal.kcal - target.kcal,
-    proteina: proposal.proteina - target.proteina,
-    carbs: proposal.carbs - target.carbs,
-    grasas: proposal.grasas - target.grasas,
-  };
-  const calorieTolerance = Math.max(1, number(optimization?.calorieTolerance));
-  const calorieDeficit = Math.max(0, -difference.kcal);
-  const proteinConfigured = target.proteina > 0;
-  const proteinDeficit = proteinConfigured ? Math.max(0, -difference.proteina) : 0;
-  const proteinExcess = proteinConfigured ? Math.max(0, difference.proteina) : 0;
-  const carbThreshold = target.carbs > 0 ? Math.max(12, target.carbs * 0.15) : Infinity;
-  const fatThreshold = target.grasas > 0 ? Math.max(5, target.grasas * 0.2) : Infinity;
-  const carbFar = Math.abs(difference.carbs) > carbThreshold;
-  const fatFar = Math.abs(difference.grasas) > fatThreshold;
-  const macroDistributionFar = proteinExcess >= 6 - 1e-6 && (carbFar || fatFar);
-  const reasons = [];
-  const codes = [];
-
-  if (calorieDeficit > calorieTolerance + 1e-6) {
-    codes.push("calorie_target_not_reached");
-    reasons.push(`${differenceText("Calorías", -calorieDeficit, "kcal")} para completar la meta.`);
-  }
-  if (proteinDeficit > 4 + 1e-6) {
-    codes.push("protein_target_not_reached");
-    reasons.push(`${differenceText("Proteína", -proteinDeficit)} respecto de la meta.`);
-  }
-  if (macroDistributionFar) {
-    codes.push("macro_distribution_far_with_protein_excess");
-    const secondary = [
-      carbFar ? differenceText("Carbohidratos", difference.carbs) : "",
-      fatFar ? differenceText("Grasas", difference.grasas) : "",
-    ].filter(Boolean).join(" · ");
-    reasons.push(
-      `La proteína supera la meta por ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format(proteinExcess)} g y el reparto de macros queda alejado (${secondary}).`
-    );
-  }
-  if (!reasons.length) return null;
-
-  const summary = codes.includes("calorie_target_not_reached")
-    ? "No completa la meta calórica"
-    : codes.includes("protein_target_not_reached")
-      ? "No completa la meta de proteína"
-      : "El reparto de macros queda desbalanceado";
-  return {
-    title: "Revisá esta alternativa",
-    summary,
-    reasons,
-    codes,
-    target,
-    proposal,
-    difference,
-  };
+  const result = nutritionResult || adaptMealNutritionResult(response, alternative);
+  return mealNutritionDecisionWarning(result);
 }
 
 export function generatedAlternativeToDrafts(alternative = {}, createDraft, maxFoods = 6, optionIndex = 0) {
@@ -178,20 +119,51 @@ export function buildEquivalentMealRecalculationRequest({
       foodId: String(draft?.foodId || ""),
       quantity: Number(draft?.quantity) > 0 ? Number(draft.quantity) : null,
     })).filter((entry) => entry.foodId),
-    generateVariant: true,
+    // Recalcular conserva estos alimentos y pide su mejor distribución central.
+    // Las variantes de alimentos pertenecen a "Generar otra opción".
+    generateVariant: false,
     variantSeed,
+  };
+}
+
+/**
+ * El frontend valida sólo permiso y selección. Una comida completamente fija,
+ * incluso por encima de la meta, sigue siendo evaluable por la policy central.
+ */
+export function equivalentMealRecalculationPreflight({
+  canAuto = false,
+  drafts = [],
+} = {}) {
+  if (!canAuto) {
+    return {
+      allowed: false,
+      error: "El calculo automatico no esta incluido en este acceso. Podes definir las cantidades manualmente.",
+      input: null,
+    };
+  }
+  if (!Array.isArray(drafts) || !drafts.length) {
+    return { allowed: false, error: "Agrega al menos un alimento.", input: null };
+  }
+  return {
+    allowed: true,
+    error: "",
+    input: trackingDraftCalculationPayload(drafts),
   };
 }
 
 export function equivalentMealGenerationFeedback(response = {}) {
   const level = String(response?.relaxation?.level || response?.alternative?.relaxation?.level || "");
-  const usable = response?.status === "SUCCESS" &&
-    response?.recommended === true &&
-    Array.isArray(response?.alternative?.foods) &&
-    response.alternative.foods.length > 0;
+  const alternative = Array.isArray(response?.foods) ? response : response?.alternative;
+  const nutritionResult = adaptMealNutritionResult(response, alternative);
+  const usable = nutritionResult.usable === true &&
+    Array.isArray(alternative?.foods) &&
+    alternative.foods.length > 0;
   if (!usable) {
     return {
       usable: false,
+      classification: nutritionResult.classification,
+      nutritionResult,
+      warning: null,
       level: level || null,
       notice: "",
       error: response?.code === "MEAL_TARGET_NOT_REACHABLE_WITH_PORTION_RULES"
@@ -204,7 +176,15 @@ export function equivalentMealGenerationFeedback(response = {}) {
     : level === "RELAX_MIN"
       ? "Algunas porciones mínimas fueron flexibilizadas ligeramente para acercarse mejor a tu objetivo."
       : "";
-  return { usable: true, level: level || "STRICT", notice, error: "" };
+  return {
+    usable: true,
+    classification: nutritionResult.classification,
+    nutritionResult,
+    warning: mealNutritionDecisionWarning(nutritionResult),
+    level: level || "STRICT",
+    notice,
+    error: "",
+  };
 }
 
 function normalizedFilterTerms(value = "") {

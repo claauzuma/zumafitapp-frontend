@@ -183,6 +183,7 @@ function InlineCell({ column, food, draft, setAllowedValuesText, setValue, dirty
   if (column === "mode") return <select className="nf-inlineSelect" value={generation.mode} onChange={(event) => setValue(["mode"], event.target.value)} aria-label={`Modo de generación de ${food.name}`}>{GENERATION_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}</select>;
   if (column === "rolesSummary") return <small className="nf-generationSummary">{enabledSummary(generation.roles, GENERATION_ROLES)}</small>;
   if (column === "momentsSummary") return <small className="nf-generationSummary">{mealTypesSummary(generation.mealTypes)}</small>;
+  if (column === "mealTypesEditor") return <InlineMealTypes generation={generation} food={food} setValue={setValue} />;
   if (GENERATION_ROLES.some(([key]) => key === column)) return <InlineToggle checked={generation.roles[column]} onChange={(checked) => setValue(["roles", column], checked)} label={`${column} de ${food.name}`} />;
   if (GENERATION_MEAL_TYPES.some(([key]) => key === column)) return <InlineToggle checked={generation.mealTypes[column]} onChange={(checked) => setValue(["mealTypes", column], checked)} label={`${ADMIN_FOOD_COLUMN_LABELS[column]} de ${food.name}`} />;
   if (column === "portionUnit") return <select className="nf-inlineSelect compact" value={generation.portionRule.unit || ""} onChange={(event) => setValue(["portionRule", "unit"], event.target.value || null)} aria-label={`Unidad técnica de ${food.name}`}><option value="">—</option>{PORTION_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select>;
@@ -194,6 +195,23 @@ function InlineCell({ column, food, draft, setAllowedValuesText, setValue, dirty
 }
 
 function InlineToggle({ checked, onChange, label }) { return <label className={`nf-inlineToggle ${checked ? "checked" : ""}`} title={label}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} aria-label={label} /><span aria-hidden="true">{checked ? <Check size={13} /> : null}</span></label>; }
+
+function InlineMealTypes({ generation, food, setValue }) {
+  return (
+    <div className="nf-inlineMealTypes" role="group" aria-label={`Momentos permitidos para ${food.name}`}>
+      {GENERATION_MEAL_TYPES.map(([key, label]) => {
+        const checked = generation.mealTypes[key];
+        return (
+          <label key={key} className={`nf-inlineMealType ${checked ? "checked" : ""}`} title={`${label} de ${food.name}`}>
+            <input type="checkbox" checked={checked} onChange={(event) => setValue(["mealTypes", key], event.target.checked)} aria-label={`${label} de ${food.name}`} />
+            <span aria-hidden="true">{checked ? <Check size={12} /> : null}</span>
+            <small>{label}</small>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 function ColumnPicker({ columns, onChange, onClose }) {
   return <div className="nf-columnPicker" role="dialog" aria-label="Elegir columnas visibles"><header><div><strong>Columnas visibles</strong><span>La selección queda guardada en este dispositivo.</span></div><button type="button" onClick={onClose} aria-label="Cerrar selector de columnas"><X size={17} /></button></header><div className="nf-columnPickerGroups">{ADMIN_FOOD_COLUMN_GROUPS.map((group) => <section key={group.id}><h3>{group.label}</h3><div>{group.columns.map(([key, label]) => <label key={key} className={key === "food" ? "locked" : ""}><input type="checkbox" checked={columns.includes(key)} disabled={key === "food"} onChange={() => onChange(toggleAdminFoodColumn(columns, key))} /><span>{label}</span></label>)}</div></section>)}</div><button type="button" className="nf-columnReset" onClick={() => onChange([...DEFAULT_ADMIN_FOOD_COLUMNS])}><RotateCcw size={15} /> Restablecer columnas</button></div>;

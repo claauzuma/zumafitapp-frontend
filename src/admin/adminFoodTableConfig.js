@@ -16,9 +16,10 @@ export const ADMIN_FOOD_COLUMN_GROUPS = Object.freeze([
     label: "Generador",
     columns: [
       ["mode", "Modo"], ["rolesSummary", "Roles (resumen)"], ["momentsSummary", "Momentos (resumen)"],
+      ["mealTypesEditor", "Momentos permitidos"],
       ["P1", "P1"], ["P2", "P2"], ["C1", "C1"], ["C2", "C2"], ["V", "V"], ["F", "F"], ["G", "G"],
       ["breakfast", "Desayuno"], ["lunch", "Almuerzo"], ["snack", "Merienda"],
-      ["dinner", "Cena"], ["extraSnack", "Snack"],
+      ["dinner", "Cena"], ["extraSnack", "Snack extra"],
     ],
   },
   {
@@ -42,9 +43,14 @@ export const DEFAULT_ADMIN_FOOD_COLUMNS = Object.freeze([
 
 export const ADMIN_FOOD_COLUMN_PRESETS = Object.freeze({
   nutrition: ["food", "kcal", "protein", "carbs", "fat", "unit"],
-  generator: ["food", "mode", "P1", "P2", "C1", "C2", "V", "F", "G", "breakfast", "lunch", "snack", "dinner", "extraSnack", "save"],
+  generator: ["food", "mode", "mealTypesEditor", "P1", "P2", "C1", "C2", "V", "F", "G", "save"],
   portions: ["food", "mode", "portionUnit", "min", "max", "step", "allowedValues", "save"],
 });
+
+const LEGACY_GENERATOR_PRESET = Object.freeze([
+  "food", "mode", "P1", "P2", "C1", "C2", "V", "F", "G",
+  "breakfast", "lunch", "snack", "dinner", "extraSnack", "save",
+]);
 
 const ALL_COLUMN_IDS = new Set(Object.keys(ADMIN_FOOD_COLUMN_LABELS));
 
@@ -60,7 +66,11 @@ export function sanitizeAdminFoodColumns(value) {
 export function loadAdminFoodColumns(storage = globalThis?.localStorage) {
   try {
     const value = storage?.getItem(ADMIN_FOOD_COLUMNS_STORAGE_KEY);
-    return value ? sanitizeAdminFoodColumns(JSON.parse(value)) : [...DEFAULT_ADMIN_FOOD_COLUMNS];
+    if (!value) return [...DEFAULT_ADMIN_FOOD_COLUMNS];
+    const stored = sanitizeAdminFoodColumns(JSON.parse(value));
+    const isLegacyGenerator = stored.length === LEGACY_GENERATOR_PRESET.length
+      && stored.every((column, index) => column === LEGACY_GENERATOR_PRESET[index]);
+    return isLegacyGenerator ? [...ADMIN_FOOD_COLUMN_PRESETS.generator] : stored;
   } catch {
     return [...DEFAULT_ADMIN_FOOD_COLUMNS];
   }
@@ -96,6 +106,7 @@ export function adminFoodColumnWidth(column) {
   if (column === "save") return "132px";
   if (column === "edit") return "68px";
   if (["rolesSummary", "momentsSummary"].includes(column)) return "150px";
+  if (column === "mealTypesEditor") return "430px";
   if (column === "mode") return "142px";
   if (column === "allowedValues") return "170px";
   if (["portionUnit", "status"].includes(column)) return "116px";

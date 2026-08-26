@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import MealTargetTrackingPanel from "../../tracking/MealTargetTrackingPanel.jsx";
 import { useQuery } from "@tanstack/react-query";
+import QuickTrackingFoodDrawer from "../../tracking/QuickTrackingFoodDrawer.jsx";
 
 import {
   useDeleteFoodLog,
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   Apple,
   BookOpen,
+  ClipboardPlus,
   Calculator,
   CalendarDays,
   CheckSquare2,
@@ -25,6 +27,7 @@ import {
   ClipboardCheck,
   Eye,
   Lock,
+  LockOpen,
   Layers3,
   Minus,
   MoreHorizontal,
@@ -70,6 +73,7 @@ import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricion
 import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
 import { authorizeClientMenuGeneration, getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
 import { generateClientMenuPreview } from "../../clientMenus/clientMenuGeneration.js";
+import { MEAL_NUTRITION_POLICY } from "../../nutricion/mealNutritionResult.js";
 import {
   CLIENT_PLAN_CAPABILITIES_STALE_TIME,
   clientPlanCapabilitiesKey,
@@ -85,6 +89,7 @@ import {
   addFoodLogsBatch,
   getTrackingDay,
   saveMenuTrackingDay,
+  updateTrackingMealsConfig,
   updateManualDayCompletion,
 } from "../../tracking/trackingApi.js";
 import { calculateManualDayProgress } from "../../tracking/manualDayCompletion.js";
@@ -104,6 +109,11 @@ import {
 } from "./mealAlternativeSelection.js";
 import { menuWeekCacheKey, menuWeekCacheOwner } from "./menuWeekCache.js";
 import { isMealTargetCalorieComplete } from "./mealTargetCompletion.js";
+import {
+  appendPersonalMealTargetConfig,
+  calculateLockedMealMacros,
+  personalMealTargetsFromTrackingDay,
+} from "./quickMealTargetPlan.js";
 import {
   DEFAULT_MENU_GENERATION_SETTINGS,
   automaticGenerationRequiresPlan,
@@ -547,11 +557,11 @@ function emptyMenuCopy(source = "none") {
       emptyMealsText: "Editá tu menú propio para agregar comidas y alimentos.",
     };
   }
-  return {
-    title: "Todavía no tenés menú para este día.",
-    text: "Podés crear tu propio menú, generar uno automáticamente según tus objetivos o explorar comidas de la biblioteca ZumaFit.",
-    emptyMealsText: "Creá tu menú o usá Tracking mientras lo armás.",
-  };
+return {
+  title: "Todavía no tenés menú para este día.",
+  text: "Podés crear uno o registrar algo que ya comiste.",
+  emptyMealsText: "Creá tu menú o usá Tracking mientras lo armás.",
+};
 }
 
 function dayHeading(row) {
@@ -651,7 +661,10 @@ function menuTargetExecutionContext(
   );
 
   const plannedTarget =
-    planned?.target || {};
+    planned?.target ||
+    baseMeal?.target ||
+    meal?.target ||
+    {};
 
   const hasPlannedTarget = Boolean(
     Number(plannedTarget.kcal) ||
@@ -747,11 +760,12 @@ function menuTargetExecutionContext(
     `slot_${mealIndex + 1}`;
 
 
+  const safeIdSeed = safeMenuTargetId(idSeed);
+
   return {
-    id:
-      `menu_target_${safeMenuTargetId(
-        idSeed
-      )}`,
+    id: safeIdSeed.startsWith("menu_target_")
+      ? safeIdSeed
+      : `menu_target_${safeIdSeed}`,
 
     label,
     type,
@@ -810,7 +824,164 @@ function dailyTargetTrackingItems(row = {}, trackingDay = null) {
 }
 
 
+function standaloneTrackingMealLabel(
+  mealId = "",
+  items = []
+) {
+  const first =
+    Array.isArray(items)
+      ? items[0]
+      : null;
 
+  const explicit =
+    first?.mealName ||
+    first?.meal?.name ||
+    first?.meal?.nombre ||
+    "";
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const key =
+    String(mealId || "")
+      .trim()
+      .toLowerCase();
+
+  if (key === "picoteo") {
+    return "Picoteo";
+  }
+
+  if (key === "desayuno") {
+    return "Desayuno";
+  }
+
+  if (key === "almuerzo") {
+    return "Almuerzo";
+  }
+
+  if (key === "merienda") {
+    return "Merienda";
+  }
+
+  if (key === "cena") {
+    return "Cena";
+  }
+
+  if (key === "snack") {
+    return "Snack";
+  }
+
+  return "Comida";
+}
+
+
+function standaloneTrackingGroups(
+  trackingDay = null
+) {
+  const meals =
+    trackingDay?.meals || {};
+
+  return Object.entries(meals)
+    .filter(([mealId, items]) => {
+      if (!Array.isArray(items)) {
+        return false;
+      }
+
+      if (!items.length) {
+        return false;
+      }
+
+      const key =
+        String(mealId || "");
+
+      /*
+       * Estos pertenecen a otros flujos:
+       *
+       * - Por meta
+       * - Meta diaria vieja
+       * - márgenes/flexible
+       *
+       * No queremos duplicarlos acá.
+       */
+      if (
+        key.startsWith("menu_target_") ||
+        key.startsWith("daily_target_") ||
+        key.startsWith("flexible_")
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .map(([mealId, items]) => ({
+      id: mealId,
+
+      label:
+        standaloneTrackingMealLabel(
+          mealId,
+          items
+        ),
+
+      items,
+
+      totals:
+        sumTotals(items),
+    }));
+}
+
+
+function trackingFoodName(
+  item = {}
+) {
+  return (
+    item?.food?.nombre ||
+    item?.food?.name ||
+    item?.nombreSnapshot ||
+    item?.nombre ||
+    item?.name ||
+    "Alimento"
+  );
+}
+
+
+function trackingFoodQuantity(
+  item = {}
+) {
+  const quantity =
+    Number(
+      item?.cantidad ??
+      item?.quantity
+    );
+
+  if (
+    !Number.isFinite(quantity)
+  ) {
+    return "";
+  }
+
+  const unit =
+    item?.unidad ||
+    item?.unit ||
+    item?.food?.unidad ||
+    item?.food?.unit ||
+    "g";
+
+  return `${formatNumber(
+    quantity,
+    quantity % 1 ? 1 : 0
+  )} ${unit}`;
+}
+
+
+function trackingFoodImage(
+  item = {}
+) {
+  return getFoodImageUrl(
+    item?.food ||
+    item
+  );
+}
 
 
 
@@ -939,10 +1110,10 @@ function hasConfiguredTarget(row = {}) {
   return hasTotalValue(targetTotals(row));
 }
 
-function plannedMealTargets(row = {}) {
+function plannedMealTargets(row = {}, trackingDay = null) {
   const plan = row?.mealTargetPlan;
-  if (plan?.mode !== "per_meal" || !Array.isArray(plan.meals)) return [];
-  return plan.meals.map((meal, index) => ({
+  const coachTargets = plan?.mode === "per_meal" && Array.isArray(plan.meals)
+    ? plan.meals.map((meal, index) => ({
     id: String(meal.id || `planned-meal-${index + 1}`),
     name: meal.label || meal.name || `Comida ${index + 1}`,
     nombre: meal.label || meal.name || `Comida ${index + 1}`,
@@ -962,7 +1133,12 @@ function plannedMealTargets(row = {}) {
     },
     foods: [],
     coachTargetOnly: true,
-  }));
+  }))
+    : [];
+  const knownIds = new Set(coachTargets.map((meal) => String(meal.id)));
+  const personalTargets = personalMealTargetsFromTrackingDay(trackingDay)
+    .filter((meal) => !knownIds.has(String(meal.id)));
+  return [...coachTargets, ...personalTargets];
 }
 
 function menuConsumedTotals(row = {}) {
@@ -2662,8 +2838,49 @@ export default function MenuPlan() {
   const [foodDrawer, setFoodDrawer] = useState(null);
   const [quickMealEditor, setQuickMealEditor] = useState(null);
   const [equivalentMealBuilder, setEquivalentMealBuilder] = useState(null);
-  const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
-  const [trackingOnlyConfirmOpen, setTrackingOnlyConfirmOpen] = useState(false);
+
+const [menuOptionsDrawerOpen, setMenuOptionsDrawerOpen] = useState(false);
+
+const [quickTrackingOpen, setQuickTrackingOpen] = useState(false);
+
+const [
+  quickTrackingDestination,
+  setQuickTrackingDestination,
+] = useState("picoteo");
+
+
+/* PLANIFICAR COMIDA */
+const [
+  quickPlanMealOpen,
+  setQuickPlanMealOpen,
+] = useState(false);
+
+const [
+  quickPlanMealType,
+  setQuickPlanMealType,
+] = useState("almuerzo");
+
+const [
+  quickPlanMealStep,
+  setQuickPlanMealStep,
+] = useState("type");
+
+const [
+  quickPlanMealKcal,
+  setQuickPlanMealKcal,
+] = useState("");
+const [quickPlanMealMacros, setQuickPlanMealMacros] = useState({
+  proteina: "",
+  carbs: "",
+  grasas: "",
+});
+const [quickPlanMealMacroLocks, setQuickPlanMealMacroLocks] = useState({
+  proteina: false,
+  carbs: false,
+  grasas: false,
+});
+const [trackingOnlyConfirmOpen, setTrackingOnlyConfirmOpen] = useState(false);
+
   const [manualCompletionPrompt, setManualCompletionPrompt] = useState(null);
   const [mealToggleConfirm, setMealToggleConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -2818,7 +3035,47 @@ async function loadWeek(start = weekStart, options = {}) {
   const historyOldestDate = Number.isFinite(trackingHistoryDays) && trackingHistoryDays > 0
     ? addDays(currentDate, -(trackingHistoryDays - 1))
     : "";
-  const selectedQuickTarget = targetTotals(selectedDisplayRow || selectedRow || {});
+
+
+/*
+ * =====================================================
+ * CONTEXTO DEL DÍA PARA GENERACIÓN AUTOMÁTICA
+ * =====================================================
+ *
+ * Todo lo que genere Automático debe salir de la MISMA
+ * fila:
+ *
+ * - fecha
+ * - calorías
+ * - macros
+ * - targets por comida si existen
+ *
+ * Los ajustes guardados sólo contienen reglas.
+ */
+
+const selectedGenerationRow =
+  selectedDisplayRow ||
+  selectedRow ||
+  null;
+
+const selectedQuickDate =
+  selectedGenerationRow?.date ||
+  selectedRow?.date ||
+  currentDate;
+
+const selectedQuickTarget =
+  targetTotals(
+    selectedGenerationRow || {}
+  );
+
+const quickPlanMealCalculation = calculateLockedMealMacros({
+  kcal: quickPlanMealKcal,
+  macros: quickPlanMealMacros,
+  locks: quickPlanMealMacroLocks,
+  dailyTarget: selectedQuickTarget,
+});
+
+
   const resolvedCapabilities = capabilitiesQuery.data || {};
   const quickActionAccess = resolveAutonomousMenuActions(resolvedCapabilities);
   const canUseAutonomousLibrary = quickActionAccess.library;
@@ -2826,12 +3083,29 @@ async function loadWeek(start = weekStart, options = {}) {
   const canGenerateAutonomousMenu = quickActionAccess.automatic;
   const canEditAutonomousSettings = quickActionAccess.settings;
   const showAutonomousQuickActions = Boolean(capabilitiesQuery.data) && quickActionAccess.visible;
+  const canCreatePersonalMealTarget =
+    resolvedCapabilities.canTrack !== false &&
+    permissions.canCreateMealTargets !== false &&
+    permissions.canCreateTrackingMealTargets !== false;
 
-  function openQuickLibrary() {
-    navigate(libraryTargetPath(selectedRow?.date, selectedQuickTarget), {
-      state: { from: `${location.pathname}${location.search}` },
-    });
-  }
+
+
+function openQuickLibrary() {
+  navigate(
+    libraryTargetPath(
+      selectedQuickDate,
+      selectedQuickTarget
+    ),
+    {
+      state: {
+        from:
+          `${location.pathname}${location.search}`,
+      },
+    }
+  );
+}
+
+
 
   async function openMenuOptions() {
     setMenuOptionsDrawerOpen(true);
@@ -2843,19 +3117,34 @@ async function loadWeek(start = weekStart, options = {}) {
     }
   }
 
-  function openQuickCreateMenu() {
-    navigate("/app/menu/nuevo", {
-      state: {
-        from: `${location.pathname}${location.search}`,
-        selectedDate: selectedRow?.date,
-        dailyTarget: selectedQuickTarget,
-      },
-    });
-  }
+function openQuickCreateMenu() {
+  navigate("/app/menu/nuevo", {
+    state: {
+      from:
+        `${location.pathname}${location.search}`,
 
-  function openQuickTracking() {
-    navigate(`/app/tracking?date=${encodeURIComponent(selectedRow?.date || currentDate)}`);
-  }
+      selectedDate:
+        selectedQuickDate,
+
+      dailyTarget:
+        selectedQuickTarget,
+    },
+  });
+}
+
+
+
+
+function openQuickTracking(
+  destinationKey = "picoteo"
+) {
+  setQuickTrackingDestination(
+    destinationKey || "picoteo"
+  );
+
+  setQuickTrackingOpen(true);
+}
+
 
   function persistQuickSettings(nextSettings, { close = true, notify = true } = {}) {
     const saved = saveMenuGenerationSettings(currentUser, nextSettings);
@@ -2879,63 +3168,245 @@ async function loadWeek(start = weekStart, options = {}) {
     return { ...DEFAULT_MENU_GENERATION_SETTINGS };
   }
 
-  async function runQuickAutomatic({ allowCalorieTopUp = false, settingsOverride = null } = {}) {
-    if (quickGenerating) return;
-    const generationSettings = settingsOverride || quickSettings;
-    if (!selectedQuickTarget.kcal) {
-      setQuickGenerationError("Primero necesitas configurar el objetivo nutricional de este dia.");
-      return;
+async function runQuickAutomatic({
+  allowCalorieTopUp = false,
+  settingsOverride = null,
+} = {}) {
+  if (quickGenerating) return;
+
+  /*
+   * ==========================================
+   * SNAPSHOT DEL DÍA ACTUAL
+   * ==========================================
+   *
+   * La generación usa SIEMPRE el día que está
+   * seleccionado al momento de tocar Automático.
+   */
+
+  const generationRow =
+    selectedDisplayRow ||
+    selectedRow ||
+    null;
+
+  const generationDate =
+    generationRow?.date ||
+    selectedRow?.date ||
+    currentDate;
+
+  const generationTarget =
+    targetTotals(
+      generationRow || {}
+    );
+
+  const generationSettings =
+    settingsOverride ||
+    quickSettings;
+
+
+  if (!generationTarget.kcal) {
+    setQuickGenerationError(
+      "Primero necesitas configurar el objetivo nutricional de este día."
+    );
+
+    return;
+  }
+
+
+  setQuickGenerating(true);
+
+  setQuickGenerationError("");
+
+  if (!allowCalorieTopUp) {
+    setQuickTopUpOffer(null);
+  }
+
+
+  try {
+    const authorization =
+      await authorizeClientMenuGeneration();
+
+
+    if (
+      authorization?.policy !==
+        MEAL_NUTRITION_POLICY ||
+      authorization?.previewOnly !== true
+    ) {
+      throw new Error(
+        "GENERATION_NOT_AUTHORIZED"
+      );
     }
-    setQuickGenerating(true);
-    setQuickGenerationError("");
-    if (!allowCalorieTopUp) setQuickTopUpOffer(null);
-    try {
-      const authorization = await authorizeClientMenuGeneration();
-      if (authorization?.policy !== "tracking_calorie_fill_v1" || authorization?.previewOnly !== true) {
-        throw new Error("GENERATION_NOT_AUTHORIZED");
-      }
-      const coachTargets = selectedRow?.mealTargetPlan?.mode === "per_meal" && Array.isArray(selectedRow.mealTargetPlan.meals)
-        ? selectedRow.mealTargetPlan.meals
+
+
+    /*
+     * Si este día ya tiene targets específicos
+     * por comida, los obtenemos DEL MISMO DÍA.
+     */
+    const coachTargets =
+      generationRow
+        ?.mealTargetPlan
+        ?.mode === "per_meal" &&
+      Array.isArray(
+        generationRow
+          ?.mealTargetPlan
+          ?.meals
+      )
+        ? generationRow
+            .mealTargetPlan
+            .meals
         : [];
-      const preview = await generateClientMenuPreview(buildAutonomousMenuGenerationRequest({
-        settings: generationSettings,
-        target: selectedQuickTarget,
-        selectedDate: selectedRow?.date,
-        coachMealTargets: coachTargets,
-        allowCalorieTopUp,
-        name: `Menu ${formatDate(selectedRow?.date)}`,
-      }));
-      setQuickTopUpOffer(null);
-      navigate("/app/menu/nuevo", {
-        state: {
-          from: `${location.pathname}${location.search}`,
-          selectedDate: selectedRow?.date,
-          dailyTarget: selectedQuickTarget,
-          generationSettings,
-          generatedDraft: {
-            ...preview,
-            fechaInicio: selectedRow?.date,
-            objectiveMode: "custom",
-            menuTarget: selectedQuickTarget,
-          },
-          activeMenuComparison: trackingChoice(selectedRow) ? {
-            current: choiceTotals(trackingChoice(selectedRow)),
-            proposed: preview.comidas?.reduce(
-              (totals, meal) => addTotals(totals, mealTotals(meal)),
-              { kcal: 0, proteina: 0, carbs: 0, grasas: 0 }
-            ),
-          } : null,
+
+    // Planificación a conservar: snapshot/equivalencias del menú, nunca logs
+    // consumidos de Tracking. Un slot con sólo target y sin alimentos queda
+    // afuera porque todavía no es contenido planificado.
+    const currentPlanningChoice = trackingChoice(generationRow || {});
+    const plannedMeals = currentPlanningChoice
+      ? choiceMeals(currentPlanningChoice)
+          .map((meal, index) => mealWithTrackingReplacements(generationRow || {}, meal, index))
+          .filter(mealHasContent)
+      : [];
+
+
+    const preview =
+      await generateClientMenuPreview(
+        buildAutonomousMenuGenerationRequest({
+          /*
+           * MUY IMPORTANTE:
+           *
+           * target NO viene de settings.
+           * Viene del día actualmente seleccionado.
+           */
+          target:
+            generationTarget,
+
+          settings:
+            generationSettings,
+
+          selectedDate:
+            generationDate,
+
+          coachMealTargets:
+            coachTargets,
+
+          plannedMeals,
+
+          allowCalorieTopUp,
+
+          name:
+            `Menu ${formatDate(
+              generationDate
+            )}`,
+        })
+      );
+
+
+    setQuickTopUpOffer(null);
+
+
+    navigate("/app/menu/nuevo", {
+      state: {
+        from:
+          `${location.pathname}${location.search}`,
+
+        /*
+         * Siempre misma fecha usada arriba.
+         */
+        selectedDate:
+          generationDate,
+
+        /*
+         * Siempre target dinámico de ese día.
+         */
+        dailyTarget:
+          generationTarget,
+
+        generationSettings,
+
+        generatedDraft: {
+          ...preview,
+
+          fechaInicio:
+            generationDate,
+
+          objectiveMode:
+            "custom",
+
+          /*
+           * Meta diaria COMPLETA.
+           *
+           * Ej:
+           * lunes 2132
+           * martes 2500
+           */
+          menuTarget:
+            generationTarget,
         },
-      });
-    } catch (generationError) {
-      if (automaticGenerationRequiresPlan(generationError)) {
-        navigate("/app/planes");
-      } else if (generationError?.code === "MENU_CALORIE_TOP_UP_CONFIRMATION_REQUIRED") {
-        setQuickTopUpOffer(generationError.details || null);
-        setQuickGenerationError("");
-      } else if (["MENU_NO_CALORIE_MATCH", "MENU_NO_PROTEIN_MATCH"].includes(generationError?.code)) {
-        setQuickGenerationError(generationError.message);
-      } else if ([
+
+        activeMenuComparison:
+          trackingChoice(
+            generationRow
+          )
+            ? {
+                current:
+                  choiceTotals(
+                    trackingChoice(
+                      generationRow
+                    )
+                  ),
+
+                proposed:
+                  preview.comidas?.reduce(
+                    (
+                      totals,
+                      meal
+                    ) =>
+                      addTotals(
+                        totals,
+                        mealTotals(
+                          meal
+                        )
+                      ),
+
+                    {
+                      kcal: 0,
+                      proteina: 0,
+                      carbs: 0,
+                      grasas: 0,
+                    }
+                  ),
+              }
+            : null,
+      },
+    });
+  } catch (generationError) {
+    if (
+      automaticGenerationRequiresPlan(
+        generationError
+      )
+    ) {
+      navigate("/app/planes");
+    } else if (
+      generationError?.code ===
+      "MENU_CALORIE_TOP_UP_CONFIRMATION_REQUIRED"
+    ) {
+      setQuickTopUpOffer(
+        generationError.details ||
+        null
+      );
+
+      setQuickGenerationError("");
+    } else if (
+      [
+        "MENU_NO_CALORIE_MATCH",
+        "MENU_NO_PROTEIN_MATCH",
+      ].includes(
+        generationError?.code
+      )
+    ) {
+      setQuickGenerationError(
+        generationError.message
+      );
+    } else if (
+      [
         "MENU_SELECTED_FOODS_REQUIRED",
         "MENU_SELECTED_ONLY_LIBRARY_CONFLICT",
         "MENU_SELECTED_ONLY_INCOMPATIBLE",
@@ -2947,28 +3418,124 @@ async function loadWeek(start = weekStart, options = {}) {
         "MENU_MEAL_PROTEIN_RANGE",
         "MENU_DAILY_PROTEIN_RANGE",
         "MENU_COACH_MEAL_PROTEIN_RANGE",
-      ].includes(generationError?.code)) {
-        setQuickGenerationError(generationError.message);
-      } else {
-        setQuickGenerationError("No pudimos preparar el menú. Revisá tu conexión e intentá nuevamente.");
-      }
-    } finally {
-      setQuickGenerating(false);
+        "MENU_MEAL_COUNT_CONFLICT",
+        "MENU_FOOD_CONSTRAINT_CONFLICT",
+        "TARGET_NOT_REACHABLE_WITH_SELECTED_FOODS",
+        "NO_COMPATIBLE_FOOD_COMBINATION",
+        "MEAL_TARGET_NOT_REACHABLE_WITH_PORTION_RULES",
+      ].includes(
+        generationError?.code
+      )
+    ) {
+      setQuickGenerationError(
+        generationError.message
+      );
+    } else {
+      setQuickGenerationError(
+        "No pudimos preparar el menú. Revisá tu conexión e intentá nuevamente."
+      );
     }
+  } finally {
+    setQuickGenerating(false);
   }
+}
+
+
 
   function generateFromWizard(nextSettings) {
     const saved = persistQuickSettings(nextSettings, { close: true, notify: false });
     void runQuickAutomatic({ settingsOverride: saved });
   }
 
+async function refreshQuickTracking() {
+  await Promise.all([
+    selectedTrackingQuery.refetch(),
+
+    loadWeek(
+      weekStart,
+      {
+        silent: true,
+      }
+    ),
+  ]);
+}
+
+async function createQuickPlannedMeal() {
+  const date = selectedRow?.date || selectedQuickDate;
+  const kcal = Number(quickPlanMealKcal);
+
+  if (!date || saving) return;
+  if (!canCreatePersonalMealTarget) {
+    setToast("Tu acceso actual no permite crear comidas por meta.");
+    window.setTimeout(() => setToast(""), 3000);
+    return;
+  }
+  if (!Number.isFinite(kcal) || kcal <= 0) {
+    setToast("Ingresá una meta de calorías válida.");
+    window.setTimeout(() => setToast(""), 2600);
+    return;
+  }
+  if (quickPlanMealCalculation.invalidLockedMacros.length || quickPlanMealCalculation.cannotMatchTarget) {
+    setToast("Revisá los macros fijos: con esos candados no se puede alcanzar la meta calórica.");
+    window.setTimeout(() => setToast(""), 3200);
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const trackingDay = selectedTrackingQuery.data || await getTrackingDay(date);
+    const mealsConfig = appendPersonalMealTargetConfig(trackingDay, {
+      type: quickPlanMealType,
+      kcal,
+      macros: quickPlanMealMacros,
+      locks: quickPlanMealMacroLocks,
+      dailyTarget: selectedQuickTarget,
+    });
+    const createdMeal = personalMealTargetsFromTrackingDay({ mealsConfig }).at(-1);
+
+    await updateTrackingMealsConfig({ date, mealsConfig });
+    const refreshedTracking = await selectedTrackingQuery.refetch();
+    await loadWeek(weekStart, { silent: true });
+
+    setQuickPlanMealOpen(false);
+    setQuickPlanMealStep("type");
+    setQuickPlanMealKcal("");
+    setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
+    setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
+    setToast(`${createdMeal?.name || "Comida"} creada por meta.`);
+    window.setTimeout(() => setToast(""), 2600);
+
+    if (createdMeal) {
+      const freshMeal = personalMealTargetsFromTrackingDay(refreshedTracking.data)
+        .find((meal) => meal.id === createdMeal.id) || createdMeal;
+      setMealDrawer({
+        row: selectedDisplayRow || selectedRow,
+        meal: freshMeal,
+        baseMeal: freshMeal,
+        mealIndex: 0,
+        nativeTarget: true,
+        initialView: "target",
+      });
+    }
+  } catch (creationError) {
+    setToast(creationError?.message || "No se pudo crear la comida por meta.");
+    window.setTimeout(() => setToast(""), 3200);
+  } finally {
+    setSaving(false);
+  }
+}
+
+
   const autonomousActions = {
     visible: showAutonomousQuickActions,
     canUseLibrary: canUseAutonomousLibrary,
     canCreate: canCreateAutonomousMenu,
     canGenerate: canGenerateAutonomousMenu,
+    canPlanMeal: canCreatePersonalMealTarget,
     canEditSettings: canEditAutonomousSettings,
     settings: quickSettings,
+    onTrackingChanged:
+  refreshQuickTracking,
     settingsOpen: quickSettingsOpen,
     wizardPurpose: quickWizardPurpose,
     generating: quickGenerating,
@@ -2979,15 +3546,37 @@ async function loadWeek(start = weekStart, options = {}) {
     hasMenu: Boolean(trackingChoice(selectedRow)?.snapshot),
     onLibrary: openQuickLibrary,
     onCreate: openQuickCreateMenu,
-    onAutomatic: () => {
-      if (!canGenerateAutonomousMenu) {
-        navigate("/app/planes");
-        return;
-      }
-      setQuickGenerationError("");
-      setQuickWizardPurpose("generate");
-      setQuickSettingsOpen(true);
-    },
+
+onPlanMeal: () => {
+  setQuickPlanMealType(
+    "almuerzo"
+  );
+
+  setQuickPlanMealStep(
+    "type"
+  );
+
+  setQuickPlanMealKcal("");
+  setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
+  setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
+
+  setQuickPlanMealOpen(true);
+},
+
+
+onAutomatic: () => {
+  if (!canGenerateAutonomousMenu) {
+    navigate("/app/planes");
+    return;
+  }
+
+  setQuickGenerationError("");
+  setQuickTopUpOffer(null);
+  setQuickSettingsOpen(false);
+
+  void runQuickAutomatic();
+},
+
     onAcceptTopUp: () => runQuickAutomatic({ allowCalorieTopUp: true }),
     onRejectTopUp: () => setQuickTopUpOffer(null),
     onTracking: openQuickTracking,
@@ -4408,7 +4997,633 @@ async function setMealTargetMode({
         />
       ) : null}
 
-      {menuOptionsDrawerOpen ? (
+
+
+
+{quickTrackingOpen ? (
+
+<QuickTrackingFoodDrawer
+  open={quickTrackingOpen}
+  date={selectedRow?.date || currentDate}
+  initialDestinationKey={
+    quickTrackingDestination
+  }
+  onClose={() => {
+    setQuickTrackingOpen(false);
+  }}
+  onSaved={() => {
+    setToast(
+      "Alimento registrado en Tracking."
+    );
+
+    window.setTimeout(() => {
+      setToast("");
+    }, 2600);
+
+    void Promise.all([
+      selectedTrackingQuery.refetch(),
+
+      loadWeek(
+        weekStart,
+        {
+          silent: true,
+        }
+      ),
+    ]).catch((refreshError) => {
+      console.warn(
+        "[MenuPlan] No se pudo refrescar después de registrar alimento",
+        refreshError
+      );
+    });
+  }}
+/>
+) : null}
+
+{quickPlanMealOpen && quickPlanMealStep === "__legacy_target" ? (
+  <div
+    className="
+      fixed
+      inset-0
+      z-[140]
+      flex
+      items-end
+      justify-center
+      bg-black/70
+      backdrop-blur-[2px]
+    "
+    onClick={() =>
+      setQuickPlanMealOpen(false)
+    }
+  >
+    <div
+      className="
+        w-full
+        max-w-[430px]
+        rounded-t-[1.5rem]
+        border
+        border-white/10
+        bg-[#081018]
+        p-4
+        shadow-[0_-20px_50px_rgba(0,0,0,.45)]
+      "
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+    >
+      {/* HEADER */}
+      <div className="mb-4">
+        <span className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-300/70">
+          Planificación
+        </span>
+
+        <h3 className="mt-1 text-[18px] font-black text-white">
+          Planificar comida
+        </h3>
+
+        <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
+          Elegí qué comida querés reservar dentro de tu objetivo diario.
+        </p>
+      </div>
+
+
+      {quickPlanMealStep ===
+"target" ? (
+  <div className="grid gap-3">
+    <button
+      type="button"
+      onClick={() =>
+        setQuickPlanMealStep(
+          "type"
+        )
+      }
+      className="
+        w-fit
+        text-[10px]
+        font-black
+        text-zinc-500
+        transition
+        hover:text-zinc-300
+      "
+    >
+      ← Cambiar comida
+    </button>
+
+    <div
+      className="
+        rounded-2xl
+        border
+        border-emerald-300/20
+        bg-emerald-300/[0.05]
+        px-3
+        py-3
+      "
+    >
+      <span className="text-[8px] font-black uppercase tracking-[0.12em] text-emerald-300/70">
+        Comida seleccionada
+      </span>
+
+      <strong className="mt-1 block text-[15px] font-black text-white">
+        {menuTargetMealTypeLabel(
+          quickPlanMealType
+        )}
+      </strong>
+    </div>
+
+    <label className="block">
+      <span className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.1em] text-zinc-500">
+        Meta para esta comida
+      </span>
+
+      <div
+        className="
+          flex
+          items-center
+          gap-2
+          rounded-2xl
+          border
+          border-white/10
+          bg-black/30
+          px-3
+          py-2
+        "
+      >
+        <input
+          type="number"
+          min="1"
+          step="10"
+          inputMode="numeric"
+          value={
+            quickPlanMealKcal
+          }
+          onChange={(event) =>
+            setQuickPlanMealKcal(
+              event.target.value
+            )
+          }
+          placeholder="Ej: 600"
+          className="
+            min-w-0
+            flex-1
+            bg-transparent
+            text-[22px]
+            font-black
+            text-white
+            outline-none
+            placeholder:text-zinc-700
+          "
+        />
+
+        <span className="text-[11px] font-black text-zinc-500">
+          kcal
+        </span>
+      </div>
+    </label>
+
+    <div
+      className="
+        rounded-xl
+        border
+        border-white/[0.07]
+        bg-white/[0.025]
+        px-3
+        py-2
+      "
+    >
+      <span className="text-[8px] font-bold text-zinc-500">
+        Esta meta reserva calorías para la comida.
+        No significa que ya las consumiste.
+      </span>
+    </div>
+  </div>
+) : null}
+
+    </div>
+  </div>
+) : null}
+
+{quickPlanMealOpen ? (
+  <div
+    className="
+      fixed
+      inset-0
+      z-[140]
+      flex
+      items-end
+      justify-center
+      bg-black/70
+      backdrop-blur-[2px]
+    "
+    onClick={() => {
+      setQuickPlanMealOpen(false);
+      setQuickPlanMealStep("type");
+      setQuickPlanMealKcal("");
+      setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
+      setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
+    }}
+  >
+    <div
+      className="
+        w-full
+        max-w-[430px]
+        rounded-t-[1.5rem]
+        border
+        border-white/10
+        bg-[#081018]
+        p-4
+        shadow-[0_-20px_50px_rgba(0,0,0,.45)]
+      "
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+    >
+      {/* HEADER */}
+      <div className="mb-4">
+        <span className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-300/70">
+          Planificación
+        </span>
+
+        <h3 className="mt-1 text-[18px] font-black text-white">
+          {quickPlanMealStep === "type"
+            ? "Planificar comida"
+            : "Definir meta"}
+        </h3>
+
+        <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
+          {quickPlanMealStep === "type"
+            ? "Elegí qué comida querés reservar dentro de tu objetivo diario."
+            : "Definí las calorías y los macros objetivo de esta comida."}
+        </p>
+      </div>
+
+      {quickPlanMealStep === "type" ? (
+        <>
+          {/* TIPO DE COMIDA */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ["desayuno", "Desayuno"],
+              ["almuerzo", "Almuerzo"],
+              ["merienda", "Merienda"],
+              ["cena", "Cena"],
+              ["snack", "Snack"],
+            ].map(
+              ([value, label]) => {
+                const selected =
+                  quickPlanMealType ===
+                  value;
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setQuickPlanMealType(
+                        value
+                      )
+                    }
+                    className={`
+                      min-h-[43px]
+                      rounded-xl
+                      border
+                      px-3
+                      text-[11px]
+                      font-black
+                      transition
+                      ${
+                        selected
+                          ? `
+                            border-emerald-300/45
+                            bg-emerald-300/[0.10]
+                            text-emerald-200
+                          `
+                          : `
+                            border-white/10
+                            bg-white/[0.025]
+                            text-zinc-300
+                          `
+                      }
+                    `}
+                  >
+                    {label}
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          {/* ACCIONES PASO 1 */}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setQuickPlanMealOpen(
+                  false
+                );
+
+                setQuickPlanMealStep(
+                  "type"
+                );
+
+                setQuickPlanMealKcal(
+                  ""
+                );
+                setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
+                setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
+              }}
+              className="
+                min-h-[44px]
+                rounded-xl
+                border
+                border-white/10
+                bg-white/[0.025]
+                text-[11px]
+                font-black
+                text-zinc-400
+              "
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setQuickPlanMealStep(
+                  "target"
+                );
+              }}
+              className="
+                flex
+                min-h-[44px]
+                items-center
+                justify-center
+                gap-2
+                rounded-xl
+                border
+                border-[#FFD76B]/40
+                bg-gradient-to-r
+                from-[#FFC928]
+                to-[#FFE16A]
+                text-[11px]
+                font-black
+                text-black
+              "
+            >
+              <Target
+                size={15}
+                strokeWidth={2.4}
+              />
+
+              Continuar
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* COMIDA SELECCIONADA */}
+          <div
+            className="
+              rounded-2xl
+              border
+              border-emerald-300/15
+              bg-emerald-300/[0.045]
+              p-3
+            "
+          >
+            <span className="text-[8px] font-black uppercase tracking-[0.12em] text-emerald-300/70">
+              Comida seleccionada
+            </span>
+
+            <strong className="mt-1 block text-[14px] font-black text-white">
+              {{
+                desayuno:
+                  "Desayuno",
+                almuerzo:
+                  "Almuerzo",
+                merienda:
+                  "Merienda",
+                cena:
+                  "Cena",
+                snack:
+                  "Snack",
+              }[
+                quickPlanMealType
+              ] || "Comida"}
+            </strong>
+          </div>
+
+          {/* META */}
+          <div className="mt-3">
+            <label className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.1em] text-zinc-400">
+              Meta para esta comida
+            </label>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={
+                  quickPlanMealKcal
+                }
+                onChange={(event) =>
+                  setQuickPlanMealKcal(
+                    event.target.value
+                  )
+                }
+                placeholder="Ej: 600"
+                className="
+                  min-h-[46px]
+                  min-w-0
+                  flex-1
+                  rounded-xl
+                  border
+                  border-white/10
+                  bg-black/25
+                  px-3
+                  text-[14px]
+                  font-black
+                  text-white
+                  outline-none
+                  transition
+                  placeholder:text-zinc-600
+                  focus:border-emerald-300/40
+                "
+              />
+
+              <span className="shrink-0 text-[11px] font-black text-zinc-400">
+                kcal
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                ["proteina", "Proteína", "P", "emerald"],
+                ["carbs", "Carbohidratos", "C", "sky"],
+                ["grasas", "Grasas", "G", "amber"],
+              ].map(([field, label, shortLabel, tone]) => {
+                const locked = quickPlanMealMacroLocks[field];
+                const displayedValue = locked
+                  ? quickPlanMealMacros[field]
+                  : quickPlanMealCalculation.macros[field];
+                const toneClass = tone === "emerald"
+                  ? "border-emerald-300/35 bg-emerald-300/[0.07] text-emerald-200"
+                  : tone === "sky"
+                    ? "border-sky-300/30 bg-sky-300/[0.06] text-sky-200"
+                    : "border-amber-300/30 bg-amber-300/[0.06] text-amber-200";
+
+                return (
+                  <div key={field} className={`min-w-0 rounded-xl border p-2 ${locked ? toneClass : "border-white/10 bg-black/25 text-zinc-300"}`}>
+                    <div className="mb-1.5 flex items-center justify-between gap-1">
+                      <span className="min-w-0 truncate text-[8px] font-black uppercase tracking-wide">
+                        {shortLabel} · {label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!locked) {
+                            setQuickPlanMealMacros((current) => ({
+                              ...current,
+                              [field]: String(quickPlanMealCalculation.macros[field]),
+                            }));
+                          }
+                          setQuickPlanMealMacroLocks((current) => ({
+                            ...current,
+                            [field]: !locked,
+                          }));
+                        }}
+                        className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${locked ? "border-current/30 bg-black/20" : "border-white/10 bg-white/[0.04] text-zinc-500"}`}
+                        aria-label={`${locked ? "Desbloquear" : "Bloquear"} ${label}`}
+                        title={locked ? `${label} fijo` : `${label} automático`}
+                      >
+                        {locked ? <Lock size={11} /> : <LockOpen size={11} />}
+                      </button>
+                    </div>
+                    <div className="flex min-h-[32px] items-center">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        value={displayedValue}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          setQuickPlanMealMacros((current) => ({
+                            ...current,
+                            [field]: event.target.value,
+                          }));
+                          setQuickPlanMealMacroLocks((current) => ({
+                            ...current,
+                            [field]: true,
+                          }));
+                        }}
+                        aria-label={`${label} objetivo`}
+                        title={locked ? `${label} fijo` : `Escribí para fijar ${label.toLowerCase()}`}
+                        className={`min-w-0 flex-1 bg-transparent text-[15px] font-black outline-none ${locked ? "text-white" : "text-zinc-300"}`}
+                      />
+                      <span className="ml-1 text-[9px] font-black opacity-60">g</span>
+                    </div>
+                    <span className="block text-[7px] font-black uppercase tracking-wide opacity-60">
+                      {locked ? "Fijo · editable" : "Auto · escribí para fijar"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className={`mt-3 rounded-xl border p-3 ${quickPlanMealCalculation.cannotMatchTarget ? "border-rose-300/30 bg-rose-300/[0.07]" : "border-emerald-300/20 bg-emerald-300/[0.045]"}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <span className="block text-[8px] font-black uppercase tracking-wide text-zinc-500">Resultado nutricional</span>
+                  <strong className="mt-0.5 block text-[16px] font-black text-white">
+                    {formatNumber(quickPlanMealCalculation.actualKcal, 0)} kcal reales
+                  </strong>
+                </div>
+                <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${Math.abs(quickPlanMealCalculation.differenceKcal) <= 1 ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200" : "border-amber-300/30 bg-amber-300/10 text-amber-200"}`}>
+                  {quickPlanMealCalculation.differenceKcal > 0 ? "+" : ""}{formatNumber(quickPlanMealCalculation.differenceKcal, 1)} kcal
+                </span>
+              </div>
+              <p className={`mt-1.5 text-[8.5px] font-bold leading-relaxed ${quickPlanMealCalculation.cannotMatchTarget ? "text-rose-200" : "text-zinc-500"}`}>
+                {quickPlanMealCalculation.cannotMatchTarget
+                  ? "Con todos esos valores fijos no se alcanza la meta. Abrí un candado o ajustá un valor."
+                  : "Los candados abiertos se ajustan automáticamente para alcanzar la meta calórica."}
+              </p>
+            </div>
+          </div>
+
+          {/* ACCIONES PASO 2 */}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setQuickPlanMealStep(
+                  "type"
+                )
+              }
+              className="
+                min-h-[44px]
+                rounded-xl
+                border
+                border-white/10
+                bg-white/[0.025]
+                text-[11px]
+                font-black
+                text-zinc-400
+              "
+            >
+              Volver
+            </button>
+
+            <button
+              type="button"
+              disabled={
+                saving ||
+                quickPlanMealCalculation.cannotMatchTarget ||
+                quickPlanMealCalculation.invalidLockedMacros.length > 0 ||
+                !Number(
+                  quickPlanMealKcal
+                ) ||
+                Number(
+                  quickPlanMealKcal
+                ) <= 0
+              }
+              onClick={createQuickPlannedMeal}
+              className="
+                flex
+                min-h-[44px]
+                items-center
+                justify-center
+                gap-2
+                rounded-xl
+                border
+                border-[#FFD76B]/40
+                bg-gradient-to-r
+                from-[#FFC928]
+                to-[#FFE16A]
+                text-[11px]
+                font-black
+                text-black
+                transition
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              <Target
+                size={15}
+                strokeWidth={2.4}
+              />
+
+              {saving ? "Creando..." : "Crear por meta"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  </div>
+) : null}
+
+
+
+{menuOptionsDrawerOpen ? (
         <MobileMenuOptionsDrawer
           row={selectedRow}
           activePlan={activePlan}
@@ -5080,32 +6295,52 @@ function AutonomousMenuQuickActions() {
 
   if (!actions?.visible) return null;
   const automaticLocked = !actions.canGenerate;
-  const actionCount = [actions.canUseLibrary, actions.canCreate, true, actions.canEditSettings].filter(Boolean).length;
+
+
+  const actionCount = [
+  actions.canCreate,
+  true,
+  actions.canEditSettings,
+].filter(Boolean).length;
+
   const modeLabel = generationModeLabel(actions.settings?.mode);
 
   return (
     <section className="mt-2.5" aria-label="Acciones rapidas de menu">
+
       <div className="grid overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, actionCount)}, minmax(0, 1fr))` }}>
-        {actions.canUseLibrary ? <QuickMenuAction icon={BookOpen} label="Biblioteca" tone="green" onClick={actions.onLibrary} /> : null}
-        {actions.canCreate ? <QuickMenuAction icon={Plus} label="Crear menú" tone="violet" onClick={actions.onCreate} /> : null}
-        <QuickMenuAction
-          icon={actions.generating ? RefreshCw : Sparkles}
-          label={actions.generating ? "Generando" : "Automático"}
-          detail={automaticLocked ? "Pro" : modeLabel}
-          tone="cyan"
-          onClick={actions.onAutomatic}
-          busy={actions.generating}
-          locked={automaticLocked}
-        />
-        {actions.canEditSettings ? <QuickMenuAction
-          icon={SlidersHorizontal}
-          label="Ajustes"
-          tone="gold"
-          onClick={actions.onToggleSettings}
-          pressed={actions.settingsOpen}
-          controls="menu-generation-settings"
-          compact
-        /> : null}
+
+
+{actions.canCreate ? (
+  <QuickMenuAction
+    icon={ClipboardPlus}
+    label="Crear menú"
+    tone="violet"
+    onClick={actions.onCreate}
+  />
+) : null}
+
+
+
+<QuickMenuAction
+  icon={actions.generating ? RefreshCw : Sparkles}
+  label={actions.generating ? "Generando" : "Generar"}
+  detail={automaticLocked ? "Pro" : modeLabel}
+  tone="cyan"
+  onClick={actions.onAutomatic}
+  busy={actions.generating}
+  locked={automaticLocked}
+/>
+        {actions.canEditSettings ?
+
+<QuickMenuAction
+  icon={SlidersHorizontal}
+  label="Ajustes"
+  tone="gold"
+  onClick={actions.onToggleSettings}
+  pressed={actions.settingsOpen}
+  controls="menu-generation-settings"
+/> : null}
       </div>
 
       {actions.topUpOffer ? (
@@ -5156,17 +6391,58 @@ function AutonomousMenuQuickActions() {
   );
 }
 
-function QuickMenuAction({ icon, label, detail = "", tone = "gold", onClick, busy = false, locked = false, pressed, controls, compact = false }) {
+function QuickMenuAction({
+  icon,
+  label,
+  detail = "",
+  tone = "gold",
+  onClick,
+  busy = false,
+  locked = false,
+  pressed,
+  controls,
+}) {
   const colors = {
-    green: "border-lime-400/35 bg-lime-400/10 text-lime-300",
-    violet: "border-violet-400/35 bg-violet-400/10 text-violet-300",
-    cyan: "border-cyan-400/35 bg-cyan-400/10 text-cyan-200",
-    gold: "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFD76B]",
+    green:
+      "border-lime-400/35 bg-lime-400/10 text-lime-300",
+    violet:
+      "border-violet-400/35 bg-violet-400/10 text-violet-300",
+    cyan:
+      "border-cyan-400/35 bg-cyan-400/10 text-cyan-200",
+    gold:
+      "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFD76B]",
   };
+
   return (
     <button
       type="button"
-      className={`group relative flex min-h-[60px] min-w-0 flex-col items-center justify-center gap-0.5 border-r border-white/[0.07] px-0.5 py-1.5 text-center transition hover:bg-white/[0.055] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] min-[640px]:min-h-14 min-[640px]:flex-row min-[640px]:gap-2 min-[640px]:px-2 ${pressed ? "bg-[#D4AF37]/[0.08]" : ""}`}
+      className={`
+        group
+        relative
+        flex
+        min-h-[70px]
+        min-w-0
+        flex-col
+        items-center
+        justify-center
+        gap-1.5
+        border-r
+        border-white/[0.07]
+        px-1
+        py-2.5
+        text-center
+        transition
+        hover:bg-white/[0.055]
+        focus-visible:z-10
+        focus-visible:outline
+        focus-visible:outline-2
+        focus-visible:outline-[#FFD76B]
+        min-[640px]:min-h-[72px]
+        min-[640px]:flex-row
+        min-[640px]:gap-2.5
+        min-[640px]:px-3
+        ${pressed ? "bg-[#D4AF37]/[0.08]" : ""}
+      `}
       onClick={onClick}
       aria-busy={busy || undefined}
       aria-pressed={pressed}
@@ -5174,10 +6450,59 @@ function QuickMenuAction({ icon, label, detail = "", tone = "gold", onClick, bus
       aria-controls={controls}
       aria-label={`${label}${detail ? `, ${detail}` : ""}${locked ? ", requiere plan Pro o VIP" : ""}`}
     >
-      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border min-[640px]:h-8 min-[640px]:w-8 ${colors[tone] || colors.gold}`}>
-        {React.createElement(icon, { size: compact ? 14 : 15, className: busy ? "animate-spin" : "", "aria-hidden": "true" })}
+      <span
+        className={`
+          grid
+          h-11
+          w-11
+          shrink-0
+          place-items-center
+          rounded-full
+          border
+          min-[640px]:h-10
+          min-[640px]:w-10
+          ${colors[tone] || colors.gold}
+        `}
+      >
+        {React.createElement(icon, {
+          size: 19,
+          strokeWidth: 2.2,
+          className: busy ? "animate-spin" : "",
+          "aria-hidden": "true",
+        })}
       </span>
-      <span className="w-full min-w-0 px-0.5"><strong className="block truncate text-[8.5px] font-black leading-tight text-zinc-100 min-[390px]:text-[9px] sm:text-xs">{label}</strong>{detail ? <small className="hidden truncate text-[8px] font-bold text-zinc-500 min-[640px]:block">{detail}</small> : null}</span>
+
+      <span className="w-full min-w-0 px-0.5">
+        <strong
+          className="
+            block
+            truncate
+            text-[10.5px]
+            font-black
+            leading-tight
+            text-zinc-100
+            min-[390px]:text-[11px]
+            sm:text-[12.5px]
+          "
+        >
+          {label}
+        </strong>
+
+        {detail ? (
+          <small
+            className="
+              hidden
+              truncate
+              text-[8.5px]
+              font-bold
+              text-zinc-500
+              min-[640px]:block
+            "
+          >
+            {detail}
+          </small>
+        ) : null}
+      </span>
     </button>
   );
 }
@@ -5209,6 +6534,7 @@ function MobileDayMenu({
   saving,
 }) {
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const autonomousActions = React.useContext(MenuAutonomousActionsContext);
 
   if (!row) return null;
   const displayRow = rowWithActiveGeneratedMeals(row, weekRows);
@@ -5230,7 +6556,7 @@ function MobileDayMenu({
   const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
   const emptyCopy = emptyMenuCopy(activePlanSource);
   const flexiblePlan = flexiblePlanForChoice(displayRow, activeChoice, activePlanSource);
-  const targetOnlyMeals = plannedMealTargets(displayRow);
+  const targetOnlyMeals = plannedMealTargets(displayRow, trackingDay);
 
   return (
     <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -5295,17 +6621,34 @@ function MobileDayMenu({
         </div>
       */}
 
-      {!primary?.snapshot && !targetOnlyMeals.length ? (
-        <div className="mt-2.5">
-          <MobileEmptyCard title={emptyCopy.title} text={emptyCopy.text} />
-        </div>
-      ) : null}
+{!primary?.snapshot && !targetOnlyMeals.length ? (
+  <>
+    <div className="mt-2.5">
+      <MobileEmptyCard
+        title={emptyCopy.title}
+        text={emptyCopy.text}
+        trackingAction
+      />
+    </div>
+
+    <MobileStandaloneTracking
+      trackingDay={trackingDay}
+    />
+  </>
+) : null}
+
+
+
 
       {!primary?.snapshot && targetOnlyMeals.length ? (
         <section className="mt-3 grid gap-2.5">
           <div className="px-1">
-            <h3 className="text-base font-black text-white">Metas de comidas</h3>
-            <p className="mt-1 text-[11px] font-bold text-zinc-500">Tu coach definió los objetivos. Generá cada comida con el algoritmo o cargala manualmente.</p>
+            <h3 className="text-base font-black text-white">Comidas por meta</h3>
+            <p className="mt-1 text-[11px] font-bold text-zinc-500">
+              {targetOnlyMeals.some((meal) => meal.personalTargetOnly)
+                ? "Completá cada objetivo agregando los alimentos que consumas."
+                : "Tu coach definió los objetivos. Generá cada comida o cargala manualmente."}
+            </p>
           </div>
           {targetOnlyMeals.map((meal, mealIndex) => (
 
@@ -5356,7 +6699,31 @@ onGenerate={(completionContext = {}) =>
 />
 
           ))}
+
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => autonomousActions?.onTracking?.("picoteo")}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#FFD76B]/40 bg-gradient-to-r from-[#FFC928] to-[#FFE16A] px-3 text-[10px] font-black text-black transition active:scale-[0.98]"
+            >
+              <Plus size={15} strokeWidth={2.7} />
+              Registrar alimento
+            </button>
+            <button
+              type="button"
+              disabled={autonomousActions?.canPlanMeal === false}
+              onClick={() => autonomousActions?.onPlanMeal?.()}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/[0.06] px-3 text-[10px] font-black text-emerald-200 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Target size={15} strokeWidth={2.4} />
+              Planificar otra
+            </button>
+          </div>
         </section>
+      ) : null}
+
+      {!primary?.snapshot && targetOnlyMeals.length ? (
+        <MobileStandaloneTracking trackingDay={trackingDay} />
       ) : null}
 
       {activeChoice?.snapshot ? (
@@ -6349,52 +7716,770 @@ function MobileMetric({ label, value, detail, tone = "blue", progress = null }) 
   );
 }
 
-function MobileEmptyCard({ title, text }) {
+function MobileEmptyCard({
+  title,
+  text,
+  trackingAction = false,
+}) {
   const autonomousActions = React.useContext(MenuAutonomousActionsContext);
-  const joined = `${title || ""} ${text || ""}`.toLowerCase();
-  const isAutonomousEmptyState = joined.includes("biblioteca zumafit") && joined.includes("generar uno automáticamente");
+
   return (
     <div className="relative overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_38%),linear-gradient(145deg,#111923,#090e15)] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,.28)]">
-      <span className="pointer-events-none absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37]" aria-hidden="true" />
+      <span
+        className="pointer-events-none absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-[#FFE8A3] to-[#D4AF37]"
+        aria-hidden="true"
+      />
+
       <div className="flex items-start gap-2 text-zinc-100">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFD76B]">
-          <CircleAlert size={15} />
+          <Utensils size={15} />
         </span>
+
         <span className="min-w-0">
-          <span className="block text-[7.5px] font-black uppercase tracking-[0.12em] text-[#FFE8A3]/65">Plan del día</span>
-          <strong className="block text-sm font-black leading-tight">{title}</strong>
+          <span className="block text-[7.5px] font-black uppercase tracking-[0.12em] text-[#FFE8A3]/70">
+            Tracking
+          </span>
+
+          <strong className="block text-sm font-black leading-tight">
+            {title}
+          </strong>
         </span>
       </div>
-      {text ? <p className="mt-1 pl-10 text-[9.5px] font-bold leading-[1.45] text-zinc-400">{text}</p> : null}
-      {isAutonomousEmptyState && autonomousActions?.visible ? (
-        <>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              onClick={autonomousActions.onCreate}
-              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-2 text-[10px] font-black leading-tight text-[#080808]"
-            >
-              <Plus size={15} /> Crear mi menú
-            </button>
-            <button
-              type="button"
-              onClick={autonomousActions.onAutomatic}
-              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-2 text-center text-[9.5px] font-black leading-tight text-cyan-100"
-            >
-              <Sparkles size={15} /> Generar automáticamente
-            </button>
-            <button type="button" onClick={autonomousActions.onLibrary} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-[9.5px] font-black leading-tight text-zinc-100">
-              <BookOpen size={15} /> Explorar biblioteca
-            </button>
-            <button type="button" onClick={autonomousActions.onTracking} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-[9.5px] font-black leading-tight text-zinc-100">
-              <Target size={15} /> Registrar en Tracking
-            </button>
-          </div>
-        </>
+
+      {text ? (
+        <p className="mt-1 pl-10 text-[9.5px] font-bold leading-[1.45] text-zinc-400">
+          {text}
+        </p>
       ) : null}
+
+{trackingAction ? (
+  <div className="mt-2 grid grid-cols-2 gap-2 pl-10">
+    {/* REGISTRAR ALIMENTO */}
+    <button
+      type="button"
+      onClick={() =>
+        autonomousActions
+          ?.onTracking?.(
+            "picoteo"
+          )
+      }
+      className="
+        flex
+        min-h-[38px]
+        items-center
+        justify-center
+        gap-1.5
+        rounded-xl
+        border
+        border-[#FFD76B]/40
+        bg-gradient-to-r
+        from-[#FFC928]
+        to-[#FFE16A]
+        px-2
+        py-2
+        text-[9.5px]
+        font-black
+        text-black
+        shadow-[0_7px_18px_rgba(212,175,55,.13)]
+        transition
+        hover:brightness-105
+        active:scale-[0.98]
+      "
+    >
+      <Plus
+        size={14}
+        strokeWidth={2.8}
+      />
+
+      <span className="whitespace-nowrap">
+        Registrar alimento
+      </span>
+    </button>
+
+    {/* PLANIFICAR COMIDA */}
+    <button
+      type="button"
+      disabled={autonomousActions?.canPlanMeal === false}
+      onClick={() =>
+        autonomousActions
+          ?.onPlanMeal?.()
+      }
+      className="
+        flex
+        min-h-[38px]
+        items-center
+        justify-center
+        gap-1.5
+        rounded-xl
+        border
+        border-emerald-300/30
+        bg-emerald-300/[0.045]
+        px-2
+        py-2
+        text-[9.5px]
+        font-black
+        text-emerald-200
+        transition
+        hover:border-emerald-300/50
+        hover:bg-emerald-300/[0.08]
+        active:scale-[0.98]
+        disabled:cursor-not-allowed
+        disabled:opacity-45
+      "
+    >
+      <Target
+        size={14}
+        strokeWidth={2.3}
+      />
+
+      <span className="whitespace-nowrap">
+        Planificar comida
+      </span>
+    </button>
+  </div>
+) : null}
+
+
+
     </div>
   );
 }
+
+function MobileStandaloneTracking({
+  trackingDay = null,
+  date = "",
+}) {
+  const autonomousActions =
+  React.useContext(
+    MenuAutonomousActionsContext
+  );
+
+const deleteMutation =
+  useDeleteFoodLog();
+
+const [
+  deletingTrackingKey,
+  setDeletingTrackingKey,
+] = useState("");
+
+const groups =
+  standaloneTrackingGroups(
+    trackingDay
+  );
+
+const [
+  expandedTrackingGroups,
+  setExpandedTrackingGroups,
+] = useState([]);
+
+
+
+const previousTrackingCountsRef =
+  React.useRef(null);
+
+useEffect(() => {
+  const currentCounts =
+    Object.fromEntries(
+      groups.map((group) => [
+        group.id,
+        group.items.length,
+      ])
+    );
+
+  /*
+   * Primera carga:
+   * guardamos el estado actual pero
+   * NO abrimos nada automáticamente.
+   */
+  if (
+    previousTrackingCountsRef.current ===
+    null
+  ) {
+    previousTrackingCountsRef.current =
+      currentCounts;
+
+    return;
+  }
+
+  const previousCounts =
+    previousTrackingCountsRef.current;
+
+  /*
+   * Buscamos grupos que:
+   * - aparecieron recién
+   * - o recibieron un alimento nuevo
+   */
+  const groupsWithNewFood =
+    groups
+      .filter((group) => {
+        const previousCount =
+          previousCounts[group.id] || 0;
+
+        return (
+          group.items.length >
+          previousCount
+        );
+      })
+      .map(
+        (group) => group.id
+      );
+
+  if (
+    groupsWithNewFood.length
+  ) {
+    setExpandedTrackingGroups(
+      (current) => [
+        ...new Set([
+          ...current,
+          ...groupsWithNewFood,
+        ]),
+      ]
+    );
+  }
+
+  previousTrackingCountsRef.current =
+    currentCounts;
+}, [groups]);
+
+function toggleTrackingGroup(
+  groupId
+) {
+  setExpandedTrackingGroups(
+    (current) => {
+      if (
+        current.includes(
+          groupId
+        )
+      ) {
+        return current.filter(
+          (id) =>
+            id !== groupId
+        );
+      }
+
+      return [
+        ...current,
+        groupId,
+      ];
+    }
+  );
+}
+
+async function deleteTrackingFood(
+  item
+) {
+  const logId =
+    item?.id ||
+    item?._id;
+
+  if (
+    !logId ||
+    deleteMutation.isPending
+  ) {
+    return;
+  }
+
+  const foodName =
+    trackingFoodName(item);
+
+  const confirmed =
+    window.confirm(
+      `¿Eliminar "${foodName}" de Tracking?`
+    );
+
+  if (!confirmed) return;
+
+  setDeletingTrackingKey(
+    String(logId)
+  );
+
+  try {
+    await deleteMutation.mutateAsync({
+      logId,
+      date,
+    });
+
+    await autonomousActions
+      ?.onTrackingChanged?.();
+  } finally {
+    setDeletingTrackingKey("");
+  }
+}
+
+
+async function deleteTrackingGroup(
+  group
+) {
+  if (
+    !group?.items?.length ||
+    deleteMutation.isPending
+  ) {
+    return;
+  }
+
+  const confirmed =
+    window.confirm(
+      `¿Eliminar todo "${group.label}"? Se borrarán ${group.items.length} ${
+        group.items.length === 1
+          ? "alimento"
+          : "alimentos"
+      } de Tracking.`
+    );
+
+  if (!confirmed) return;
+
+  setDeletingTrackingKey(
+    `group-${group.id}`
+  );
+
+  try {
+    for (
+      const item
+      of group.items
+    ) {
+      const logId =
+        item?.id ||
+        item?._id;
+
+      if (!logId) continue;
+
+      await deleteMutation.mutateAsync({
+        logId,
+        date,
+      });
+    }
+
+    await autonomousActions
+      ?.onTrackingChanged?.();
+  } finally {
+    setDeletingTrackingKey("");
+  }
+}
+
+
+
+
+
+
+  if (!groups.length) {
+    return null;
+  }
+
+  return (
+    <section className="mt-2.5 grid gap-2">
+      <div className="flex items-center justify-between px-1">
+        <div>
+          <span className="text-[8px] font-black uppercase tracking-[0.13em] text-emerald-300/70">
+            Tracking de hoy
+          </span>
+
+          <h3 className="mt-0.5 text-[13px] font-black text-white">
+            Lo que ya comiste
+          </h3>
+        </div>
+
+        <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-2 py-1 text-[8px] font-black text-emerald-200">
+          Registrado
+        </span>
+      </div>
+
+{groups.map((group) => {
+  const expanded =
+    expandedTrackingGroups.includes(
+      group.id
+    );
+
+  return (
+    <article
+          key={group.id}
+          className="
+            overflow-hidden
+            rounded-[1rem]
+            border
+            border-emerald-300/20
+            bg-[radial-gradient(circle_at_0_0,rgba(16,185,129,.10),transparent_35%),linear-gradient(145deg,#0b1319,#080d12)]
+            shadow-[0_10px_25px_rgba(0,0,0,.20)]
+          "
+        >
+          {/* HEADER DE LA COMIDA */}
+          <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-emerald-300/25 bg-emerald-300/[0.08] text-emerald-300">
+                <Utensils
+                  size={15}
+                />
+              </span>
+
+              <div className="min-w-0">
+                <strong className="block truncate text-[12px] font-black text-zinc-100">
+                  {group.label}
+                </strong>
+
+                <small className="block text-[8px] font-bold text-zinc-500">
+                  {group.items.length}{" "}
+                  {group.items.length === 1
+                    ? "alimento"
+                    : "alimentos"}
+                </small>
+              </div>
+            </div>
+
+<div className="flex shrink-0 items-center gap-1.5">
+  {/* KCAL */}
+  <strong className="mr-1 text-[11px] font-black text-emerald-200">
+    {formatNumber(
+      group.totals.kcal,
+      0
+    )} kcal
+  </strong>
+
+  {/* AGREGAR */}
+  <button
+    type="button"
+    onClick={(event) => {
+      event.stopPropagation();
+
+      autonomousActions
+        ?.onTracking?.(
+          group.id
+        );
+    }}
+    className="
+      grid
+      h-7
+      w-7
+      place-items-center
+      rounded-lg
+      border
+      border-emerald-300/20
+      bg-emerald-300/[0.07]
+      text-emerald-200
+      transition
+      hover:bg-emerald-300/[0.12]
+    "
+    aria-label={`Agregar alimento a ${group.label}`}
+    title={`Agregar a ${group.label}`}
+  >
+    <Plus
+      size={14}
+      strokeWidth={2.4}
+    />
+  </button>
+
+  {/* BORRAR TODO */}
+  <button
+    type="button"
+    disabled={
+      deletingTrackingKey ===
+      `group-${group.id}`
+    }
+    onClick={(event) => {
+      event.stopPropagation();
+
+      deleteTrackingGroup(
+        group
+      );
+    }}
+    className="
+      grid
+      h-7
+      w-7
+      place-items-center
+      rounded-lg
+      border
+      border-rose-300/15
+      bg-rose-300/[0.05]
+      text-rose-300/70
+      transition
+      hover:border-rose-300/30
+      hover:bg-rose-300/10
+      hover:text-rose-200
+      disabled:opacity-40
+    "
+    aria-label={`Eliminar ${group.label}`}
+    title={`Eliminar ${group.label}`}
+  >
+    {deletingTrackingKey ===
+    `group-${group.id}` ? (
+      <RefreshCw
+        size={13}
+        className="animate-spin"
+      />
+    ) : (
+      <Trash2 size={13} />
+    )}
+  </button>
+
+  {/* ABRIR / CERRAR */}
+  <button
+    type="button"
+    onClick={() =>
+      toggleTrackingGroup(
+        group.id
+      )
+    }
+    className="
+      grid
+      h-7
+      w-7
+      place-items-center
+      rounded-lg
+      border
+      border-white/10
+      bg-white/[0.025]
+      text-zinc-400
+      transition
+      hover:bg-white/[0.06]
+      hover:text-white
+    "
+    aria-expanded={expanded}
+    aria-label={
+      expanded
+        ? `Minimizar ${group.label}`
+        : `Ver detalle de ${group.label}`
+    }
+    title={
+      expanded
+        ? "Minimizar"
+        : "Ver alimentos"
+    }
+  >
+    {expanded ? (
+      <ChevronUp size={14} />
+    ) : (
+      <ChevronDown size={14} />
+    )}
+  </button>
+</div>
+
+
+          </div>
+
+
+{expanded ? (
+  <>
+    {/* ALIMENTOS */}
+    <div className="divide-y divide-white/[0.055] px-2">
+      {group.items.map(
+        (item, index) => {
+          const totals =
+            totalFromLike(
+              item?.totals ||
+              item
+            );
+
+          const imageUrl =
+            trackingFoodImage(
+              item
+            );
+
+          const itemId =
+            item?.id ||
+            item?._id ||
+            `${group.id}-${index}`;
+
+          const deletingThisItem =
+            deletingTrackingKey ===
+            String(
+              item?.id ||
+              item?._id
+            );
+
+          return (
+            <div
+              key={itemId}
+              className="
+                flex
+                items-center
+                gap-2.5
+                px-1
+                py-2
+              "
+            >
+              {/* IMAGEN */}
+              <span
+                className="
+                  grid
+                  h-9
+                  w-9
+                  shrink-0
+                  place-items-center
+                  overflow-hidden
+                  rounded-xl
+                  border
+                  border-white/[0.08]
+                  bg-black/25
+                "
+              >
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    className="
+                      h-full
+                      w-full
+                      object-cover
+                    "
+                  />
+                ) : (
+                  <Apple
+                    size={16}
+                    className="text-zinc-500"
+                  />
+                )}
+              </span>
+
+              {/* INFO */}
+              <div className="min-w-0 flex-1">
+                <strong
+                  className="
+                    block
+                    truncate
+                    text-[10.5px]
+                    font-black
+                    text-zinc-100
+                  "
+                >
+                  {trackingFoodName(
+                    item
+                  )}
+                </strong>
+
+                <small
+                  className="
+                    mt-0.5
+                    block
+                    truncate
+                    text-[8px]
+                    font-bold
+                    text-zinc-500
+                  "
+                >
+                  {trackingFoodQuantity(
+                    item
+                  )}
+
+                  {" · "}
+
+                  {formatNumber(
+                    totals.kcal,
+                    0
+                  )} kcal
+
+                  {" · P"}
+
+                  {formatNumber(
+                    totals.proteina,
+                    1
+                  )}
+
+                  {" · C"}
+
+                  {formatNumber(
+                    totals.carbs,
+                    1
+                  )}
+
+                  {" · G"}
+
+                  {formatNumber(
+                    totals.grasas,
+                    1
+                  )}
+                </small>
+              </div>
+
+              {/* BORRAR ALIMENTO */}
+              <button
+                type="button"
+                disabled={
+                  deletingThisItem ||
+                  deleteMutation.isPending
+                }
+                onClick={() =>
+                  deleteTrackingFood(
+                    item
+                  )
+                }
+                className="
+                  grid
+                  h-7
+                  w-7
+                  shrink-0
+                  place-items-center
+                  rounded-lg
+                  border
+                  border-transparent
+                  text-zinc-600
+                  transition
+                  hover:border-rose-300/20
+                  hover:bg-rose-300/10
+                  hover:text-rose-300
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+                aria-label={`Eliminar ${trackingFoodName(
+                  item
+                )}`}
+                title={`Eliminar ${trackingFoodName(
+                  item
+                )}`}
+              >
+                {deletingThisItem ? (
+                  <RefreshCw
+                    size={13}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Trash2
+                    size={13}
+                  />
+                )}
+              </button>
+            </div>
+          );
+        }
+      )}
+    </div>
+
+    {/* TOTAL */}
+    <footer className="flex items-center justify-between border-t border-emerald-300/10 bg-emerald-300/[0.045] px-3 py-2">
+      <span className="text-[8px] font-black text-zinc-500">
+        Total {group.label.toLowerCase()}
+      </span>
+
+      <span className="text-[9px] font-black text-zinc-300">
+        P{" "}
+        {formatNumber(
+          group.totals.proteina,
+          1
+        )}
+        {" · C "}
+        {formatNumber(
+          group.totals.carbs,
+          1
+        )}
+        {" · G "}
+        {formatNumber(
+          group.totals.grasas,
+          1
+        )}
+      </span>
+    </footer>
+  </>
+) : null}
+
+
+
+
+        </article>
+      );
+})}
+    </section>
+  );
+}
+
+
 
 function MobileMealCard({
   row,
@@ -8456,7 +10541,7 @@ function PlannedMealTargetCard({
 
               text-teal-100
             "
-            title="Meta del coach"
+            title={meal?.personalTargetOnly ? "Meta personal" : "Meta del coach"}
           >
             <Target
               size={16}

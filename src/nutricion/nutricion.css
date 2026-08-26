@@ -5106,6 +5106,75 @@ button.ne-quantityStateBadge.manual:focus-visible{
   background:#63dda8;
 }
 
+.nf-inlineMealTypes{
+  display:grid;
+  width:100%;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:5px;
+}
+
+.nf-inlineMealType{
+  position:relative;
+  display:grid;
+  min-width:0;
+  min-height:40px;
+  grid-template-columns:18px minmax(0,1fr);
+  align-items:center;
+  gap:5px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:9px;
+  background:#0d151d;
+  padding:5px 6px;
+  color:#84909c;
+  cursor:pointer;
+  transition:border-color .15s ease,background-color .15s ease,color .15s ease;
+}
+
+.nf-inlineMealType:hover{
+  border-color:rgba(99,221,168,.35);
+}
+
+.nf-inlineMealType:has(input:focus-visible){
+  border-color:rgba(245,215,110,.62);
+  box-shadow:0 0 0 2px rgba(245,215,110,.1);
+}
+
+.nf-inlineMealType input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.nf-inlineMealType > span{
+  display:grid;
+  width:18px;
+  height:18px;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:5px;
+  background:#091017;
+}
+
+.nf-inlineMealType small{
+  min-width:0;
+  font-size:8px;
+  font-weight:900;
+  line-height:1.1;
+  overflow-wrap:anywhere;
+}
+
+.nf-inlineMealType.checked{
+  border-color:rgba(52,211,153,.4);
+  background:rgba(52,211,153,.09);
+  color:#baf7da;
+}
+
+.nf-inlineMealType.checked > span{
+  border-color:#63dda8;
+  background:#63dda8;
+  color:#06120d;
+}
+
 .nf-inlineSaveCell{
   justify-content:center;
 }

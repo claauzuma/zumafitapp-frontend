@@ -27,6 +27,14 @@ export async function authorizeClientMenuGeneration() {
   });
 }
 
+export async function generateAutomaticMenuMeal(payload = {}) {
+  return await apiFetch("/api/clientes/me/menus/automatic-meal/generate", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 30000,
+  });
+}
+
 export async function getEquivalentMealGenerationSettings({ menuId, mealId, mealName = "" } = {}) {
   const data = await apiFetch(`/api/clientes/me/menus/equivalent-generation-settings${qsFrom({ menuId, mealId, mealName })}`, {
     method: "GET",
