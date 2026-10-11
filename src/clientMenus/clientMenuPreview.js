@@ -8,15 +8,16 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function reviewTraceEntry(preview = {}, index = 0) {
+function reviewTraceEntry(preview = {}, index = 0, meal = null) {
   const trace = Array.isArray(preview?.generationMeta?.trace)
     ? preview.generationMeta.trace
     : [];
-  return trace.find((entry) => Number(entry?.slotIndex) === index) || null;
+  const slotIndex = Number(meal?.plannerSlotIndex ?? index);
+  return trace.find((entry) => Number(entry?.slotIndex) === slotIndex) || null;
 }
 
 function mealReviewAssessment(preview = {}, meal = {}, index = 0) {
-  const trace = reviewTraceEntry(preview, index);
+  const trace = reviewTraceEntry(preview, index, meal);
   if (trace?.status === "preserved" && !meal?.nutrition && !meal?.classification) return null;
   const mealResult = adaptMealNutritionResult(meal);
   if (mealResult.classification || typeof meal?.usable === "boolean") return mealResult;
@@ -124,6 +125,18 @@ export function generatedMenuReviewPresentation(preview = {}) {
 }
 
 export function generatedMenuTotals(menu = {}) {
+  const reserved = Array.isArray(menu?.generationMeta?.reservedMealTargets)
+    ? menu.generationMeta.reservedMealTargets
+    : [];
+  const aggregate = menu?.generationMeta?.resultTotals;
+  if (reserved.length && aggregate && typeof aggregate === "object") {
+    return {
+      kcal: number(aggregate.kcal),
+      proteina: number(aggregate.proteina),
+      carbs: number(aggregate.carbs),
+      grasas: number(aggregate.grasas),
+    };
+  }
   return (menu?.comidas || []).reduce((totals, meal) => {
     const items = Array.isArray(meal?.items)
       ? meal.items

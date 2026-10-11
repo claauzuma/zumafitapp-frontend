@@ -492,6 +492,20 @@ export function trackingDraftsReadyToConfirm(drafts = []) {
   ));
 }
 
+export function trackingDraftConfirmationTransport(drafts = []) {
+  return (Array.isArray(drafts) ? drafts : []).some(
+    (draft) => isTrackingDraftAutomatic(draft) || isTrackingDraftCalculated(draft)
+  )
+    ? "calculated"
+    : "batch";
+}
+
+export function trackingDraftQuantitySource(draft = {}) {
+  return isTrackingDraftAutomatic(draft) || isTrackingDraftCalculated(draft)
+    ? "automatic"
+    : "manual";
+}
+
 export function trackingDraftProposals(drafts = [], generatedFoods = []) {
   const available = Array.isArray(generatedFoods) ? [...generatedFoods] : [];
   return (Array.isArray(drafts) ? drafts : []).map((draft) => {
@@ -518,6 +532,7 @@ export function trackingDraftProposals(drafts = [], generatedFoods = []) {
       initialQuantity: quantity,
       unit: draft.unit || generated.unit || generated.unidad || "g",
       fixed: !isTrackingDraftAutomatic(draft),
+      quantitySource: trackingDraftQuantitySource(draft),
     };
   }).filter(Boolean);
 }

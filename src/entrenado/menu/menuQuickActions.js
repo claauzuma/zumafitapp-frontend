@@ -3,7 +3,7 @@ export const MENU_GENERATION_MODE_COMBINE = "combine_library";
 export const MENU_GENERATION_MODE_SCRATCH = "from_scratch";
 
 export const DEFAULT_MENU_GENERATION_SETTINGS = Object.freeze({
-  generationProfile: "recommended",
+  generationProfile: "custom",
   calorieDistributionMode: "balanced",
 
 calorieDistributionPercents: {},
@@ -25,7 +25,35 @@ freeCalories: 0,
   algorithmTolerance: "balanced",
   prepTime: "quick",
   budget: "medium",
+  targetMeals: [],
+  targetPlannedTarget: null,
+  targetFreeCalories: 0,
+  targetPlanDate: "",
+  targetPlanSignature: "",
+  targetPlanCustomized: false,
 });
+
+export function generationActionForSettings(settings = {}) {
+  return settings?.generationProfile === "target" ? "create_targets" : "generate_menu";
+}
+
+export function menuGenerationWizardFlow(settings = {}, purpose = "settings") {
+  const targetProfile = settings?.generationProfile === "target";
+  const generating = purpose === "generate";
+  const editingTargets = purpose === "edit_targets";
+  return {
+    initialStep: targetProfile && (generating || editingTargets) ? 3 : 1,
+    totalSteps: targetProfile && !generating && !editingTargets ? 2 : 4,
+    settingsOnly: targetProfile && !generating && !editingTargets,
+  };
+}
+
+export function shouldRegenerateBalancedTargetPlan(settings = {}, freshBalanced = false) {
+  return freshBalanced === true
+    && settings?.generationProfile === "target"
+    && settings?.calorieDistributionMode === "balanced"
+    && settings?.targetPlanCustomized !== true;
+}
 
 const VALID_MODES = new Set([
   MENU_GENERATION_MODE_SIMILAR,
@@ -110,6 +138,33 @@ function normalizedFoodSelections(value = []) {
       },
     };
   }).filter(Boolean).slice(0, 24);
+}
+
+function normalizedTargetValue(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    kcal: Math.max(0, Number(source.kcal) || 0),
+    proteina: Math.max(0, Number(source.proteina ?? source.p) || 0),
+    carbs: Math.max(0, Number(source.carbs ?? source.c) || 0),
+    grasas: Math.max(0, Number(source.grasas ?? source.g) || 0),
+  };
+}
+
+function normalizedTargetMeals(value = [], mealTypes = []) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 6).map((meal, index) => {
+    const type = VALID_MEAL_TYPES.has(String(meal?.type || meal?.tipo || ""))
+      ? String(meal.type || meal.tipo)
+      : mealTypes[index] || "snack";
+    return {
+      id: String(meal?.id || `menu_target_${type}_${index + 1}`).slice(0, 80),
+      type,
+      name: String(meal?.name || meal?.nombre || `Comida ${index + 1}`).slice(0, 80),
+      target: normalizedTargetValue(meal?.target || meal?.meta),
+      personalTargetOnly: true,
+      confirmed: meal?.confirmed === true || meal?.metaConfirmed === true,
+    };
+  });
 }
 
 function enumValue(value, allowed, fallback) {
@@ -291,6 +346,10 @@ export function normalizeMenuGenerationSettings(value = {}) {
           ? food.targetMealType
           : "any",
     }));
+  const targetMeals = normalizedTargetMeals(value.targetMeals, mealTypes);
+  const targetPlannedTarget = value.targetPlannedTarget
+    ? normalizedTargetValue(value.targetPlannedTarget)
+    : null;
 
   return {
     generationProfile: enumValue(
@@ -298,6 +357,7 @@ export function normalizeMenuGenerationSettings(value = {}) {
       [
         "recommended",
         "custom",
+        "target",
         "library",
       ],
       DEFAULT_MENU_GENERATION_SETTINGS
@@ -338,6 +398,21 @@ export function normalizeMenuGenerationSettings(value = {}) {
     lockedCalorieMeals,
 
     freeCalories,
+
+    targetMeals,
+
+    targetPlannedTarget,
+
+    targetFreeCalories: Math.max(0, Number(value.targetFreeCalories ?? freeCalories) || 0),
+
+    targetPlanDate: /^\d{4}-\d{2}-\d{2}$/.test(String(value.targetPlanDate || ""))
+      ? String(value.targetPlanDate)
+      : "",
+
+    targetPlanSignature: String(value.targetPlanSignature || "").slice(0, 1000),
+
+    targetPlanCustomized: value.targetPlanCustomized === true
+      || targetMeals.some((meal) => meal.confirmed === true),
 
     /*
      * ======================================

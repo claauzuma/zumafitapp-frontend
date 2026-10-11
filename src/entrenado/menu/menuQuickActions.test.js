@@ -6,14 +6,63 @@ import {
   automaticGenerationRequiresPlan,
   buildAutonomousMenuGenerationRequest,
   dayKeyFromIsoDate,
+  generationActionForSettings,
   libraryTargetPath,
   loadMenuGenerationSettings,
   mealTypesForCount,
+  menuGenerationWizardFlow,
   normalizeMenuGenerationSettings,
   resolveAutonomousMenuActions,
   resetMenuGenerationSettings,
   saveMenuGenerationSettings,
+  shouldRegenerateBalancedTargetPlan,
 } from "./menuQuickActions.js";
+
+test("Generar ejecuta el perfil guardado: metas vacías para Por meta y menú para los demás", () => {
+  assert.equal(generationActionForSettings({ generationProfile: "target" }), "create_targets");
+  assert.equal(generationActionForSettings({ generationProfile: "custom" }), "generate_menu");
+  assert.equal(generationActionForSettings({ generationProfile: "library" }), "generate_menu");
+});
+
+test("separa la configuración Por meta de la creación concreta del día", () => {
+  assert.deepEqual(
+    menuGenerationWizardFlow({ generationProfile: "target" }, "settings"),
+    { initialStep: 1, totalSteps: 2, settingsOnly: true }
+  );
+  assert.deepEqual(
+    menuGenerationWizardFlow({ generationProfile: "target" }, "generate"),
+    { initialStep: 3, totalSteps: 4, settingsOnly: false }
+  );
+  assert.deepEqual(
+    menuGenerationWizardFlow({ generationProfile: "target" }, "edit_targets"),
+    { initialStep: 3, totalSteps: 4, settingsOnly: false }
+  );
+  assert.deepEqual(
+    menuGenerationWizardFlow({ generationProfile: "custom" }, "settings"),
+    { initialStep: 1, totalSteps: 4, settingsOnly: false }
+  );
+});
+
+test("Generar vuelve a variar solo Por meta Equilibrado sin ediciones explicitas", () => {
+  assert.equal(shouldRegenerateBalancedTargetPlan({
+    generationProfile: "target",
+    calorieDistributionMode: "balanced",
+    targetPlanCustomized: false,
+  }, true), true);
+  assert.equal(shouldRegenerateBalancedTargetPlan({
+    generationProfile: "target",
+    calorieDistributionMode: "balanced",
+    targetPlanCustomized: true,
+  }, true), false);
+  assert.equal(shouldRegenerateBalancedTargetPlan({
+    generationProfile: "target",
+    calorieDistributionMode: "custom",
+  }, true), false);
+  assert.equal(shouldRegenerateBalancedTargetPlan({
+    generationProfile: "custom",
+    calorieDistributionMode: "balanced",
+  }, true), false);
+});
 
 function memoryStorage() {
   const values = new Map();
@@ -31,6 +80,7 @@ test("normaliza opciones y conserva una unica estrategia principal", () => {
     mealTypes: ["desayuno", "colacion", "almuerzo", "merienda", "cena", "snack"],
   });
   assert.equal(normalizeMenuGenerationSettings({ mode: "from_scratch" }).mode, "from_scratch");
+  assert.equal(normalizeMenuGenerationSettings({ generationProfile: "target" }).generationProfile, "target");
 });
 
 test("persiste ajustes por usuario y restablece los recomendados", () => {
@@ -41,6 +91,47 @@ test("persiste ajustes por usuario y restablece los recomendados", () => {
   assert.equal(loadMenuGenerationSettings({ id: "b" }, storage).mealCount, 3);
   assert.deepEqual(resetMenuGenerationSettings({ id: "a" }, storage), DEFAULT_MENU_GENERATION_SETTINGS);
   assert.deepEqual(loadMenuGenerationSettings({ id: "a" }, storage), DEFAULT_MENU_GENERATION_SETTINGS);
+});
+
+test("guardar Por meta conserva la distribución editada sin crear el día", () => {
+  const storage = memoryStorage();
+  const saved = saveMenuGenerationSettings({ id: "targets" }, {
+    generationProfile: "target",
+    mealCount: 3,
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    freeCalories: 200,
+    targetFreeCalories: 200,
+    targetPlannedTarget: { kcal: 1932, proteina: 154.1, carbs: 186.2, grasas: 63.4 },
+    targetPlanSignature: "target-signature",
+    targetPlanCustomized: true,
+    targetMeals: [
+      { id: "d", type: "desayuno", name: "Desayuno", confirmed: true, target: { kcal: 645, proteina: 51.5, carbs: 62.2, grasas: 21.2 } },
+      { id: "a", type: "almuerzo", name: "Almuerzo", target: { kcal: 697, proteina: 55.6, carbs: 67.2, grasas: 22.9 } },
+      { id: "c", type: "cena", name: "Cena", target: { kcal: 590, proteina: 47, carbs: 56.8, grasas: 19.3 } },
+    ],
+  }, storage);
+  const loaded = loadMenuGenerationSettings({ id: "targets" }, storage);
+
+  assert.equal(saved.generationProfile, "target");
+  assert.equal(loaded.targetMeals.length, 3);
+  assert.equal(loaded.targetMeals[0].confirmed, true);
+  assert.deepEqual(loaded.targetMeals.map((meal) => meal.target.kcal), [645, 697, 590]);
+  assert.equal(loaded.targetPlannedTarget.kcal, 1932);
+  assert.equal(loaded.targetFreeCalories, 200);
+  assert.equal(loaded.targetPlanCustomized, true);
+});
+
+test("una meta confirmada se considera personalizada y no se sortea al generar", () => {
+  const normalized = normalizeMenuGenerationSettings({
+    generationProfile: "target",
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    targetMeals: [
+      { id: "d", type: "desayuno", confirmed: true, target: { kcal: 700 } },
+      { id: "a", type: "almuerzo", target: { kcal: 650 } },
+      { id: "c", type: "cena", target: { kcal: 650 } },
+    ],
+  });
+  assert.equal(normalized.targetPlanCustomized, true);
 });
 
 test("persiste las preferencias nuevas del asistente sin repetir alimentos", () => {

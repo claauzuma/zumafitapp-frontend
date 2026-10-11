@@ -22,10 +22,12 @@ import {
   TRACKING_QUANTITY_MODE_OPTIONS,
   trackingDraftCalculationPayload,
   trackingDraftConfirmationRequestId,
+  trackingDraftConfirmationTransport,
   trackingDateDrafts,
   trackingDateDraftTotals,
   trackingDateDraftProjectedDelta,
   trackingDraftKey,
+  trackingDraftQuantitySource,
   trackingDraftStorageKey,
   trackingDraftStorageOwner,
   trackingDraftsNutritionTotals,
@@ -708,4 +710,26 @@ test("la confirmación conserva el mismo requestId tras recargar y cambia al edi
     first
   );
   assert.ok(first.length <= 120);
+});
+
+test("una cantidad manual usa batch y una cantidad Auto calculada conserva el endpoint calculado", () => {
+  const manualRice = createTrackingFoodDraft(rice, 100, "manual-rice");
+  assert.equal(trackingDraftConfirmationTransport([manualRice]), "batch");
+
+  const automaticChicken = applyTrackingDraftProposals(
+    [markTrackingDraftAutomatic(createTrackingFoodDraft(chicken, "", "auto-chicken"))],
+    [{ food: chicken, quantity: 130, unit: "g" }]
+  )[0];
+
+  assert.equal(isTrackingDraftCalculated(automaticChicken), true);
+  assert.equal(
+    trackingDraftConfirmationTransport([manualRice, automaticChicken]),
+    "calculated"
+  );
+  assert.equal(trackingDraftQuantitySource(manualRice), "manual");
+  assert.equal(trackingDraftQuantitySource(automaticChicken), "automatic");
+  assert.deepEqual(
+    trackingDraftProposals([manualRice, automaticChicken], []).map((proposal) => proposal.quantitySource),
+    ["manual", "automatic"]
+  );
 });

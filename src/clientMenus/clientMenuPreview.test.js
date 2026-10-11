@@ -18,6 +18,18 @@ test("recalcula los totales reales de los alimentos de la preview", () => {
   assert.deepEqual(totals, { kcal: 550, proteina: 35, carbs: 75, grasas: 12 });
 });
 
+test("la preview mixta suma las metas reservadas sin convertirlas en alimentos", () => {
+  const totals = generatedMenuTotals({
+    comidas: [{ items: [{ kcal: 1500, proteina: 110, carbs: 160, grasas: 47 }] }],
+    generationMeta: {
+      reservedMealTargets: [{ id: "menu_target_lunch", target: { kcal: 500 } }],
+      resultTotals: { kcal: 2000, proteina: 150, carbs: 210, grasas: 62 },
+    },
+  });
+
+  assert.deepEqual(totals, { kcal: 2000, proteina: 150, carbs: 210, grasas: 62 });
+});
+
 test("regenerar una comida conserva intactas todas las demas", () => {
   const breakfast = { id: "breakfast", orden: 1, nombre: "Desayuno", items: [{ id: "oats" }] };
   const lunch = { id: "lunch", orden: 2, nombre: "Almuerzo", items: [{ id: "rice" }] };

@@ -126,6 +126,61 @@ test("0/1/2/3/4 existentes sobre 4 generan exactamente el faltante sin mutarlas"
   }
 });
 
+test("una meta personal reservada ocupa su slot y el solver recibe sólo el restante diario", async () => {
+  const reserved = {
+    id: "menu_target_almuerzo_manual",
+    type: "almuerzo",
+    name: "Almuerzo",
+    target: { kcal: 500, proteina: 40, carbs: 50, grasas: 15 },
+    personalTargetOnly: true,
+  };
+  const calls = [];
+  const result = await generateSequentialMenuDay({
+    dailyTarget: { kcal: 2000, proteina: 150, carbs: 210, grasas: 62 },
+    mealTypes: MEAL_TYPES[3],
+    reservedMealTargets: [reserved],
+    seed: "reserved-target",
+    generateMeal: async ({ slot, target }) => {
+      calls.push({ type: slot.type, target });
+      return generatedMeal(slot.type, target, `-${calls.length}`);
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map((call) => call.type), ["desayuno", "cena"]);
+  assert.deepEqual(result.reservedTotals, reserved.target);
+  assert.deepEqual(result.totals, { kcal: 2000, proteina: 150, carbs: 210, grasas: 62 });
+  assert.equal(result.trace.find((entry) => entry.status === "reserved_target")?.mealId, reserved.id);
+  assert.equal(result.meals.length, 2);
+});
+
+test("los alimentos ya registrados forman una base diaria y el solver cubre sólo kcal y macros restantes", async () => {
+  const consumedBaseline = { kcal: 300, proteina: 20, carbs: 38, grasas: 8 };
+  const calls = [];
+  const result = await generateSequentialMenuDay({
+    dailyTarget: { kcal: 1800, proteina: 140, carbs: 190, grasas: 55 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    consumedBaseline,
+    seed: "tracked-before-generation",
+    generateMeal: async ({ slot, target, remainingBefore }) => {
+      calls.push({ slot: slot.type, target, remainingBefore });
+      return generatedMeal(slot.type, target, `-${calls.length}`);
+    },
+  });
+
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].remainingBefore, {
+    kcal: 1500,
+    proteina: 120,
+    carbs: 152,
+    grasas: 47,
+  });
+  assert.deepEqual(result.consumedBaselineTotals, consumedBaseline);
+  assert.deepEqual(result.totals, { kcal: 1800, proteina: 140, carbs: 190, grasas: 55 });
+  assert.deepEqual(result.rawRemaining, { kcal: 0, proteina: 0, carbs: 0, grasas: 0 });
+  assert.equal(result.meals.length, 3);
+});
+
 test("cada slot recibe preservadas, propuesta anterior y composiciones ya generadas", async () => {
   const fixed = generatedMeal("desayuno", { kcal: 400, proteina: 25, carbs: 40, grasas: 12 }, "-fixed");
   const priorPreview = generatedMeal("cena", { kcal: 500, proteina: 35, carbs: 50, grasas: 15 }, "-prior");

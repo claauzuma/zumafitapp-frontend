@@ -87,6 +87,95 @@ test("día parcial conserva la comida exacta y genera sólo los tres slots falta
   assert.equal(preview.generationMeta.generatedMealCount, 3);
 });
 
+test("una comida Por meta se descuenta y sólo genera alimentos para los slots restantes", async () => {
+  const reserved = {
+    id: "menu_target_almuerzo_manual",
+    type: "almuerzo",
+    name: "Almuerzo",
+    target: { kcal: 500, proteina: 40, carbs: 50, grasas: 15 },
+    personalTargetOnly: true,
+  };
+  const requests = [];
+  const preview = await generateClientMenuPreview({
+    target: { kcal: 2132, proteina: 170, carbs: 206, grasas: 70 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    reservedMealTargets: [reserved],
+    variantSeed: "reserved-personal-target",
+    automaticMealGenerator: async (request) => {
+      requests.push(request);
+      return responseFor(request);
+    },
+  });
+
+  assert.equal(requests.length, 2);
+  assert.deepEqual(preview.comidas.map((meal) => meal.tipoComida), ["desayuno", "cena"]);
+  assert.deepEqual(preview.generationMeta.reservedTotals, reserved.target);
+  assert.deepEqual(preview.generationMeta.resultTotals, preview.plannedTarget);
+  assert.equal(preview.generationMeta.reservedMealTargets[0].id, reserved.id);
+  assert.deepEqual(preview.generationMeta.trace.map((entry) => entry.status), [
+    "generated", "reserved_target", "generated",
+  ]);
+});
+
+test("un registro previo reduce exactamente una vez el presupuesto del menú automático", async () => {
+  const consumedBaseline = { kcal: 300, proteina: 20, carbs: 38, grasas: 8 };
+  const requests = [];
+  const preview = await generateClientMenuPreview({
+    target: { kcal: 2132, proteina: 170, carbs: 206, grasas: 70 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    consumedBaseline,
+    freeCalories: 200,
+    variantSeed: "tracked-before-automatic-menu",
+    automaticMealGenerator: async (request) => {
+      requests.push(request);
+      return responseFor(request);
+    },
+  });
+
+  const generatedTotals = requests.reduce((totals, request) => ({
+    kcal: Math.round((totals.kcal + request.target.kcal) * 10) / 10,
+    proteina: Math.round((totals.proteina + request.target.proteina) * 10) / 10,
+    carbs: Math.round((totals.carbs + request.target.carbs) * 10) / 10,
+    grasas: Math.round((totals.grasas + request.target.grasas) * 10) / 10,
+  }), { kcal: 0, proteina: 0, carbs: 0, grasas: 0 });
+
+  assert.equal(requests.length, 3);
+  assert.deepEqual(preview.generationMeta.consumedBaselineTotals, consumedBaseline);
+  assert.deepEqual(preview.generationMeta.resultTotals, preview.plannedTarget);
+  for (const key of ["kcal", "proteina", "carbs", "grasas"]) {
+    assert.ok(Math.abs(generatedTotals[key] - preview.plannedTarget[key]) <= 0.11);
+  }
+});
+
+test("Picoteo que agota las libres genera sobre 1682 kcal y conserva el accounting", async () => {
+  const consumedBaseline = { kcal: 450, proteina: 30, carbs: 80, grasas: 0 };
+  const accounting = {
+    initialFreeCalories: 100,
+    freeCaloriesConsumed: 100,
+    freeCaloriesRemaining: 0,
+  };
+  const preview = await generateClientMenuPreview({
+    target: { kcal: 2132, proteina: 170, carbs: 206, grasas: 70 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    consumedBaseline,
+    freeCalories: 0,
+    generationAccounting: accounting,
+    variantSeed: "picoteo-consumes-free-calories",
+    automaticMealGenerator: async (request) => responseFor(request),
+  });
+
+  assert.deepEqual(preview.plannedTarget, {
+    kcal: 1682,
+    proteina: 140,
+    carbs: 126,
+    grasas: 70,
+  });
+  assert.equal(preview.generationMeta.initialFreeCalories, 100);
+  assert.equal(preview.generationMeta.freeCaloriesConsumed, 100);
+  assert.equal(preview.generationMeta.freeCaloriesRemaining, 0);
+  assert.deepEqual(preview.generationMeta.resultTotals, preview.plannedTarget);
+});
+
 test("Solo elegidos usa exclusivamente los explícitos y un slot vacío vuelve a GENERIC", async () => {
   const requests = [];
   const preview = await generateClientMenuPreview({

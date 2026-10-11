@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Apple,
   CheckCircle2,
+  ChevronDown,
   Loader2,
+  Minus,
+  Pencil,
   Plus,
   Search,
   Sparkles,
+  Target,
   Trash2,
   X,
 } from "lucide-react";
@@ -29,9 +34,13 @@ import {
   useAddCalculatedFoodLogs,
   useDeleteFoodLog,
   useTrackingDay,
+  useUpdateFoodLog,
 } from "./trackingQueries.js";
 
-import { calculateTrackingQuantities } from "./trackingApi.js";
+import {
+  addFoodLogsBatch,
+  calculateTrackingQuantities,
+} from "./trackingApi.js";
 
 import {
   applyTrackingDraftProposals,
@@ -46,6 +55,7 @@ import {
   markTrackingDraftManual,
   saveTrackingDraftState,
   trackingDraftConfirmationRequestId,
+  trackingDraftConfirmationTransport,
   trackingDraftCalculationPayload,
   trackingDraftKey,
   trackingDraftNutritionTotals,
@@ -197,6 +207,7 @@ export default function MealTargetTrackingPanel({
   mealType = "otra",
   target,
   nativeTarget = false,
+  openFoodPickerOnMount = false,
   onBack,
   onChanged,
   onToast,
@@ -209,6 +220,7 @@ export default function MealTargetTrackingPanel({
   const trackingQuery = useTrackingDay(date);
   const addCalculatedMutation = useAddCalculatedFoodLogs();
   const deleteMutation = useDeleteFoodLog();
+  const updateMutation = useUpdateFoodLog();
 
   const capabilitiesQuery = useQuery({
     queryKey: clientPlanCapabilitiesKey,
@@ -243,10 +255,15 @@ export default function MealTargetTrackingPanel({
     [date, mealId]
   );
 
-  const drafts =
-    storedDraftState?.draftsByMeal?.[draftKey] || [];
+  const drafts = useMemo(
+    () => storedDraftState?.draftsByMeal?.[draftKey] || [],
+    [draftKey, storedDraftState?.draftsByMeal]
+  );
 
-  const trackingDay = trackingQuery.data || {};
+  const trackingDay = useMemo(
+    () => trackingQuery.data || {},
+    [trackingQuery.data]
+  );
 
   const trackedItems = useMemo(() => {
     const meals = trackingDay?.meals || {};
@@ -271,11 +288,6 @@ export default function MealTargetTrackingPanel({
     [trackedTotals, draftTotals]
   );
 
-  const remainingActual = useMemo(
-    () => subtractTotals(safeTarget, trackedTotals),
-    [safeTarget, trackedTotals]
-  );
-
   const remainingProjected = useMemo(
     () => subtractTotals(safeTarget, projectedTotals),
     [safeTarget, projectedTotals]
@@ -291,7 +303,7 @@ export default function MealTargetTrackingPanel({
   const progressWidth =
     Math.max(0, Math.min(100, progress));
 
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(openFoodPickerOnMount);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] =
     useState("");
@@ -896,18 +908,20 @@ export default function MealTargetTrackingPanel({
               proposal.food?.unidad ||
               "g";
 
-            return buildMenuItemSnapshot(
+            return {
+              ...buildMenuItemSnapshot(
               proposal.food,
               Number(
                 proposal.quantity
               ),
               unit
-            );
+              ),
+              quantitySource: proposal.quantitySource || "manual",
+            };
           }
         );
 
-      await addCalculatedMutation.mutateAsync(
-        {
+      const confirmationPayload = {
           requestId:
             trackingDraftConfirmationRequestId(
               date,
@@ -919,8 +933,16 @@ export default function MealTargetTrackingPanel({
           mealType,
           mealName,
           items,
-        }
-      );
+      };
+
+      if (trackingDraftConfirmationTransport(drafts) === "calculated") {
+        await addCalculatedMutation.mutateAsync(confirmationPayload);
+      } else {
+        // Una cantidad escrita por la persona es Tracking manual. El endpoint
+        // calculado exige una capability distinta y no corresponde para casos
+        // como "Arroz, 100 g".
+        await addFoodLogsBatch(confirmationPayload);
+      }
 
       setMealDrafts([]);
 
@@ -974,6 +996,36 @@ export default function MealTargetTrackingPanel({
         error?.message ||
           "No se pudo eliminar el alimento."
       );
+    }
+  }
+
+  async function updateTrackedItemQuantity(item, nextQuantity) {
+    const logId = item?.id || item?._id;
+    const unit = trackingItemUnit(item);
+    const quantityValue = Number(nextQuantity);
+
+    if (!logId) return false;
+    if (!isTrackingFoodQuantityPhysicallyValid(item, unit, quantityValue)) {
+      notify("error", "Ingresá una cantidad válida para este alimento.");
+      return false;
+    }
+
+    try {
+      // No enviamos mealId: PATCH conserva el mealId persistido y sólo escala
+      // la cantidad/snapshot nutricional del FoodLog existente.
+      await updateMutation.mutateAsync({
+        logId,
+        date,
+        cantidad: quantityValue,
+        unidad: unit,
+      });
+      await trackingQuery.refetch();
+      await Promise.resolve(onChanged?.());
+      notify("success", `${trackingItemName(item)} actualizado a ${formatNumber(quantityValue, 1)} ${unit}.`);
+      return true;
+    } catch (error) {
+      notify("error", error?.message || "No se pudo actualizar la cantidad.");
+      return false;
     }
   }
 
@@ -1193,6 +1245,8 @@ export default function MealTargetTrackingPanel({
                     deleting={
                       deleteMutation.isPending
                     }
+                    updating={updateMutation.isPending}
+                    onUpdate={(nextQuantity) => updateTrackedItemQuantity(item, nextQuantity)}
                     onDelete={() =>
                       deleteTrackedItem(
                         item
@@ -1627,8 +1681,12 @@ function DraftFoodRow({
 function TrackedFoodRow({
   item,
   deleting,
+  updating,
   onDelete,
+  onUpdate,
 }) {
+  const [editing, setEditing] = useState(false);
+  const [quantity, setQuantity] = useState(() => String(trackingItemQuantity(item)));
   const totals =
     normalizeTotals(item);
 
@@ -1678,23 +1736,78 @@ function TrackedFoodRow({
           )}
         </span>
 
-        <small className="mt-0.5 block text-[8px] font-black text-emerald-300">
-          {formatNumber(
-            trackingItemQuantity(item),
-            1
-          )}{" "}
-          {trackingItemUnit(item)}
-        </small>
+        {editing ? (
+          <label className="mt-1 inline-flex items-center rounded-lg border border-white/10 bg-black/30 px-1.5">
+            <input
+              value={quantity}
+              inputMode="decimal"
+              step={trackingFoodRequiresWholeQuantity(item, trackingItemUnit(item)) ? "1" : "any"}
+              disabled={updating}
+              onChange={(event) => setQuantity(event.target.value)}
+              className="w-14 bg-transparent py-1 text-right text-[10px] font-black text-white outline-none"
+              aria-label={`Cantidad de ${trackingItemName(item)}`}
+            />
+            <span className="ml-1 text-[8px] font-bold text-zinc-500">{trackingItemUnit(item)}</span>
+          </label>
+        ) : (
+          <small className="mt-0.5 block text-[8px] font-black text-emerald-300">
+            {formatNumber(trackingItemQuantity(item), 1)} {trackingItemUnit(item)}
+            {item?.quantitySource ? ` · ${item.quantitySource === "automatic" ? "AUTO" : "MANUAL"}` : ""}
+          </small>
+        )}
       </div>
 
-      <button
-        type="button"
-        disabled={deleting}
-        onClick={onDelete}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-zinc-400"
-      >
-        <Trash2 size={15} />
-      </button>
+      {editing ? (
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            disabled={updating}
+            onClick={async () => {
+              if (await onUpdate?.(quantity)) setEditing(false);
+            }}
+            aria-label={`Guardar cantidad de ${trackingItemName(item)}`}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10 text-emerald-200"
+          >
+            {updating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
+          </button>
+          <button
+            type="button"
+            disabled={updating}
+            onClick={() => {
+              setQuantity(String(trackingItemQuantity(item)));
+              setEditing(false);
+            }}
+            aria-label="Cancelar edición"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-zinc-400"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            disabled={deleting || updating}
+            onClick={() => {
+              setQuantity(String(trackingItemQuantity(item)));
+              setEditing(true);
+            }}
+            aria-label={`Editar cantidad de ${trackingItemName(item)}`}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-zinc-400"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            disabled={deleting || updating}
+            onClick={onDelete}
+            aria-label={`Eliminar ${trackingItemName(item)}`}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-zinc-400"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -1722,176 +1835,255 @@ function TargetFoodPicker({
   const automatic =
     String(quantity).trim() === "";
 
+  const wholeQuantity = selectedFood
+    ? trackingFoodRequiresWholeQuantity(selectedFood, unit)
+    : false;
+
+  const normalizedUnit = String(unit || "").trim().toLowerCase();
+  const quantityStep = wholeQuantity
+    ? 1
+    : ["g", "gr", "gramos", "ml", "mililitros"].includes(normalizedUnit)
+      ? 10
+      : 1;
+  const defaultManualQuantity = wholeQuantity ? 1 : 100;
+
+  function enableManualQuantity() {
+    if (automatic) setQuantity(String(defaultManualQuantity));
+  }
+
+  function adjustQuantity(direction) {
+    const current = Number(quantity);
+    const base = Number.isFinite(current) && current > 0
+      ? current
+      : defaultManualQuantity;
+    const minimum = wholeQuantity ? 1 : 0.01;
+    const next = Math.max(minimum, base + (direction * quantityStep));
+    setQuantity(String(Math.round(next * 100) / 100));
+  }
+
+  let preview = null;
+  if (selectedFood && !automatic) {
+    try {
+      preview = buildMenuItemSnapshot(selectedFood, Number(quantity), unit);
+    } catch {
+      preview = null;
+    }
+  }
+
   return (
-    <section className="fixed inset-0 z-[140] flex items-end bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
+    <section className="fixed inset-0 z-[140] flex items-end justify-center bg-black/80 backdrop-blur-md sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="target-food-picker-title">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Cerrar selector" />
 
-      <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden border border-white/10 bg-[#09121b] shadow-2xl sm:rounded-3xl">
+      <div className="relative flex max-h-[94dvh] w-full max-w-[500px] flex-col overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[linear-gradient(145deg,#101821_0%,#07111b_48%,#05080d_100%)] shadow-[0_-24px_70px_rgba(0,0,0,.72)] sm:max-h-[90dvh] sm:rounded-[1.7rem]">
+        <div className="mx-auto mt-2 h-1 w-14 shrink-0 rounded-full bg-white/20 sm:mt-3" aria-hidden="true" />
 
-        <header className="flex items-center justify-between border-b border-white/10 p-4">
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-wide text-teal-300">
-              Por meta
+        <header className="flex shrink-0 items-start justify-between gap-3 px-4 pb-3 pt-3 sm:px-5 sm:pb-4 sm:pt-4">
+          <div className="min-w-0 flex-1">
+            <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-teal-300/30 bg-teal-300/10 px-2.5 text-[10px] font-black uppercase tracking-[0.13em] text-teal-200">
+              <Target size={14} /> Por meta
             </span>
-
-            <h3 className="mt-1 text-lg font-black text-white">
-              Agregar alimento
-            </h3>
+            <h3 id="target-food-picker-title" className="mt-2 text-[1.45rem] font-black leading-tight text-white">Agregar alimento</h3>
+            <p className="mt-1 text-[11px] font-bold leading-snug text-slate-400">Elegí un alimento y decidí si su cantidad será manual o automática.</p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-white"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#D4AF37]/30 bg-white/[0.055] text-white"
+            aria-label="Cerrar selector"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5 sm:pb-5">
+          <section className="rounded-[1.15rem] border border-white/10 bg-black/20 p-3 sm:p-4">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h4 className="text-lg font-black text-white">Buscar alimento</h4>
+              <p className="mt-0.5 text-[11px] font-bold text-slate-500">Se agregará dentro de la meta de esta comida.</p>
+            </div>
+            <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2.5 py-1 text-[10px] font-black text-teal-100">Agregar a la comida</span>
+          </div>
 
-          <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3">
+          <label className="mt-3 flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-[#050a0f] px-3 focus-within:border-teal-300/40">
             <Search
-              size={17}
-              className="text-zinc-500"
+              size={19}
+              className="shrink-0 text-zinc-500"
             />
 
             <input
               autoFocus
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
-              placeholder="Buscar alimento..."
-              className="min-h-12 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setSelectedFood(null);
+              }}
+              placeholder="Buscar alimento"
+              className="min-w-0 flex-1 bg-transparent text-base font-black text-white outline-none placeholder:text-zinc-600"
             />
+            {loading ? <Loader2 size={16} className="shrink-0 animate-spin text-teal-300" /> : null}
           </label>
 
-          <div className="mt-3 grid gap-2">
-            {loading ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-sm font-bold text-zinc-400">
-                <Loader2
-                  size={18}
-                  className="animate-spin"
-                />
-                Buscando...
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs font-bold text-rose-100">
+          {error ? (
+              <div className="mt-3 rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs font-bold text-rose-100" role="alert">
                 {error}
               </div>
-            ) : null}
+          ) : null}
 
-            {!loading &&
-              results.map(
+          {!selectedFood && !loading && results.length ? (
+            <div className="mt-3">
+              <div className="max-h-[192px] overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.08] bg-white/[0.025] [scrollbar-color:rgba(45,212,191,.45)_rgba(255,255,255,.04)] [scrollbar-width:thin]" aria-label="Resultados de alimentos">
+              {results.map(
                 (food) => {
                   const id =
                     food.id ||
                     food._id;
 
-                  const active =
-                    String(
-                      selectedFood?.id ||
-                      selectedFood?._id
-                    ) ===
-                    String(id);
-
                   return (
                     <button
                       type="button"
                       key={id}
-                      onClick={() =>
-                        setSelectedFood(
-                          food
-                        )
-                      }
-                      className={`flex items-center gap-3 rounded-2xl border p-3 text-left ${
-                        active
-                          ? "border-teal-300/40 bg-teal-300/10"
-                          : "border-white/10 bg-white/[0.03]"
-                      }`}
+                      onClick={() => setSelectedFood(food)}
+                      className="group flex min-h-16 w-full items-center gap-3 border-b border-white/[0.06] px-3 py-2.5 text-left last:border-b-0 hover:bg-teal-300/[0.07] focus-visible:bg-teal-300/[0.07] focus-visible:outline-none"
                     >
+                      <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                        {getFoodImageUrl(food) ? (
+                          <img src={getFoodImageUrl(food)} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <Apple size={18} className="text-zinc-500" />
+                        )}
+                      </span>
+
                       <div className="min-w-0 flex-1">
-                        <strong className="block truncate text-sm font-black text-white">
+                        <strong className="block truncate text-[13px] font-black text-white">
                           {food.nombre ||
                             food.name}
                         </strong>
 
-                        <span className="mt-0.5 block text-[10px] font-bold text-zinc-500">
-                          {food.categoria ||
-                            food.category ||
-                            "Alimento"}
+                        <span className="mt-0.5 block truncate text-[10px] font-bold text-zinc-500">
+                          {formatNumber(food.kcal, 1)} kcal · P {formatNumber(food.proteina ?? food.protein, 1)} · C {formatNumber(food.carbs, 1)} · G {formatNumber(food.grasas ?? food.fat, 1)}
                         </span>
                       </div>
 
-                      {active ? (
-                        <CheckCircle2
-                          size={18}
-                          className="text-teal-300"
-                        />
-                      ) : null}
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-teal-300/25 bg-teal-300/10 text-teal-100 transition group-hover:border-teal-200/50 group-hover:bg-teal-300/20">
+                        <Plus size={16} />
+                      </span>
                     </button>
                   );
                 }
               )}
-          </div>
-
-          {selectedFood ? (
-            <div className="mt-4 rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] p-4">
-              <strong className="text-sm font-black text-white">
-                {selectedFood.nombre ||
-                  selectedFood.name}
-              </strong>
-
-              <label className="mt-3 block">
-                <span className="mb-1 block text-[10px] font-black uppercase text-zinc-500">
-                  Cantidad
-                </span>
-
-                <div className="flex items-center rounded-xl border border-white/10 bg-black/30">
-                  <input
-                    value={quantity}
-                    onChange={(event) =>
-                      setQuantity(
-                        event.target.value
-                      )
-                    }
-                    inputMode="decimal"
-                    placeholder={
-                      canAuto
-                        ? "Dejar vacío = Auto"
-                        : "100"
-                    }
-                    className="min-h-11 flex-1 bg-transparent px-3 text-sm font-black text-white outline-none"
-                  />
-
-                  <span className="px-3 text-xs font-bold text-zinc-500">
-                    {unit}
-                  </span>
-                </div>
-              </label>
-
-              <div
-                className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
-                  automatic &&
-                  canAuto
-                    ? "border-[#D4AF37]/25 bg-[#D4AF37]/10 text-[#FFE8A3]"
-                    : "border-teal-300/25 bg-teal-300/10 text-teal-100"
-                }`}
-              >
-                {automatic &&
-                canAuto
-                  ? "✨ AUTO · ZumaFit calculará la cantidad al tocar Completar restante."
-                  : "🔒 FIJO · Esta cantidad se mantiene al calcular el restante."}
               </div>
+
+              {results.length > 3 ? (
+                <p className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-black text-teal-200/75">
+                  Deslizá dentro de la lista para ver {results.length - 3} resultados más
+                  <ChevronDown size={13} aria-hidden="true" />
+                </p>
+              ) : null}
             </div>
           ) : null}
+
+          {selectedFood ? (
+            <div className="mt-3 rounded-[1.05rem] border border-teal-300/25 bg-teal-300/[0.06] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.05)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                    {getFoodImageUrl(selectedFood) ? (
+                      <img src={getFoodImageUrl(selectedFood)} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Apple size={18} className="text-zinc-500" />
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <span className="text-[9px] font-black uppercase tracking-[0.12em] text-teal-300">Alimento seleccionado</span>
+                    <strong className="mt-0.5 block truncate text-sm font-black text-white">{selectedFood.nombre || selectedFood.name}</strong>
+                    <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-500">
+                      {formatNumber(selectedFood.kcal, 1)} kcal · P {formatNumber(selectedFood.proteina ?? selectedFood.protein, 1)} · C {formatNumber(selectedFood.carbs, 1)} · G {formatNumber(selectedFood.grasas ?? selectedFood.fat, 1)}
+                    </span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setSelectedFood(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-slate-300" aria-label="Cambiar alimento">
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="mt-3">
+                <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Cantidad</span>
+                {automatic && canAuto ? (
+                  <div className="flex min-h-11 items-center gap-2 rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]">
+                    <Sparkles size={15} /> ZumaFit calculará la cantidad al completar el restante.
+                  </div>
+                ) : (
+                  <div className="grid min-h-11 grid-cols-[42px_minmax(0,1fr)_42px] overflow-hidden rounded-xl border border-white/10 bg-[#050a0f]">
+                    <button type="button" onClick={() => adjustQuantity(-1)} className="grid place-items-center border-r border-white/10 text-slate-300" aria-label="Restar cantidad">
+                      <Minus size={16} />
+                    </button>
+                    <span className="flex min-w-0 items-center">
+                      <input
+                        value={quantity}
+                        onChange={(event) => setQuantity(event.target.value)}
+                        inputMode="decimal"
+                        className="min-w-0 flex-1 bg-transparent px-2 text-center text-sm font-black text-white outline-none"
+                        aria-label={`Cantidad de ${selectedFood.nombre || selectedFood.name}`}
+                      />
+                      <span className="shrink-0 pr-3 text-xs font-black text-[#FFE8A3]">{unit}</span>
+                    </span>
+                    <button type="button" onClick={() => adjustQuantity(1)} className="grid place-items-center border-l border-white/10 text-slate-300" aria-label="Sumar cantidad">
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {preview ? (
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[9px] font-black">
+                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[#FFD75E]">{formatNumber(preview.kcal, 1)} kcal</span>
+                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-emerald-200">P {formatNumber(preview.proteina, 1)} g</span>
+                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-cyan-200">C {formatNumber(preview.carbs, 1)} g</span>
+                  <span className="rounded-full bg-white/[0.06] px-2 py-1 text-amber-200">G {formatNumber(preview.grasas, 1)} g</span>
+                </div>
+              ) : null}
+
+              <fieldset className="mt-3 grid gap-2" aria-label="Modo de cantidad">
+                <button
+                  type="button"
+                  onClick={enableManualQuantity}
+                  className={`flex min-h-11 items-center gap-3 rounded-xl border px-3 text-left text-xs font-black ${!automatic ? "border-teal-300/35 bg-teal-300/10 text-teal-100" : "border-white/10 bg-black/15 text-slate-300"}`}
+                  aria-pressed={!automatic}
+                >
+                  <span className={`h-4 w-4 shrink-0 rounded-full border p-[3px] ${!automatic ? "border-teal-200" : "border-white/25"}`}>
+                    <span className={`block h-full w-full rounded-full ${!automatic ? "bg-teal-300" : ""}`} />
+                  </span>
+                  <span>
+                    <span className="block">Cantidad manual / fija</span>
+                    <small className="mt-0.5 block text-[9px] font-bold text-slate-500">Se conservará exactamente al calcular el restante.</small>
+                  </span>
+                </button>
+
+                {canAuto ? (
+                  <button
+                    type="button"
+                    onClick={() => setQuantity("")}
+                    className={`flex min-h-11 items-center gap-3 rounded-xl border px-3 text-left text-xs font-black ${automatic ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-black/15 text-slate-300"}`}
+                    aria-pressed={automatic}
+                  >
+                    <span className={`h-4 w-4 shrink-0 rounded-full border p-[3px] ${automatic ? "border-[#FFE070]" : "border-white/25"}`}>
+                      <span className={`block h-full w-full rounded-full ${automatic ? "bg-[#FFD75E]" : ""}`} />
+                    </span>
+                    <span>
+                      <span className="block">Cantidad automática</span>
+                      <small className="mt-0.5 block text-[9px] font-bold text-slate-500">ZumaFit propondrá la cantidad al completar la comida.</small>
+                    </span>
+                  </button>
+                ) : null}
+              </fieldset>
+            </div>
+          ) : null}
+          </section>
         </div>
 
-        <footer className="grid grid-cols-2 gap-2 border-t border-white/10 p-4">
+        <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-white/[0.08] bg-[#080d13] p-3 sm:p-4">
           <button
             type="button"
             onClick={onClose}
@@ -1904,9 +2096,9 @@ function TargetFoodPicker({
             type="button"
             disabled={!selectedFood}
             onClick={onAdd}
-            className="min-h-11 rounded-xl border border-teal-300/30 bg-teal-300/10 text-sm font-black text-teal-100 disabled:opacity-40"
+            className="min-h-11 rounded-xl bg-gradient-to-r from-[#facc15] to-[#f5d76e] text-sm font-black text-black shadow-[0_14px_30px_rgba(212,175,55,.2)] disabled:cursor-not-allowed disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-400 disabled:opacity-60 disabled:shadow-none"
           >
-            Agregar
+            <span className="inline-flex items-center gap-1.5"><Plus size={15} /> Agregar</span>
           </button>
         </footer>
       </div>

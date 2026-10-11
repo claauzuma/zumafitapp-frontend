@@ -128,16 +128,26 @@ function plannerError(code, message, details = {}) {
   return error;
 }
 
-export function buildDayMealSlots({ mealTypes = [], plannedMeals = [] } = {}) {
+export function buildDayMealSlots({
+  mealTypes = [],
+  plannedMeals = [],
+  reservedMealTargets = [],
+} = {}) {
   const requestedTypes = (Array.isArray(mealTypes) ? mealTypes : []).map(String).filter(Boolean);
   const fixedMeals = (Array.isArray(plannedMeals) ? plannedMeals : [])
     .filter(mealHasPlannedContent);
+  const reservedMeals = (Array.isArray(reservedMealTargets) ? reservedMealTargets : [])
+    .filter((meal) => normalizeDayNutritionTarget(meal?.target || meal?.meta || meal).kcal > 0);
 
-  if (fixedMeals.length > requestedTypes.length) {
+  if (fixedMeals.length + reservedMeals.length > requestedTypes.length) {
     throw plannerError(
       "MENU_MEAL_COUNT_CONFLICT",
-      `Ya hay ${fixedMeals.length} comidas planificadas. Elegí al menos ${fixedMeals.length} comidas para conservarlas sin borrar ninguna.`,
-      { requestedMealCount: requestedTypes.length, fixedMealCount: fixedMeals.length }
+      `Ya hay ${fixedMeals.length + reservedMeals.length} comidas planificadas. Elegí al menos ${fixedMeals.length + reservedMeals.length} comidas para conservarlas sin borrar ninguna.`,
+      {
+        requestedMealCount: requestedTypes.length,
+        fixedMealCount: fixedMeals.length,
+        reservedMealTargetCount: reservedMeals.length,
+      }
     );
   }
 
@@ -146,6 +156,7 @@ export function buildDayMealSlots({ mealTypes = [], plannedMeals = [] } = {}) {
     type,
     name: MEAL_LABELS[type] || `Comida ${index + 1}`,
     fixedMeal: null,
+    reservedMealTarget: null,
   }));
 
   fixedMeals.forEach((meal, fixedIndex) => {
@@ -156,6 +167,18 @@ export function buildDayMealSlots({ mealTypes = [], plannedMeals = [] } = {}) {
     destination.fixedMeal = meal;
     destination.type = type || destination.type;
     destination.name = mealName(meal, fixedIndex, destination.type);
+  });
+
+  reservedMeals.forEach((meal, reservedIndex) => {
+    const type = mealType(meal);
+    const exact = slots.find((slot) => (
+      !slot.fixedMeal && !slot.reservedMealTarget && slot.type === type
+    ));
+    const destination = exact || slots.find((slot) => !slot.fixedMeal && !slot.reservedMealTarget);
+    if (!destination) return;
+    destination.reservedMealTarget = meal;
+    destination.type = type || destination.type;
+    destination.name = mealName(meal, reservedIndex, destination.type);
   });
 
   return slots;
@@ -238,12 +261,28 @@ function projectWeightsToBounds(values, minimum, maximum) {
 }
 
 /** Distribución equilibrada reproducible, acotada y con suma exactamente 1. */
-export function balancedMealDistribution(count = 4, { seed = "", rng = null } = {}) {
+export function balancedMealDistribution(count = 4, {
+  seed = "",
+  rng = null,
+  bounds = null,
+} = {}) {
   const size = Math.max(1, Math.trunc(number(count)) || 1);
   const random = typeof rng === "function" ? rng : createSeededGenerationRandom(seed);
-  const { min, max, jitter } = distributionBounds(size);
-  const raw = Array.from({ length: size }, () => 1 + (random() - 0.5) * 2 * jitter);
-  return projectWeightsToBounds(raw, min, max);
+  const defaults = distributionBounds(size);
+  const requested = bounds && typeof bounds === "object" ? bounds : {};
+  const min = Number.isFinite(Number(requested.min)) ? Number(requested.min) : defaults.min;
+  const max = Number.isFinite(Number(requested.max)) ? Number(requested.max) : defaults.max;
+  const jitter = Number.isFinite(Number(requested.jitter)) ? Number(requested.jitter) : defaults.jitter;
+  const feasibleBounds = min >= 0
+    && max >= min
+    && min * size <= 1 + 1e-9
+    && max * size >= 1 - 1e-9;
+  const effective = feasibleBounds ? { min, max, jitter } : defaults;
+  const raw = Array.from(
+    { length: size },
+    () => 1 + (random() - 0.5) * 2 * Math.max(0, effective.jitter)
+  );
+  return projectWeightsToBounds(raw, effective.min, effective.max);
 }
 
 export function buildDayDistribution({
@@ -252,6 +291,7 @@ export function buildDayDistribution({
   percentages = {},
   seed = "",
   rng = null,
+  balancedBounds = null,
 } = {}) {
   const types = (Array.isArray(mealTypes) ? mealTypes : []).map(String).filter(Boolean);
   const warnings = [];
@@ -272,7 +312,7 @@ export function buildDayDistribution({
   }
 
   if (!weights) {
-    weights = balancedMealDistribution(types.length, { seed, rng });
+    weights = balancedMealDistribution(types.length, { seed, rng, bounds: balancedBounds });
     const boostedType = mode === "more_breakfast"
       ? "desayuno"
       : mode === "more_lunch"
@@ -424,6 +464,8 @@ export async function generateSequentialMenuDay({
   dailyTarget = {},
   mealTypes = [],
   plannedMeals = [],
+  reservedMealTargets = [],
+  consumedBaseline = {},
   distributionMode = "balanced",
   distributionPercentages = {},
   seed = "",
@@ -437,7 +479,7 @@ export async function generateSequentialMenuDay({
     throw new TypeError("generateMeal debe ser una función.");
   }
   const target = normalizeDayNutritionTarget(dailyTarget);
-  const slots = buildDayMealSlots({ mealTypes, plannedMeals });
+  const slots = buildDayMealSlots({ mealTypes, plannedMeals, reservedMealTargets });
   const distribution = buildDayDistribution({
     mealTypes,
     mode: distributionMode,
@@ -447,17 +489,44 @@ export async function generateSequentialMenuDay({
   });
   const warnings = [...distribution.warnings];
   const fixedMeals = slots.filter((slot) => slot.fixedMeal).map((slot) => slot.fixedMeal);
+  const reservedMeals = slots
+    .filter((slot) => slot.reservedMealTarget)
+    .map((slot) => slot.reservedMealTarget);
   const fixedTotals = fixedMeals.reduce(
     (totals, meal) => addDayNutrition(totals, plannedMealNutrition(meal)),
     normalizeDayNutritionTarget()
   );
+  const reservedTotals = reservedMeals.reduce(
+    (totals, meal) => addDayNutrition(totals, meal?.target || meal?.meta || meal),
+    normalizeDayNutritionTarget()
+  );
+  const baselineTotals = normalizeDayNutritionTarget(consumedBaseline);
+  const plannedCommittedTotals = addDayNutrition(fixedTotals, reservedTotals);
+  const committedTotals = addDayNutrition(plannedCommittedTotals, baselineTotals);
   let generatedTotals = normalizeDayNutritionTarget();
-  let rawRemaining = subtractDayNutrition(target, fixedTotals);
+  const remainingAfterPlanning = subtractDayNutrition(target, plannedCommittedTotals);
+  let rawRemaining = subtractDayNutrition(remainingAfterPlanning, baselineTotals);
+  const reservedOverage = TARGET_KEYS.find((key) => remainingAfterPlanning[key] < -1e-9);
+  if (reservedOverage) {
+    throw plannerError(
+      "MENU_RESERVED_TARGET_OVERAGE",
+      `Las comidas Por meta ya superan el objetivo disponible de ${reservedOverage}. Editalas antes de generar el resto.`,
+      {
+        nutrient: reservedOverage,
+        target: target[reservedOverage],
+        reserved: reservedTotals[reservedOverage],
+      }
+    );
+  }
   for (const key of TARGET_KEYS) {
     if (rawRemaining[key] < -1e-9) {
+      const trackingCausedOverage = remainingAfterPlanning[key] >= -1e-9
+        && baselineTotals[key] > 0;
       warnings.push(warning(
-        "MENU_FIXED_PLANNING_OVERAGE",
-        `La planificación conservada ya supera la meta de ${key} por ${round(Math.abs(rawRemaining[key]), 1)}.`,
+        trackingCausedOverage ? "MENU_TRACKING_TARGET_OVERAGE" : "MENU_FIXED_PLANNING_OVERAGE",
+        trackingCausedOverage
+          ? `Lo ya registrado supera la meta restante de ${key} por ${round(Math.abs(rawRemaining[key]), 1)}.`
+          : `La planificación conservada ya supera la meta de ${key} por ${round(Math.abs(rawRemaining[key]), 1)}.`,
         { nutrient: key, overage: round(Math.abs(rawRemaining[key]), 2) }
       ));
     }
@@ -472,7 +541,7 @@ export async function generateSequentialMenuDay({
   }
   const outputMeals = [];
   const trace = [];
-  const pendingSlots = slots.filter((slot) => !slot.fixedMeal);
+  const pendingSlots = slots.filter((slot) => !slot.fixedMeal && !slot.reservedMealTarget);
   const pendingWeightByIndex = new Map(
     pendingSlots.map((slot) => [slot.index, distribution.weights[slot.index] || 0])
   );
@@ -489,6 +558,20 @@ export async function generateSequentialMenuDay({
         status: "preserved",
         actual: plannedMealNutrition(slot.fixedMeal),
         remainingAfter: rawRemaining,
+      });
+      continue;
+    }
+
+    if (slot.reservedMealTarget) {
+      trace.push({
+        slotIndex: slot.index,
+        mealType: slot.type,
+        status: "reserved_target",
+        target: normalizeDayNutritionTarget(
+          slot.reservedMealTarget?.target || slot.reservedMealTarget?.meta || slot.reservedMealTarget
+        ),
+        mealId: String(slot.reservedMealTarget?.id || slot.reservedMealTarget?.mealId || ""),
+        remainingAfter: { ...rawRemaining },
       });
       continue;
     }
@@ -528,7 +611,7 @@ export async function generateSequentialMenuDay({
     }
     const actual = plannedMealNutrition(meal);
     generatedTotals = addDayNutrition(generatedTotals, actual);
-    rawRemaining = subtractDayNutrition(target, addDayNutrition(fixedTotals, generatedTotals));
+    rawRemaining = subtractDayNutrition(target, addDayNutrition(committedTotals, generatedTotals));
     if (generated?.fingerprint) generatedFingerprints.add(generated.fingerprint);
     generatedDiversityMeals.push(meal);
     if (Array.isArray(generated?.warnings)) warnings.push(...generated.warnings);
@@ -546,15 +629,18 @@ export async function generateSequentialMenuDay({
     });
   }
 
-  const totals = addDayNutrition(fixedTotals, generatedTotals);
+  const totals = addDayNutrition(committedTotals, generatedTotals);
   const difference = nutritionDifference(totals, target);
 
   return {
     meals: outputMeals,
     fixedMeals,
+    reservedMeals,
     fixedMealKeys: fixedMeals.map(fixedMealKey),
     generatedCount: pendingSlots.length,
     fixedTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(fixedTotals[key], 2)])),
+    reservedTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(reservedTotals[key], 2)])),
+    consumedBaselineTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(baselineTotals[key], 2)])),
     totals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(totals[key], 2)])),
     difference,
     rawRemaining: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(rawRemaining[key], 2)])),

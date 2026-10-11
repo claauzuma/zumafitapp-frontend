@@ -6,8 +6,10 @@ import {
 } from "../nutricion/mealNutritionResult.js";
 import {
   generateSequentialMenuDay,
+  generationRemainingNutrition,
   mealHasPlannedContent,
   normalizeDayNutritionTarget,
+  subtractDayNutrition,
 } from "./clientMenuDayPlanner.js";
 import {
   buildIncludedFoodAssignments,
@@ -105,6 +107,9 @@ export async function generateClientMenuPreview({
   foods = [],
   mealTargets = [],
   plannedMeals = [],
+  reservedMealTargets = [],
+  consumedBaseline = {},
+  generationAccounting = null,
   diversityMeals = [],
   useOnlySelectedFoods = false,
   allowRepeats = false,
@@ -127,7 +132,13 @@ export async function generateClientMenuPreview({
 
   // La equivalencia de un menú completo sólo es válida para un día vacío. Si
   // ya hay planificación fija, pasamos al generador por comida para no tocarla.
-  if (generationMode === "similar_menu" && !preservedPlanning.length && !useOnlySelectedFoods) {
+  if (
+    generationMode === "similar_menu"
+    && !preservedPlanning.length
+    && !(Array.isArray(reservedMealTargets) && reservedMealTargets.length)
+    && !Object.values(normalizeDayNutritionTarget(consumedBaseline)).some((value) => value > 0)
+    && !useOnlySelectedFoods
+  ) {
     return await generateClientMenuPreviewLegacy({
       target,
       mealTypes,
@@ -156,7 +167,12 @@ export async function generateClientMenuPreview({
   }
 
   validateMenuGenerationPolicy({ generationMode, foods, useOnlySelectedFoods });
-  const flexiblePlan = plannedTargetWithFreeCalories(target, freeCalories);
+  const normalizedConsumedBaseline = normalizeDayNutritionTarget(consumedBaseline);
+  const remainingAfterConsumption = generationRemainingNutrition(subtractDayNutrition(
+    target,
+    normalizedConsumedBaseline
+  ));
+  const flexiblePlan = plannedTargetWithFreeCalories(remainingAfterConsumption, freeCalories);
   const plannedTarget = normalizeDayNutritionTarget(flexiblePlan.plannedTarget);
   const assignments = buildIncludedFoodAssignments(foods, mealTypes);
   const runId = variantSeed || `menu-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -166,6 +182,7 @@ export async function generateClientMenuPreview({
     dailyTarget: plannedTarget,
     mealTypes,
     plannedMeals: preservedPlanning,
+    reservedMealTargets,
     diversityMeals,
     distributionMode: calorieDistributionMode,
     distributionPercentages: calorieDistributionPercents,
@@ -210,6 +227,7 @@ export async function generateClientMenuPreview({
         meal: {
           ...generated.meal,
           orden: slot.index + 1,
+          plannerSlotIndex: slot.index,
           ...(horario ? { horario } : {}),
         },
       };
@@ -235,6 +253,11 @@ export async function generateClientMenuPreview({
       dailyTarget: normalizeDayNutritionTarget(target),
       plannedTarget,
       freeCalories: flexiblePlan.freeCalories,
+      initialFreeCalories: Number(generationAccounting?.initialFreeCalories ?? freeCalories) || 0,
+      freeCaloriesConsumed: Number(generationAccounting?.freeCaloriesConsumed) || 0,
+      freeCaloriesRemaining: Number(generationAccounting?.freeCaloriesRemaining ?? flexiblePlan.freeCalories) || 0,
+      consumedBaselineTotals: normalizedConsumedBaseline,
+      accounting: generationAccounting,
       generationRunId: runId,
       seed: runId,
       revision: 1,
@@ -246,8 +269,11 @@ export async function generateClientMenuPreview({
       ])),
       fixedMealKeys: dayResult.fixedMealKeys,
       fixedMealCount: dayResult.fixedMeals.length,
+      reservedMealTargetCount: dayResult.reservedMeals.length,
+      reservedMealTargets: dayResult.reservedMeals,
       generatedMealCount: dayResult.generatedCount,
       fixedTotals: dayResult.fixedTotals,
+      reservedTotals: dayResult.reservedTotals,
       resultTotals: dayResult.totals,
       difference: dayResult.difference,
       remainingRaw: dayResult.rawRemaining,
@@ -694,7 +720,7 @@ function roundGenerationValue(value = 0) {
 }
 
 
-function plannedTargetWithFreeCalories(
+export function plannedTargetWithFreeCalories(
   target = {},
   requestedFreeCalories = 0
 ) {

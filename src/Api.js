@@ -1,4 +1,4 @@
-import { API_BASE } from "./apiCredentials";
+import { API_BASE } from "./apiCredentials.js";
 import { getCachedToken, isImpersonating } from "./authCache.js";
 
 function joinUrl(base, path) {

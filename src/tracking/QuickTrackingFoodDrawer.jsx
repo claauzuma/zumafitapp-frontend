@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Apple,
   Check,
+  ChevronDown,
   Loader2,
   Search,
   Utensils,
@@ -61,6 +62,8 @@ const DESTINATIONS = [
     mealName: "Snack",
   },
 ];
+
+const VISIBLE_SEARCH_RESULTS = 3;
 
 function foodPayload(food = {}) {
   return {
@@ -447,8 +450,12 @@ useEffect(() => {
 
           {/* RESULTADOS */}
           {results.length ? (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
-              {results.map((food, index) => {
+            <div className="mt-3">
+              <div
+                className="max-h-[192px] overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.08] bg-white/[0.025] [scrollbar-color:rgba(103,232,249,.45)_rgba(255,255,255,.04)] [scrollbar-width:thin]"
+                aria-label="Resultados de alimentos"
+              >
+                {results.map((food, index) => {
                 const id =
                   food.id ||
                   food._id ||
@@ -478,7 +485,7 @@ useEffect(() => {
                     type="button"
                     onClick={() => chooseFood(food)}
                     className={`
-                      flex w-full items-center gap-3
+                      flex min-h-16 w-full items-center gap-3
                       border-b border-white/[0.06]
                       px-3 py-2.5 text-left
                       last:border-b-0
@@ -533,7 +540,15 @@ useEffect(() => {
                     ) : null}
                   </button>
                 );
-              })}
+                })}
+              </div>
+
+              {results.length > VISIBLE_SEARCH_RESULTS ? (
+                <p className="mt-1.5 flex items-center justify-center gap-1 text-[9px] font-black text-cyan-200/75">
+                  Deslizá dentro de la lista para ver {results.length - VISIBLE_SEARCH_RESULTS} resultados más
+                  <ChevronDown size={13} aria-hidden="true" />
+                </p>
+              ) : null}
             </div>
           ) : null}
 

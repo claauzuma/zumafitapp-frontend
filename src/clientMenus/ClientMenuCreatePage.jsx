@@ -163,18 +163,23 @@ export default function ClientMenuCreatePage() {
       const preservedIndexes = new Set(
         trace.filter((entry) => entry?.status === "preserved").map((entry) => Number(entry.slotIndex))
       );
-      if (mealIndex !== null && preservedIndexes.has(mealIndex)) {
+      const selectedSlotIndex = mealIndex === null
+        ? null
+        : Number(generatedDraft.comidas?.[mealIndex]?.plannerSlotIndex ?? mealIndex);
+      if (selectedSlotIndex !== null && preservedIndexes.has(selectedSlotIndex)) {
         throw new Error("Esta comida ya estaba planificada y se conserva intacta.");
       }
       // Regenerar todo conserva sólo las comidas originales. Regenerar una
       // comida conserva además las anteriores y recalcula ésta + posteriores,
       // de modo que el residual nutricional vuelva a cerrar el día.
       const plannedMeals = (generatedDraft.comidas || []).filter((meal, index) => (
-        preservedIndexes.has(index) || (mealIndex !== null && index < mealIndex)
+        preservedIndexes.has(Number(meal?.plannerSlotIndex ?? index))
+        || (selectedSlotIndex !== null && Number(meal?.plannerSlotIndex ?? index) < selectedSlotIndex)
       ));
       const preview = await generateClientMenuPreview({
         ...request,
         plannedMeals,
+        reservedMealTargets: generatedDraft?.generationMeta?.reservedMealTargets || [],
         // La propuesta visible también integra el contexto. Regenerar todo o
         // desde un slot busca composiciones nuevas respecto de lo ya mostrado.
         diversityMeals: generatedDraft.comidas || [],
@@ -449,6 +454,9 @@ function GeneratedMenuReview({
 }) {
   const reviewPresentation = generatedMenuReviewPresentation(draft);
   const generationWarnings = reviewPresentation.warnings;
+  const reservedMealTargets = Array.isArray(draft?.generationMeta?.reservedMealTargets)
+    ? draft.generationMeta.reservedMealTargets
+    : [];
   const ReviewStatusIcon = reviewPresentation.tone === "success"
     ? CheckCircle2
     : reviewPresentation.tone === "danger"
@@ -932,6 +940,31 @@ function GeneratedMenuReview({
       {/* COMIDAS */}
       {/* ================================================= */}
 
+      {reservedMealTargets.length ? (
+        <section className="mb-3 grid gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-3">
+          <div>
+            <strong className="text-sm font-black text-amber-100">Metas que ya planificaste</strong>
+            <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
+              Se conservaron y se descontaron antes de generar las demás comidas.
+            </p>
+          </div>
+          {reservedMealTargets.map((meal, index) => {
+            const mealTarget = meal?.target || meal?.meta || {};
+            return (
+              <div key={meal?.id || meal?.mealId || index} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <span className="min-w-0">
+                  <b className="block truncate text-xs font-black text-white">{meal?.name || meal?.nombre || `Comida ${index + 1}`}</b>
+                  <small className="mt-0.5 block text-[9px] font-bold text-zinc-400">
+                    P {Number(mealTarget.proteina ?? mealTarget.p) || 0} · C {Number(mealTarget.carbs ?? mealTarget.c) || 0} · G {Number(mealTarget.grasas ?? mealTarget.g) || 0}
+                  </small>
+                </span>
+                <strong className="shrink-0 text-xs font-black text-amber-100">{Math.round(Number(mealTarget.kcal) || 0)} kcal</strong>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
       <div className="generated-review-meals">
 
         {(draft?.comidas || []).map(
@@ -954,8 +987,9 @@ function GeneratedMenuReview({
             const mealTotals =
               mealReviewTotals(meal);
 
+            const traceSlotIndex = Number(meal?.plannerSlotIndex ?? index);
             const traceEntry = Array.isArray(draft?.generationMeta?.trace)
-              ? draft.generationMeta.trace.find((entry) => Number(entry?.slotIndex) === index)
+              ? draft.generationMeta.trace.find((entry) => Number(entry?.slotIndex) === traceSlotIndex)
               : null;
             const preserved = traceEntry?.status === "preserved";
 
