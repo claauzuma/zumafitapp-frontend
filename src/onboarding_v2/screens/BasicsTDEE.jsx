@@ -56,7 +56,7 @@ export default function BasicsTDEE({ form, setForm }) {
 
       <div className="ob2-card">
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
-          <div style={{ fontSize: 34, fontWeight: 1000 }}>
+          <div style={{ fontSize: 34, fontWeight: 720 }}>
             {Number.isFinite(shown) && shown > 0 ? shown : "—"}{" "}
             <span style={{ color: "#bdbdbd", fontSize: 16 }}>kcal</span>
           </div>

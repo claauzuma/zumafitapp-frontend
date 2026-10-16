@@ -15,55 +15,10 @@ import {
   getFoodImageUrl,
 } from "../nutricion/nutricionUtils.js";
 import { useAddFoodLog } from "./trackingQueries.js";
-
-const DESTINATIONS = [
-  {
-    key: "picoteo",
-    label: "Picoteo",
-    description: "Fuera de una comida",
-    mealId: "picoteo",
-    mealType: "otra",
-    mealName: "Picoteo",
-    featured: true,
-  },
-  {
-    key: "desayuno",
-    label: "Desayuno",
-    mealId: "desayuno",
-    mealType: "desayuno",
-    mealName: "Desayuno",
-  },
-  {
-    key: "almuerzo",
-    label: "Almuerzo",
-    mealId: "almuerzo",
-    mealType: "almuerzo",
-    mealName: "Almuerzo",
-  },
-  {
-    key: "merienda",
-    label: "Merienda",
-    mealId: "merienda",
-    mealType: "merienda",
-    mealName: "Merienda",
-  },
-  {
-    key: "cena",
-    label: "Cena",
-    mealId: "cena",
-    mealType: "cena",
-    mealName: "Cena",
-  },
-  {
-    key: "snack",
-    label: "Snack",
-    mealId: "snack",
-    mealType: "snack",
-    mealName: "Snack",
-  },
-];
+import { buildQuickTrackingDestinations } from "./quickTrackingDestinations.js";
 
 const VISIBLE_SEARCH_RESULTS = 3;
+const EMPTY_DESTINATIONS = [];
 
 function foodPayload(food = {}) {
   return {
@@ -113,10 +68,15 @@ export default function QuickTrackingFoodDrawer({
   open = false,
   date = "",
   initialDestinationKey = "picoteo",
+  destinations = EMPTY_DESTINATIONS,
   onClose,
   onSaved,
 }) {
   const addMutation = useAddFoodLog();
+  const destinationOptions = useMemo(
+    () => buildQuickTrackingDestinations(destinations),
+    [destinations]
+  );
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -147,7 +107,7 @@ useEffect(() => {
   setQuantity("100");
 
   const validInitialDestination =
-    DESTINATIONS.some(
+    destinationOptions.some(
       (item) =>
         item.key === initialDestinationKey
     )
@@ -163,6 +123,7 @@ useEffect(() => {
   date,
   open,
   initialDestinationKey,
+  destinationOptions,
 ]);
 
   /*
@@ -251,9 +212,9 @@ useEffect(() => {
   }, [debouncedSearch, open]);
 
   const selectedDestination =
-    DESTINATIONS.find(
+    destinationOptions.find(
       (item) => item.key === destinationKey
-    ) || DESTINATIONS[0];
+    ) || destinationOptions[0];
 
   const preview = useMemo(() => {
     if (!selectedFood) return null;
@@ -623,7 +584,7 @@ useEffect(() => {
                 </p>
 
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {DESTINATIONS.map((destination) => {
+                  {destinationOptions.map((destination) => {
                     const active =
                       destination.key ===
                       destinationKey;

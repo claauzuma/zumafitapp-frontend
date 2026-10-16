@@ -95,6 +95,9 @@ export function mealHasPlannedContent(meal = {}) {
 }
 
 export function plannedMealNutrition(meal = {}) {
+  if (meal?.consumptionAccountingTotals && typeof meal.consumptionAccountingTotals === "object") {
+    return normalizeDayNutritionTarget(meal.consumptionAccountingTotals);
+  }
   if (!mealHasPlannedContent(meal)) return normalizeDayNutritionTarget();
   const foods = mealFoods(meal).filter(foodHasPlannedQuantity);
   const calculated = foods
@@ -139,18 +142,6 @@ export function buildDayMealSlots({
   const reservedMeals = (Array.isArray(reservedMealTargets) ? reservedMealTargets : [])
     .filter((meal) => normalizeDayNutritionTarget(meal?.target || meal?.meta || meal).kcal > 0);
 
-  if (fixedMeals.length + reservedMeals.length > requestedTypes.length) {
-    throw plannerError(
-      "MENU_MEAL_COUNT_CONFLICT",
-      `Ya hay ${fixedMeals.length + reservedMeals.length} comidas planificadas. Elegí al menos ${fixedMeals.length + reservedMeals.length} comidas para conservarlas sin borrar ninguna.`,
-      {
-        requestedMealCount: requestedTypes.length,
-        fixedMealCount: fixedMeals.length,
-        reservedMealTargetCount: reservedMeals.length,
-      }
-    );
-  }
-
   const slots = requestedTypes.map((type, index) => ({
     index,
     type,
@@ -163,22 +154,36 @@ export function buildDayMealSlots({
     const type = mealType(meal);
     const exact = slots.find((slot) => !slot.fixedMeal && slot.type === type);
     const destination = exact || slots.find((slot) => !slot.fixedMeal);
-    if (!destination) return;
-    destination.fixedMeal = meal;
-    destination.type = type || destination.type;
-    destination.name = mealName(meal, fixedIndex, destination.type);
+    const resolved = destination || {
+      index: slots.length,
+      type: type || "otro",
+      name: mealName(meal, fixedIndex, type),
+      fixedMeal: null,
+      reservedMealTarget: null,
+    };
+    if (!destination) slots.push(resolved);
+    resolved.fixedMeal = meal;
+    resolved.type = type || resolved.type;
+    resolved.name = mealName(meal, fixedIndex, resolved.type);
   });
 
   reservedMeals.forEach((meal, reservedIndex) => {
     const type = mealType(meal);
     const exact = slots.find((slot) => (
-      !slot.fixedMeal && !slot.reservedMealTarget && slot.type === type
+      !slot.reservedMealTarget && slot.type === type
     ));
     const destination = exact || slots.find((slot) => !slot.fixedMeal && !slot.reservedMealTarget);
-    if (!destination) return;
-    destination.reservedMealTarget = meal;
-    destination.type = type || destination.type;
-    destination.name = mealName(meal, reservedIndex, destination.type);
+    const resolved = destination || {
+      index: slots.length,
+      type: type || "otro",
+      name: mealName(meal, reservedIndex, type),
+      fixedMeal: null,
+      reservedMealTarget: null,
+    };
+    if (!destination) slots.push(resolved);
+    resolved.reservedMealTarget = meal;
+    resolved.type = type || resolved.type;
+    resolved.name = mealName(meal, reservedIndex, resolved.type);
   });
 
   return slots;
@@ -496,16 +501,44 @@ export async function generateSequentialMenuDay({
     (totals, meal) => addDayNutrition(totals, plannedMealNutrition(meal)),
     normalizeDayNutritionTarget()
   );
-  const reservedTotals = reservedMeals.reduce(
-    (totals, meal) => addDayNutrition(totals, meal?.target || meal?.meta || meal),
+  const targetOnlySlots = slots.filter((slot) => slot.reservedMealTarget && !slot.fixedMeal);
+  const targetConsumedTotals = targetOnlySlots.reduce(
+    (totals, slot) => addDayNutrition(totals, slot.reservedMealTarget?.consumed),
+    normalizeDayNutritionTarget()
+  );
+  const targetCommitment = (meal = {}) => meal?.completed === true
+    ? normalizeDayNutritionTarget(meal?.consumed)
+    : normalizeDayNutritionTarget(meal?.target || meal?.meta || meal);
+  const reservedTotals = targetOnlySlots.reduce(
+    (totals, slot) => addDayNutrition(totals, targetCommitment(slot.reservedMealTarget)),
     normalizeDayNutritionTarget()
   );
   const baselineTotals = normalizeDayNutritionTarget(consumedBaseline);
+  const committedBaseTotals = addDayNutrition(
+    addDayNutrition(fixedTotals, baselineTotals),
+    targetConsumedTotals
+  );
+  const targetPendingByIndex = new Map(targetOnlySlots.map((slot) => {
+    const meal = slot.reservedMealTarget;
+    const pending = meal?.completed === true
+      ? normalizeDayNutritionTarget()
+      : normalizeDayNutritionTarget(meal?.remainingTarget || subtractDayNutrition(
+          meal?.target || meal?.meta || meal,
+          meal?.consumed
+        ));
+    return [slot.index, pending];
+  }));
+  let futureTargetPendingTotals = [...targetPendingByIndex.values()].reduce(
+    (totals, pending) => addDayNutrition(totals, pending),
+    normalizeDayNutritionTarget()
+  );
   const plannedCommittedTotals = addDayNutrition(fixedTotals, reservedTotals);
-  const committedTotals = addDayNutrition(plannedCommittedTotals, baselineTotals);
   let generatedTotals = normalizeDayNutritionTarget();
   const remainingAfterPlanning = subtractDayNutrition(target, plannedCommittedTotals);
-  let rawRemaining = subtractDayNutrition(remainingAfterPlanning, baselineTotals);
+  let rawRemaining = subtractDayNutrition(
+    target,
+    addDayNutrition(committedBaseTotals, futureTargetPendingTotals)
+  );
   const reservedOverage = TARGET_KEYS.find((key) => remainingAfterPlanning[key] < -1e-9);
   if (reservedOverage) {
     throw plannerError(
@@ -548,6 +581,7 @@ export async function generateSequentialMenuDay({
   const generatedFingerprints = new Set();
   const generatedDiversityMeals = [];
   const externalDiversityMeals = Array.isArray(diversityMeals) ? diversityMeals : [];
+  let generatedCount = 0;
 
   for (const slot of slots) {
     if (slot.fixedMeal) {
@@ -562,31 +596,43 @@ export async function generateSequentialMenuDay({
       continue;
     }
 
-    if (slot.reservedMealTarget) {
+    const targetSpec = slot.reservedMealTarget;
+    if (targetSpec?.completed === true) {
       trace.push({
         slotIndex: slot.index,
         mealType: slot.type,
-        status: "reserved_target",
-        target: normalizeDayNutritionTarget(
-          slot.reservedMealTarget?.target || slot.reservedMealTarget?.meta || slot.reservedMealTarget
-        ),
-        mealId: String(slot.reservedMealTarget?.id || slot.reservedMealTarget?.mealId || ""),
+        status: "consumed_target",
+        target: normalizeDayNutritionTarget(targetSpec?.target || targetSpec?.meta || targetSpec),
+        actual: normalizeDayNutritionTarget(targetSpec?.consumed),
+        mealId: String(targetSpec?.id || targetSpec?.mealId || ""),
         remainingAfter: { ...rawRemaining },
       });
       continue;
     }
 
     const remainingPendingSlots = pendingSlots.filter((pending) => pending.index >= slot.index);
-    const remainingWeights = remainingPendingSlots.map((pending) => pendingWeightByIndex.get(pending.index));
-    const targetResolution = nextSequentialMealTarget({
-      rawRemaining,
-      remainingSlotWeights: remainingWeights,
-      proteinMinimum,
-      proteinMaximum,
-    });
+    const targetResolution = targetSpec
+      ? { target: targetPendingByIndex.get(slot.index), warnings: [] }
+      : nextSequentialMealTarget({
+          rawRemaining,
+          remainingSlotWeights: remainingPendingSlots.map((pending) => pendingWeightByIndex.get(pending.index)),
+          proteinMinimum,
+          proteinMaximum,
+        });
     targetResolution.warnings.forEach((entry) => {
       if (!warnings.some((current) => current.code === entry.code)) warnings.push(entry);
     });
+    if (!(targetResolution.target?.kcal > 0)) {
+      trace.push({
+        slotIndex: slot.index,
+        mealType: slot.type,
+        status: targetSpec ? "consumed_target" : "no_remaining",
+        target: normalizeDayNutritionTarget(targetResolution.target),
+        mealId: String(targetSpec?.id || targetSpec?.mealId || ""),
+        remainingAfter: { ...rawRemaining },
+      });
+      continue;
+    }
     const remainingBefore = { ...rawRemaining };
     const generated = await generateMeal({
       slot,
@@ -611,17 +657,37 @@ export async function generateSequentialMenuDay({
     }
     const actual = plannedMealNutrition(meal);
     generatedTotals = addDayNutrition(generatedTotals, actual);
-    rawRemaining = subtractDayNutrition(target, addDayNutrition(committedTotals, generatedTotals));
+    if (targetSpec) {
+      futureTargetPendingTotals = subtractDayNutrition(
+        futureTargetPendingTotals,
+        targetPendingByIndex.get(slot.index)
+      );
+    }
+    rawRemaining = subtractDayNutrition(
+      target,
+      addDayNutrition(
+        addDayNutrition(committedBaseTotals, generatedTotals),
+        futureTargetPendingTotals
+      )
+    );
     if (generated?.fingerprint) generatedFingerprints.add(generated.fingerprint);
     generatedDiversityMeals.push(meal);
     if (Array.isArray(generated?.warnings)) warnings.push(...generated.warnings);
-    outputMeals.push(meal);
+    const outputMeal = targetSpec ? {
+      ...meal,
+      targetMealId: String(targetSpec?.id || targetSpec?.mealId || ""),
+      targetOrigin: targetSpec?.targetOrigin || "auto",
+      compositionOrigin: "auto",
+    } : meal;
+    outputMeals.push(outputMeal);
+    generatedCount += 1;
     trace.push({
       slotIndex: slot.index,
       mealType: slot.type,
-      status: "generated",
+      status: targetSpec ? "generated_for_target" : "generated",
       weight: distribution.weights[slot.index],
       target: targetResolution.target,
+      mealId: String(targetSpec?.id || targetSpec?.mealId || ""),
       actual,
       remainingBefore,
       remainingAfter: { ...rawRemaining },
@@ -629,7 +695,7 @@ export async function generateSequentialMenuDay({
     });
   }
 
-  const totals = addDayNutrition(committedTotals, generatedTotals);
+  const totals = addDayNutrition(committedBaseTotals, generatedTotals);
   const difference = nutritionDifference(totals, target);
 
   return {
@@ -637,7 +703,7 @@ export async function generateSequentialMenuDay({
     fixedMeals,
     reservedMeals,
     fixedMealKeys: fixedMeals.map(fixedMealKey),
-    generatedCount: pendingSlots.length,
+    generatedCount,
     fixedTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(fixedTotals[key], 2)])),
     reservedTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(reservedTotals[key], 2)])),
     consumedBaselineTotals: Object.fromEntries(TARGET_KEYS.map((key) => [key, round(baselineTotals[key], 2)])),

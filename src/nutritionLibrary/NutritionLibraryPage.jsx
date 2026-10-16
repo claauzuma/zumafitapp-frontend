@@ -19,6 +19,7 @@ import {
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthMe } from "../authQueries.js";
+import { queryClient, queryKeys } from "../queryClient.js";
 import { addSavedMealToTracking } from "../savedMeals/savedMealsApi.js";
 import { getProfessionalClients } from "../profesional/profesionalApi.js";
 import { formatNumber } from "../nutricion/nutricionUtils.js";
@@ -62,6 +63,7 @@ const MEAL_TYPES = [
   ["almuerzo", "Almuerzo"],
   ["merienda", "Merienda"],
   ["cena", "Cena"],
+  ["picoteo", "Picoteo"],
   ["snack", "Snack"],
 ];
 
@@ -120,7 +122,7 @@ function hasTargetFilters(filters = {}) {
 }
 
 function totals(item = {}) {
-  const total = item.totales || item.macrosTotales || {};
+  const total = item.totales || item.macrosTotales || item;
   return {
     kcal: Number(total.kcal || 0),
     proteina: Number(total.proteina ?? total.proteinas ?? 0),
@@ -140,6 +142,17 @@ function foodItems(item = {}) {
 
 function foodImage(food = {}) {
   return food.imagenUrl || food.imageUrl || food.imagen?.url || food.snapshot?.imagen?.url || food.snapshot?.imagen || "";
+}
+
+function foodName(food = {}) {
+  return food.nombre || food.nombreSnapshot || food.name || food.snapshot?.nombre || "Alimento";
+}
+
+function foodAmount(food = {}) {
+  const quantity = Number(food.cantidad ?? food.quantity ?? food.qty);
+  const unit = food.unidad || food.unit || food.snapshot?.unidad || "g";
+  if (!Number.isFinite(quantity)) return unit || "Cantidad guardada";
+  return `${formatNumber(quantity, Number.isInteger(quantity) ? 0 : 1)} ${unit}`.trim();
 }
 
 function defaultTabs(mode, user) {
@@ -482,17 +495,22 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   }
 
   async function handleAddToTracking(item) {
-    if (!itemId(item) || saving || mutationLockRef.current || item.kind !== "comida") return;
+    if (!itemId(item) || saving || mutationLockRef.current || item.kind !== "comida") return false;
     mutationLockRef.current = true;
     setSaving(true);
     try {
-      await addSavedMealToTracking(itemId(item), {
+      const trackingDay = await addSavedMealToTracking(itemId(item), {
         date: trackingDate,
         mealType: item.tipoComida || "snack",
       });
+      queryClient.setQueryData(queryKeys.trackingDay(trackingDate), trackingDay);
+      void queryClient.invalidateQueries({ queryKey: ["menuTrackingWeek"] });
       setToast({ type: "success", message: "Comida agregada al tracking." });
+      navigate(`/app/menu?date=${encodeURIComponent(trackingDate)}`);
+      return true;
     } catch (err) {
       setToast({ type: "error", message: err?.message || "No se pudo agregar al tracking." });
+      return false;
     } finally {
       mutationLockRef.current = false;
       setSaving(false);
@@ -842,7 +860,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
         />
       ) : null}
 
-      {previewItem ? (
+      {previewItem?.kind === "menu" ? (
         <ContextMenuPreview
           item={previewItem}
           target={contextualTargetMode ? currentContextualTarget : {
@@ -863,6 +881,19 @@ export default function NutritionLibraryPage({ mode = "client" }) {
           onSave={() => handleCopy(previewItem)}
           onSaveAlternative={() => handleSaveAlternative(previewItem)}
           onRequestApply={() => setApplyConfirmItem(previewItem)}
+        />
+      ) : previewItem ? (
+        <ContextMealPreview
+          item={previewItem}
+          selectedDate={trackingDate}
+          saving={saving}
+          copyLimitReached={mealLimitReached}
+          onClose={() => setPreviewItem(null)}
+          onUse={async () => {
+            const added = await handleAddToTracking(previewItem);
+            if (added) setPreviewItem(null);
+          }}
+          onCopy={() => handleCopy(previewItem)}
         />
       ) : null}
 
@@ -966,16 +997,16 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
   if (contextual) {
     return (
       <article
-        className={`nl-context-card ${isMenu ? "menu previewable" : "meal"}`}
-        role={isMenu ? "button" : undefined}
-        tabIndex={isMenu ? 0 : undefined}
-        aria-label={isMenu ? `Ver menú ${item.nombre || "sin nombre"}` : undefined}
-        onClick={isMenu ? () => onPreview?.(item) : undefined}
-        onKeyDown={isMenu ? (event) => {
+        className={`nl-context-card ${isMenu ? "menu" : "meal"} previewable`}
+        role="button"
+        tabIndex={0}
+        aria-label={`Ver detalle de ${item.nombre || (isMenu ? "menú" : "comida")}`}
+        onClick={() => onPreview?.(item)}
+        onKeyDown={(event) => {
           if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
           event.preventDefault();
           onPreview?.(item);
-        } : undefined}
+        }}
       >
         <div className="nl-context-card-image">
           <FoodThumb food={previewFood || {}} large />
@@ -1007,6 +1038,9 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
               <Copy size={14} /> {isMenu ? <span>Guardar menú</span> : null}
             </button>
           ) : null}
+          <button type="button" className="icon detail" onClick={(event) => { event.stopPropagation(); onPreview?.(item); }} aria-label={`Ver detalle de ${item.nombre || (isMenu ? "menú" : "comida")}`}>
+            <Eye size={15} />
+          </button>
           <button type="button" className={`icon ${favorite ? "active" : ""}`} disabled={!permissions.canFavorite || saving} onClick={(event) => { event.stopPropagation(); onFavorite(item); }} aria-label={favorite ? "Quitar de favoritos" : "Agregar a favoritos"}>
             <Star size={14} fill={favorite ? "currentColor" : "none"} />
           </button>
@@ -1074,6 +1108,10 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
       )}
 
       <div className="nl-actions">
+        <button type="button" onClick={() => onPreview?.(item)}>
+          <Eye size={15} />
+          Ver detalle
+        </button>
         {!professionalMode && !isMenu && permissions.canUseInTracking ? (
           <button type="button" onClick={() => onAddToTracking(item)} disabled={saving}>
             <CheckCircle2 size={15} />
@@ -1099,6 +1137,114 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ContextMealPreview({ item, selectedDate, saving, copyLimitReached = false, onClose, onUse, onCopy }) {
+  const closeRef = useRef(null);
+  const returnFocusRef = useRef(null);
+  const nutrition = totals(item);
+  const foods = foodItems(item);
+  const permissions = item.permissions || {};
+  const description = item.descripcion || item.description || "";
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement;
+    closeRef.current?.focus();
+    function closeOnEscape(event) {
+      if (event.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus();
+    };
+  }, [onClose, saving]);
+
+  return (
+    <section className="nl-modal nl-context-preview-layer" role="dialog" aria-modal="true" aria-labelledby="nl-meal-preview-title">
+      <div className="nl-context-preview nl-meal-preview">
+        <header>
+          <div className="nl-meal-preview-heading">
+            <FoodThumb food={foods[0] || {}} large />
+            <div>
+              <span className="nl-kicker"><Eye size={14} /> Detalle de la comida</span>
+              <h2 id="nl-meal-preview-title">{item.nombre || "Comida"}</h2>
+              <p>{mealTypeLabel(item.tipoComida)} · {foods.length} {foods.length === 1 ? "alimento" : "alimentos"}</p>
+            </div>
+          </div>
+          <button ref={closeRef} type="button" className="nl-icon" onClick={onClose} disabled={saving} aria-label="Cerrar detalle"><X size={18} /></button>
+        </header>
+
+        <div className="nl-meal-preview-badges">
+          {(item.badges || []).slice(0, 4).map((badge) => <span key={badge}>{badge}</span>)}
+          {item.originLabel ? <span>{item.originLabel}</span> : null}
+        </div>
+
+        {description ? <p className="nl-meal-preview-description">{description}</p> : null}
+
+        <div className="nl-meal-preview-metrics" aria-label="Información nutricional total">
+          <div className="kcal"><small>Calorías</small><strong>{formatNumber(nutrition.kcal, 0)}</strong><span>kcal</span></div>
+          <div><small>Proteína</small><strong>{formatNumber(nutrition.proteina, 1)}</strong><span>g</span></div>
+          <div><small>Carbohidratos</small><strong>{formatNumber(nutrition.carbs, 1)}</strong><span>g</span></div>
+          <div><small>Grasas</small><strong>{formatNumber(nutrition.grasas, 1)}</strong><span>g</span></div>
+        </div>
+
+        <section className="nl-meal-preview-foods" aria-labelledby="nl-meal-foods-title">
+          <div className="nl-meal-preview-section-title">
+            <div>
+              <span>Composición</span>
+              <h3 id="nl-meal-foods-title">Alimentos incluidos</h3>
+            </div>
+            <strong>{foods.length}</strong>
+          </div>
+          <div className="nl-meal-preview-food-list">
+            {foods.map((food, index) => {
+              const foodNutrition = totals(food);
+              return (
+                <article key={`${food.alimentoId || food.id || foodName(food)}-${index}`} className="nl-meal-preview-food">
+                  <FoodThumb food={food} />
+                  <div>
+                    <strong>{foodName(food)}</strong>
+                    <span>{foodAmount(food)}</span>
+                  </div>
+                  <div className="nl-meal-preview-food-nutrition">
+                    <strong>{formatNumber(foodNutrition.kcal, 0)} kcal</strong>
+                    <span>P {formatNumber(foodNutrition.proteina, 1)} · C {formatNumber(foodNutrition.carbs, 1)} · G {formatNumber(foodNutrition.grasas, 1)}</span>
+                  </div>
+                </article>
+              );
+            })}
+            {!foods.length ? (
+              <div className="nl-meal-preview-empty">
+                <Utensils size={20} />
+                <strong>Esta comida no tiene alimentos visibles.</strong>
+                <span>Podés conservarla como referencia, pero no se puede registrar en Tracking.</span>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <div className="nl-context-preview-actions nl-meal-preview-actions">
+          {permissions.canUseInTracking ? (
+            <button type="button" className="primary" onClick={onUse} disabled={saving || !foods.length}>
+              <CheckCircle2 size={16} /> Usar hoy
+            </button>
+          ) : null}
+          {permissions.canCopy ? (
+            <button type="button" onClick={onCopy} disabled={saving || copyLimitReached} title={copyLimitReached ? "Límite de comidas guardadas alcanzado" : undefined}>
+              <Copy size={16} /> Guardar copia
+            </button>
+          ) : null}
+          <button type="button" onClick={onClose} disabled={saving}>Cerrar</button>
+        </div>
+        {permissions.canUseInTracking ? (
+          <small className="nl-context-preview-note">“Usar hoy” registra estos alimentos en Tracking para el {shortDateLabel(selectedDate)}. Abrir el detalle no modifica nada.</small>
+        ) : (
+          <small className="nl-context-preview-note">Esta vista es informativa. Abrirla no modifica la comida original.</small>
+        )}
+      </div>
+    </section>
   );
 }
 

@@ -17,6 +17,8 @@ import {
   generatedMenuTotals,
 } from "./clientMenuPreview.js";
 import { buildAutonomousMenuGenerationRequest, MENU_GENERATION_MODE_SIMILAR } from "../entrenado/menu/menuQuickActions.js";
+import { getTrackingDay } from "../tracking/trackingApi.js";
+import { trackingDayRevision } from "../tracking/trackingDayRevision.js";
 import "../nutritionLibrary/nutritionLibrary.css";
 
 function safeReturnPath(value) {
@@ -147,6 +149,14 @@ export default function ClientMenuCreatePage() {
     setRegeneratingMeal(mealIndex === null ? "all" : mealIndex);
     setRegenerationError("");
     try {
+      const expectedTrackingRevision = generatedDraft?.generationMeta?.trackingRevision;
+      const draftDate = selectedDate || generatedDraft?.fechaInicio;
+      if (expectedTrackingRevision && draftDate) {
+        const currentTrackingDay = await getTrackingDay(draftDate);
+        if (trackingDayRevision(currentTrackingDay) !== expectedTrackingRevision) {
+          throw new Error("Tracking cambió. Volvé al Menú y generá una propuesta actualizada.");
+        }
+      }
       const authorization = await authorizeClientMenuGeneration();
       if (authorization?.policy !== MEAL_NUTRITION_POLICY || authorization?.previewOnly !== true) {
         throw new Error("El servidor no autorizó una vista previa segura.");
@@ -190,6 +200,10 @@ export default function ClientMenuCreatePage() {
       });
       setGeneratedDraft({
         ...preview,
+        generationMeta: {
+          ...(preview?.generationMeta || {}),
+          trackingRevision: expectedTrackingRevision,
+        },
         fechaInicio: selectedDate || generatedDraft.fechaInicio || preview.fechaInicio,
         objectiveMode: "custom",
         menuTarget: wizardTarget || dailyTarget || generatedDraft.menuTarget,
@@ -234,6 +248,16 @@ function closeGeneratedPreview() {
     setUsingGenerated(true);
     setRegenerationError("");
     try {
+      const expectedTrackingRevision = generatedDraft?.generationMeta?.trackingRevision;
+      const draftDate = selectedDate || generatedDraft?.fechaInicio;
+      if (expectedTrackingRevision && draftDate) {
+        const currentTrackingDay = await getTrackingDay(draftDate);
+        if (trackingDayRevision(currentTrackingDay) !== expectedTrackingRevision) {
+          const staleError = new Error("Tracking cambió desde que generaste esta propuesta. Volvé a generar para usar el estado actual.");
+          staleError.code = "STALE_MENU_PREVIEW";
+          throw staleError;
+        }
+      }
       await createClientMenu(buildGeneratedMenuActivationPayload(
         generatedDraft,
         wizardTarget || dailyTarget || generatedDraft.menuTarget

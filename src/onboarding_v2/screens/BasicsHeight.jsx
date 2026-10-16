@@ -1,5 +1,6 @@
 // src/onboarding_v2/screens/BasicsHeight.jsx
 import React, { useEffect, useRef, useState } from "react";
+import { Ruler } from "lucide-react";
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
@@ -57,7 +58,11 @@ export default function BasicsHeight({ form, setForm }) {
       <h2 className="ob2-h2">¿Cuál es tu altura?</h2>
       <p className="ob2-p">En centímetros (cm).</p>
 
-      <div className="ob2-card">
+      <div className="ob2-card ob2-metric-card ob2-metric-card--height">
+        <div className="ob2-metric-caption">
+          <span><Ruler size={17} strokeWidth={1.8} /> Tu medida</span>
+          <span>Rango saludable configurable</span>
+        </div>
         {/* ✅ Misma “cifra grande”, pero clickeable y editable inline */}
         {!editing ? (
           <button
@@ -72,7 +77,7 @@ export default function BasicsHeight({ form, setForm }) {
             }}
           >
             <div className="ob2-bigvalue">
-              {v} <span style={{ color: "#bdbdbd", fontSize: 16, fontWeight: 900 }}>cm</span>
+              {v} <span className="ob2-bigvalue-unit">cm</span>
             </div>
           </button>
         ) : (
@@ -94,7 +99,7 @@ export default function BasicsHeight({ form, setForm }) {
               }}
               style={{
                 fontSize: 34,
-                fontWeight: 1000,
+                fontWeight: 720,
                 textAlign: "center",
               }}
             />

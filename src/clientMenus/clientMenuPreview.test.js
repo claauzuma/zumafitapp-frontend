@@ -59,6 +59,7 @@ test("usar el menu crea y activa el plan sin registrar consumo", () => {
     comidas: [{ nombre: "Almuerzo", items: [{ alimentoId: "rice", cantidad: 100, unidad: "g" }] }],
   });
   assert.equal(payload.activate, true);
+  assert.equal(payload.source, "autonomous");
   assert.equal(payload.estrategiaObjetivo, "custom");
   assert.equal(payload.kcalObjetivo, 2000);
   assert.deepEqual(payload.macrosObjetivo, { proteina: 150, carbs: 220, grasas: 60 });

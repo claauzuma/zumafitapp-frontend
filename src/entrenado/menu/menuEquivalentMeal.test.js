@@ -31,6 +31,7 @@ test("completionMode persiste sólo los alimentos nuevos con el executionId exis
   });
   assert.equal(batch.mealId, "menu_target_almuerzo");
   assert.equal(batch.requestId, "completion-stable-request");
+  assert.equal(batch.source, "menu_target_completion");
   assert.deepEqual(batch.items, generated);
   assert.equal(batch.items.some((item) => item.nombre === "Pechuga ya registrada"), false);
 });

@@ -279,6 +279,7 @@ async function handleSaveAndContinue(goalPayload) {
   const maint = {
     type: "mantener_peso",
     maintenanceKcal: plan.maintenanceKcal,
+    initialBudgetKcal: plan.budgetKcal,
     trendTargetKg: targetWeightKg,
     targetMacros: plan.macros,
     calculationSource: "server_nutrition_preview",

@@ -4,14 +4,19 @@ import {
   Apple,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  Droplet,
+  Dumbbell,
+  Flame,
+  Info,
   Loader2,
   Minus,
-  Pencil,
   Plus,
   Search,
   Sparkles,
   Target,
   Trash2,
+  Wheat,
   X,
 } from "lucide-react";
 
@@ -46,6 +51,7 @@ import {
   applyTrackingDraftProposals,
   buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
+  defaultTrackingFoodManualQuantity,
   hasTrackingDraftQuantity,
   isTrackingFoodQuantityPhysicallyValid,
   isTrackingDraftAutomatic,
@@ -53,7 +59,10 @@ import {
   loadTrackingDraftState,
   markTrackingDraftAutomatic,
   markTrackingDraftManual,
+  resolveTrackingFoodPickerQuantity,
   saveTrackingDraftState,
+  TRACKING_PICKER_QUANTITY_AUTOMATIC,
+  TRACKING_PICKER_QUANTITY_MANUAL,
   trackingDraftConfirmationRequestId,
   trackingDraftConfirmationTransport,
   trackingDraftCalculationPayload,
@@ -315,6 +324,7 @@ export default function MealTargetTrackingPanel({
   const [selectedFood, setSelectedFood] =
     useState(null);
   const [quantity, setQuantity] = useState("");
+  const [quantityMode, setQuantityMode] = useState(TRACKING_PICKER_QUANTITY_MANUAL);
 
   const [calculating, setCalculating] =
     useState(false);
@@ -438,9 +448,8 @@ export default function MealTargetTrackingPanel({
     setFoodSearchError("");
     setSelectedFood(null);
 
-    setQuantity(
-      canAutoCalculate ? "" : "100"
-    );
+    setQuantity("");
+    setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
 
     setPickerOpen(true);
   }
@@ -453,6 +462,7 @@ export default function MealTargetTrackingPanel({
     setFoodSearchError("");
     setSelectedFood(null);
     setQuantity("");
+    setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
   }
 
   function addSelectedFoodToDraft() {
@@ -464,22 +474,20 @@ export default function MealTargetTrackingPanel({
       return;
     }
 
-    const rawQuantity =
-      String(quantity).trim();
+    const quantitySelection = resolveTrackingFoodPickerQuantity({
+      mode: quantityMode,
+      quantity,
+      canAuto: canAutoCalculate,
+    });
+    const { hasQuantity, parsedQuantity } = quantitySelection;
 
-    const hasQuantity =
-      rawQuantity !== "";
-
-    if (!hasQuantity && !canAutoCalculate) {
+    if (!hasQuantity && !quantitySelection.automatic) {
       notify(
         "warning",
-        "Tu plan requiere que indiques una cantidad."
+        "Ingresá una cantidad o elegí Cantidad automática."
       );
       return;
     }
-
-    const parsedQuantity =
-      Number(quantity);
 
     if (
       hasQuantity &&
@@ -1099,20 +1107,20 @@ export default function MealTargetTrackingPanel({
     );
 
   return (
-    <div className="flex-1 overflow-y-auto px-2.5 py-3">
-      <section className="rounded-[20px] border border-teal-300/20 bg-[radial-gradient(circle_at_0_0,rgba(45,212,191,.09),transparent_34%),rgba(4,12,18,.88)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.24)]">
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:px-4 sm:pb-4">
+      <section className="relative overflow-hidden rounded-[20px] border border-emerald-400/30 bg-[radial-gradient(circle_at_100%_0,rgba(34,197,94,.16),transparent_34%),radial-gradient(circle_at_0_0,rgba(20,184,166,.12),transparent_38%),linear-gradient(145deg,#07141b_0%,#09131a_58%,#071017_100%)] p-2.5 shadow-[0_18px_50px_rgba(0,0,0,.34),inset_0_1px_0_rgba(255,255,255,.035)] sm:p-3.5">
 
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="inline-flex rounded-full border border-teal-300/25 bg-teal-300/[0.08] px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-teal-100">
-              Por meta
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/30 bg-emerald-300/[0.11] px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-emerald-100 shadow-[0_0_18px_rgba(52,211,153,.09)]">
+              <Target size={9} strokeWidth={2.6} /> Por meta
             </span>
 
-            <h4 className="mt-1.5 text-base font-black text-white">
+            <h4 className="mt-1.5 text-[17px] font-black leading-tight text-white">
               Objetivo del {mealName}
             </h4>
 
-            <p className="mt-0.5 text-[10px] font-bold text-zinc-500">
+            <p className="mt-0.5 text-[9px] font-bold text-zinc-500 sm:text-[10px]">
               Registrá lo que realmente comas y comparalo con esta meta.
             </p>
           </div>
@@ -1125,41 +1133,48 @@ export default function MealTargetTrackingPanel({
               safeTarget.kcal,
               0
             )}
-            highlighted
+            tone="kcal"
+            icon={Flame}
           />
 
           <TargetMetric
-            label="PROTEÍNA"
+            label="Proteína"
             value={`${formatNumber(
               safeTarget.proteina,
               0
             )} g`}
+            tone="protein"
+            icon={Dumbbell}
           />
 
           <TargetMetric
-            label="CARBS"
+            label="Carbohidratos"
             value={`${formatNumber(
               safeTarget.carbs,
               0
             )} g`}
+            tone="carbs"
+            icon={Wheat}
           />
 
           <TargetMetric
-            label="GRASAS"
+            label="Grasas"
             value={`${formatNumber(
               safeTarget.grasas,
               0
             )} g`}
+            tone="fat"
+            icon={Droplet}
           />
         </div>
 
         <div className="mt-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
+            <span className="text-[10px] font-black uppercase tracking-wide text-zinc-300">
               Consumido hasta ahora
             </span>
 
-            <strong className="text-[11px] font-black text-white">
+            <strong className="text-[13px] font-black text-white">
               {formatNumber(
                 trackedTotals.kcal,
                 0
@@ -1172,36 +1187,36 @@ export default function MealTargetTrackingPanel({
             </strong>
           </div>
 
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10 shadow-[inset_0_1px_2px_rgba(0,0,0,.6)]">
             <span
-              className="block h-full rounded-full bg-teal-300 transition-all"
+              className="block h-full rounded-full bg-[linear-gradient(90deg,#18d3ac_0%,#56f49a_46%,#c7ff3f_100%)] shadow-[0_0_12px_rgba(163,255,71,.65)] transition-all"
               style={{
                 width: `${progressWidth}%`,
               }}
             />
           </div>
 
-          <div className="mt-1 text-right text-[8px] font-black text-zinc-500">
+          <div className="mt-1 text-right text-[9px] font-black text-zinc-400">
             {progress}%
           </div>
         </div>
 
         {drafts.length ? (
-          <div className="mt-3 rounded-xl border border-[#D4AF37]/25 bg-[linear-gradient(135deg,rgba(212,175,55,.11),rgba(212,175,55,.025))] p-2.5">
+          <div className="mt-3 rounded-xl border border-[#D4AF37]/40 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.16),transparent_42%),linear-gradient(135deg,rgba(212,175,55,.12),rgba(212,175,55,.025))] p-2.5 shadow-[inset_0_1px_0_rgba(255,232,163,.035)]">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[8px] font-black uppercase tracking-wide text-[#FFE16B]">
+              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-[#FFE16B]">
                 Total proyectado
-                <small className="ml-1 normal-case text-zinc-500">(registrado + borrador)</small>
+                <Info size={9} className="text-zinc-400" />
               </span>
-              <strong className="text-[10px] font-black text-white">
+              <strong className="text-[12px] font-black text-white">
                 {formatNumber(projectedTotals.kcal, 0)} / {formatNumber(safeTarget.kcal, 0)} kcal
               </strong>
             </div>
-            <div className="mt-2 grid grid-cols-4 gap-1 text-center">
-              <ProjectedMetric value={formatNumber(projectedTotals.kcal, 0)} label="kcal" highlighted />
-              <ProjectedMetric value={formatNumber(projectedTotals.proteina, 0)} label="Proteína" />
-              <ProjectedMetric value={formatNumber(projectedTotals.carbs, 0)} label="Carbos" />
-              <ProjectedMetric value={formatNumber(projectedTotals.grasas, 0)} label="Grasas" />
+            <div className="mt-2 grid grid-cols-4 text-center">
+              <ProjectedMetric value={formatNumber(projectedTotals.kcal, 0)} label="kcal" tone="kcal" icon={Flame} />
+              <ProjectedMetric value={`${formatNumber(projectedTotals.proteina, 0)} g`} label="Proteína" tone="protein" icon={Dumbbell} divided />
+              <ProjectedMetric value={`${formatNumber(projectedTotals.carbs, 0)} g`} label="Carbohidratos" tone="carbs" icon={Wheat} divided />
+              <ProjectedMetric value={`${formatNumber(projectedTotals.grasas, 0)} g`} label="Grasas" tone="fat" icon={Droplet} divided />
             </div>
           </div>
         ) : null}
@@ -1223,12 +1238,12 @@ export default function MealTargetTrackingPanel({
         {trackedItems.length ? (
           <div className="mt-3">
             <div className="mb-1.5 flex items-center justify-between">
-              <strong className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
-                Registrado
+              <strong className="text-[10px] font-black uppercase tracking-wide text-zinc-300">
+                Alimentos registrados
               </strong>
 
               <span className="text-[8px] font-bold text-emerald-300">
-                Tracking real
+                Guardado
               </span>
             </div>
 
@@ -1263,11 +1278,11 @@ export default function MealTargetTrackingPanel({
           <div className="mt-3">
             <div className="mb-1.5 flex items-center justify-between">
               <strong className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
-                Borrador
+                Alimentos en tu {mealName}
               </strong>
 
-              <span className="text-[8px] font-bold text-[#FFE8A3]">
-                Todavía no registrado
+              <span className="text-[9px] font-bold text-[#FFE8A3]">
+                Todavía no guardado
               </span>
             </div>
 
@@ -1322,53 +1337,20 @@ export default function MealTargetTrackingPanel({
 
         {(trackedItems.length ||
           drafts.length) ? (
-          <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/20 p-2.5">
-            <span className="text-[8px] font-black uppercase tracking-wide text-zinc-500">
-              {drafts.length
-                ? "Restante proyectado"
-                : "Restante"}
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/25 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.02)]">
+            <span className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
+              Restante por consumir
             </span>
 
             {remainingProjected.kcal >= 0 ? (
-              <>
-                <strong className="mt-1 block text-base font-black text-white">
-                  {formatNumber(
-                    Math.max(
-                      0,
-                      remainingProjected.kcal
-                    ),
-                    0
-                  )} kcal
+              <div className="mt-1.5 grid grid-cols-[1.25fr_repeat(3,1fr)] items-center">
+                <strong className="text-lg font-black text-white">
+                  {formatNumber(Math.max(0, remainingProjected.kcal), 0)} kcal
                 </strong>
-
-                <p className="mt-0.5 text-[9px] font-bold text-zinc-500">
-                  P{" "}
-                  {formatNumber(
-                    Math.max(
-                      0,
-                      remainingProjected.proteina
-                    ),
-                    0
-                  )}{" "}
-                  g · C{" "}
-                  {formatNumber(
-                    Math.max(
-                      0,
-                      remainingProjected.carbs
-                    ),
-                    0
-                  )}{" "}
-                  g · G{" "}
-                  {formatNumber(
-                    Math.max(
-                      0,
-                      remainingProjected.grasas
-                    ),
-                    0
-                  )}{" "}
-                  g
-                </p>
-              </>
+                <RemainingMetric value={formatNumber(Math.max(0, remainingProjected.proteina), 0)} tone="protein" icon={Dumbbell} label="P" />
+                <RemainingMetric value={formatNumber(Math.max(0, remainingProjected.carbs), 0)} tone="carbs" icon={Wheat} label="C" />
+                <RemainingMetric value={formatNumber(Math.max(0, remainingProjected.grasas), 0)} tone="fat" icon={Droplet} label="G" />
+              </div>
             ) : (
               <>
                 <strong className="mt-1 block text-base font-black text-rose-200">
@@ -1396,10 +1378,11 @@ export default function MealTargetTrackingPanel({
             type="button"
             onClick={openFoodPicker}
             disabled={saving}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-teal-300/25 bg-teal-300/[0.07] text-xs font-black text-teal-100 disabled:opacity-50"
+            className="relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden rounded-xl border border-emerald-200/35 bg-[linear-gradient(110deg,#19cda7_0%,#4ceaa0_54%,#a9f65a_100%)] text-xs font-black text-[#032019] shadow-[0_7px_24px_rgba(45,212,191,.20),inset_0_1px_0_rgba(255,255,255,.45)] disabled:opacity-50"
           >
             <Plus size={17} />
             Agregar alimento
+            <ChevronRight size={16} className="absolute right-3" />
           </button>
 
           <button
@@ -1409,7 +1392,7 @@ export default function MealTargetTrackingPanel({
               calculating ||
               saving
             }
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 text-xs font-black text-[#FFE8A3] disabled:opacity-50"
+            className="relative inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/55 bg-[linear-gradient(110deg,rgba(212,175,55,.20),rgba(96,76,15,.15))] text-[#FFE88B] shadow-[0_7px_22px_rgba(212,175,55,.10),inset_0_1px_0_rgba(255,232,163,.08)] disabled:opacity-50"
           >
             {calculating ? (
               <Loader2
@@ -1420,9 +1403,17 @@ export default function MealTargetTrackingPanel({
               <Sparkles size={17} />
             )}
 
-            {calculating
-              ? "Calculando..."
-              : "Completar restante"}
+            <span className="flex flex-col items-center leading-tight">
+              <strong className="text-xs">
+                {calculating ? "Calculando..." : "Completar restante"}
+              </strong>
+              {!calculating ? (
+                <small className="mt-0.5 text-[7px] font-bold text-zinc-500">
+                  Agrega automáticamente alimentos para alcanzar tu meta
+                </small>
+              ) : null}
+            </span>
+            {!calculating ? <ChevronRight size={16} className="absolute right-3" /> : null}
           </button>
 
           {drafts.length ? (
@@ -1480,6 +1471,8 @@ export default function MealTargetTrackingPanel({
           }
           quantity={quantity}
           setQuantity={setQuantity}
+          quantityMode={quantityMode}
+          setQuantityMode={setQuantityMode}
           canAuto={canAutoCalculate}
           onClose={closeFoodPicker}
           onAdd={
@@ -1513,34 +1506,61 @@ export default function MealTargetTrackingPanel({
 function TargetMetric({
   label,
   value,
-  highlighted = false,
+  tone = "kcal",
+  icon: Icon,
 }) {
-  return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/20 px-1 py-2 text-center">
-      <small className="block text-[7px] font-black uppercase tracking-wide text-zinc-500">
-        {label}
-      </small>
+  const tones = {
+    kcal: "text-[#FFE16B]",
+    protein: "text-emerald-300",
+    carbs: "text-cyan-300",
+    fat: "text-violet-300",
+  };
 
-      <strong
-        className={`mt-0.5 block text-[13px] font-black ${
-          highlighted
-            ? "text-[#FFE16B]"
-            : "text-white"
-        }`}
-      >
+  return (
+    <div className="rounded-xl border border-white/[0.09] bg-black/25 px-1 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,.035)]">
+      {Icon ? <Icon size={13} className={`mx-auto mb-1 ${tones[tone]}`} strokeWidth={2.5} /> : null}
+      <strong className={`block text-[15px] font-black leading-none ${tones[tone]}`}>
         {value}
       </strong>
+      <small className="mt-1 block truncate px-0.5 text-[8px] font-bold tracking-tight text-zinc-400">
+        {label}
+      </small>
     </div>
   );
 }
 
-function ProjectedMetric({ value, label, highlighted = false }) {
+function ProjectedMetric({ value, label, tone = "kcal", icon: Icon, divided = false }) {
+  const tones = {
+    kcal: "text-[#FFE16B]",
+    protein: "text-emerald-300",
+    carbs: "text-cyan-300",
+    fat: "text-violet-300",
+  };
+
   return (
-    <div>
-      <strong className={`block text-[12px] font-black ${highlighted ? "text-[#FFE16B]" : "text-white"}`}>
+    <div className={divided ? "border-l border-white/[0.08]" : ""}>
+      <div className="flex items-center justify-center gap-1">
+        {Icon ? <Icon size={12} className={tones[tone]} strokeWidth={2.5} /> : null}
+        <strong className="block text-[13px] font-black text-white">
         {value}
-      </strong>
-      <small className="mt-0.5 block text-[7px] font-bold text-zinc-500">{label}</small>
+        </strong>
+      </div>
+      <small className="mt-0.5 block text-[8px] font-bold text-zinc-400">{label}</small>
+    </div>
+  );
+}
+
+function RemainingMetric({ value, label, tone, icon: Icon }) {
+  const tones = {
+    protein: "text-emerald-300",
+    carbs: "text-cyan-300",
+    fat: "text-violet-300",
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-1 border-l border-white/[0.08] text-[10px] font-black text-zinc-200">
+      {Icon ? <Icon size={11} className={tones[tone]} strokeWidth={2.5} /> : null}
+      <span>{label} {value} g</span>
     </div>
   );
 }
@@ -1574,26 +1594,26 @@ function DraftFoodRow({
     );
 
   return (
-    <article className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-black/20 p-2">
+    <article className="flex items-center gap-2.5 rounded-xl border border-white/[0.10] bg-[#071018]/90 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.025)]">
 
       {image ? (
         <img
           src={image}
           alt=""
-          className="h-9 w-9 shrink-0 rounded-lg object-cover"
+          className="h-11 w-11 shrink-0 rounded-[10px] border border-white/10 object-cover"
         />
       ) : (
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-zinc-500">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-white/10 bg-white/[0.06] text-zinc-500">
           🍽️
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        <strong className="block truncate text-xs font-black text-white">
+        <strong className="block truncate text-[13px] font-black text-white">
           {draft.name}
         </strong>
 
-        <span className="mt-0.5 block text-[8px] font-bold text-zinc-500">
+        <span className="mt-1 block text-[9.5px] font-bold leading-snug text-zinc-400">
           {hasQuantity
             ? `${formatNumber(
                 nutrition.kcal,
@@ -1615,10 +1635,10 @@ function DraftFoodRow({
           type="button"
           disabled={disabled}
           onClick={onToggle}
-          className={`mt-1 rounded-full border px-1.5 py-0.5 text-[7px] font-black ${
+          className={`mt-1.5 rounded-full border px-2 py-0.5 text-[8px] font-black uppercase ${
             automatic
               ? "border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#FFE8A3]"
-              : "border-teal-300/30 bg-teal-300/10 text-teal-100"
+              : "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
           }`}
         >
           {automatic
@@ -1628,16 +1648,12 @@ function DraftFoodRow({
             : "FIJO"}
         </button>
 
-        {!canAuto ? (
-          <small className="ml-2 text-[9px] text-zinc-600">
-            Auto no disponible
-          </small>
-        ) : null}
+        {!canAuto ? <span className="sr-only">Cantidad automática no disponible</span> : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
 
-        <label className="flex items-center rounded-lg border border-white/10 bg-black/30 px-1.5">
+        <label className="flex h-8 items-center rounded-lg border border-white/10 bg-black/30 px-1.5">
           <input
             value={draft.quantity}
             inputMode="decimal"
@@ -1656,21 +1672,23 @@ function DraftFoodRow({
                 event.target.value
               )
             }
-            className="w-11 bg-transparent py-1.5 text-right text-[10px] font-black text-white outline-none"
+            className="w-11 bg-transparent py-1.5 text-right text-[12px] font-black text-white outline-none"
           />
 
-          <span className="ml-1 text-[8px] font-bold text-zinc-500">
+          <span className="ml-1 text-[9px] font-bold text-[#FFE8A3]">
             {draft.unit || "g"}
           </span>
+          {canAuto ? <ChevronDown size={11} className="ml-1 text-zinc-500" /> : null}
         </label>
 
         <button
           type="button"
           onClick={onRemove}
           disabled={disabled}
-          className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-400"
+          aria-label={`Eliminar ${draft.name}`}
+          className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-400 transition hover:border-rose-300/30 hover:text-rose-200"
         >
-          <X size={15} />
+          <Trash2 size={14} />
         </button>
       </div>
     </article>
@@ -1698,26 +1716,26 @@ function TrackedFoodRow({
     );
 
   return (
-    <article className="flex items-center gap-2 rounded-xl border border-emerald-300/12 bg-emerald-300/[0.035] p-2">
+    <article className="flex items-center gap-2.5 rounded-xl border border-white/[0.10] bg-[#071018]/90 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.025)]">
 
       {image ? (
         <img
           src={image}
           alt=""
-          className="h-9 w-9 shrink-0 rounded-lg object-cover"
+          className="h-11 w-11 shrink-0 rounded-[10px] border border-white/10 object-cover"
         />
       ) : (
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06]">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-white/10 bg-white/[0.06]">
           🍽️
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        <strong className="block truncate text-xs font-black text-white">
+        <strong className="block truncate text-[13px] font-black text-white">
           {trackingItemName(item)}
         </strong>
 
-        <span className="mt-0.5 block text-[8px] font-bold text-zinc-500">
+        <span className="mt-1 block text-[9.5px] font-bold leading-snug text-zinc-400">
           {formatNumber(
             totals.kcal,
             0
@@ -1744,13 +1762,13 @@ function TrackedFoodRow({
               step={trackingFoodRequiresWholeQuantity(item, trackingItemUnit(item)) ? "1" : "any"}
               disabled={updating}
               onChange={(event) => setQuantity(event.target.value)}
-              className="w-14 bg-transparent py-1 text-right text-[10px] font-black text-white outline-none"
+              className="w-14 bg-transparent py-1 text-right text-[12px] font-black text-white outline-none"
               aria-label={`Cantidad de ${trackingItemName(item)}`}
             />
-            <span className="ml-1 text-[8px] font-bold text-zinc-500">{trackingItemUnit(item)}</span>
+            <span className="ml-1 text-[9px] font-bold text-[#FFE8A3]">{trackingItemUnit(item)}</span>
           </label>
         ) : (
-          <small className="mt-0.5 block text-[8px] font-black text-emerald-300">
+          <small className="mt-1 block text-[9px] font-black text-emerald-300">
             {formatNumber(trackingItemQuantity(item), 1)} {trackingItemUnit(item)}
             {item?.quantitySource ? ` · ${item.quantitySource === "automatic" ? "AUTO" : "MANUAL"}` : ""}
           </small>
@@ -1793,9 +1811,10 @@ function TrackedFoodRow({
               setEditing(true);
             }}
             aria-label={`Editar cantidad de ${trackingItemName(item)}`}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-zinc-400"
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.08] bg-black/25 px-2 text-[11px] font-black text-zinc-100"
           >
-            <Pencil size={14} />
+            {formatNumber(trackingItemQuantity(item), 1)} {trackingItemUnit(item)}
+            <ChevronDown size={11} className="text-zinc-500" />
           </button>
           <button
             type="button"
@@ -1823,6 +1842,8 @@ function TargetFoodPicker({
   setSelectedFood,
   quantity,
   setQuantity,
+  quantityMode,
+  setQuantityMode,
   canAuto,
   onClose,
   onAdd,
@@ -1832,8 +1853,12 @@ function TargetFoodPicker({
     selectedFood?.unit ||
     "g";
 
-  const automatic =
-    String(quantity).trim() === "";
+  const quantitySelection = resolveTrackingFoodPickerQuantity({
+    mode: quantityMode,
+    quantity,
+    canAuto,
+  });
+  const automatic = quantitySelection.automatic;
 
   const wholeQuantity = selectedFood
     ? trackingFoodRequiresWholeQuantity(selectedFood, unit)
@@ -1845,13 +1870,24 @@ function TargetFoodPicker({
     : ["g", "gr", "gramos", "ml", "mililitros"].includes(normalizedUnit)
       ? 10
       : 1;
-  const defaultManualQuantity = wholeQuantity ? 1 : 100;
+  const defaultManualQuantity = selectedFood
+    ? defaultTrackingFoodManualQuantity(selectedFood, unit)
+    : 100;
+
+  function selectFoodAsManual(food) {
+    const nextUnit = food?.unidad || food?.unit || "g";
+    setSelectedFood(food);
+    setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
+    setQuantity(String(defaultTrackingFoodManualQuantity(food, nextUnit)));
+  }
 
   function enableManualQuantity() {
-    if (automatic) setQuantity(String(defaultManualQuantity));
+    setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
+    if (String(quantity).trim() === "") setQuantity(String(defaultManualQuantity));
   }
 
   function adjustQuantity(direction) {
+    setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
     const current = Number(quantity);
     const base = Number.isFinite(current) && current > 0
       ? current
@@ -1862,7 +1898,7 @@ function TargetFoodPicker({
   }
 
   let preview = null;
-  if (selectedFood && !automatic) {
+  if (selectedFood && !automatic && quantitySelection.hasQuantity) {
     try {
       preview = buildMenuItemSnapshot(selectedFood, Number(quantity), unit);
     } catch {
@@ -1883,7 +1919,7 @@ function TargetFoodPicker({
               <Target size={14} /> Por meta
             </span>
             <h3 id="target-food-picker-title" className="mt-2 text-[1.45rem] font-black leading-tight text-white">Agregar alimento</h3>
-            <p className="mt-1 text-[11px] font-bold leading-snug text-slate-400">Elegí un alimento y decidí si su cantidad será manual o automática.</p>
+            <p className="mt-1 text-[11px] font-bold leading-snug text-slate-400">La cantidad queda manual y fija por defecto. Podés cambiarla a automática.</p>
           </div>
 
           <button
@@ -1918,6 +1954,8 @@ function TargetFoodPicker({
               onChange={(event) => {
                 setSearch(event.target.value);
                 setSelectedFood(null);
+                setQuantity("");
+                setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
               }}
               placeholder="Buscar alimento"
               className="min-w-0 flex-1 bg-transparent text-base font-black text-white outline-none placeholder:text-zinc-600"
@@ -1944,7 +1982,7 @@ function TargetFoodPicker({
                     <button
                       type="button"
                       key={id}
-                      onClick={() => setSelectedFood(food)}
+                      onClick={() => selectFoodAsManual(food)}
                       className="group flex min-h-16 w-full items-center gap-3 border-b border-white/[0.06] px-3 py-2.5 text-left last:border-b-0 hover:bg-teal-300/[0.07] focus-visible:bg-teal-300/[0.07] focus-visible:outline-none"
                     >
                       <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-black/30">
@@ -1998,36 +2036,43 @@ function TargetFoodPicker({
                   <div className="min-w-0">
                     <span className="text-[9px] font-black uppercase tracking-[0.12em] text-teal-300">Alimento seleccionado</span>
                     <strong className="mt-0.5 block truncate text-sm font-black text-white">{selectedFood.nombre || selectedFood.name}</strong>
-                    <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-500">
+                    <span className="mt-1 block truncate text-[11px] font-bold text-slate-400">
                       {formatNumber(selectedFood.kcal, 1)} kcal · P {formatNumber(selectedFood.proteina ?? selectedFood.protein, 1)} · C {formatNumber(selectedFood.carbs, 1)} · G {formatNumber(selectedFood.grasas ?? selectedFood.fat, 1)}
                     </span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setSelectedFood(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-slate-300" aria-label="Cambiar alimento">
+                <button type="button" onClick={() => {
+                  setSelectedFood(null);
+                  setQuantity("");
+                  setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
+                }} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-slate-300" aria-label="Cambiar alimento">
                   <X size={15} />
                 </button>
               </div>
 
               <div className="mt-3">
-                <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Cantidad</span>
+                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Cantidad</span>
                 {automatic && canAuto ? (
                   <div className="flex min-h-11 items-center gap-2 rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-3 text-xs font-black text-[#FFE8A3]">
                     <Sparkles size={15} /> ZumaFit calculará la cantidad al completar el restante.
                   </div>
                 ) : (
-                  <div className="grid min-h-11 grid-cols-[42px_minmax(0,1fr)_42px] overflow-hidden rounded-xl border border-white/10 bg-[#050a0f]">
+                  <div className="grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] overflow-hidden rounded-xl border border-white/10 bg-[#050a0f] shadow-[inset_0_1px_0_rgba(255,255,255,.03)]">
                     <button type="button" onClick={() => adjustQuantity(-1)} className="grid place-items-center border-r border-white/10 text-slate-300" aria-label="Restar cantidad">
                       <Minus size={16} />
                     </button>
                     <span className="flex min-w-0 items-center">
                       <input
                         value={quantity}
-                        onChange={(event) => setQuantity(event.target.value)}
+                        onChange={(event) => {
+                          setQuantityMode(TRACKING_PICKER_QUANTITY_MANUAL);
+                          setQuantity(event.target.value);
+                        }}
                         inputMode="decimal"
-                        className="min-w-0 flex-1 bg-transparent px-2 text-center text-sm font-black text-white outline-none"
+                        className="min-w-0 flex-1 bg-transparent px-2 text-center text-base font-black text-white outline-none"
                         aria-label={`Cantidad de ${selectedFood.nombre || selectedFood.name}`}
                       />
-                      <span className="shrink-0 pr-3 text-xs font-black text-[#FFE8A3]">{unit}</span>
+                      <span className="shrink-0 pr-3 text-[13px] font-black text-[#FFE8A3]">{unit}</span>
                     </span>
                     <button type="button" onClick={() => adjustQuantity(1)} className="grid place-items-center border-l border-white/10 text-slate-300" aria-label="Sumar cantidad">
                       <Plus size={16} />
@@ -2037,7 +2082,7 @@ function TargetFoodPicker({
               </div>
 
               {preview ? (
-                <div className="mt-3 flex flex-wrap gap-1.5 text-[9px] font-black">
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-black">
                   <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[#FFD75E]">{formatNumber(preview.kcal, 1)} kcal</span>
                   <span className="rounded-full bg-white/[0.06] px-2 py-1 text-emerald-200">P {formatNumber(preview.proteina, 1)} g</span>
                   <span className="rounded-full bg-white/[0.06] px-2 py-1 text-cyan-200">C {formatNumber(preview.carbs, 1)} g</span>
@@ -2049,7 +2094,7 @@ function TargetFoodPicker({
                 <button
                   type="button"
                   onClick={enableManualQuantity}
-                  className={`flex min-h-11 items-center gap-3 rounded-xl border px-3 text-left text-xs font-black ${!automatic ? "border-teal-300/35 bg-teal-300/10 text-teal-100" : "border-white/10 bg-black/15 text-slate-300"}`}
+                  className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 text-left text-[13px] font-black ${!automatic ? "border-teal-300/35 bg-teal-300/10 text-teal-100" : "border-white/10 bg-black/15 text-slate-300"}`}
                   aria-pressed={!automatic}
                 >
                   <span className={`h-4 w-4 shrink-0 rounded-full border p-[3px] ${!automatic ? "border-teal-200" : "border-white/25"}`}>
@@ -2057,15 +2102,18 @@ function TargetFoodPicker({
                   </span>
                   <span>
                     <span className="block">Cantidad manual / fija</span>
-                    <small className="mt-0.5 block text-[9px] font-bold text-slate-500">Se conservará exactamente al calcular el restante.</small>
+                    <small className="mt-0.5 block text-[10px] font-bold text-slate-400">Se conservará exactamente al calcular el restante.</small>
                   </span>
                 </button>
 
                 {canAuto ? (
                   <button
                     type="button"
-                    onClick={() => setQuantity("")}
-                    className={`flex min-h-11 items-center gap-3 rounded-xl border px-3 text-left text-xs font-black ${automatic ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-black/15 text-slate-300"}`}
+                    onClick={() => {
+                      setQuantityMode(TRACKING_PICKER_QUANTITY_AUTOMATIC);
+                      setQuantity("");
+                    }}
+                    className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 text-left text-[13px] font-black ${automatic ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]" : "border-white/10 bg-black/15 text-slate-300"}`}
                     aria-pressed={automatic}
                   >
                     <span className={`h-4 w-4 shrink-0 rounded-full border p-[3px] ${automatic ? "border-[#FFE070]" : "border-white/25"}`}>
@@ -2073,7 +2121,7 @@ function TargetFoodPicker({
                     </span>
                     <span>
                       <span className="block">Cantidad automática</span>
-                      <small className="mt-0.5 block text-[9px] font-bold text-slate-500">ZumaFit propondrá la cantidad al completar la comida.</small>
+                      <small className="mt-0.5 block text-[10px] font-bold text-slate-400">ZumaFit propondrá la cantidad al completar la comida.</small>
                     </span>
                   </button>
                 ) : null}

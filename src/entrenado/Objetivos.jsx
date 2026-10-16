@@ -5,13 +5,18 @@ import {
   Apple,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
+  Copy,
+  Crown,
   Droplets,
   Dumbbell,
   Flame,
   Info,
   LoaderCircle,
   Lock,
+  Minus,
   Pencil,
+  Plus,
   RotateCcw,
   Save,
   Target,
@@ -22,20 +27,29 @@ import {
 import { clientAccessContextKey, clientPlanCapabilitiesKey } from "../clientPlans/clientPlanQueries.js";
 import { clientPlanLabel, normalizeClientPlan, planFromCapabilities } from "../clientPlans/clientPlanUtils.js";
 import { clientGoalsKey, fetchClientGoals, previewClientNutrition, updateClientGoals } from "../clientGoals/clientGoalsApi.js";
+import {
+  WEEKLY_MODE_AUTOMATIC,
+  WEEKLY_MODE_PER_DAY,
+  WEEKLY_MODE_TRAINING_REST,
+  WEEKLY_NUTRITION_DAYS,
+  adjustWeeklyDayDraftValue,
+  buildWeeklyGoalsPayload as buildWeeklyPayload,
+  canUseWeeklyMode,
+  copyWeeklyDayToTargets,
+  createWeeklyDayDrafts as buildDayDrafts,
+  restoreWeeklyDayToBase,
+  restoreWeeklyWeekToBase,
+  setWeeklyDayDraftValue,
+  weeklyBaseDraft,
+  weeklyDayVisualState,
+  weeklyGoalsPayloadSignature as weeklyPayloadSignature,
+} from "../clientGoals/weeklyNutritionGoals.js";
 import { queryKeys } from "../queryClient.js";
 import "./Objetivos.css";
 
 const EMPTY_OBJECT = {};
 
-const DAYS = [
-  { key: "monday", short: "Lun", label: "Lunes" },
-  { key: "tuesday", short: "Mar", label: "Martes" },
-  { key: "wednesday", short: "Mie", label: "Miercoles" },
-  { key: "thursday", short: "Jue", label: "Jueves" },
-  { key: "friday", short: "Vie", label: "Viernes" },
-  { key: "saturday", short: "Sab", label: "Sabado" },
-  { key: "sunday", short: "Dom", label: "Domingo" },
-];
+const DAYS = WEEKLY_NUTRITION_DAYS;
 
 const GOAL_TYPES = [
   { value: "ganar_masa", label: "Ganar masa muscular" },
@@ -334,41 +348,6 @@ function trainingFrequencyLabel(value = "") {
   return "Sin definir";
 }
 
-function buildDayDrafts(target) {
-  const base = draftFromTarget(target);
-  return DAYS.reduce((acc, day) => {
-    acc[day.key] = { ...base };
-    return acc;
-  }, {});
-}
-
-function buildWeeklyPayload(mode, dayDrafts, trainingDays) {
-  if (mode === "same_all_days") {
-    return { mode: "same_all_days", caloriesByDay: {}, macrosByDay: {}, trainingDays: [] };
-  }
-
-  const caloriesByDay = {};
-  const macrosByDay = {};
-  DAYS.forEach((day) => {
-    const values = normalizeDraft(dayDrafts[day.key] || {});
-    if (values.kcal !== null) caloriesByDay[day.key] = values.kcal;
-    if (values.p !== null || values.c !== null || values.g !== null) {
-      macrosByDay[day.key] = {
-        ...(values.p !== null ? { p: values.p } : {}),
-        ...(values.c !== null ? { c: values.c } : {}),
-        ...(values.g !== null ? { g: values.g } : {}),
-      };
-    }
-  });
-
-  return {
-    mode,
-    caloriesByDay,
-    macrosByDay,
-    trainingDays: mode === "training_rest" ? trainingDays : [],
-  };
-}
-
 function getPlan(data = {}) {
   const user = data.user || {};
   const accessContext = data.accessContext || {};
@@ -413,6 +392,9 @@ export default function Objetivos() {
   const queryClientHook = useQueryClient();
   const editButtonRef = useRef(null);
   const dialogRef = useRef(null);
+  const weeklyDialogRef = useRef(null);
+  const weeklyEditorDirtyRef = useRef(false);
+  const weeklyReturnFocusRef = useRef(null);
   const [activeTab, setActiveTab] = useState("nutrition");
   const [editNutrition, setEditNutrition] = useState(false);
   const [nutritionMode, setNutritionMode] = useState("recalculate");
@@ -425,8 +407,9 @@ export default function Objetivos() {
   const [weeklyMode, setWeeklyMode] = useState("same_all_days");
   const [dayDrafts, setDayDrafts] = useState({});
   const [trainingDays, setTrainingDays] = useState(TRAINING_DAYS_DEFAULT);
-  const [expandedDay, setExpandedDay] = useState("monday");
-  const [copyTargetDays, setCopyTargetDays] = useState([]);
+  const [weeklyEditor, setWeeklyEditor] = useState(null);
+  const [weeklyUpgradeOpen, setWeeklyUpgradeOpen] = useState(false);
+  const [weeklyDiscardConfirm, setWeeklyDiscardConfirm] = useState(false);
   const [confirmLastChange, setConfirmLastChange] = useState(false);
   const [status, setStatus] = useState(null);
   const [trainingDraft, setTrainingDraft] = useState({ type: "", approach: "" });
@@ -455,9 +438,18 @@ export default function Objetivos() {
   const nutritionLockedByCoach = nutritionAuthority === "coach" || target.source === "coach";
   const trainingLockedByCoach = trainingAuthority === "coach";
   const isFree = plan === "free";
-  const canUseWeeklyTargets = !!capabilities?.nutrition?.weeklyPlanning || plan === "pro" || plan === "vip";
+  const weeklyPlanningCapability = capabilities?.nutrition?.weeklyPlanning;
+  const canUseWeeklyTargets = weeklyPlanningCapability === true
+    || (weeklyPlanningCapability === undefined && (plan === "pro" || plan === "vip"));
   const changesLimit = goalsAccess.changesLimit;
   const changesRemaining = goalsAccess.changesRemaining;
+  const weeklyPlan = user?.menu?.weeklyPlan || EMPTY_OBJECT;
+  const storedWeeklyMode = weeklyPlan?.mode || WEEKLY_MODE_AUTOMATIC;
+  const effectiveStoredWeeklyMode = canUseWeeklyTargets ? storedWeeklyMode : WEEKLY_MODE_AUTOMATIC;
+  const storedTrainingDays = Array.isArray(weeklyPlan?.trainingDays) && weeklyPlan.trainingDays.length
+    ? weeklyPlan.trainingDays
+    : TRAINING_DAYS_DEFAULT;
+  const storedDayDrafts = useMemo(() => buildDayDrafts(target, weeklyPlan), [target, weeklyPlan]);
   const mismatch = energyMismatch(nutritionDraft);
   const nutritionDraftUnchanged = sameNutritionDraft(nutritionDraft, initialDraft);
   const profileUpdateChanged = recalculationStep === "update_data" && (
@@ -465,8 +457,6 @@ export default function Objetivos() {
     recalculationData.activity !== currentProfileData.activity ||
     recalculationData.goalType !== currentProfileData.goalType
   );
-  const nutritionUnchanged = nutritionDraftUnchanged && weeklyMode === "same_all_days" && !profileUpdateChanged;
-  const weeklyPlan = user?.menu?.weeklyPlan || {};
   const freeChangesBlocked = isFree && changesLimit !== null && changesRemaining <= 0;
   const canEditNutrition = !nutritionLockedByCoach && !freeChangesBlocked;
   const editorChangeText = nutritionLockedByCoach
@@ -487,14 +477,39 @@ export default function Objetivos() {
     }), { kcal: 0, p: 0, c: 0, g: 0 });
     return { total, average: { kcal: total.kcal / 7, p: total.p / 7, c: total.c / 7, g: total.g / 7 } };
   }, [dayDrafts, nutritionDraft, weeklyMode]);
+  const weeklyPageDirty = weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays))
+    !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+  const trainingPreviewDay = DAYS.find((day) => trainingDays.includes(day.key));
+  const restPreviewDay = DAYS.find((day) => !trainingDays.includes(day.key));
+  const trainingPreview = dayDrafts[trainingPreviewDay?.key] || weeklyBaseDraft(target);
+  const restPreview = dayDrafts[restPreviewDay?.key] || weeklyBaseDraft(target);
+  const weeklyEditorLocalDirty = Boolean(weeklyEditor) && weeklyPayloadSignature(
+    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays)
+  ) !== weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays));
+  const weeklyEditorSaveDirty = Boolean(weeklyEditor) && weeklyPayloadSignature(
+    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays)
+  ) !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+  weeklyEditorDirtyRef.current = weeklyEditorLocalDirty;
+  const weeklyEditorOpen = Boolean(weeklyEditor);
+  const weeklyEditorDay = DAYS.find((day) => day.key === weeklyEditor?.dayKey) || DAYS[0];
+  const weeklyEditorValues = weeklyEditor?.workingDayDrafts?.[weeklyEditorDay.key] || weeklyBaseDraft(target);
+  const weeklyEditorVisualState = weeklyDayVisualState({
+    mode: weeklyMode,
+    dayKey: weeklyEditorDay.key,
+    value: weeklyEditorValues,
+    base: weeklyBaseDraft(target),
+    trainingDays,
+  });
 
   const mutation = useMutation({
     mutationFn: updateClientGoals,
-    onSuccess: async (updatedUser) => {
-      setStatus({ type: "success", text: "Objetivo actualizado correctamente." });
+    onSuccess: async (updatedUser, variables) => {
+      setStatus({ type: "success", text: variables?.weeklyPlan ? "Distribucion semanal actualizada." : "Objetivo actualizado correctamente." });
       setConfirmLastChange(false);
       setShowDiscardConfirm(false);
       setEditNutrition(false);
+      setWeeklyEditor(null);
+      setWeeklyDiscardConfirm(false);
       window.setTimeout(() => editButtonRef.current?.focus(), 0);
       queryClientHook.setQueryData(clientGoalsKey, (old) => ({ ...(old || {}), user: updatedUser || old?.user }));
       await Promise.all([
@@ -515,10 +530,10 @@ export default function Objetivos() {
 
   useEffect(() => {
     setNutritionDraft(initialDraft);
-    setDayDrafts(buildDayDrafts(target));
-    setWeeklyMode(weeklyPlan?.mode || "same_all_days");
-    setTrainingDays(Array.isArray(weeklyPlan?.trainingDays) && weeklyPlan.trainingDays.length ? weeklyPlan.trainingDays : TRAINING_DAYS_DEFAULT);
-  }, [initialDraft, target, weeklyPlan?.mode, weeklyPlan?.trainingDays]);
+    setDayDrafts(storedDayDrafts);
+    setWeeklyMode(effectiveStoredWeeklyMode);
+    setTrainingDays(storedTrainingDays);
+  }, [effectiveStoredWeeklyMode, initialDraft, storedDayDrafts, storedTrainingDays]);
 
   useEffect(() => {
     setRecalculationData(currentProfileData);
@@ -639,6 +654,52 @@ export default function Objetivos() {
     };
   }, [editNutrition, closeNutritionEditor]);
 
+  useEffect(() => {
+    if (!weeklyEditorOpen && !weeklyUpgradeOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusableSelector = "button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])";
+    const focusTimer = window.setTimeout(() => {
+      const preferred = weeklyDialogRef.current?.querySelector("input")
+        || weeklyDialogRef.current?.querySelector(focusableSelector);
+      preferred?.focus();
+    }, 0);
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (weeklyUpgradeOpen) {
+          setWeeklyUpgradeOpen(false);
+          return;
+        }
+        if (weeklyEditorDirtyRef.current) setWeeklyDiscardConfirm(true);
+        else setWeeklyEditor(null);
+        return;
+      }
+      if (event.key !== "Tab" || !weeklyDialogRef.current) return;
+      const focusables = Array.from(weeklyDialogRef.current.querySelectorAll(focusableSelector))
+        .filter((node) => node.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      window.setTimeout(() => {
+        if (weeklyReturnFocusRef.current?.isConnected) weeklyReturnFocusRef.current.focus();
+      }, 0);
+    };
+  }, [weeklyEditorOpen, weeklyUpgradeOpen]);
+
   
 
   function openNutritionEditor() {
@@ -735,7 +796,13 @@ export default function Objetivos() {
     });
   }
 
-  function saveNutrition(confirmed = false) {
+  function saveNutrition(confirmed = false, overrides = {}) {
+    const effectiveWeeklyMode = overrides.weeklyMode || weeklyMode;
+    const effectiveDayDrafts = overrides.dayDrafts || dayDrafts;
+    const effectiveTrainingDays = overrides.trainingDays || trainingDays;
+    const effectiveWeeklyUnchanged = weeklyPayloadSignature(buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays))
+      === weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+    const effectiveNutritionUnchanged = nutritionDraftUnchanged && effectiveWeeklyUnchanged && !profileUpdateChanged;
     setStatus(null);
     if (nutritionLockedByCoach) {
       setStatus({ type: "error", text: "Tu objetivo nutricional esta gestionado por tu coach." });
@@ -745,11 +812,18 @@ export default function Objetivos() {
       setStatus({ type: "error", text: "Revisa valores vacios, negativos o fuera de rango seguro." });
       return;
     }
+    if (effectiveWeeklyMode !== WEEKLY_MODE_AUTOMATIC) {
+      const invalidDay = DAYS.find((day) => !isNutritionDraftValid(effectiveDayDrafts[day.key] || {}));
+      if (invalidDay) {
+        setStatus({ type: "error", text: `Revisa las calorias y macros de ${invalidDay.label}. Todos los dias deben tener valores validos.` });
+        return;
+      }
+    }
     if (mismatch?.severe) {
       setStatus({ type: "error", text: "Las calorias no coinciden con los macros. Ajusta antes de guardar." });
       return;
     }
-    if (nutritionUnchanged) {
+    if (effectiveNutritionUnchanged) {
       setStatus({ type: "info", text: "No hay cambios nuevos para guardar." });
       return;
     }
@@ -785,8 +859,8 @@ export default function Objetivos() {
         payload.goal = { type: recalculationData.goalType || null };
       }
     }
-    if (!isFree && canUseWeeklyTargets) {
-      payload.weeklyPlan = buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays);
+    if (canUseWeeklyTargets) {
+      payload.weeklyPlan = buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays);
     }
     mutation.mutate(payload);
   }
@@ -826,22 +900,132 @@ export default function Objetivos() {
     });
   }
 
-  function setDayDraftValue(dayKey, field, value) {
-    setDayDrafts((current) => ({ ...current, [dayKey]: { ...(current[dayKey] || {}), [field]: value } }));
-  }
-
-  function copyExpandedDay(targetKeys) {
-    const source = { ...(dayDrafts[expandedDay] || nutritionDraft) };
-    setDayDrafts((current) => {
-      const next = { ...current };
-      targetKeys.filter((key) => key !== expandedDay).forEach((key) => { next[key] = { ...source }; });
-      return next;
-    });
+  function requestWeeklyMode(mode) {
+    if (!canUseWeeklyMode(mode, canUseWeeklyTargets)) {
+      weeklyReturnFocusRef.current = document.activeElement;
+      setWeeklyUpgradeOpen(true);
+      return;
+    }
+    if (!canEditNutrition) {
+      setStatus({ type: "error", text: nutritionLockedByCoach ? "Tu objetivo nutricional esta gestionado por tu coach." : "No tenes cambios disponibles en este periodo." });
+      return;
+    }
+    setStatus(null);
+    setWeeklyMode(mode);
   }
 
   function restoreWeeklyBase() {
-    setDayDrafts(buildDayDrafts({ kcal: maybeNumber(nutritionDraft.kcal), macros: { p: maybeNumber(nutritionDraft.p), c: maybeNumber(nutritionDraft.c), g: maybeNumber(nutritionDraft.g) } }));
-    setCopyTargetDays([]);
+    if (!canEditNutrition) return;
+    setStatus(null);
+    setDayDrafts(restoreWeeklyWeekToBase(weeklyBaseDraft(target)));
+  }
+
+  function openWeeklyEditor(dayKey = DAYS[0].key) {
+    if (!canUseWeeklyTargets) {
+      setWeeklyUpgradeOpen(true);
+      return;
+    }
+    if (!canEditNutrition) {
+      setStatus({ type: "error", text: nutritionLockedByCoach ? "Tu objetivo nutricional esta gestionado por tu coach." : "No tenes cambios disponibles en este periodo." });
+      return;
+    }
+    const safeDayKey = DAYS.some((day) => day.key === dayKey) ? dayKey : DAYS[0].key;
+    const sourceIsTraining = trainingDays.includes(safeDayKey);
+    const initialSelection = weeklyMode === WEEKLY_MODE_TRAINING_REST
+      ? DAYS.filter((day) => trainingDays.includes(day.key) === sourceIsTraining).map((day) => day.key)
+      : [safeDayKey];
+    weeklyReturnFocusRef.current = document.activeElement;
+    setStatus(null);
+    setWeeklyDiscardConfirm(false);
+    setWeeklyEditor({
+      dayKey: safeDayKey,
+      workingDayDrafts: Object.fromEntries(DAYS.map((day) => [day.key, { ...(dayDrafts[day.key] || weeklyBaseDraft(target)) }])),
+      selectedDays: initialSelection,
+      feedback: "",
+      error: "",
+    });
+  }
+
+  function updateWeeklyEditorField(field, value) {
+    setWeeklyEditor((current) => current ? {
+      ...current,
+      workingDayDrafts: setWeeklyDayDraftValue(current.workingDayDrafts, current.dayKey, field, value),
+      feedback: "",
+      error: "",
+    } : current);
+  }
+
+  function adjustWeeklyEditorField(field, delta) {
+    setWeeklyEditor((current) => current ? {
+      ...current,
+      workingDayDrafts: adjustWeeklyDayDraftValue(current.workingDayDrafts, current.dayKey, field, delta),
+      feedback: "",
+      error: "",
+    } : current);
+  }
+
+  function toggleWeeklyEditorDay(dayKey) {
+    setWeeklyEditor((current) => {
+      if (!current) return current;
+      const selected = new Set(current.selectedDays || []);
+      if (selected.has(dayKey)) selected.delete(dayKey);
+      else selected.add(dayKey);
+      return { ...current, selectedDays: [...selected], feedback: "", error: "" };
+    });
+  }
+
+  function applyWeeklyEditorToSelected() {
+    setWeeklyEditor((current) => {
+      if (!current) return current;
+      if (!current.selectedDays?.length) return { ...current, error: "Selecciona al menos un dia.", feedback: "" };
+      return {
+        ...current,
+        workingDayDrafts: copyWeeklyDayToTargets(current.workingDayDrafts, current.dayKey, current.selectedDays),
+        feedback: `Valores aplicados a ${current.selectedDays.length} dia${current.selectedDays.length === 1 ? "" : "s"}.`,
+        error: "",
+      };
+    });
+  }
+
+  function copyWeeklyEditorToAll() {
+    setWeeklyEditor((current) => current ? {
+      ...current,
+      workingDayDrafts: copyWeeklyDayToTargets(current.workingDayDrafts, current.dayKey, DAYS.map((day) => day.key)),
+      feedback: "Valores copiados a toda la semana.",
+      error: "",
+    } : current);
+  }
+
+  function restoreWeeklyEditorDay() {
+    setWeeklyEditor((current) => current ? {
+      ...current,
+      workingDayDrafts: restoreWeeklyDayToBase(current.workingDayDrafts, current.dayKey, weeklyBaseDraft(target)),
+      feedback: "Dia restaurado al objetivo base.",
+      error: "",
+    } : current);
+  }
+
+  function requestCloseWeeklyEditor() {
+    if (weeklyEditorLocalDirty) {
+      setWeeklyDiscardConfirm(true);
+      return;
+    }
+    setWeeklyEditor(null);
+  }
+
+  function saveWeeklyEditor() {
+    if (!weeklyEditor) return;
+    const invalidDay = DAYS.find((day) => !isNutritionDraftValid(weeklyEditor.workingDayDrafts[day.key] || {}));
+    if (invalidDay) {
+      setWeeklyEditor((current) => current ? {
+        ...current,
+        dayKey: invalidDay.key,
+        error: `Revisa las calorias y macros de ${invalidDay.label}.`,
+        feedback: "",
+      } : current);
+      return;
+    }
+    saveNutrition(false, { dayDrafts: weeklyEditor.workingDayDrafts });
   }
 
   if (goalsQuery.isLoading) {
@@ -964,91 +1148,125 @@ export default function Objetivos() {
             </Notice>
           ) : null}
 
-          <section className={`og-weekly ${canUseWeeklyTargets && !isFree ? "" : "locked"}`}>
+          <section className="og-weekly">
             <div className="og-weeklyTop">
               <div>
-                <span className="og-kicker">Objetivos por dia</span>
-                <h3>Distribucion semanal</h3>
-                <p>Configura distintas calorias y macros por dia o diferencia entrenamiento y descanso.</p>
+                <span className="og-kicker"><CalendarDays size={15} /> Objetivos por dia</span>
+                <div className="og-weeklyTitleLine">
+                  <h3>Distribucion semanal</h3>
+                  <span className="og-proBadge"><Crown size={13} /> PRO</span>
+                </div>
+                <p>Personaliza tus calorias y macros por dia sin cambiar la logica nutricional del menu.</p>
               </div>
-              {canUseWeeklyTargets && !isFree ? <CalendarDays size={24} /> : <Lock size={24} />}
             </div>
 
-            {canUseWeeklyTargets && !isFree ? (
+            <div className="og-weeklyModeList" role="radiogroup" aria-label="Modo de distribucion semanal">
+              {[
+                { value: WEEKLY_MODE_AUTOMATIC, title: "Automatico", text: "Mismo objetivo todos los dias", advanced: false },
+                { value: WEEKLY_MODE_PER_DAY, title: "Personalizar por dia", text: "Define distintas calorias y macros para cada dia", advanced: true },
+                { value: WEEKLY_MODE_TRAINING_REST, title: "Entrenamiento y descanso", text: "Diferencia los objetivos segun entrenamiento o descanso", advanced: true },
+              ].map((option) => {
+                const locked = option.advanced && !canUseWeeklyTargets;
+                const active = weeklyMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={`og-weeklyModeCard ${active ? "active" : ""} ${locked ? "locked" : ""}`}
+                    onClick={() => requestWeeklyMode(option.value)}
+                  >
+                    <span className="og-weeklyRadio" aria-hidden="true"><i /></span>
+                    <span className="og-weeklyModeCopy"><strong>{option.title}</strong><small>{option.text}</small></span>
+                    {option.advanced ? <span className="og-weeklyModePro">{locked ? <Lock size={12} /> : <Crown size={12} />} PRO</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            {weeklyMode === WEEKLY_MODE_AUTOMATIC ? (
               <>
-                <div className="og-modeGrid weekly" role="radiogroup" aria-label="Distribucion semanal">
-                  {[
-                    ["same_all_days", "Mismo objetivo todos los dias"],
-                    ["per_day", "Personalizar por dia"],
-                    ["training_rest", "Entrenamiento y descanso"],
-                  ].map(([value, label]) => (
-                    <label key={value} className={weeklyMode === value ? "active" : ""}>
-                      <input type="radio" checked={weeklyMode === value} onChange={() => setWeeklyMode(value)} />
-                      {label}
-                    </label>
-                  ))}
+                <div className="og-weeklyAutomatic">
+                  <span className="og-weeklyAutomaticIcon"><Target size={19} /></span>
+                  <span><strong>Mismo objetivo durante toda la semana</strong><small>{formatNumber(target.kcal, " kcal")} · P {formatNumber(target.macros.p)} · C {formatNumber(target.macros.c)} · G {formatNumber(target.macros.g)}</small></span>
                 </div>
-
-                {weeklyMode === "training_rest" ? (
-                  <div className="og-trainingDays">
-                    {DAYS.map((day) => (
-                      <button
-                        type="button"
-                        key={day.key}
-                        className={trainingDays.includes(day.key) ? "active" : ""}
-                        onClick={() => {
-                          setTrainingDays((current) =>
-                            current.includes(day.key)
-                              ? current.filter((item) => item !== day.key)
-                              : [...current, day.key]
-                          );
-                        }}
-                      >
-                        {day.short}
-                      </button>
-                    ))}
-                    <button type="button" onClick={() => applyTrainingRestPreset("training", asNumber(nutritionDraft.kcal) + 150)}>
-                      Subir entreno +150 kcal
+                {canUseWeeklyTargets && canEditNutrition && weeklyPageDirty ? (
+                  <div className="og-weeklyAutomaticActions">
+                    <button type="button" className="og-save" disabled={mutation.isPending} onClick={() => saveNutrition(false)}>
+                      {mutation.isPending ? <LoaderCircle size={17} className="og-spin" /> : <Save size={17} />}
+                      {mutation.isPending ? "Guardando..." : "Guardar modo automatico"}
                     </button>
-                    <button type="button" onClick={() => applyTrainingRestPreset("rest", Math.max(800, asNumber(nutritionDraft.kcal) - 150))}>
-                      Bajar descanso -150 kcal
-                    </button>
-                  </div>
-                ) : null}
-
-                {weeklyMode !== "same_all_days" ? (
-                  <div className="og-compactWeek">
-                    <div className="og-weekSummary">
-                      <span>Promedio diario <strong>{formatNumber(weeklySummary.average.kcal, " kcal")}</strong></span>
-                      <span>Semana <strong>{formatNumber(weeklySummary.total.kcal, " kcal")}</strong></span>
-                      <span>P/C/G promedio <strong>{round(weeklySummary.average.p)} / {round(weeklySummary.average.c)} / {round(weeklySummary.average.g)} g</strong></span>
-                      <button type="button" onClick={restoreWeeklyBase}><RotateCcw size={14} /> Restaurar semana</button>
-                    </div>
-                    {DAYS.map((day) => {
-                      const values = dayDrafts[day.key] || nutritionDraft;
-                      const badge = weeklyMode === "training_rest" ? (trainingDays.includes(day.key) ? "Entrenamiento" : "Descanso") : sameNutritionDraft(values, nutritionDraft) ? "Base" : "Personalizado";
-                      const open = expandedDay === day.key;
-                      return <article className={`og-compactDay ${open ? "open" : ""}`} key={day.key}>
-                        <button type="button" className="og-compactDayHead" onClick={() => setExpandedDay(open ? "" : day.key)} aria-expanded={open}>
-                          <strong>{day.label}</strong><span className={`og-dayBadge ${badge.toLowerCase()}`}>{badge}</span><small>{values.kcal || "-"} kcal · P {values.p || "-"} · C {values.c || "-"} · G {values.g || "-"}</small><ChevronDown size={16} />
-                        </button>
-                        {open ? <div className="og-compactDayBody">
-                          <div className="og-dayFields">{["kcal", "p", "c", "g"].map((key) => <label key={key}><span>{key === "kcal" ? "kcal" : key.toUpperCase()}</span><input type="number" min="0" value={values[key] || ""} onChange={(event) => setDayDraftValue(day.key, key, event.target.value)} /></label>)}</div>
-                          <div className="og-copyDays">{DAYS.filter((entry) => entry.key !== day.key).map((entry) => <label key={entry.key}><input type="checkbox" checked={copyTargetDays.includes(entry.key)} onChange={(event) => setCopyTargetDays((current) => event.target.checked ? [...new Set([...current, entry.key])] : current.filter((key) => key !== entry.key))} />{entry.short}</label>)}</div>
-                          <div className="og-dayActions"><button type="button" onClick={() => setDayDrafts((current) => ({ ...current, [day.key]: { ...nutritionDraft } }))}>Usar base</button><button type="button" onClick={() => copyExpandedDay(DAYS.map((entry) => entry.key))}>Copiar a todos</button><button type="button" onClick={() => copyExpandedDay(copyTargetDays)} disabled={!copyTargetDays.length}>Copiar seleccionados</button></div>
-                        </div> : null}
-                      </article>;
-                    })}
                   </div>
                 ) : null}
               </>
-            ) : (
-              <div className="og-lockedCopy">
-                <strong>Disponible en Pro</strong>
-                <p>Free usa un unico objetivo diario para lunes a domingo. La configuracion avanzada se conserva si venis de Pro, pero no queda editable.</p>
-                <a href="/app/planes">Ver beneficios Pro</a>
-              </div>
-            )}
+            ) : null}
+
+            {weeklyMode === WEEKLY_MODE_TRAINING_REST && canUseWeeklyTargets ? (
+              <section className="og-trainingRestPanel">
+                <div className="og-trainingRestCards">
+                  <article className="training"><span>Entrenamiento</span><strong>{formatNumber(trainingPreview.kcal, " kcal")}</strong><small>P {trainingPreview.p || "-"} · C {trainingPreview.c || "-"} · G {trainingPreview.g || "-"}</small><button type="button" disabled={!canEditNutrition || !trainingPreviewDay} onClick={() => openWeeklyEditor(trainingPreviewDay?.key)}>Editar objetivo</button></article>
+                  <article className="rest"><span>Descanso</span><strong>{formatNumber(restPreview.kcal, " kcal")}</strong><small>P {restPreview.p || "-"} · C {restPreview.c || "-"} · G {restPreview.g || "-"}</small><button type="button" disabled={!canEditNutrition || !restPreviewDay} onClick={() => openWeeklyEditor(restPreviewDay?.key)}>Editar objetivo</button></article>
+                </div>
+                <div className="og-trainingDayPicker" role="group" aria-label="Dias de entrenamiento">
+                  <span>Dias de entrenamiento</span>
+                  <div>{DAYS.map((day) => {
+                    const active = trainingDays.includes(day.key);
+                    const wouldRemoveLastGroup = (active && trainingDays.length <= 1) || (!active && trainingDays.length >= DAYS.length - 1);
+                    return <button type="button" key={day.key} disabled={!canEditNutrition || wouldRemoveLastGroup} className={active ? "active" : ""} aria-pressed={active} onClick={() => setTrainingDays((current) => current.includes(day.key) ? current.filter((item) => item !== day.key) : [...current, day.key])}>{day.short}</button>;
+                  })}</div>
+                </div>
+                <div className="og-trainingPresetActions">
+                  <button type="button" disabled={!canEditNutrition} onClick={() => applyTrainingRestPreset("training", asNumber(nutritionDraft.kcal) + 150)}>Entreno +150 kcal</button>
+                  <button type="button" disabled={!canEditNutrition} onClick={() => applyTrainingRestPreset("rest", Math.max(800, asNumber(nutritionDraft.kcal) - 150))}>Descanso -150 kcal</button>
+                </div>
+              </section>
+            ) : null}
+
+            {weeklyMode !== WEEKLY_MODE_AUTOMATIC && canUseWeeklyTargets ? (
+              <section className="og-weekTargets">
+                <header className="og-weekTargetsHead">
+                  <div className="og-weekTargetsHeading">
+                    <span>Tus objetivos de la semana</span>
+                    <small>Resumen de la distribucion actual</small>
+                  </div>
+                  <div className="og-weekSummaryStats" aria-label="Resumen semanal">
+                    <span><small>Promedio diario</small><strong>{formatNumber(weeklySummary.average.kcal)}</strong><em>kcal</em></span>
+                    <span><small>Total semanal</small><strong>{formatNumber(weeklySummary.total.kcal)}</strong><em>kcal</em></span>
+                  </div>
+                  <button type="button" disabled={!canEditNutrition} onClick={() => openWeeklyEditor(DAYS[0].key)}><Pencil size={15} /> Editar dias</button>
+                </header>
+                <div className="og-weekDayList">
+                  {DAYS.map((day) => {
+                    const values = dayDrafts[day.key] || weeklyBaseDraft(target);
+                    const visualState = weeklyDayVisualState({ mode: weeklyMode, dayKey: day.key, value: values, base: weeklyBaseDraft(target), trainingDays });
+                    return (
+                      <button type="button" disabled={!canEditNutrition} className={`og-weekDayRow day-${day.key}`} key={day.key} onClick={() => openWeeklyEditor(day.key)} aria-label={`Editar objetivos de ${day.label}`}>
+                        <strong>{day.label}</strong>
+                        <span className={`og-dayBadge ${visualState.key}`}>{visualState.label}</span>
+                        <b><span>{formatNumber(values.kcal)}</span><small>kcal</small></b>
+                        <span className="og-weekMacro protein"><i /><em>P</em><strong>{formatNumber(values.p)}</strong><small>g</small></span>
+                        <span className="og-weekMacro carbs"><i /><em>C</em><strong>{formatNumber(values.c)}</strong><small>g</small></span>
+                        <span className="og-weekMacro fats"><i /><em>G</em><strong>{formatNumber(values.g)}</strong><small>g</small></span>
+                        <ChevronRight size={18} aria-hidden="true" />
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="og-weeklyFooterActions">
+                  <button type="button" className="og-weeklyRestore" disabled={!canEditNutrition} onClick={restoreWeeklyBase}><RotateCcw size={15} /> Restaurar semana</button>
+                  {canEditNutrition ? <button type="button" className="og-save" disabled={mutation.isPending || !weeklyPageDirty} onClick={() => saveNutrition(false)}>{mutation.isPending ? <LoaderCircle size={17} className="og-spin" /> : <Save size={17} />}{mutation.isPending ? "Guardando..." : "Guardar distribucion semanal"}</button> : null}
+                </div>
+              </section>
+            ) : null}
+
+            {!canUseWeeklyTargets ? (
+              <aside className="og-weeklyProNotice">
+                <span><Crown size={19} /></span>
+                <div><strong>Personalizacion semanal · PRO</strong><p>En el plan gratuito usas el mismo objetivo todos los dias. Con PRO podes personalizar calorias y macros por dia.</p></div>
+                <a href="/app/planes">Ver PRO</a>
+              </aside>
+            ) : null}
           </section>
         </section>
       ) : (
@@ -1343,6 +1561,133 @@ export default function Objetivos() {
                 </button>
               ) : null}
             </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {weeklyEditor ? (
+        <div
+          className="og-weeklyEditorOverlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) requestCloseWeeklyEditor();
+          }}
+        >
+          <section
+            ref={weeklyDialogRef}
+            className="og-weeklyEditor"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="weekly-editor-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="og-sheetHandle" aria-hidden="true" />
+            <header className="og-weeklyEditorHead">
+              <div>
+                <span className="og-kicker">Distribucion semanal</span>
+                <h2 id="weekly-editor-title">Editar dia</h2>
+                <p>Ajusta los macros de {weeklyEditorDay.label}; las calorias se recalculan automaticamente con la formula 4/4/9.</p>
+              </div>
+              <div className="og-weeklyEditorHeadActions">
+                <span className={`og-dayBadge ${weeklyEditorVisualState.key}`}>{weeklyEditorDay.label} · {weeklyEditorVisualState.label}</span>
+                <button type="button" aria-label="Cerrar editor semanal" onClick={requestCloseWeeklyEditor}><X size={20} /></button>
+              </div>
+            </header>
+
+            <div className="og-weeklyEditorFields">
+              {[
+                { field: "kcal", label: "Calorias", unit: "kcal", Icon: Flame, step: 50, min: 800, max: 7000, tone: "calories" },
+                { field: "p", label: "Proteina", unit: "g", Icon: Dumbbell, step: 5, min: 0, max: 500, tone: "protein" },
+                { field: "c", label: "Carbohidratos", unit: "g", Icon: Wheat, step: 5, min: 0, max: 900, tone: "carbs" },
+                { field: "g", label: "Grasas", unit: "g", Icon: Droplets, step: 5, min: 0, max: 400, tone: "fats" },
+              ].map(({ field, label, unit, Icon: fieldIcon, step, min, max, tone }) => (
+                <label className={`og-weeklyEditorField ${tone}`} key={field}>
+                  <span className="og-weeklyEditorFieldLabel">{React.createElement(fieldIcon, { size: 17 })} {label}</span>
+                  <span className="og-weeklyEditorInput">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={weeklyEditorValues[field] ?? ""}
+                      aria-label={`${label} de ${weeklyEditorDay.label}`}
+                      onChange={(event) => updateWeeklyEditorField(field, event.target.value)}
+                    />
+                    <small>{unit}</small>
+                  </span>
+                  <span className="og-weeklyEditorStepper">
+                    <button type="button" aria-label={`Restar ${step} ${unit} a ${label}`} onClick={() => adjustWeeklyEditorField(field, -step)}><Minus size={18} /></button>
+                    <button type="button" aria-label={`Sumar ${step} ${unit} a ${label}`} onClick={() => adjustWeeklyEditorField(field, step)}><Plus size={18} /></button>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <section className="og-weeklyApplyPanel" aria-labelledby="weekly-apply-title">
+              <div>
+                <strong id="weekly-apply-title">Aplicar tambien en</strong>
+                <small>Selecciona los dias que deben recibir los valores de {weeklyEditorDay.label}.</small>
+              </div>
+              <div className="og-weeklyApplyDays" role="group" aria-label="Dias seleccionados">
+                {DAYS.map((day) => {
+                  const selected = weeklyEditor.selectedDays?.includes(day.key);
+                  return (
+                    <button
+                      type="button"
+                      key={day.key}
+                      className={selected ? "active" : ""}
+                      aria-pressed={selected}
+                      onClick={() => toggleWeeklyEditorDay(day.key)}
+                    >
+                      {selected ? <CheckCircle2 size={14} /> : null}{day.short}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="og-weeklyEditorTools">
+                <button type="button" onClick={applyWeeklyEditorToSelected}><Copy size={16} /> Aplicar a seleccionados</button>
+                <button type="button" onClick={copyWeeklyEditorToAll}><Copy size={16} /> Copiar a todos</button>
+                <button type="button" className="danger" onClick={restoreWeeklyEditorDay}><RotateCcw size={16} /> Restaurar base</button>
+              </div>
+            </section>
+
+            {weeklyEditor.error ? <Notice type="error">{weeklyEditor.error}</Notice> : null}
+            {weeklyEditor.feedback ? <Notice type="info">{weeklyEditor.feedback}</Notice> : null}
+            {status && status.type !== "success" ? <Notice type={status.type}>{status.text}</Notice> : null}
+            {weeklyDiscardConfirm ? (
+              <Notice type="warn">
+                <strong>Tenes cambios sin guardar.</strong>
+                <br />Si cerras ahora, se descarta todo el borrador semanal.
+                <div className="og-inlineActions">
+                  <button type="button" onClick={() => { setWeeklyDiscardConfirm(false); setWeeklyEditor(null); }}>Descartar cambios</button>
+                  <button type="button" onClick={() => setWeeklyDiscardConfirm(false)}>Seguir editando</button>
+                </div>
+              </Notice>
+            ) : null}
+
+            <footer className="og-weeklyEditorFooter">
+              <button type="button" className="og-secondary" onClick={requestCloseWeeklyEditor}>Cancelar</button>
+              <button type="button" className="og-save" disabled={mutation.isPending || !weeklyEditorSaveDirty} onClick={saveWeeklyEditor}>
+                {mutation.isPending ? <LoaderCircle size={17} className="og-spin" /> : <Save size={17} />}
+                {mutation.isPending ? "Guardando..." : "Guardar distribucion semanal"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {weeklyUpgradeOpen ? (
+        <div className="og-weeklyEditorOverlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setWeeklyUpgradeOpen(false); }}>
+          <section ref={weeklyDialogRef} className="og-weeklyUpgradeDialog" role="dialog" aria-modal="true" aria-labelledby="weekly-upgrade-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="og-dialogClose" aria-label="Cerrar" onClick={() => setWeeklyUpgradeOpen(false)}><X size={20} /></button>
+            <span className="og-weeklyUpgradeIcon"><Crown size={28} /></span>
+            <span className="og-kicker">Funcion PRO</span>
+            <h2 id="weekly-upgrade-title">Personaliza cada dia de tu semana</h2>
+            <p>Con PRO podes definir calorias y macros distintos por dia o separar tus jornadas de entrenamiento y descanso.</p>
+            <div className="og-weeklyUpgradeActions">
+              <button type="button" className="og-secondary" onClick={() => setWeeklyUpgradeOpen(false)}>Ahora no</button>
+              <a className="og-save" href="/app/planes"><Crown size={16} /> Ver beneficios PRO</a>
+            </div>
           </section>
         </div>
       ) : null}

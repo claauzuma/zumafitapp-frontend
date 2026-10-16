@@ -39,6 +39,7 @@ const MEAL_TYPES = [
   { value: "almuerzo", label: "Almuerzo" },
   { value: "merienda", label: "Merienda" },
   { value: "cena", label: "Cena" },
+  { value: "picoteo", label: "Picoteo" },
   { value: "snack", label: "Snack" },
 ];
 

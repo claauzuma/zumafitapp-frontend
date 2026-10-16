@@ -20,6 +20,8 @@ export const TRACKING_QUANTITY_MODE_OPTIONS = [
   },
 ];
 export const TRACKING_QUANTITY_MODES = TRACKING_QUANTITY_MODE_OPTIONS.map(({ value }) => value);
+export const TRACKING_PICKER_QUANTITY_MANUAL = "manual";
+export const TRACKING_PICKER_QUANTITY_AUTOMATIC = "automatic";
 const TRACKING_DRAFT_STORAGE_PREFIX = "zumafit:tracking-quantity-drafts:v1";
 const TRACKING_DRAFT_STORAGE_VERSION = 1;
 
@@ -53,6 +55,22 @@ export function normalizeTrackingQuantityMode(
   return isTrackingQuantityMode(fallback)
     ? String(fallback)
     : TRACKING_QUANTITY_MODE_CONSTRAINED;
+}
+
+export function resolveTrackingFoodPickerQuantity({
+  mode = TRACKING_PICKER_QUANTITY_MANUAL,
+  quantity = "",
+  canAuto = false,
+} = {}) {
+  const automatic = canAuto && mode === TRACKING_PICKER_QUANTITY_AUTOMATIC;
+  const rawQuantity = String(quantity ?? "").trim();
+  return {
+    mode: automatic ? TRACKING_PICKER_QUANTITY_AUTOMATIC : TRACKING_PICKER_QUANTITY_MANUAL,
+    automatic,
+    rawQuantity,
+    hasQuantity: !automatic && rawQuantity !== "",
+    parsedQuantity: !automatic && rawQuantity !== "" ? Number(rawQuantity) : null,
+  };
 }
 
 function draftQuantity(value) {
@@ -98,6 +116,10 @@ export function trackingFoodExplicitlyAllowsFractionalQuantity(food = {}) {
 export function trackingFoodRequiresWholeQuantity(food = {}, unit = foodUnit(food)) {
   if (TRACKING_CONTINUOUS_QUANTITY_UNITS.has(normalizedQuantityUnit(unit))) return false;
   return !trackingFoodExplicitlyAllowsFractionalQuantity(food);
+}
+
+export function defaultTrackingFoodManualQuantity(food = {}, unit = foodUnit(food)) {
+  return trackingFoodRequiresWholeQuantity(food, unit) ? 1 : 100;
 }
 
 export function isTrackingFoodQuantityPhysicallyValid(

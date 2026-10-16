@@ -6,6 +6,7 @@ import {
   buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
   createTrackingRegisteredReplacementDraft,
+  defaultTrackingFoodManualQuantity,
   hasTrackingDraftQuantity,
   hasTrackingDraftPhysicallyValidQuantity,
   isTrackingFoodQuantityPhysicallyValid,
@@ -39,6 +40,9 @@ import {
   trackingFoodExplicitlyAllowsFractionalQuantity,
   trackingFoodRequiresWholeQuantity,
   restoreTrackingMealDrafts,
+  resolveTrackingFoodPickerQuantity,
+  TRACKING_PICKER_QUANTITY_AUTOMATIC,
+  TRACKING_PICKER_QUANTITY_MANUAL,
   updateTrackingDraftsQuantityMode,
   updateTrackingFoodDraftQuantity,
   withoutTrackingMealDrafts,
@@ -47,6 +51,38 @@ import {
 const rice = { id: "rice", nombre: "Arroz", unidad: "g", kcal: 340, proteina: 7, carbs: 76, grasas: 1 };
 const chicken = { id: "chicken", nombre: "Pollo", unidad: "g", kcal: 165, proteina: 31, carbs: 0, grasas: 3.6 };
 const banana = { id: "banana", nombre: "Banana", unidad: "g", kcal: 89, proteina: 1.1, carbs: 23, grasas: 0.3 };
+
+test("un alimento nuevo propone una cantidad manual razonable segun su unidad", () => {
+  assert.equal(defaultTrackingFoodManualQuantity(rice), 100);
+  assert.equal(defaultTrackingFoodManualQuantity({ nombre: "Leche", unidad: "ml" }), 100);
+  assert.equal(defaultTrackingFoodManualQuantity({ nombre: "Huevo", unidad: "Unid" }), 1);
+});
+
+test("vaciar el input manual no activa la cantidad automatica", () => {
+  const whileEditing = resolveTrackingFoodPickerQuantity({
+    mode: TRACKING_PICKER_QUANTITY_MANUAL,
+    quantity: "",
+    canAuto: true,
+  });
+  assert.equal(whileEditing.automatic, false);
+  assert.equal(whileEditing.hasQuantity, false);
+
+  const completed = resolveTrackingFoodPickerQuantity({
+    mode: TRACKING_PICKER_QUANTITY_MANUAL,
+    quantity: "80",
+    canAuto: true,
+  });
+  assert.equal(completed.automatic, false);
+  assert.equal(completed.hasQuantity, true);
+  assert.equal(completed.parsedQuantity, 80);
+
+  const explicitAutomatic = resolveTrackingFoodPickerQuantity({
+    mode: TRACKING_PICKER_QUANTITY_AUTOMATIC,
+    quantity: "",
+    canAuto: true,
+  });
+  assert.equal(explicitAutomatic.automatic, true);
+});
 
 test("separa cantidades fijas y alimentos pendientes para el motor existente", () => {
   const drafts = [

@@ -1,5 +1,6 @@
 // src/onboarding_v2/screens/BasicsWeight.jsx
 import React, { useEffect, useRef, useState } from "react";
+import { Scale } from "lucide-react";
 
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
@@ -58,7 +59,11 @@ export default function BasicsWeight({ form, setForm }) {
       <h2 className="ob2-h2">¿Cuál es tu peso?</h2>
       <p className="ob2-p">En kilogramos (kg).</p>
 
-      <div className="ob2-card">
+      <div className="ob2-card ob2-metric-card ob2-metric-card--weight">
+        <div className="ob2-metric-caption">
+          <span><Scale size={17} strokeWidth={1.8} /> Punto de partida</span>
+          <span>Podés ajustarlo cuando quieras</span>
+        </div>
         {/* ✅ “Número grande” clickeable y editable inline */}
         {!editing ? (
           <button
@@ -69,7 +74,7 @@ export default function BasicsWeight({ form, setForm }) {
           >
             <div className="ob2-bigvalue">
               {v.toFixed(1)}{" "}
-              <span style={{ color: "#bdbdbd", fontSize: 16, fontWeight: 900 }}>kg</span>
+              <span className="ob2-bigvalue-unit">kg</span>
             </div>
           </button>
         ) : (
@@ -94,7 +99,7 @@ export default function BasicsWeight({ form, setForm }) {
               }}
               style={{
                 fontSize: 34,
-                fontWeight: 1000,
+                fontWeight: 720,
                 textAlign: "center",
               }}
               placeholder="Ej: 75,0"

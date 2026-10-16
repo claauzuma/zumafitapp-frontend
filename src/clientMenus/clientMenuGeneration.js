@@ -642,6 +642,7 @@ async function generateFromFoods(spec, foods = [], strategy = "selected_only", {
         tipoComida: spec.type,
         target: spec.target,
         generationSource: MEAL_NUTRITION_POLICY,
+        compositionOrigin: "auto",
         classification: nutritionResult.classification,
         recommended: nutritionResult.recommended,
         usable: nutritionResult.usable,

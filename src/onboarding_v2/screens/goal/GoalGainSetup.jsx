@@ -71,7 +71,7 @@ export default function GoalGainSetup({
       </div>
 
       <div className="ob2-card" style={{ marginTop: 10, borderColor: "rgba(245,215,110,.18)", background: "linear-gradient(180deg, rgba(245,215,110,.08), rgba(0,0,0,.15))" }}>
-        <div style={{ fontWeight: 1000 }}>Presupuesto inicial (aprox.)</div>
+        <div style={{ fontWeight: 700 }}>Presupuesto inicial (aprox.)</div>
         {calculationError ? <div className="ob2-error" role="alert">{calculationError}</div> : null}
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
           <Row k="Mantenimiento" v={calculationLoading ? "Calculando…" : `${maintenanceKcal ?? "—"} kcal`} />
@@ -131,7 +131,7 @@ function Row({ k, v, strong }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
       <div style={{ color: "#bdbdbd", fontSize: 13 }}>{k}</div>
-      <div style={{ fontWeight: strong ? 1000 : 800, color: strong ? "#f5d98a" : "#eaeaea" }}>{v}</div>
+      <div style={{ fontWeight: strong ? 720 : 620, color: strong ? "#f5d98a" : "#eaeaea" }}>{v}</div>
     </div>
   );
 }

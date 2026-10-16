@@ -174,12 +174,24 @@ export function buildGeneratedMenuActivationPayload(preview = {}, target = null)
     error.code = "MENU_PREVIEW_NO_SOLUTION";
     throw error;
   }
+  const physicalMeals = (Array.isArray(preview?.comidas) ? preview.comidas : []).filter((meal) => {
+    const items = Array.isArray(meal?.items)
+      ? meal.items
+      : Array.isArray(meal?.foods) ? meal.foods : [];
+    return items.some((item) => Number(item?.cantidad ?? item?.quantity) > 0);
+  });
+  if (!physicalMeals.length) {
+    const error = new Error("No hay comidas físicas para guardar. Generá alimentos antes de usar este menú.");
+    error.code = "MENU_EMPTY_PREVIEW";
+    throw error;
+  }
   const clean = { ...preview };
   delete clean.focusName;
   delete clean.isActiveOwnMenu;
   const selectedTarget = target || clean.menuTarget || {};
   const payload = {
     ...clean,
+    source: clean.source || "autonomous",
     activate: true,
     estrategiaObjetivo: "custom",
     kcalObjetivo: number(selectedTarget.kcal),

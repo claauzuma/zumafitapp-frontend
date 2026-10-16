@@ -83,16 +83,15 @@ test("slot vacío o sólo con meta no cuenta; una cantidad física sí cuenta", 
   assert.equal(mealHasPlannedContent({ items: [{ alimentoId: "arroz", cantidad: 100 }] }), true);
 });
 
-test("cantidad total incompatible no borra comidas y falla con detalle", () => {
+test("más composiciones manuales que la cantidad configurada se preservan sin borrar extras", () => {
   const plannedMeals = ["a", "b", "c", "d"].map((id, index) => generatedMeal(
     index === 0 ? "desayuno" : `slot-${index}`,
     { kcal: 400, proteina: 30, carbs: 40, grasas: 10 },
     id
   ));
-  assert.throws(
-    () => buildDayMealSlots({ mealTypes: MEAL_TYPES[3], plannedMeals }),
-    (error) => error?.code === "MENU_MEAL_COUNT_CONFLICT" && error.details.fixedMealCount === 4
-  );
+  const slots = buildDayMealSlots({ mealTypes: MEAL_TYPES[3], plannedMeals });
+  assert.equal(slots.length, 4);
+  assert.equal(slots.filter((slot) => slot.fixedMeal).length, 4);
   assert.equal(plannedMeals.length, 4);
 });
 
@@ -126,7 +125,7 @@ test("0/1/2/3/4 existentes sobre 4 generan exactamente el faltante sin mutarlas"
   }
 });
 
-test("una meta personal reservada ocupa su slot y el solver recibe sólo el restante diario", async () => {
+test("una meta personal vacía es una especificación y genera su composición exacta", async () => {
   const reserved = {
     id: "menu_target_almuerzo_manual",
     type: "almuerzo",
@@ -146,12 +145,118 @@ test("una meta personal reservada ocupa su slot y el solver recibe sólo el rest
     },
   });
 
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls.map((call) => call.type), ["desayuno", "cena"]);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map((call) => call.type), ["desayuno", "almuerzo", "cena"]);
+  assert.deepEqual(calls[1].target, reserved.target);
   assert.deepEqual(result.reservedTotals, reserved.target);
   assert.deepEqual(result.totals, { kcal: 2000, proteina: 150, carbs: 210, grasas: 62 });
-  assert.equal(result.trace.find((entry) => entry.status === "reserved_target")?.mealId, reserved.id);
-  assert.equal(result.meals.length, 2);
+  assert.equal(result.trace.find((entry) => entry.status === "generated_for_target")?.mealId, reserved.id);
+  assert.equal(result.meals.length, 3);
+  assert.equal(result.meals[1].targetMealId, reserved.id);
+  assert.equal(result.meals[1].compositionOrigin, "auto");
+});
+
+test("una meta parcial conserva consumo y genera solamente el restante", async () => {
+  const target = { kcal: 700, proteina: 50, carbs: 80, grasas: 20 };
+  const consumed = { kcal: 300, proteina: 25, carbs: 30, grasas: 10 };
+  const requests = [];
+  const result = await generateSequentialMenuDay({
+    dailyTarget: target,
+    mealTypes: ["almuerzo"],
+    reservedMealTargets: [{
+      id: "menu_target_almuerzo_manual",
+      type: "almuerzo",
+      target,
+      consumed,
+      remainingTarget: { kcal: 400, proteina: 25, carbs: 50, grasas: 10 },
+      targetOrigin: "manual",
+    }],
+    generateMeal: async ({ slot, target: requested }) => {
+      requests.push(requested);
+      return generatedMeal(slot.type, requested, "-remaining");
+    },
+  });
+
+  assert.deepEqual(requests, [{ kcal: 400, proteina: 25, carbs: 50, grasas: 10 }]);
+  assert.deepEqual(result.totals, target);
+  assert.equal(result.meals[0].targetMealId, "menu_target_almuerzo_manual");
+});
+
+test("una meta Hecha cuenta su consumo y no genera planificación nueva", async () => {
+  let calls = 0;
+  const consumed = { kcal: 492, proteina: 41.4, carbs: 60.4, grasas: 5.4 };
+  const result = await generateSequentialMenuDay({
+    dailyTarget: consumed,
+    mealTypes: ["desayuno"],
+    reservedMealTargets: [{
+      id: "menu_target_desayuno",
+      type: "desayuno",
+      target: { kcal: 500, proteina: 42, carbs: 61, grasas: 6 },
+      consumed,
+      completed: true,
+    }],
+    generateMeal: async () => {
+      calls += 1;
+      return generatedMeal("desayuno", consumed);
+    },
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(result.meals.length, 0);
+  assert.deepEqual(result.totals, consumed);
+  assert.equal(result.trace[0].status, "consumed_target");
+});
+
+test("composición manual asociada a una meta gana y no se completa silenciosamente", async () => {
+  const manual = generatedMeal(
+    "almuerzo",
+    { kcal: 450, proteina: 35, carbs: 50, grasas: 12 },
+    "-manual"
+  );
+  manual.compositionOrigin = "manual";
+  let calls = 0;
+  const result = await generateSequentialMenuDay({
+    dailyTarget: { kcal: 450, proteina: 35, carbs: 50, grasas: 12 },
+    mealTypes: ["almuerzo"],
+    plannedMeals: [manual],
+    reservedMealTargets: [{
+      id: "menu_target_almuerzo",
+      type: "almuerzo",
+      target: { kcal: 700, proteina: 50, carbs: 80, grasas: 20 },
+    }],
+    generateMeal: async () => {
+      calls += 1;
+      return generatedMeal("almuerzo", {});
+    },
+  });
+
+  assert.equal(calls, 0);
+  assert.strictEqual(result.meals[0], manual);
+  assert.deepEqual(result.totals, { kcal: 450, proteina: 35, carbs: 50, grasas: 12 });
+});
+
+test("una composición Hecha se conserva pero el presupuesto usa su consumo real", async () => {
+  const done = generatedMeal(
+    "desayuno",
+    { kcal: 510, proteina: 42, carbs: 62, grasas: 6 },
+    "-done"
+  );
+  done.consumptionAccountingTotals = { kcal: 492, proteina: 41.4, carbs: 60.4, grasas: 5.4 };
+  const requests = [];
+  const result = await generateSequentialMenuDay({
+    dailyTarget: { kcal: 1200, proteina: 90, carbs: 140, grasas: 35 },
+    mealTypes: ["desayuno", "cena"],
+    plannedMeals: [done],
+    generateMeal: async ({ slot, target }) => {
+      requests.push(target);
+      return generatedMeal(slot.type, target, "-pending");
+    },
+  });
+
+  assert.strictEqual(result.meals[0], done);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0], { kcal: 708, proteina: 48.6, carbs: 79.6, grasas: 29.6 });
+  assert.deepEqual(result.totals, { kcal: 1200, proteina: 90, carbs: 140, grasas: 35 });
 });
 
 test("los alimentos ya registrados forman una base diaria y el solver cubre sólo kcal y macros restantes", async () => {

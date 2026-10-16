@@ -212,6 +212,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
       <OnboardingLayout
         title="Objetivo"
         subtitle="Definí tu meta"
+        theme="goal"
         progressPct={67}
         onBack={() => nav("/app/onboarding", { replace: true, state: { backToBasics: true } })}
         footer={null}
@@ -250,6 +251,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
       <OnboardingLayout
         title="Programa"
         subtitle="Últimos detalles"
+        theme="program"
         progressPct={100}
         onBack={() => nav("/app/onboarding/goal", { replace: true })}
         footer={null}
@@ -275,6 +277,7 @@ export default function OnboardingWizard({ startAt = "basics" }) {
     <OnboardingLayout
       title={screen.title}
       subtitle={screen.subtitle}
+      theme={screen.key}
       progressPct={progressPct}
       onBack={back}
       footer={

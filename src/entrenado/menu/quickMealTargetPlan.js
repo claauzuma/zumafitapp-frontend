@@ -1,5 +1,6 @@
 import { plannedTargetWithFreeCalories } from "../../clientMenus/clientMenuGeneration.js";
 import { buildDayDistribution } from "../../clientMenus/clientMenuDayPlanner.js";
+import { isMealTargetCalorieComplete } from "./mealTargetCompletion.js";
 
 const MEAL_LABELS = {
   desayuno: "Desayuno",
@@ -12,6 +13,14 @@ const MEAL_LABELS = {
   post_entreno: "Post-entreno",
 };
 
+export const PERSONAL_MEAL_TARGET_ORIGIN = Object.freeze({
+  AUTO: "auto",
+  MANUAL: "manual",
+  COACH: "coach",
+});
+
+const PERSONAL_MEAL_TARGET_ORIGINS = new Set(Object.values(PERSONAL_MEAL_TARGET_ORIGIN));
+
 const MACRO_KEYS = ["proteina", "carbs", "grasas"];
 const KCAL_PER_GRAM = { proteina: 4, carbs: 4, grasas: 9 };
 const FALLBACK_CALORIE_SHARES = { proteina: 0.3, carbs: 0.4, grasas: 0.3 };
@@ -22,6 +31,16 @@ export const MANUAL_MEAL_TARGET_OVERAGE_TOLERANCE = Object.freeze({
   carbs: 5,
   grasas: 5,
 });
+
+// Las calorías de cada comida se muestran redondeadas a enteros, mientras que
+// la distribución conserva un decimal. Este margen evita bloquear un plan por
+// esa diferencia visual sin admitir un exceso nutricional real.
+export const PERSONAL_MEAL_TARGET_TOTAL_ROUNDING_TOLERANCE_KCAL = 0.5;
+
+export function personalMealTargetTotalFitsBudget(totalKcal, budgetKcal) {
+  return number(totalKcal)
+    <= number(budgetKcal) + PERSONAL_MEAL_TARGET_TOTAL_ROUNDING_TOLERANCE_KCAL;
+}
 
 /**
  * Bandas exclusivas del perfil Por meta. Mantienen el reparto reconociblemente
@@ -108,6 +127,76 @@ function normalizedTarget(value = {}) {
     carbs: rounded(value?.carbs ?? value?.c),
     grasas: rounded(value?.grasas ?? value?.g),
   };
+}
+
+/**
+ * Los targets creados por el generador histórico terminan en fecha + índice.
+ * Los creados por "Planificar otra" usaban un sufijo aleatorio. La inferencia
+ * sólo mantiene compatibilidad; todos los writes nuevos persisten targetOrigin.
+ */
+export function personalMealTargetOrigin(meal = {}) {
+  const explicit = String(meal?.targetOrigin || meal?.metaOrigin || "").trim().toLowerCase();
+  if (PERSONAL_MEAL_TARGET_ORIGINS.has(explicit)) return explicit;
+  if (meal?.manualTarget === true || meal?.targetEdited === true) {
+    return PERSONAL_MEAL_TARGET_ORIGIN.MANUAL;
+  }
+  const id = String(meal?.mealId || meal?.id || "");
+  if (/_manual(?:_|$)/i.test(id)) return PERSONAL_MEAL_TARGET_ORIGIN.MANUAL;
+  if (/_20\d{6}_\d+$/i.test(id) || /^menu_target_[a-z0-9_]+_\d+$/i.test(id)) {
+    return PERSONAL_MEAL_TARGET_ORIGIN.AUTO;
+  }
+  // Antes de persistir el origen, "Planificar otra" creaba IDs aleatorios,
+  // mientras el generador usaba fecha + índice. Ante un legacy ambiguo
+  // protegemos la intención del usuario y lo tratamos como manual.
+  return PERSONAL_MEAL_TARGET_ORIGIN.MANUAL;
+}
+
+export function personalMealTargetCanRegenerate(meal = {}, trackingDay = null) {
+  const id = String(meal?.id || meal?.mealId || "");
+  const items = Array.isArray(trackingDay?.meals?.[id]) ? trackingDay.meals[id] : [];
+  return personalMealTargetOrigin(meal) === PERSONAL_MEAL_TARGET_ORIGIN.AUTO
+    && meal?.confirmed !== true
+    && meal?.metaConfirmed !== true
+    && meal?.targetLocked !== true
+    && items.length === 0;
+}
+
+export function targetBelowConsumed(target = {}, consumed = {}, tolerance = 0.000001) {
+  const next = {
+    kcal: number(target?.kcal),
+    proteina: number(target?.proteina ?? target?.p),
+    carbs: number(target?.carbs ?? target?.c),
+    grasas: number(target?.grasas ?? target?.g),
+  };
+  const actual = {
+    kcal: number(consumed?.kcal),
+    proteina: number(consumed?.proteina ?? consumed?.p),
+    carbs: number(consumed?.carbs ?? consumed?.c),
+    grasas: number(consumed?.grasas ?? consumed?.g),
+  };
+  return ["kcal", ...MACRO_KEYS]
+    .filter((key) => next[key] + tolerance < actual[key]);
+}
+
+export function assertPersonalMealTargetNotBelowConsumed(target = {}, consumed = {}) {
+  const below = targetBelowConsumed(target, consumed);
+  if (!below.length) return true;
+  const labels = {
+    kcal: "calorías",
+    proteina: "proteína",
+    carbs: "carbohidratos",
+    grasas: "grasas",
+  };
+  const actual = {
+    kcal: number(consumed?.kcal),
+    proteina: number(consumed?.proteina ?? consumed?.p),
+    carbs: number(consumed?.carbs ?? consumed?.c),
+    grasas: number(consumed?.grasas ?? consumed?.g),
+  };
+  const detail = below
+    .map((key) => `${labels[key]} ${actual[key]}${key === "kcal" ? " kcal" : " g"}`)
+    .join(", ");
+  throw new Error(`Ya consumiste ${detail}. La meta no puede quedar por debajo de lo registrado.`);
 }
 
 function trackingItemTarget(item = {}) {
@@ -249,6 +338,11 @@ function targetHasDifference(value = {}, tolerance = 0.05) {
   return ["kcal", ...MACRO_KEYS].some((key) => Math.abs(number(value?.[key])) > tolerance);
 }
 
+function targetForecastHasDifference(value = {}) {
+  return Math.abs(number(value?.kcal)) > PERSONAL_MEAL_TARGET_TOTAL_ROUNDING_TOLERANCE_KCAL
+    || MACRO_KEYS.some((key) => Math.abs(number(value?.[key])) > 0.05);
+}
+
 /**
  * Revisión exclusivamente informativa para Tracking manual. Registrar lo que
  * la persona realmente comió nunca se bloquea: estos umbrales sólo evitan
@@ -338,10 +432,14 @@ export function personalMealTargetDayReconciliation({
     !trackedIds.has(String(meal.id)) && !inProgressIds.has(String(meal.id))
   ));
   const eligibleMeals = pendingMeals.filter((meal) => (
-    meal.confirmed !== true && !explicitlyPreservedIds.has(String(meal.id))
+    meal.confirmed !== true
+    && personalMealTargetOrigin(meal) === PERSONAL_MEAL_TARGET_ORIGIN.AUTO
+    && !explicitlyPreservedIds.has(String(meal.id))
   ));
   const fixedMeals = pendingMeals.filter((meal) => (
-    meal.confirmed === true || explicitlyPreservedIds.has(String(meal.id))
+    meal.confirmed === true
+    || personalMealTargetOrigin(meal) !== PERSONAL_MEAL_TARGET_ORIGIN.AUTO
+    || explicitlyPreservedIds.has(String(meal.id))
   ));
   const trackedActual = trackedMeals.reduce(
     (totals, meal) => addNormalizedTargets(
@@ -471,7 +569,12 @@ export function personalMealTargetDayReconciliation({
         ...Object.values(trackingItemTarget(item)),
       ]),
     ]),
-    meals: meals.map((meal) => [meal.id, meal.confirmed === true, ...Object.values(normalizedTarget(meal.target))]),
+    meals: meals.map((meal) => [
+      meal.id,
+      meal.confirmed === true,
+      personalMealTargetOrigin(meal),
+      ...Object.values(normalizedTarget(meal.target)),
+    ]),
     preservedMealIds: [...explicitlyPreservedIds].sort(),
   });
 
@@ -503,8 +606,8 @@ export function personalMealTargetDayReconciliation({
       .filter((mealId) => explicitlyPreservedIds.has(mealId)),
     canAdjust: eligibleMeals.length > 0 && adjustmentChanges,
     adjustmentChanges,
-    hasDifference: targetHasDifference(difference),
-    hasResidual: targetHasDifference(residual),
+    hasDifference: targetForecastHasDifference(difference),
+    hasResidual: targetForecastHasDifference(residual),
     signature,
   };
 }
@@ -539,6 +642,222 @@ export function personalMealTargetPlannedIds(row = null) {
   });
 
   return [...ids];
+}
+
+export function personalMealTargetConfirmationReview(target = {}, composition = {}) {
+  const original = normalizedTarget(target);
+  const actual = normalizedTarget(composition);
+  const proteinDifference = rounded(actual.proteina - original.proteina);
+  const proteinStatus = proteinDifference < -0.05
+    ? "below"
+    : proteinDifference > 0.05
+      ? "exceeded"
+      : "reached";
+  return {
+    target: original,
+    composition: actual,
+    difference: targetDifference(original, actual),
+    proteinDifference,
+    proteinStatus,
+  };
+}
+
+export const PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION = "manual_consumption";
+
+function manualConsumptionConfirmation(value = null) {
+  if (value?.mode !== PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION) return null;
+  return {
+    mode: PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION,
+    previousMeta: normalizedTarget(value.previousMeta || value.previousTarget || {}),
+    consumedMeta: normalizedTarget(value.consumedMeta || value.confirmedTarget || {}),
+  };
+}
+
+/** Devuelve exclusivamente los FoodLogs reales asociados a la meta. */
+export function personalMealTargetConsumedComposition(trackingDay = null, mealId = "") {
+  const id = String(mealId || "").trim();
+  const config = (Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [])
+    .find((meal) => mealConfigId(meal) === id);
+  const sourceIds = [...new Set([
+    id,
+    ...(Array.isArray(config?.consumptionSourceMealIds) ? config.consumptionSourceMealIds : []),
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const items = sourceIds.flatMap((sourceId) => (
+    Array.isArray(trackingDay?.meals?.[sourceId]) ? trackingDay.meals[sourceId] : []
+  ));
+  const totals = items.reduce(
+    (sum, item) => addNormalizedTargets(sum, trackingItemTarget(item)),
+    normalizedTarget()
+  );
+  return { mealId: id, sourceMealIds: sourceIds, items, totals };
+}
+
+/**
+ * El estado automático es derivado y nunca pisa un cierre manual. Esto evita
+ * que la meta ajustada al consumo se vuelva un falso automático al recargar.
+ */
+export function personalMealTargetCompletionState({
+  target = {},
+  consumed = {},
+  trackedItemsCount = 0,
+  metaConfirmed = false,
+  confirmation = null,
+} = {}) {
+  const manualConfirmation = metaConfirmed === true
+    ? manualConsumptionConfirmation(confirmation)
+    : null;
+  const manualStale = Boolean(manualConfirmation) && targetHasDifference(
+    targetDifference(target, consumed)
+  );
+  const automatic = !manualConfirmation && isMealTargetCalorieComplete({
+    targetKcal: normalizedTarget(target).kcal,
+    consumedKcal: normalizedTarget(consumed).kcal,
+    trackedItemsCount,
+  });
+  return {
+    automatic,
+    manual: Boolean(manualConfirmation),
+    manualStale,
+    completed: automatic || (Boolean(manualConfirmation) && !manualStale),
+    canManuallyConfirm: trackedItemsCount > 0 && !automatic && !manualConfirmation,
+    canReopen: Boolean(manualConfirmation),
+    confirmation: manualConfirmation,
+  };
+}
+
+/**
+ * Cierra manualmente una comida usando su consumo real. Los FoodLogs no se
+ * mutan: sólo cambia la meta activa y el reconciliador central reparte la
+ * diferencia entre las comidas que siguen disponibles.
+ */
+export function confirmPersonalMealTargetConsumption({
+  trackingDay = null,
+  mealId = "",
+  dailyTarget = {},
+  freeCalories = 0,
+  minimumMealKcal = 100,
+  completedMealIds = [],
+  preservedMealIds = [],
+} = {}) {
+  const id = String(mealId || "").trim();
+  const configs = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
+  const currentConfig = configs.find((config) => mealConfigId(config) === id);
+  if (!currentConfig) throw new Error("No encontramos la comida que querés confirmar.");
+  if (!id.startsWith("menu_target_")) throw new Error("Esta comida no es una meta personal editable.");
+
+  const composition = personalMealTargetConsumedComposition(trackingDay, id);
+  if (!composition.items.length) {
+    throw new Error("Registrá al menos un alimento consumido antes de confirmar.");
+  }
+  const originalTarget = normalizedTarget(mealConfigTarget(currentConfig));
+  const existingConfirmation = manualConsumptionConfirmation(currentConfig?.metaConfirmation);
+  if (currentConfig?.metaConfirmed === true && existingConfirmation) {
+    return {
+      alreadyConfirmed: true,
+      mealId: id,
+      originalTarget: existingConfirmation.previousMeta,
+      confirmedTarget: normalizedTarget(mealConfigTarget(currentConfig)),
+      mealsConfig: configs,
+      reconciliation: null,
+      residual: normalizedTarget(),
+    };
+  }
+  if (isMealTargetCalorieComplete({
+    targetKcal: originalTarget.kcal,
+    consumedKcal: composition.totals.kcal,
+    trackedItemsCount: composition.items.length,
+  })) {
+    throw new Error("Esta comida ya queda marcada como hecha automáticamente.");
+  }
+
+  const confirmedTarget = normalizedTarget(composition.totals);
+  const closedConfigs = configs.map((config) => (
+    mealConfigId(config) === id
+      ? {
+          ...config,
+          meta: confirmedTarget,
+          metaConfirmed: true,
+          metaConfirmation: {
+            mode: PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION,
+            previousMeta: originalTarget,
+            consumedMeta: confirmedTarget,
+          },
+        }
+      : config
+  ));
+  const closedDay = { ...trackingDay, mealsConfig: closedConfigs };
+  const reconciliation = personalMealTargetDayReconciliation({
+    dailyTarget,
+    trackingDay: closedDay,
+    freeCalories,
+    minimumMealKcal,
+    completedMealIds,
+    preservedMealIds: [...new Set([...(preservedMealIds || []), id])],
+  });
+  const mealsConfig = reconciliation
+    ? personalMealTargetConfigsFromReconciliation(closedDay, reconciliation)
+    : closedConfigs;
+
+  return {
+    alreadyConfirmed: false,
+    mealId: id,
+    originalTarget,
+    confirmedTarget,
+    difference: targetDifference(originalTarget, confirmedTarget),
+    mealsConfig,
+    reconciliation,
+    residual: normalizedTarget(reconciliation?.residual),
+  };
+}
+
+/** Restaura la meta previa de un cierre manual y vuelve a reconciliar el día. */
+export function reopenPersonalMealTargetConsumption({
+  trackingDay = null,
+  mealId = "",
+  dailyTarget = {},
+  freeCalories = 0,
+  minimumMealKcal = 100,
+  completedMealIds = [],
+  preservedMealIds = [],
+} = {}) {
+  const id = String(mealId || "").trim();
+  const configs = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
+  const currentConfig = configs.find((config) => mealConfigId(config) === id);
+  const confirmation = manualConsumptionConfirmation(currentConfig?.metaConfirmation);
+  if (!currentConfig || currentConfig?.metaConfirmed !== true || !confirmation) {
+    throw new Error("Esta comida no tiene un cierre manual para reabrir.");
+  }
+
+  const reopenedConfigs = configs.map((config) => (
+    mealConfigId(config) === id
+      ? {
+          ...config,
+          meta: confirmation.previousMeta,
+          metaConfirmed: false,
+          metaConfirmation: null,
+        }
+      : config
+  ));
+  const reopenedDay = { ...trackingDay, mealsConfig: reopenedConfigs };
+  const reconciliation = personalMealTargetDayReconciliation({
+    dailyTarget,
+    trackingDay: reopenedDay,
+    freeCalories,
+    minimumMealKcal,
+    completedMealIds,
+    preservedMealIds: [...new Set([...(preservedMealIds || []), id])],
+  });
+  const mealsConfig = reconciliation
+    ? personalMealTargetConfigsFromReconciliation(reopenedDay, reconciliation)
+    : reopenedConfigs;
+
+  return {
+    mealId: id,
+    restoredTarget: confirmation.previousMeta,
+    mealsConfig,
+    reconciliation,
+    residual: normalizedTarget(reconciliation?.residual),
+  };
 }
 
 export function personalMealTargetConfigsFromReconciliation(
@@ -602,8 +921,90 @@ export function personalMealTargetFlexiblePlan(dailyTarget = {}, meals = [], {
 export function editablePersonalMealTargetIds(meals = []) {
   return [...new Set((Array.isArray(meals) ? meals : []).flatMap((meal) => {
     const id = String(meal?.id || meal?.mealId || "");
-    return meal?.personalTargetOnly === true && id.startsWith("menu_target_") ? [id] : [];
+    return meal?.personalTargetOnly === true
+      && meal?.targetLocked !== true
+      && personalMealTargetOrigin(meal) !== PERSONAL_MEAL_TARGET_ORIGIN.COACH
+      && id
+      ? [id]
+      : [];
   }))];
+}
+
+/**
+ * Quita solamente la configuración de una meta personal. El mapa `meals`
+ * queda intacto para que cualquier FoodLog siga siendo consumo real asociado
+ * al mismo mealId. Al quitar la configuración también desaparecen el cierre y
+ * su previousMeta, que viven dentro de esa misma meta.
+ */
+export function removePersonalMealTargetFromTrackingDay(trackingDay = null, mealId = "", {
+  redistribute = false,
+} = {}) {
+  const id = String(mealId || "").trim();
+  const targets = personalMealTargetsFromTrackingDay(trackingDay);
+  const target = targets
+    .find((meal) => String(meal.id) === id);
+  if (!target) throw new Error("No encontramos la meta que querés eliminar.");
+  if (!editablePersonalMealTargetIds([target]).includes(id)) {
+    throw new Error("Esta meta está bloqueada y no se puede eliminar.");
+  }
+
+  const consumed = personalMealTargetConsumedComposition(trackingDay, id).totals;
+  const releasedTarget = Object.fromEntries(["kcal", ...MACRO_KEYS].map((key) => [
+    key,
+    rounded(Math.max(0, number(target.target?.[key]) - number(consumed[key]))),
+  ]));
+  const recipientIds = new Set(redistribute ? targets.flatMap((meal) => {
+    const recipientId = String(meal.id || meal.mealId || "");
+    const editableAutomatic = recipientId !== id
+      && meal.confirmed !== true
+      && meal.metaConfirmed !== true
+      && meal.targetLocked !== true
+      && personalMealTargetOrigin(meal) === PERSONAL_MEAL_TARGET_ORIGIN.AUTO;
+    return editableAutomatic ? [recipientId] : [];
+  }) : []);
+
+  if (redistribute && !recipientIds.size && Object.values(releasedTarget).some((value) => value > 0.05)) {
+    throw new Error("No hay otras metas automáticas disponibles para redistribuir.");
+  }
+
+  const additionsById = new Map([...recipientIds].map((recipientId) => [
+    recipientId,
+    normalizedTarget(),
+  ]));
+  for (const key of ["kcal", ...MACRO_KEYS]) {
+    const recipients = targets.filter((meal) => recipientIds.has(String(meal.id || meal.mealId || "")));
+    const values = allocateExactly(
+      releasedTarget[key],
+      recipients.map((meal) => meal.target?.[key]),
+      1
+    );
+    recipients.forEach((meal, index) => {
+      const recipientId = String(meal.id || meal.mealId || "");
+      additionsById.get(recipientId)[key] = values[index];
+    });
+  }
+
+  const mealsConfig = (Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [])
+    .filter((meal) => mealConfigId(meal) !== id)
+    .map((meal) => {
+      const recipientId = mealConfigId(meal);
+      const addition = additionsById.get(recipientId);
+      if (!addition) return meal;
+      return {
+        ...meal,
+        meta: addNormalizedTargets(mealConfigTarget(meal), addition),
+      };
+    });
+
+  return {
+    ...(trackingDay || {}),
+    mealsConfig,
+    removedMealId: id,
+    removedTarget: normalizedTarget(target.target),
+    consumedTarget: normalizedTarget(consumed),
+    redistributedTarget: redistribute ? releasedTarget : normalizedTarget(),
+    redistributionRecipientIds: [...recipientIds],
+  };
 }
 
 export function resolvePersonalMealTargetRemovals({
@@ -676,9 +1077,6 @@ export function buildPersonalMealTargetDayPlan({
   }
   const existing = (Array.isArray(existingMeals) ? existingMeals : [])
     .filter((meal) => meal?.personalTargetOnly === true && normalizedTarget(meal?.target || meal?.meta).kcal > 0);
-  if (existing.length > types.length) {
-    throw new Error(`Ya planificaste ${existing.length} comidas. Elegí al menos esa cantidad para conservarlas.`);
-  }
   const usedExisting = new Set();
   const slots = types.map((type) => {
     const matchIndex = existing.findIndex((meal, index) => (
@@ -689,13 +1087,12 @@ export function buildPersonalMealTargetDayPlan({
     return { type, existing: existing[matchIndex] };
   });
   const unmatched = existing.filter((_, index) => !usedExisting.has(index));
-  if (unmatched.length) {
-    throw new Error(`Incluí ${unmatched.map((meal) => meal?.name || MEAL_LABELS[meal?.type] || "la comida planificada").join(", ")} entre los momentos elegidos para poder conservarla.`);
-  }
+  const generationCount = Math.max(0, types.length - existing.length);
+  const pendingSlots = slots.filter((slot) => !slot.existing).slice(0, generationCount);
   const existingTotals = personalMealTargetTotals(existing);
   const plannedTarget = normalizedTarget(accounting.generationTarget);
   for (const key of ["kcal", ...MACRO_KEYS]) {
-    if (existingTotals[key] > plannedTarget[key] + 0.05) {
+    if (pendingSlots.length && existingTotals[key] > plannedTarget[key] + 0.05) {
       throw new Error(`Las metas ya planificadas superan el objetivo disponible de ${key}. Editalas antes de generar el resto.`);
     }
   }
@@ -703,10 +1100,7 @@ export function buildPersonalMealTargetDayPlan({
     key,
     rounded(Math.max(0, plannedTarget[key] - existingTotals[key])),
   ]));
-  const pendingTypes = slots.filter((slot) => !slot.existing).map((slot) => slot.type);
-  if (!pendingTypes.length && Object.values(remainingTarget).some((value) => value > 0.05)) {
-    throw new Error("Las comidas elegidas ya están planificadas, pero todavía queda objetivo sin asignar. Agregá otro momento o editá sus metas.");
-  }
+  const pendingTypes = pendingSlots.map((slot) => slot.type);
   if (pendingTypes.length && remainingTarget.kcal < pendingTypes.length * 100 - 0.05) {
     throw new Error(`No queda energía suficiente para crear ${pendingTypes.length} comidas de al menos 100 kcal. Reducí una meta existente o elegí menos comidas.`);
   }
@@ -727,19 +1121,33 @@ export function buildPersonalMealTargetDayPlan({
     throw new Error("La distribución elegida deja una comida nueva por debajo de 100 kcal. Ajustá los porcentajes o las metas existentes.");
   }
   let pendingIndex = 0;
-  const meals = slots.map((slot, index) => {
-    if (slot.existing) return { ...slot.existing, personalTargetOnly: true, preserved: true };
+  const selectedPendingSlots = new Set(pendingSlots);
+  const meals = slots.flatMap((slot, index) => {
+    if (slot.existing) return [{
+      ...slot.existing,
+      personalTargetOnly: true,
+      targetOrigin: personalMealTargetOrigin(slot.existing),
+      preserved: true,
+    }];
+    if (!selectedPendingSlots.has(slot)) return [];
     const allocationIndex = pendingIndex;
     pendingIndex += 1;
-    return {
+    return [{
       id: `menu_target_${slot.type}_${index + 1}`,
       type: slot.type,
       name: MEAL_LABELS[slot.type] || `Comida ${index + 1}`,
       target: Object.fromEntries(["kcal", ...MACRO_KEYS].map((key) => [key, allocations[key][allocationIndex]])),
       personalTargetOnly: true,
       confirmed: false,
-    };
+      targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.AUTO,
+    }];
   });
+  unmatched.forEach((meal) => meals.push({
+    ...meal,
+    personalTargetOnly: true,
+    targetOrigin: personalMealTargetOrigin(meal),
+    preserved: true,
+  }));
   const distribution = {
     ...pendingDistribution,
     weights: meals.map((meal) => plannedTarget.kcal > 0
@@ -751,6 +1159,7 @@ export function buildPersonalMealTargetDayPlan({
     plannedTarget,
     freeCalories: accounting.freeCaloriesRemaining,
     accounting,
+    residual: targetDifference(personalMealTargetTotals(meals), plannedTarget),
     distribution,
     meals,
   };
@@ -796,7 +1205,7 @@ export function personalMealTargetConfigsFromPlan(plan = {}, { idSuffix = "" } =
     .replace(/[^a-zA-Z0-9_-]/g, "")
     .slice(0, 24);
   return (Array.isArray(plan?.meals) ? plan.meals : []).map((meal, index) => ({
-    mealId: meal?.preserved && String(meal?.id || meal?.mealId || "").startsWith("menu_target_")
+    mealId: meal?.preserved && String(meal?.id || meal?.mealId || "")
       ? String(meal.id || meal.mealId)
       : `menu_target_${meal.type}_${suffix}_${index + 1}`,
     tipo: meal.type,
@@ -804,6 +1213,17 @@ export function personalMealTargetConfigsFromPlan(plan = {}, { idSuffix = "" } =
     orden: index,
     meta: normalizedTarget(meal.target),
     metaConfirmed: meal?.confirmed === true || meal?.metaConfirmed === true,
+    metaConfirmation: meal?.metaConfirmation || null,
+    targetOrigin: personalMealTargetOrigin(meal),
+    targetLocked: meal?.targetLocked === true,
+    personalTarget: true,
+    consumptionSourceMealIds: [...new Set(
+      (Array.isArray(meal?.consumptionSourceMealIds)
+        ? meal.consumptionSourceMealIds
+        : (Array.isArray(meal?.sourceMealIds) ? meal.sourceMealIds : []))
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )],
   }));
 }
 
@@ -823,6 +1243,7 @@ export function editPersonalMealTargetDay({
   confirmedMealIds = null,
   onlySubsequent = false,
   minimumRecipientKcal = 0,
+  consumedMinimum = null,
 } = {}) {
   const currentMeals = (Array.isArray(meals) ? meals : []).map((meal) => ({
     ...meal,
@@ -830,14 +1251,30 @@ export function editPersonalMealTargetDay({
   }));
   const editedIndex = currentMeals.findIndex((meal) => String(meal.id || meal.mealId) === String(mealId));
   if (editedIndex < 0) throw new Error("No encontramos la comida que querés editar.");
-  const normalizedNextTarget = normalizedTarget(target);
-  const nextTarget = { ...normalizedNextTarget, kcal: Math.round(normalizedNextTarget.kcal) };
+  if (currentMeals[editedIndex]?.confirmed === true || currentMeals[editedIndex]?.metaConfirmed === true) {
+    throw new Error("Reabrí la comida confirmada antes de editarla.");
+  }
+  if (
+    currentMeals[editedIndex]?.targetLocked === true
+    || personalMealTargetOrigin(currentMeals[editedIndex]) === PERSONAL_MEAL_TARGET_ORIGIN.COACH
+  ) {
+    throw new Error("Esta meta está bloqueada y no se puede editar.");
+  }
+  if (consumedMinimum) assertPersonalMealTargetNotBelowConsumed(target, consumedMinimum);
+  const nextTarget = normalizedTarget(target);
   if ([nextTarget.kcal, nextTarget.proteina, nextTarget.carbs, nextTarget.grasas].some((value) => value < 0)) {
     throw new Error("Las metas no pueden ser negativas.");
   }
   const macroKcal = rounded(nextTarget.proteina * 4 + nextTarget.carbs * 4 + nextTarget.grasas * 9);
   const beforeTotals = personalMealTargetTotals(currentMeals);
-  const result = currentMeals.map((meal, index) => index === editedIndex ? { ...meal, target: nextTarget } : meal);
+  const result = currentMeals.map((meal, index) => index === editedIndex
+    ? {
+        ...meal,
+        target: nextTarget,
+        targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.MANUAL,
+        targetEdited: true,
+      }
+    : meal);
 
   if (mode === "redistribute") {
     const allowed = editableMealIds ? new Set(editableMealIds.map(String)) : null;
@@ -974,12 +1411,347 @@ function mealConfigTarget(meal = {}) {
 export function isPersonalMealTargetConfig(meal = {}) {
   const id = mealConfigId(meal);
   const target = mealConfigTarget(meal);
-  return id.startsWith("menu_target_") && [
+  return (id.startsWith("menu_target_") || meal?.personalTarget === true) && [
     target.kcal,
     target.proteina ?? target.p,
     target.carbs ?? target.c,
     target.grasas ?? target.g,
   ].some((value) => number(value) > 0);
+}
+
+/** Consumo real que todavía no tiene una meta asociada. */
+export function consumedMealsWithoutPersonalTarget(trackingDay = null) {
+  const configs = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
+  const configuredTargets = new Set(configs.filter(isPersonalMealTargetConfig).flatMap((meal) => [
+    mealConfigId(meal),
+    ...(Array.isArray(meal?.consumptionSourceMealIds) ? meal.consumptionSourceMealIds : []),
+  ]).map(String));
+  const configById = new Map(configs.map((meal) => [mealConfigId(meal), meal]));
+  return Object.entries(trackingDay?.meals || {}).flatMap(([mealId, items]) => {
+    if (mealId === "picoteo" || configuredTargets.has(mealId) || !Array.isArray(items) || !items.length) return [];
+    const config = configById.get(mealId) || {};
+    const firstItem = items[0] || {};
+    const type = String(
+      config?.tipo
+      || config?.type
+      || config?.mealType
+      || firstItem?.mealType
+      || firstItem?.tipoComida
+      || mealId
+      || "snack"
+    );
+    return [{
+      id: mealId,
+      mealId,
+      type,
+      name: String(
+        config?.nombre
+        || config?.name
+        || firstItem?.savedMealName
+        || firstItem?.mealName
+        || MEAL_LABELS[type]
+        || "Comida"
+      ),
+      consumed: items.reduce(
+        (totals, item) => addNormalizedTargets(totals, trackingItemTarget(item)),
+        normalizedTarget()
+      ),
+      items,
+    }];
+  });
+}
+
+export function combineConsumedMealsByType(consumedMeals = []) {
+  const combined = new Map();
+  (Array.isArray(consumedMeals) ? consumedMeals : []).forEach((meal) => {
+    const type = String(meal?.type || "otra").trim().toLowerCase() || "otra";
+    const current = combined.get(type);
+    if (!current) {
+      combined.set(type, {
+        ...meal,
+        type,
+        consumed: normalizedTarget(meal?.consumed),
+        items: Array.isArray(meal?.items) ? [...meal.items] : [],
+        sourceMealIds: [String(meal?.id || meal?.mealId || "")].filter(Boolean),
+      });
+      return;
+    }
+    combined.set(type, {
+      ...current,
+      consumed: addNormalizedTargets(current.consumed, meal?.consumed),
+      items: [...current.items, ...(Array.isArray(meal?.items) ? meal.items : [])],
+      sourceMealIds: [...new Set([
+        ...current.sourceMealIds,
+        String(meal?.id || meal?.mealId || ""),
+      ].filter(Boolean))],
+    });
+  });
+  return [...combined.values()];
+}
+
+/**
+ * El reparto se calcula sobre lo que todavía falta del día. Después se suma el
+ * consumo del slot a su target para que el resultado final nunca quede debajo
+ * de Tracking ni descuente ese consumo dos veces.
+ */
+export function mergeConsumedMealsIntoPersonalTargetPlan(plan = {}, consumedMeals = []) {
+  const pending = combineConsumedMealsByType(consumedMeals).map((meal) => ({ ...meal }));
+  const meals = (Array.isArray(plan?.meals) ? plan.meals : []).map((meal) => {
+    const matchIndex = pending.findIndex((entry) => String(entry.type) === String(meal.type));
+    if (matchIndex < 0) return meal;
+    const consumed = pending.splice(matchIndex, 1)[0];
+    return {
+      ...meal,
+      id: consumed.id,
+      name: consumed.name || meal.name,
+      target: addNormalizedTargets(meal.target, consumed.consumed),
+      targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.AUTO,
+      personalTargetOnly: true,
+      preserved: true,
+      derivedFromConsumption: true,
+      consumptionSourceMealIds: consumed.sourceMealIds,
+    };
+  });
+  pending.forEach((consumed) => meals.push({
+    id: consumed.id,
+    type: consumed.type,
+    name: consumed.name,
+    target: normalizedTarget(consumed.consumed),
+    targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.AUTO,
+    personalTargetOnly: true,
+    preserved: true,
+    derivedFromConsumption: true,
+    consumptionSourceMealIds: consumed.sourceMealIds,
+  }));
+  return {
+    ...plan,
+    meals,
+    plannedTarget: personalMealTargetTotals(meals),
+  };
+}
+
+export function personalMealTargetAutomaticSpecs(trackingDay = null) {
+  return personalMealTargetsFromTrackingDay(trackingDay).map((meal) => {
+    const composition = personalMealTargetConsumedComposition(trackingDay, meal.id);
+    const completion = personalMealTargetCompletionState({
+      target: meal.target,
+      consumed: composition.totals,
+      trackedItemsCount: composition.items.length,
+      metaConfirmed: meal.metaConfirmed,
+      confirmation: meal.metaConfirmation,
+    });
+    return {
+      ...meal,
+      consumed: composition.totals,
+      consumedItemsCount: composition.items.length,
+      completed: completion.completed,
+      remainingTarget: Object.fromEntries(["kcal", ...MACRO_KEYS].map((key) => [
+        key,
+        rounded(Math.max(0, meal.target[key] - composition.totals[key])),
+      ])),
+    };
+  });
+}
+
+function plannedMealLogicalType(meal = {}) {
+  return String(meal?.tipoComida || meal?.mealType || meal?.type || meal?.tipo || "")
+    .trim()
+    .toLowerCase();
+}
+
+function plannedMealStableId(meal = {}, index = 0) {
+  return String(
+    meal?.targetMealId || meal?.mealId || meal?.id || meal?._id
+    || meal?.nombre || meal?.name || `meal-${index + 1}`
+  );
+}
+
+function plannedMealPhysicalItems(meal = {}) {
+  if (Array.isArray(meal?.items)) return meal.items;
+  if (Array.isArray(meal?.foods)) return meal.foods;
+  if (Array.isArray(meal?.alimentos)) return meal.alimentos;
+  if (Array.isArray(meal?.ingredientes)) return meal.ingredientes;
+  if (Array.isArray(meal?.ingredients)) return meal.ingredients;
+  return [];
+}
+
+function targetHasNutrition(value = {}) {
+  const target = normalizedTarget(value);
+  return [target.kcal, target.proteina, target.carbs, target.grasas]
+    .some((amount) => Math.abs(amount) > 0.001);
+}
+
+function plannedMealNutrition(meal = {}) {
+  const directSources = [
+    meal?.totals,
+    meal?.totales,
+    meal?.target,
+    meal?.meta,
+    meal?.macros,
+    meal?.nutrition,
+    meal?.nutricion,
+    meal,
+  ];
+  const direct = directSources
+    .map((source) => trackingItemTarget(source || {}))
+    .find(targetHasNutrition);
+  if (direct) return direct;
+  return plannedMealPhysicalItems(meal).reduce((totals, item) => {
+    const source = item?.totals || item?.totales || item?.nutrition || item?.nutricion || item;
+    return addNormalizedTargets(totals, trackingItemTarget(source));
+  }, normalizedTarget());
+}
+
+function targetsMatch(left = {}, right = {}, tolerance = 0.11) {
+  const a = normalizedTarget(left);
+  const b = normalizedTarget(right);
+  return ["kcal", ...MACRO_KEYS].every((key) => Math.abs(a[key] - b[key]) <= tolerance);
+}
+
+function legacyDuplicatedAutomaticMeals(meals = [], targetMeals = [], trackingDay = null) {
+  const planned = Array.isArray(meals) ? meals : [];
+  const targets = Array.isArray(targetMeals) ? targetMeals : [];
+  const physicalMeals = planned.filter((meal) => plannedMealPhysicalItems(meal).length > 0);
+  const matches = new Set();
+
+  physicalMeals.forEach((meal, index) => {
+    if (plannedMealCompositionOrigin(meal) !== "manual" || meal?.compositionEdited === true) return;
+    const id = plannedMealStableId(meal, index);
+    const type = plannedMealLogicalType(meal);
+    const targetMeal = targets.find((target) => {
+      const targetId = String(target?.id || target?.mealId || "");
+      const targetType = String(target?.type || target?.tipo || target?.mealType || "").toLowerCase();
+      return targetId === id || (type && targetType === type);
+    });
+    if (!targetMeal) return;
+    const targetId = String(targetMeal?.id || targetMeal?.mealId || "");
+    const logs = Array.isArray(trackingDay?.meals?.[targetId]) ? trackingDay.meals[targetId] : [];
+    if (
+      logs.length
+      || targetMeal?.confirmed === true
+      || targetMeal?.metaConfirmed === true
+      || targetMeal?.targetLocked === true
+      || targetMeal?.targetEdited === true
+      || targetMeal?.manualTarget === true
+    ) return;
+    const target = targetMeal?.target || targetMeal?.meta || targetMeal?.totals;
+    const nutrition = plannedMealNutrition(meal);
+    if (targetHasNutrition(nutrition) && targetsMatch(target, nutrition)) matches.add(meal);
+  });
+
+  // Una coincidencia aislada puede ser intencional. Tres o más slots que
+  // replican exactamente un menú físico son la firma del bug legacy que
+  // copiaba el automático como metas y dejaba ambas vistas activas.
+  const duplicatedMenu = matches.size >= 3
+    && matches.size >= Math.ceil(physicalMeals.length / 2);
+  return duplicatedMenu ? matches : new Set();
+}
+
+export function plannedMealCompositionOrigin(meal = {}) {
+  const explicit = String(meal?.compositionOrigin || "").trim().toLowerCase();
+  if (["auto", "manual", "coach"].includes(explicit)) return explicit;
+  const stableId = String(meal?.id || meal?._id || meal?.mealId || "").trim().toLowerCase();
+  return meal?.generationSource
+    || meal?.plannerSlotIndex !== undefined
+    || stableId.startsWith("generated-meal-")
+    ? "auto"
+    : "manual";
+}
+
+/**
+ * Algunas composiciones automáticas creadas antes de persistir correctamente
+ * `compositionOrigin` quedaron guardadas como `manual`, pero conservaron su
+ * `generationSource`. Sólo aplicamos esa compatibilidad cuando el menú completo
+ * tiene forma de generación legacy. Los menús automáticos nuevos declaran su
+ * source y en ellos una edición manual explícita siempre gana.
+ */
+export function plannedMealCompositionOrigins(meals = [], {
+  menuSource = "",
+  targetMeals = [],
+  trackingDay = null,
+} = {}) {
+  const planned = Array.isArray(meals) ? meals : [];
+  const source = String(menuSource || "").trim().toLowerCase();
+  const sourceDeclaresAutomatic = /^(auto|generat)/.test(source) || source === "autonomous";
+  const physicalMeals = planned.filter((meal) => plannedMealPhysicalItems(meal).length > 0);
+  const legacyAutomaticMeals = new Set(physicalMeals.filter((meal) => (
+    plannedMealCompositionOrigin(meal) === "manual"
+    && String(meal?.generationSource || "").trim() !== ""
+    && normalizedTarget(meal?.target || meal?.meta).kcal > 0
+  )));
+  const ambiguousLegacyAutomaticMeals = new Set(physicalMeals.filter((meal) => (
+    plannedMealCompositionOrigin(meal) === "manual"
+    && meal?.compositionEdited !== true
+    && meal?.manualComposition !== true
+  )));
+  const legacyAutomaticMenu = !sourceDeclaresAutomatic
+    && legacyAutomaticMeals.size >= 2
+    && legacyAutomaticMeals.size >= Math.ceil(physicalMeals.length / 2);
+  const legacyAutomaticMenuBySource = sourceDeclaresAutomatic
+    && ambiguousLegacyAutomaticMeals.size >= 3
+    && ambiguousLegacyAutomaticMeals.size >= Math.ceil(physicalMeals.length / 2);
+  const duplicatedAutomaticMeals = legacyDuplicatedAutomaticMeals(
+    planned,
+    targetMeals,
+    trackingDay
+  );
+
+  return planned.map((meal) => (
+    (legacyAutomaticMenu && legacyAutomaticMeals.has(meal))
+      || (legacyAutomaticMenuBySource && ambiguousLegacyAutomaticMeals.has(meal))
+      || duplicatedAutomaticMeals.has(meal)
+      ? "auto"
+      : plannedMealCompositionOrigin(meal)
+  ));
+}
+
+/**
+ * Al pasar Auto -> Por meta la composición automática pendiente deja de ser
+ * efectiva para ese día. No se muta el menú reusable: la proyección diaria la
+ * reemplaza por el target. Consumo, cierres y composiciones manuales sobreviven.
+ */
+export function reconcilePlannedMealsWithPersonalTargets({
+  plannedMeals = [],
+  trackingDay = null,
+  completedMealIds = [],
+  suppressedMealIds = [],
+  legacyTargetMeals = [],
+  menuSource = "",
+} = {}) {
+  const targets = personalMealTargetsFromTrackingDay(trackingDay);
+  const detectionTargets = targets.length
+    ? targets
+    : (Array.isArray(legacyTargetMeals) ? legacyTargetMeals : []);
+  const suppressed = new Set(
+    (Array.isArray(suppressedMealIds) ? suppressedMealIds : []).map(String)
+  );
+  if (!detectionTargets.length && !suppressed.size) {
+    return { meals: Array.isArray(plannedMeals) ? plannedMeals : [], supersededMeals: [] };
+  }
+  const compositionOrigins = plannedMealCompositionOrigins(plannedMeals, {
+    menuSource,
+    targetMeals: detectionTargets,
+    trackingDay,
+  });
+  const completed = new Set((Array.isArray(completedMealIds) ? completedMealIds : []).map(String));
+  const targetIds = new Set(detectionTargets.map((target) => String(target.id || target.mealId || "")));
+  const targetTypes = new Set(detectionTargets.map((target) => String(target.type || target.tipo || "")));
+  const meals = [];
+  const supersededMeals = [];
+  (Array.isArray(plannedMeals) ? plannedMeals : []).forEach((meal, index) => {
+    const id = plannedMealStableId(meal, index);
+    const executionId = String(meal?.targetMealId || id);
+    const type = plannedMealLogicalType(meal);
+    const matchesTarget = targetIds.has(executionId) || (type && targetTypes.has(type));
+    const done = completed.has(id) || completed.has(executionId);
+    const isSuppressed = suppressed.has(id) || suppressed.has(executionId);
+    const superseded = !done && (
+      isSuppressed
+      || (matchesTarget && compositionOrigins[index] === "auto")
+    );
+    (superseded ? supersededMeals : meals).push(meal);
+  });
+  return { meals, supersededMeals };
 }
 
 export function personalMealTargetsFromTrackingDay(trackingDay = null) {
@@ -1005,7 +1777,21 @@ export function personalMealTargetsFromTrackingDay(trackingDay = null) {
       totals: target,
       foods: [],
       personalTargetOnly: true,
+      targetOrigin: personalMealTargetOrigin(meal),
+      targetEdited: meal?.targetEdited === true,
+      manualTarget: meal?.manualTarget === true,
+      targetLocked: meal?.targetLocked === true,
+      consumptionSourceMealIds: [...new Set([
+        id,
+        ...(Array.isArray(meal?.consumptionSourceMealIds) ? meal.consumptionSourceMealIds : []),
+      ].map((value) => String(value || "").trim()).filter(Boolean))],
       confirmed: meal?.metaConfirmed === true || meal?.confirmed === true,
+      metaConfirmed: meal?.metaConfirmed === true || meal?.confirmed === true,
+      metaConfirmation: manualConsumptionConfirmation(meal?.metaConfirmation),
+      manualConsumptionConfirmed: Boolean(
+        (meal?.metaConfirmed === true || meal?.confirmed === true)
+        && manualConsumptionConfirmation(meal?.metaConfirmation)
+      ),
     };
   });
 }
@@ -1018,6 +1804,7 @@ export function buildPersonalMealTargetConfig({
   dailyTarget = {},
   existingMeals = [],
   idSuffix = "",
+  targetOrigin = PERSONAL_MEAL_TARGET_ORIGIN.MANUAL,
 } = {}) {
   const targetKcal = number(kcal);
   if (targetKcal <= 0) throw new Error("Ingresá una meta de calorías válida.");
@@ -1050,6 +1837,10 @@ export function buildPersonalMealTargetConfig({
       grasas: locks ? calculation.macros.grasas : configuredMacro(macros?.grasas ?? macros?.g, number(dailyTarget?.grasas ?? dailyTarget?.g) * ratio),
     },
     metaConfirmed: false,
+    targetOrigin: PERSONAL_MEAL_TARGET_ORIGINS.has(String(targetOrigin))
+      ? String(targetOrigin)
+      : PERSONAL_MEAL_TARGET_ORIGIN.MANUAL,
+    personalTarget: true,
   };
 }
 
@@ -1063,10 +1854,20 @@ export function appendPersonalMealTargetConfig(trackingDay = null, options = {})
 
 export function replacePersonalMealTargetConfigs(trackingDay = null, targetConfigs = []) {
   const existingMeals = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
-  const preserved = existingMeals.filter((meal) => !isPersonalMealTargetConfig(meal));
+  const nextTargets = Array.isArray(targetConfigs) ? targetConfigs : [];
+  const claimedTargetIds = new Set(nextTargets.map(mealConfigId).filter(Boolean));
+  // Al borrar una meta, el backend conserva una configuración sin `meta` para
+  // que sus FoodLogs sigan teniendo nombre/tipo. Si luego regeneramos usando
+  // ese mismo mealId, esa ficha histórica debe ser reemplazada por la nueva
+  // meta, no viajar junto a ella. Dos configs con el mismo ID hacen que el
+  // backend renombre una y separan artificialmente consumo y objetivo.
+  const preserved = existingMeals.filter((meal) => (
+    !isPersonalMealTargetConfig(meal)
+    && !claimedTargetIds.has(mealConfigId(meal))
+  ));
   return [
     ...preserved,
-    ...(Array.isArray(targetConfigs) ? targetConfigs : []).map((meal, index) => ({
+    ...nextTargets.map((meal, index) => ({
       ...meal,
       orden: preserved.length + index,
     })),

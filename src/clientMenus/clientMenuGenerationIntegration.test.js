@@ -87,7 +87,7 @@ test("día parcial conserva la comida exacta y genera sólo los tres slots falta
   assert.equal(preview.generationMeta.generatedMealCount, 3);
 });
 
-test("una comida Por meta se descuenta y sólo genera alimentos para los slots restantes", async () => {
+test("una comida Por meta genera alimentos para su target y para los demás slots", async () => {
   const reserved = {
     id: "menu_target_almuerzo_manual",
     type: "almuerzo",
@@ -107,13 +107,16 @@ test("una comida Por meta se descuenta y sólo genera alimentos para los slots r
     },
   });
 
-  assert.equal(requests.length, 2);
-  assert.deepEqual(preview.comidas.map((meal) => meal.tipoComida), ["desayuno", "cena"]);
+  assert.equal(requests.length, 3);
+  assert.deepEqual(preview.comidas.map((meal) => meal.tipoComida), ["desayuno", "almuerzo", "cena"]);
+  assert.deepEqual(requests[1].target, reserved.target);
+  assert.equal(preview.comidas[1].targetMealId, reserved.id);
+  assert.equal(preview.comidas[1].compositionOrigin, "auto");
   assert.deepEqual(preview.generationMeta.reservedTotals, reserved.target);
   assert.deepEqual(preview.generationMeta.resultTotals, preview.plannedTarget);
   assert.equal(preview.generationMeta.reservedMealTargets[0].id, reserved.id);
   assert.deepEqual(preview.generationMeta.trace.map((entry) => entry.status), [
-    "generated", "reserved_target", "generated",
+    "generated", "generated_for_target", "generated",
   ]);
 });
 
@@ -145,6 +148,40 @@ test("un registro previo reduce exactamente una vez el presupuesto del menú aut
   for (const key of ["kcal", "proteina", "carbs", "grasas"]) {
     assert.ok(Math.abs(generatedTotals[key] - preview.plannedTarget[key]) <= 0.11);
   }
+});
+
+test("una comida guardada ya consumida ocupa su momento y genera sólo las comidas restantes", async () => {
+  const consumedBreakfast = {
+    id: "desayuno",
+    mealId: "desayuno",
+    type: "desayuno",
+    name: "Desayuno guardado",
+    target: { kcal: 300, proteina: 20, carbs: 38, grasas: 8 },
+    consumed: { kcal: 300, proteina: 20, carbs: 38, grasas: 8 },
+    remainingTarget: { kcal: 0, proteina: 0, carbs: 0, grasas: 0 },
+    completed: true,
+    preserved: true,
+    derivedFromConsumption: true,
+  };
+  const requests = [];
+  const preview = await generateClientMenuPreview({
+    target: { kcal: 1800, proteina: 140, carbs: 190, grasas: 55 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    reservedMealTargets: [consumedBreakfast],
+    variantSeed: "saved-meal-consumed-before-generation",
+    automaticMealGenerator: async (request) => {
+      requests.push(request);
+      return responseFor(request);
+    },
+  });
+
+  assert.deepEqual(requests.map((request) => request.mealType), ["lunch", "dinner"]);
+  assert.deepEqual(preview.comidas.map((meal) => meal.tipoComida), ["almuerzo", "cena"]);
+  assert.deepEqual(preview.generationMeta.trace.map((entry) => entry.status), [
+    "consumed_target", "generated", "generated",
+  ]);
+  assert.equal(preview.generationMeta.reservedMealTargets[0].id, "desayuno");
+  assert.deepEqual(preview.generationMeta.resultTotals, preview.plannedTarget);
 });
 
 test("Picoteo que agota las libres genera sobre 1682 kcal y conserva el accounting", async () => {

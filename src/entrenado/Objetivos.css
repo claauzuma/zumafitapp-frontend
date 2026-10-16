@@ -1030,3 +1030,233 @@
 .og-compactDay{overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.14)}.og-compactDay.open{border-color:rgba(56,189,248,.24)}.og-compactDayHead{width:100%;min-height:48px;display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;border:0;background:transparent;color:#fff;padding:8px 11px;text-align:left}.og-compactDayHead small{overflow:hidden;color:#a1a1aa;text-overflow:ellipsis;white-space:nowrap}.og-dayBadge{padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:#d4d4d8;font-size:.6rem;font-weight:900;text-transform:uppercase}.og-dayBadge.entrenamiento{background:rgba(52,211,153,.12);color:#86efac}.og-dayBadge.descanso{background:rgba(56,189,248,.11);color:#bae6fd}.og-dayBadge.personalizado{background:rgba(212,175,55,.12);color:#fde68a}
 .og-compactDayBody{padding:0 11px 11px}.og-dayFields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.og-dayFields label{display:grid;gap:4px}.og-dayFields span{color:#94a3b8;font-size:.62rem;font-weight:900;text-transform:uppercase}.og-dayFields input{min-width:0;min-height:42px;border:1px solid rgba(148,163,184,.16);border-radius:9px;background:#080d13;color:#fff;padding:0 8px}.og-copyDays{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.og-copyDays label{display:flex;align-items:center;gap:4px;padding:5px 7px;border-radius:8px;background:rgba(255,255,255,.04);color:#cbd5e1;font-size:.68rem}.og-copyDays input{accent-color:#34d399}.og-dayActions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.og-dayActions button{min-height:40px;flex:1;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.04);color:#e4e4e7;font-weight:800}.og-dayActions button:disabled{opacity:.4}
 @media(max-width:560px){.og-compactDayHead{grid-template-columns:auto auto 1fr}.og-compactDayHead small{grid-column:1/-1}.og-dayFields{grid-template-columns:repeat(2,minmax(0,1fr))}.og-weekSummary button{width:100%;justify-content:center;margin-left:0}.og-dayActions button{flex-basis:100%}}
+
+/* Distribucion semanal */
+.og-weekly{
+  position:relative;
+  overflow:hidden;
+  gap:16px;
+  padding:18px;
+  border-color:rgba(245,215,110,.24);
+  background:
+    radial-gradient(620px 260px at 100% 0%, rgba(245,215,110,.09), transparent 58%),
+    linear-gradient(145deg, rgba(11,19,25,.98), rgba(5,9,13,.99));
+}
+.og-weeklyTop{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.og-weeklyTitleLine{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}
+.og-weeklyTitleLine h3{margin:0;font-size:clamp(1.35rem,3vw,1.8rem);line-height:1.1}
+.og-weeklyTop p{max-width:700px;font-size:.88rem}
+.og-proBadge,.og-weeklyModePro{
+  display:inline-flex;align-items:center;gap:5px;width:max-content;border:1px solid rgba(250,204,21,.5);
+  border-radius:999px;background:rgba(250,204,21,.1);color:#fde047;font-size:.66rem;font-weight:950;
+  letter-spacing:.04em;padding:5px 8px;
+}
+.og-weeklyModeList{display:grid;gap:8px}
+.og-weeklyModeCard{
+  width:100%;min-height:64px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;
+  padding:11px 13px;border:1px solid rgba(148,163,184,.17);border-radius:15px;text-align:left;
+  background:linear-gradient(145deg,rgba(16,25,33,.9),rgba(8,13,18,.94));color:#f8fafc;transition:.18s ease;
+}
+.og-weeklyModeCard:hover{border-color:rgba(245,215,110,.38);transform:translateY(-1px)}
+.og-weeklyModeCard:focus-visible,.og-weekDayRow:focus-visible,.og-weeklyEditor button:focus-visible,.og-weeklyEditor input:focus-visible,.og-weeklyUpgradeDialog button:focus-visible,.og-weeklyUpgradeDialog a:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+.og-weeklyModeCard.active{border-color:#facc15;background:radial-gradient(420px 100px at 85% 50%,rgba(250,204,21,.13),transparent 70%),linear-gradient(145deg,rgba(26,28,20,.96),rgba(10,14,17,.98));box-shadow:0 0 0 1px rgba(250,204,21,.18),0 10px 28px rgba(0,0,0,.24)}
+.og-weeklyModeCard.locked{opacity:.75}
+.og-weeklyRadio{width:23px;height:23px;display:grid;place-items:center;border:2px solid #64748b;border-radius:50%}
+.og-weeklyRadio i{width:11px;height:11px;border-radius:50%;background:transparent}
+.og-weeklyModeCard.active .og-weeklyRadio{border-color:#facc15;box-shadow:0 0 14px rgba(250,204,21,.3)}
+.og-weeklyModeCard.active .og-weeklyRadio i{background:#facc15}
+.og-weeklyModeCopy{min-width:0;display:grid;gap:3px}
+.og-weeklyModeCopy strong{font-size:.92rem}
+.og-weeklyModeCopy small{color:#94a3b8;font-size:.75rem;line-height:1.35}
+.og-weeklyAutomatic{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid rgba(45,212,191,.19);border-radius:14px;background:rgba(20,184,166,.065)}
+.og-weeklyAutomaticIcon{width:38px;height:38px;display:grid;place-items:center;flex:0 0 auto;border-radius:12px;background:rgba(45,212,191,.12);color:#5eead4}
+.og-weeklyAutomatic>span:last-child{display:grid;gap:3px}.og-weeklyAutomatic strong{font-size:.83rem}.og-weeklyAutomatic small{color:#94a3b8;font-size:.73rem}
+.og-weeklyAutomaticActions{display:flex;justify-content:flex-end}.og-weeklyAutomaticActions .og-save{min-height:44px}
+.og-weekly button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+
+.og-trainingRestPanel{display:grid;gap:12px;padding:12px;border:1px solid rgba(45,212,191,.16);border-radius:16px;background:rgba(4,12,17,.55)}
+.og-trainingRestCards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.og-trainingRestCards article{display:grid;gap:4px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(255,255,255,.025)}
+.og-trainingRestCards article.training{border-color:rgba(52,211,153,.22)}.og-trainingRestCards article.rest{border-color:rgba(56,189,248,.2)}
+.og-trainingRestCards span{color:#94a3b8;font-size:.68rem;font-weight:900;text-transform:uppercase}.og-trainingRestCards strong{font-size:1.15rem}.og-trainingRestCards small{color:#cbd5e1;font-size:.72rem}
+.og-trainingRestCards article button{min-height:36px;margin-top:4px;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.035);color:#e2e8f0;font-size:.69rem;font-weight:900}.og-trainingRestCards article.training button{color:#86efac}.og-trainingRestCards article.rest button{color:#bae6fd}
+.og-trainingDayPicker{display:grid;gap:8px}.og-trainingDayPicker>span{color:#a1a1aa;font-size:.68rem;font-weight:900;text-transform:uppercase}.og-trainingDayPicker>div{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.og-trainingDayPicker button{min-width:0;min-height:39px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.035);color:#cbd5e1;font-size:.69rem;font-weight:900}.og-trainingDayPicker button.active{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.13);color:#86efac}
+.og-trainingPresetActions{display:flex;flex-wrap:wrap;gap:7px}.og-trainingPresetActions button{min-height:40px;flex:1;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.04);color:#e2e8f0;font-size:.75rem;font-weight:850}
+
+.og-weekTargets{display:grid;gap:10px}
+.og-weekTargetsHead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:2px 2px 0}
+.og-weekTargetsHead>div{display:grid;gap:3px}.og-weekTargetsHead span{font-size:.72rem;font-weight:950;letter-spacing:.06em;text-transform:uppercase}.og-weekTargetsHead small{color:#94a3b8;font-size:.7rem}
+.og-weekTargetsHead button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border:1px solid rgba(250,204,21,.45);border-radius:999px;background:rgba(250,204,21,.08);color:#fde047;font-weight:900}
+.og-weekDayList{display:grid;gap:6px}
+.og-weekDayRow{
+  position:relative;width:100%;min-height:54px;display:grid;grid-template-columns:minmax(92px,1.2fr) auto minmax(90px,.8fr) repeat(3,minmax(61px,.65fr)) 20px;align-items:center;gap:9px;
+  padding:9px 11px;border:1px solid rgba(148,163,184,.17);border-radius:13px;background:linear-gradient(145deg,rgba(12,21,28,.88),rgba(7,12,17,.92));color:#f8fafc;text-align:left;
+}
+.og-weekDayRow:hover{border-color:rgba(56,189,248,.3);background:linear-gradient(145deg,rgba(15,27,35,.94),rgba(8,14,20,.98))}
+.og-weekDayRow strong{font-size:.83rem}.og-weekDayRow b{justify-self:end;font-size:.82rem;color:#fff}
+.og-dayBadge{white-space:nowrap}.og-dayBadge.base{background:rgba(148,163,184,.12);color:#e2e8f0}.og-dayBadge.edited{border:1px solid rgba(96,165,250,.45);background:rgba(59,130,246,.12);color:#93c5fd}.og-dayBadge.training{background:rgba(34,197,94,.13);color:#86efac}.og-dayBadge.rest{background:rgba(56,189,248,.12);color:#bae6fd}
+.og-weekMacro{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-width:0;color:#cbd5e1;font-size:.72rem;white-space:nowrap}.og-weekMacro i{width:8px;height:8px;flex:0 0 auto;border-radius:50%}.og-weekMacro.protein i{background:#60a5fa}.og-weekMacro.carbs i{background:#4ade80}.og-weekMacro.fats i{background:#c084fc}
+.og-weekDayRow>svg{color:#cbd5e1}
+.og-weeklyFooterActions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:2px}.og-weeklyRestore{display:flex;align-items:center;justify-content:center;gap:6px;min-height:43px;padding:0 13px;border:1px solid rgba(248,113,113,.24);border-radius:11px;background:rgba(127,29,29,.08);color:#fca5a5;font-weight:850}.og-weeklyFooterActions .og-save{min-height:45px}
+.og-weeklyProNotice{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:13px;border:1px solid rgba(250,204,21,.42);border-radius:15px;background:linear-gradient(135deg,rgba(250,204,21,.11),rgba(250,204,21,.025))}.og-weeklyProNotice>span{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:rgba(250,204,21,.13);color:#fde047}.og-weeklyProNotice div{min-width:0}.og-weeklyProNotice strong{color:#fde047;font-size:.85rem}.og-weeklyProNotice p{margin:3px 0 0;font-size:.75rem}.og-weeklyProNotice a{min-height:38px;display:flex;align-items:center;padding:0 12px;border:1px solid rgba(250,204,21,.4);border-radius:999px;color:#fde047;text-decoration:none;font-size:.73rem;font-weight:950}
+
+/* Editor semanal */
+.og-weeklyEditorOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.76);backdrop-filter:blur(10px)}
+.og-weeklyEditor,.og-weeklyUpgradeDialog{width:min(820px,100%);max-height:calc(100dvh - 40px);overflow:auto;border:1px solid rgba(148,163,184,.22);border-radius:24px;background:radial-gradient(700px 250px at 50% 0%,rgba(56,189,248,.07),transparent 60%),#080e14;box-shadow:0 28px 90px rgba(0,0,0,.65)}
+.og-weeklyEditor{display:grid;gap:14px;padding:18px}
+.og-weeklyEditorHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.og-weeklyEditorHead h2{margin:5px 0 0;font-size:1.45rem}.og-weeklyEditorHead p{margin:4px 0 0;color:#94a3b8;font-size:.8rem}.og-weeklyEditorHeadActions{display:flex;align-items:center;gap:8px}.og-weeklyEditorHeadActions>button{width:42px;height:42px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:13px;background:rgba(255,255,255,.035);color:#e2e8f0}
+.og-weeklyEditorFields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.og-weeklyEditorField{min-width:0;display:grid;gap:8px;padding:11px;border:1px solid rgba(148,163,184,.18);border-radius:15px;background:rgba(255,255,255,.025)}
+.og-weeklyEditorField.calories{border-color:rgba(250,204,21,.27)}.og-weeklyEditorField.protein{border-color:rgba(96,165,250,.25)}.og-weeklyEditorField.carbs{border-color:rgba(74,222,128,.22)}.og-weeklyEditorField.fats{border-color:rgba(192,132,252,.25)}
+.og-weeklyEditorFieldLabel{display:flex;align-items:center;gap:6px;color:#a1a1aa;font-size:.65rem;font-weight:950;text-transform:uppercase}.og-weeklyEditorField.calories .og-weeklyEditorFieldLabel{color:#fde047}.og-weeklyEditorField.protein .og-weeklyEditorFieldLabel{color:#93c5fd}.og-weeklyEditorField.carbs .og-weeklyEditorFieldLabel{color:#86efac}.og-weeklyEditorField.fats .og-weeklyEditorFieldLabel{color:#d8b4fe}
+.og-weeklyEditorInput{position:relative;display:block}.og-weeklyEditorInput input{width:100%;min-width:0;height:58px;padding:0 43px 0 10px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:#05090d;color:#f8fafc;font-size:1.35rem;font-weight:950;text-align:center}.og-weeklyEditorInput small{position:absolute;right:9px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.69rem;font-weight:900;pointer-events:none}
+.og-weeklyEditorStepper{display:grid;grid-template-columns:1fr 1fr;gap:6px}.og-weeklyEditorStepper button{min-height:40px;display:grid;place-items:center;border:1px solid rgba(148,163,184,.17);border-radius:9px;background:rgba(255,255,255,.045);color:#f8fafc}
+.og-weeklyApplyPanel{display:grid;gap:10px;padding:13px;border:1px solid rgba(148,163,184,.14);border-radius:16px;background:rgba(0,0,0,.16)}.og-weeklyApplyPanel>div:first-child{display:grid;gap:2px}.og-weeklyApplyPanel strong{font-size:.8rem}.og-weeklyApplyPanel small{color:#94a3b8;font-size:.72rem}
+.og-weeklyApplyDays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.og-weeklyApplyDays button{min-width:0;min-height:38px;display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.035);color:#cbd5e1;font-size:.69rem;font-weight:900}.og-weeklyApplyDays button.active{border-color:rgba(45,212,191,.45);background:rgba(20,184,166,.12);color:#99f6e4}
+.og-weeklyEditorTools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.og-weeklyEditorTools button{min-height:42px;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.04);color:#e2e8f0;font-size:.72rem;font-weight:850}.og-weeklyEditorTools button.danger{border-color:rgba(248,113,113,.24);color:#fca5a5}
+.og-weeklyEditorFooter{position:sticky;bottom:-18px;display:grid;grid-template-columns:minmax(120px,.45fr) minmax(220px,1fr);gap:8px;margin:0 -18px -18px;padding:12px 18px calc(13px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.08);background:rgba(8,14,20,.96);backdrop-filter:blur(12px)}.og-weeklyEditorFooter .og-save,.og-weeklyEditorFooter .og-secondary{min-height:48px}.og-weeklyEditorFooter .og-save:disabled{opacity:.42;cursor:not-allowed}
+.og-weeklyUpgradeDialog{position:relative;max-width:460px;padding:24px;text-align:center}.og-weeklyUpgradeDialog>.og-dialogClose{position:absolute;right:14px;top:14px}.og-weeklyUpgradeIcon{width:64px;height:64px;display:grid;place-items:center;margin:0 auto 13px;border:1px solid rgba(250,204,21,.35);border-radius:50%;background:rgba(250,204,21,.1);color:#fde047;box-shadow:0 0 30px rgba(250,204,21,.1)}.og-weeklyUpgradeDialog h2{margin:8px 0 0;font-size:1.45rem}.og-weeklyUpgradeDialog p{margin:8px auto 0;max-width:390px;color:#94a3b8;line-height:1.5;font-size:.85rem}.og-weeklyUpgradeActions{display:grid;grid-template-columns:1fr 1.35fr;gap:8px;margin-top:20px}.og-weeklyUpgradeActions>*{min-height:47px;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+
+@media(max-width:760px){
+  .og-weekDayRow{grid-template-columns:auto repeat(3,minmax(0,1fr));gap:7px;padding:10px 34px 10px 10px}
+  .og-weekDayRow strong{grid-column:1 / 3}.og-weekDayRow .og-dayBadge{grid-column:3 / 5;justify-self:end}.og-weekDayRow b{grid-column:1;justify-self:start}.og-weekDayRow .og-weekMacro{justify-content:flex-start}.og-weekDayRow>svg{position:absolute;right:9px;top:14px}
+  .og-weeklyEditorFields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .og-weekly{padding:13px;border-radius:18px}.og-weeklyTop p{font-size:.79rem}
+  .og-weeklyModeCard{grid-template-columns:auto minmax(0,1fr);padding:10px}.og-weeklyModePro{grid-column:2;margin-top:-2px}.og-weeklyModeCopy strong{font-size:.86rem}
+  .og-trainingRestCards{grid-template-columns:1fr}.og-trainingDayPicker>div,.og-weeklyApplyDays{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .og-weekTargetsHead{align-items:flex-start}.og-weekTargetsHead button{min-height:38px;padding:0 10px;font-size:.7rem;white-space:nowrap}
+  .og-weekDayRow{grid-template-columns:auto repeat(3,minmax(0,1fr));gap:6px}.og-weekDayRow strong{font-size:.79rem}.og-weekDayRow b,.og-weekMacro{font-size:.67rem}
+  .og-weeklyFooterActions{display:grid;grid-template-columns:1fr}.og-weeklyFooterActions>*{width:100%}
+  .og-weeklyProNotice{grid-template-columns:auto 1fr}.og-weeklyProNotice a{grid-column:1 / -1;justify-content:center}
+  .og-weeklyEditorOverlay{align-items:end;place-items:end stretch;padding:0}
+  .og-weeklyEditor{width:100%;max-height:92dvh;border-radius:24px 24px 0 0;padding:14px;gap:11px}
+  .og-weeklyEditorHead{gap:8px}.og-weeklyEditorHead h2{font-size:1.2rem}.og-weeklyEditorHeadActions .og-dayBadge{display:none}
+  .og-weeklyEditorFields{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.og-weeklyEditorField{padding:9px}.og-weeklyEditorInput input{height:52px;font-size:1.15rem}
+  .og-weeklyEditorTools{grid-template-columns:1fr}.og-weeklyEditorTools button{min-height:40px}
+  .og-weeklyEditorFooter{bottom:-14px;grid-template-columns:1fr;margin:0 -14px -14px;padding:10px 14px calc(14px + env(safe-area-inset-bottom))}.og-weeklyEditorFooter .og-save{order:-1}
+  .og-weeklyUpgradeDialog{width:calc(100% - 24px);margin:12px;padding:22px 17px;border-radius:22px}.og-weeklyUpgradeActions{grid-template-columns:1fr}
+}
+@media(max-width:390px){
+  .og-weekDayRow{padding-right:31px}.og-weekMacro i{display:none}.og-weekMacro{font-size:.63rem}
+  .og-weeklyEditorFieldLabel{font-size:.59rem}.og-weeklyEditorInput input{padding-left:5px;font-size:1.03rem}.og-weeklyApplyDays{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(prefers-reduced-motion:reduce){.og-weeklyModeCard{transition:none}}
+
+/* Capa visual premium: mayor jerarquia, contraste y lectura de numeros */
+.og-weekly{
+  isolation:isolate;
+  border:1px solid rgba(250,204,21,.34);
+  box-shadow:0 22px 60px rgba(0,0,0,.46),inset 0 0 0 1px rgba(255,255,255,.025),inset 0 1px 0 rgba(255,255,255,.08);
+  background:
+    radial-gradient(520px 270px at 102% -5%,rgba(250,204,21,.16),transparent 64%),
+    radial-gradient(420px 300px at -8% 55%,rgba(20,184,166,.09),transparent 68%),
+    linear-gradient(150deg,rgba(13,23,29,.99),rgba(4,8,12,.99));
+}
+.og-weekly::before{
+  content:"";position:absolute;z-index:-1;inset:0 auto auto 0;width:100%;height:3px;
+  background:linear-gradient(90deg,#facc15 0%,#fde68a 34%,#2dd4bf 68%,transparent 100%);
+  box-shadow:0 0 18px rgba(250,204,21,.35);
+}
+.og-weeklyTop{padding:2px 2px 1px}
+.og-weeklyTitleLine h3{font-weight:950;letter-spacing:-.025em;text-shadow:0 4px 22px rgba(255,255,255,.08)}
+.og-weeklyTop .og-kicker{color:#fde047;text-shadow:0 0 18px rgba(250,204,21,.26)}
+.og-proBadge{border-width:1px;box-shadow:inset 0 0 0 1px rgba(250,204,21,.1),0 0 18px rgba(250,204,21,.12)}
+
+.og-weeklyModeList{gap:10px}
+.og-weeklyModeCard{
+  min-height:70px;padding:12px 14px;border-color:rgba(148,163,184,.22);border-radius:17px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 8px 20px rgba(0,0,0,.16);
+  background:radial-gradient(260px 90px at 100% 0%,rgba(56,189,248,.055),transparent 70%),linear-gradient(145deg,rgba(16,27,35,.97),rgba(7,12,17,.98));
+}
+.og-weeklyModeCard.active{
+  border:2px solid #facc15;padding:11px 13px;
+  background:radial-gradient(380px 120px at 88% 50%,rgba(250,204,21,.19),transparent 72%),linear-gradient(145deg,rgba(31,30,17,.98),rgba(8,13,16,.99));
+  box-shadow:0 0 0 1px rgba(250,204,21,.12),0 0 28px rgba(250,204,21,.11),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.og-weeklyRadio{width:26px;height:26px;background:rgba(15,23,42,.72);box-shadow:inset 0 0 0 4px rgba(0,0,0,.22)}
+.og-weeklyRadio i{width:12px;height:12px}.og-weeklyModeCard.active .og-weeklyRadio{box-shadow:0 0 0 4px rgba(250,204,21,.09),0 0 20px rgba(250,204,21,.38)}
+.og-weeklyModeCopy strong{font-size:.98rem;letter-spacing:-.01em}.og-weeklyModeCopy small{font-size:.76rem;color:#aeb9c8}
+.og-weeklyModePro{background:linear-gradient(135deg,rgba(250,204,21,.16),rgba(250,204,21,.06));box-shadow:inset 0 0 0 1px rgba(250,204,21,.08)}
+
+.og-weekTargets{gap:12px;padding-top:3px}
+.og-weekTargetsHead{
+  display:grid;grid-template-columns:minmax(145px,1fr) auto auto;align-items:center;gap:10px;
+  padding:12px;border:1px solid rgba(148,163,184,.15);border-radius:16px;
+  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.012));box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.og-weekTargetsHeading{display:grid;gap:3px;min-width:0}.og-weekTargetsHeading>span{color:#f8fafc;font-size:.75rem}.og-weekTargetsHeading>small{color:#7f8da0;font-size:.66rem}
+.og-weekSummaryStats{display:grid;grid-template-columns:repeat(2,minmax(108px,1fr));gap:7px}
+.og-weekSummaryStats>span{display:grid;grid-template-columns:auto auto;align-items:end;column-gap:4px;padding:7px 10px;border:1px solid rgba(56,189,248,.16);border-radius:11px;background:rgba(2,8,13,.48)}
+.og-weekSummaryStats small{grid-column:1/-1;color:#8290a3;font-size:.55rem;font-weight:900;letter-spacing:.055em;text-transform:uppercase}
+.og-weekSummaryStats strong{color:#f8fafc;font-size:1rem;line-height:1.1;font-variant-numeric:tabular-nums}.og-weekSummaryStats em{color:#94a3b8;font-size:.58rem;font-style:normal;font-weight:900}
+.og-weekTargetsHead>button{min-height:44px;border-width:1px;box-shadow:0 0 20px rgba(250,204,21,.08),inset 0 0 0 1px rgba(250,204,21,.07)}
+
+.og-weekDayList{gap:8px}
+.og-weekDayRow{
+  min-height:66px;overflow:hidden;padding:10px 12px 10px 15px;border-color:rgba(100,116,139,.3);border-radius:15px;
+  background:radial-gradient(220px 90px at 0% 50%,rgba(45,212,191,.065),transparent 72%),linear-gradient(145deg,rgba(13,24,31,.98),rgba(5,11,16,.99));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 7px 18px rgba(0,0,0,.18);transition:border-color .18s ease,transform .18s ease,box-shadow .18s ease;
+}
+.og-weekDayRow::before{content:"";position:absolute;inset:7px auto 7px 0;width:3px;border-radius:0 5px 5px 0;background:#2dd4bf;box-shadow:0 0 15px rgba(45,212,191,.48)}
+.og-weekDayRow:nth-child(2n)::before{background:#60a5fa;box-shadow:0 0 15px rgba(96,165,250,.44)}
+.og-weekDayRow:nth-child(3n)::before{background:#c084fc;box-shadow:0 0 15px rgba(192,132,252,.42)}
+.og-weekDayRow:hover{transform:translateY(-1px);border-color:rgba(45,212,191,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 10px 25px rgba(0,0,0,.27),0 0 22px rgba(45,212,191,.055)}
+.og-weekDayRow>strong:first-child{font-size:.88rem;font-weight:950;letter-spacing:-.01em}
+.og-weekDayRow b{display:flex;align-items:baseline;justify-content:flex-end;gap:4px;color:#fff;font-variant-numeric:tabular-nums}
+.og-weekDayRow b span{font-size:1.02rem;font-weight:1000;letter-spacing:-.025em}.og-weekDayRow b small{color:#f5d76e;font-size:.58rem;font-weight:950;text-transform:uppercase}
+.og-dayBadge{border:1px solid rgba(148,163,184,.16);padding:5px 7px;font-size:.57rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.og-dayBadge.base{background:linear-gradient(135deg,rgba(100,116,139,.24),rgba(71,85,105,.13));color:#e2e8f0}.og-dayBadge.edited{box-shadow:0 0 14px rgba(59,130,246,.1)}
+.og-weekMacro{justify-content:center;gap:4px;padding:6px 7px;border:1px solid rgba(148,163,184,.12);border-radius:9px;background:rgba(2,8,13,.42);font-variant-numeric:tabular-nums}
+.og-weekMacro i{width:7px;height:7px;box-shadow:0 0 9px currentColor}.og-weekMacro em{color:#8492a6;font-size:.58rem;font-style:normal;font-weight:950}.og-weekMacro strong{color:#f8fafc;font-size:.78rem;font-weight:950}.og-weekMacro small{color:#64748b;font-size:.54rem;font-weight:900}
+.og-weekMacro.protein{border-color:rgba(96,165,250,.16)}.og-weekMacro.carbs{border-color:rgba(74,222,128,.15)}.og-weekMacro.fats{border-color:rgba(192,132,252,.16)}
+.og-weekDayRow>svg{color:#d7e1ed;filter:drop-shadow(0 0 6px rgba(255,255,255,.18))}
+.og-weeklyFooterActions{padding-top:2px}.og-weeklyRestore,.og-weeklyFooterActions .og-save{min-height:48px;border-radius:13px}.og-weeklyFooterActions .og-save{box-shadow:0 8px 24px rgba(250,204,21,.14),inset 0 1px 0 rgba(255,255,255,.25)}
+
+.og-weeklyEditor,.og-weeklyUpgradeDialog{
+  border-color:rgba(94,234,212,.27);
+  background:radial-gradient(680px 300px at 10% -5%,rgba(45,212,191,.11),transparent 62%),radial-gradient(520px 280px at 100% 5%,rgba(250,204,21,.075),transparent 62%),linear-gradient(155deg,#0a131a,#050a0f);
+  box-shadow:0 32px 100px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.025),inset 0 1px 0 rgba(255,255,255,.07);
+}
+.og-weeklyEditorHead{padding-bottom:13px;border-bottom:1px solid rgba(148,163,184,.13)}
+.og-weeklyEditorHead h2{font-size:1.65rem;font-weight:950;letter-spacing:-.025em}.og-weeklyEditorHead p{color:#a6b1c0}
+.og-weeklyEditorHeadActions>button{border-color:rgba(148,163,184,.22);background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.og-weeklyEditorFields{gap:11px}
+.og-weeklyEditorField{
+  position:relative;overflow:hidden;gap:10px;padding:13px;border-width:1px;border-radius:17px;
+  background:linear-gradient(150deg,rgba(17,27,34,.98),rgba(5,10,15,.98));box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 10px 26px rgba(0,0,0,.2);transition:.18s ease;
+}
+.og-weeklyEditorField::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:#94a3b8;opacity:.85}
+.og-weeklyEditorField.calories::before{background:#facc15;box-shadow:0 0 16px rgba(250,204,21,.42)}.og-weeklyEditorField.protein::before{background:#60a5fa;box-shadow:0 0 16px rgba(96,165,250,.4)}.og-weeklyEditorField.carbs::before{background:#4ade80;box-shadow:0 0 16px rgba(74,222,128,.38)}.og-weeklyEditorField.fats::before{background:#c084fc;box-shadow:0 0 16px rgba(192,132,252,.4)}
+.og-weeklyEditorField.calories{border-color:rgba(250,204,21,.4);background:linear-gradient(150deg,rgba(35,31,13,.9),rgba(6,11,15,.98))}.og-weeklyEditorField.protein{border-color:rgba(96,165,250,.34);background:linear-gradient(150deg,rgba(11,28,43,.9),rgba(6,11,16,.98))}.og-weeklyEditorField.carbs{border-color:rgba(74,222,128,.3);background:linear-gradient(150deg,rgba(10,34,27,.88),rgba(6,11,15,.98))}.og-weeklyEditorField.fats{border-color:rgba(192,132,252,.34);background:linear-gradient(150deg,rgba(30,19,43,.88),rgba(6,10,15,.98))}
+.og-weeklyEditorField:focus-within{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,0,0,.28),0 0 24px rgba(56,189,248,.075)}
+.og-weeklyEditorFieldLabel{font-size:.68rem;letter-spacing:.035em}.og-weeklyEditorFieldLabel svg{padding:3px;width:23px;height:23px;border-radius:7px;background:rgba(255,255,255,.055)}
+.og-weeklyEditorInput input{height:66px;border-color:rgba(148,163,184,.17);background:linear-gradient(145deg,rgba(1,5,9,.96),rgba(7,12,17,.98));font-size:1.68rem;letter-spacing:-.025em;font-variant-numeric:tabular-nums;box-shadow:inset 0 2px 10px rgba(0,0,0,.48)}
+.og-weeklyEditorField.calories .og-weeklyEditorInput input{color:#fef3c7}.og-weeklyEditorField.protein .og-weeklyEditorInput input{color:#dbeafe}.og-weeklyEditorField.carbs .og-weeklyEditorInput input{color:#dcfce7}.og-weeklyEditorField.fats .og-weeklyEditorInput input{color:#f3e8ff}
+.og-weeklyEditorInput small{color:#a7b2c2;font-size:.72rem}
+.og-weeklyEditorStepper{gap:8px}.og-weeklyEditorStepper button{min-height:44px;border-color:rgba(148,163,184,.23);background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.045)}.og-weeklyEditorStepper button:hover{border-color:rgba(94,234,212,.42);background:rgba(45,212,191,.09);color:#99f6e4}
+.og-weeklyApplyPanel{padding:15px;border-color:rgba(94,234,212,.2);background:linear-gradient(145deg,rgba(10,22,28,.88),rgba(3,8,12,.88));box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.og-weeklyApplyPanel strong{font-size:.86rem}.og-weeklyApplyDays button{min-height:41px;border-color:rgba(148,163,184,.18);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.02))}.og-weeklyApplyDays button.active{border-color:#2dd4bf;background:linear-gradient(145deg,rgba(20,184,166,.2),rgba(20,184,166,.08));box-shadow:0 0 18px rgba(45,212,191,.1),inset 0 1px 0 rgba(255,255,255,.08)}
+.og-weeklyEditorTools button{min-height:46px;border-color:rgba(148,163,184,.18);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.018))}.og-weeklyEditorTools button:hover{border-color:rgba(94,234,212,.32);color:#99f6e4}.og-weeklyEditorTools button.danger:hover{border-color:rgba(248,113,113,.38);color:#fecaca}
+.og-weeklyEditorFooter{border-top-color:rgba(94,234,212,.16);background:linear-gradient(180deg,rgba(8,16,22,.96),rgba(4,9,13,.99))}.og-weeklyEditorFooter .og-save{box-shadow:0 8px 24px rgba(250,204,21,.16),inset 0 1px 0 rgba(255,255,255,.25)}
+
+@media(max-width:760px){
+  .og-weekTargetsHead{grid-template-columns:minmax(0,1fr) auto}.og-weekTargetsHeading{grid-column:1}.og-weekTargetsHead>button{grid-column:2;grid-row:1}.og-weekSummaryStats{grid-column:1/-1;grid-row:2}
+  .og-weekDayRow{min-height:72px;grid-template-columns:minmax(82px,.9fr) repeat(3,minmax(52px,.72fr));padding:11px 34px 11px 14px}
+  .og-weekDayRow b{justify-content:flex-start}.og-weekMacro{padding:6px 4px}
+}
+@media(max-width:560px){
+  .og-weekly{padding:14px;gap:14px}.og-weeklyTitleLine h3{font-size:1.42rem}
+  .og-weeklyModeCard{min-height:72px;padding:11px}.og-weeklyModeCard.active{padding:10px}
+  .og-weekTargetsHead{padding:10px}.og-weekSummaryStats{grid-template-columns:1fr 1fr}.og-weekSummaryStats>span{padding:7px 8px}.og-weekSummaryStats strong{font-size:1.08rem}
+  .og-weekDayRow{gap:7px}.og-weekDayRow>strong:first-child{font-size:.84rem}.og-weekDayRow b span{font-size:.98rem}.og-weekDayRow b small{font-size:.54rem}.og-weekMacro strong{font-size:.72rem}.og-weekMacro em,.og-weekMacro small{font-size:.5rem}
+  .og-weeklyEditor{padding:15px}.og-weeklyEditorHead{padding-bottom:11px}.og-weeklyEditorHead h2{font-size:1.35rem}
+  .og-weeklyEditorFields{gap:8px}.og-weeklyEditorField{padding:10px;gap:8px}.og-weeklyEditorInput input{height:58px;font-size:1.38rem}.og-weeklyEditorStepper button{min-height:42px}
+}
+@media(max-width:390px){
+  .og-weekTargetsHeading>small{display:none}.og-weekTargetsHead>button{min-height:40px;padding:0 9px}.og-weekSummaryStats small{font-size:.5rem}
+  .og-weekDayRow{grid-template-columns:minmax(72px,.86fr) repeat(3,minmax(46px,.7fr));gap:5px}.og-weekMacro{gap:3px}.og-weekMacro i{display:none}.og-weekMacro strong{font-size:.69rem}
+  .og-weeklyEditorInput input{font-size:1.24rem;padding-right:34px}.og-weeklyEditorInput small{right:7px;font-size:.62rem}
+}

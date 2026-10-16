@@ -7,6 +7,8 @@ import {
   buildVariedPersonalMealTargetDayPlan,
   buildPersonalMealTargetConfig,
   calculateLockedMealMacros,
+  combineConsumedMealsByType,
+  consumedMealsWithoutPersonalTarget,
   editablePersonalMealTargetIds,
   editPersonalMealTargetDay,
   generationNutritionBudget,
@@ -21,12 +23,67 @@ import {
   personalMealTargetDayReconciliation,
   personalMealTargetFlexiblePlan,
   personalMealTargetPlannedIds,
+  personalMealTargetTotalFitsBudget,
   personalMealTargetTotals,
+  personalMealTargetCanRegenerate,
+  personalMealTargetOrigin,
   personalMealTargetsFromTrackingDay,
+  mergeConsumedMealsIntoPersonalTargetPlan,
+  PERSONAL_MEAL_TARGET_ORIGIN,
+  plannedMealCompositionOrigin,
+  plannedMealCompositionOrigins,
+  reconcilePlannedMealsWithPersonalTargets,
+  removePersonalMealTargetFromTrackingDay,
   replacePersonalMealTargetConfigs,
   reorderPersonalMealTargets,
   resolvePersonalMealTargetRemovals,
 } from "./quickMealTargetPlan.js";
+
+test("tolera sólo diferencias de redondeo al validar las kcal por meta", () => {
+  assert.equal(personalMealTargetTotalFitsBudget(2625.2, 2625), true);
+  assert.equal(personalMealTargetTotalFitsBudget(2625.5, 2625), true);
+  assert.equal(personalMealTargetTotalFitsBudget(2625.6, 2625), false);
+});
+
+test("la reconciliación no presenta un cambio de Tracking por 0,2 kcal de redondeo", () => {
+  const trackingDay = {
+    mealsConfig: [636.1, 633.1, 728, 628].map((kcal, index) => ({
+      mealId: `menu_target_meal_20261013_${index + 1}`,
+      tipo: `meal-${index + 1}`,
+      personalTarget: true,
+      targetOrigin: "auto",
+      meta: { kcal },
+    })),
+    meals: {},
+  };
+  const reconciliation = personalMealTargetDayReconciliation({
+    dailyTarget: { kcal: 2625 },
+    trackingDay,
+  });
+
+  assert.equal(reconciliation.difference.kcal, 0.2);
+  assert.equal(reconciliation.hasDifference, false);
+});
+
+test("la reconciliación sigue informando un exceso real superior al redondeo", () => {
+  const trackingDay = {
+    mealsConfig: [636.2, 633.2, 728.1, 628.1].map((kcal, index) => ({
+      mealId: `menu_target_meal_20261013_${index + 1}`,
+      tipo: `meal-${index + 1}`,
+      personalTarget: true,
+      targetOrigin: "auto",
+      meta: { kcal },
+    })),
+    meals: {},
+  };
+  const reconciliation = personalMealTargetDayReconciliation({
+    dailyTarget: { kcal: 2625 },
+    trackingDay,
+  });
+
+  assert.equal(reconciliation.difference.kcal, 0.6);
+  assert.equal(reconciliation.hasDifference, true);
+});
 
 const reconciliationTarget = { kcal: 2000, proteina: 150, carbs: 200, grasas: 60 };
 
@@ -40,9 +97,9 @@ function reconciliationTrackingDay({
 } = {}) {
   return {
     mealsConfig: [
-      { mealId: "menu_target_breakfast", tipo: "desayuno", nombre: "Desayuno", meta: { kcal: 600, proteina: 45, carbs: 60, grasas: 18 } },
-      { mealId: "menu_target_lunch", tipo: "almuerzo", nombre: "Almuerzo", meta: { kcal: 600, proteina: 45, carbs: 60, grasas: 18 }, metaConfirmed: confirmedLunch },
-      { mealId: "menu_target_dinner", tipo: "cena", nombre: "Cena", meta: { kcal: 700, proteina: 52.5, carbs: 70, grasas: 21 }, metaConfirmed: confirmedDinner },
+      { mealId: "menu_target_breakfast", tipo: "desayuno", nombre: "Desayuno", targetOrigin: "auto", meta: { kcal: 600, proteina: 45, carbs: 60, grasas: 18 } },
+      { mealId: "menu_target_lunch", tipo: "almuerzo", nombre: "Almuerzo", targetOrigin: "auto", meta: { kcal: 600, proteina: 45, carbs: 60, grasas: 18 }, metaConfirmed: confirmedLunch },
+      { mealId: "menu_target_dinner", tipo: "cena", nombre: "Cena", targetOrigin: "auto", meta: { kcal: 700, proteina: 52.5, carbs: 70, grasas: 21 }, metaConfirmed: confirmedDinner },
     ],
     meals: {
       picoteo,
@@ -397,8 +454,10 @@ test("formatear o eliminar selecciona sólo metas personales creadas por el clie
     { id: "coach_target_breakfast", coachTargetOnly: true },
     { id: "menu_target_coach_like", coachTargetOnly: true },
     { id: "meal_regular", personalTargetOnly: true },
+    { id: "locked_personal", personalTargetOnly: true, targetLocked: true },
+    { id: "coach_origin", personalTargetOnly: true, targetOrigin: "coach" },
     { id: "menu_target_breakfast_1", personalTargetOnly: true },
-  ]), ["menu_target_breakfast_1"]);
+  ]), ["menu_target_breakfast_1", "meal_regular"]);
 });
 
 test("quitar una meta persistida exige confirmación y no confunde comidas conservadas o nuevas", () => {
@@ -454,7 +513,591 @@ test("crea una comida personal por meta y distribuye macros según las kcal del 
     orden: 1,
     meta: { kcal: 600, proteina: 40, carbs: 70, grasas: 20 },
     metaConfirmed: false,
+    targetOrigin: "manual",
+    personalTarget: true,
   });
+});
+
+test("Planificar otra queda manual y se preserva aunque esté vacía", () => {
+  const config = buildPersonalMealTargetConfig({
+    type: "desayuno",
+    kcal: 500,
+    dailyTarget: { kcal: 2000, proteina: 140, carbs: 220, grasas: 60 },
+    idSuffix: "legacyrandom",
+  });
+  const target = personalMealTargetsFromTrackingDay({ mealsConfig: [config], meals: {} })[0];
+
+  assert.equal(target.targetOrigin, PERSONAL_MEAL_TARGET_ORIGIN.MANUAL);
+  assert.equal(personalMealTargetCanRegenerate(target, { meals: {} }), false);
+});
+
+test("1/2/4/5 metas manuales sobre configuración de 4 generan sólo el faltante y nunca borran extras", () => {
+  const types = ["desayuno", "almuerzo", "merienda", "cena", "snack"];
+  for (const manualCount of [1, 2, 4, 5]) {
+    const existingMeals = types.slice(0, manualCount).map((type) => ({
+      id: `manual-${type}`,
+      type,
+      name: type,
+      personalTargetOnly: true,
+      targetOrigin: "manual",
+      target: { kcal: 300, proteina: 20, carbs: 30, grasas: 10 },
+    }));
+    const plan = buildPersonalMealTargetDayPlan({
+      dailyTarget: { kcal: 2400, proteina: 160, carbs: 280, grasas: 80 },
+      mealTypes: types.slice(0, 4),
+      existingMeals,
+      seed: `manual-${manualCount}`,
+    });
+    const generated = plan.meals.filter((meal) => meal.preserved !== true);
+
+    assert.equal(generated.length, Math.max(0, 4 - manualCount));
+    assert.equal(plan.meals.length, Math.max(4, manualCount));
+    existingMeals.forEach((meal) => {
+      assert.ok(plan.meals.some((candidate) => candidate.id === meal.id));
+    });
+  }
+});
+
+test("auto vacío vuelve a ser regenerable al borrar su último FoodLog; manual no", () => {
+  const auto = { id: "auto", targetOrigin: "auto", target: { kcal: 500 } };
+  const manual = { id: "manual", targetOrigin: "manual", target: { kcal: 500 } };
+  const withLogs = { meals: { auto: [{ kcal: 100 }], manual: [{ kcal: 100 }] } };
+  const empty = { meals: { auto: [], manual: [] } };
+
+  assert.equal(personalMealTargetCanRegenerate(auto, withLogs), false);
+  assert.equal(personalMealTargetCanRegenerate(manual, withLogs), false);
+  assert.equal(personalMealTargetCanRegenerate(auto, empty), true);
+  assert.equal(personalMealTargetCanRegenerate(manual, empty), false);
+});
+
+test("edición manual valida cada nutriente con la precisión real consumida", () => {
+  assert.throws(() => editPersonalMealTargetDay({
+    meals: [{ id: "breakfast", target: { kcal: 500, proteina: 40, carbs: 60, grasas: 12 } }],
+    mealId: "breakfast",
+    target: { kcal: 430, proteina: 35, carbs: 50, grasas: 10 },
+    consumedMinimum: { kcal: 430.04, proteina: 35.01, carbs: 50.02, grasas: 10.01 },
+  }), /no puede quedar por debajo/);
+});
+
+test("una meta bloqueada o del coach no puede editarse desde el cliente", () => {
+  const target = { kcal: 550, proteina: 42, carbs: 62, grasas: 16 };
+  for (const meal of [
+    { id: "locked", targetLocked: true, target: { kcal: 500 } },
+    { id: "coach", targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.COACH, target: { kcal: 500 } },
+  ]) {
+    assert.throws(() => editPersonalMealTargetDay({
+      meals: [meal],
+      mealId: meal.id,
+      target,
+    }), /está bloqueada/);
+  }
+});
+
+test("eliminar una meta vacía quita sólo esa card y deja de proteger el slot", () => {
+  const day = {
+    mealsConfig: [
+      { mealId: "manual-breakfast", tipo: "desayuno", personalTarget: true, targetOrigin: "manual", meta: { kcal: 500 } },
+      { mealId: "auto-lunch", tipo: "almuerzo", personalTarget: true, targetOrigin: "auto", meta: { kcal: 700 } },
+    ],
+    meals: { "manual-breakfast": [], "auto-lunch": [], picoteo: [{ kcal: 80 }] },
+  };
+  const result = removePersonalMealTargetFromTrackingDay(day, "manual-breakfast");
+
+  assert.deepEqual(personalMealTargetsFromTrackingDay(result).map((meal) => meal.id), ["auto-lunch"]);
+  assert.strictEqual(result.meals, day.meals);
+  assert.deepEqual(result.meals.picoteo, [{ kcal: 80 }]);
+
+  const regenerated = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2000, proteina: 140, carbs: 220, grasas: 60 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    existingMeals: personalMealTargetsFromTrackingDay(result),
+    seed: "deleted-manual-slot",
+  });
+  assert.equal(regenerated.meals.length, 3);
+  assert.equal(regenerated.meals.find((meal) => meal.type === "desayuno")?.targetOrigin, "auto");
+});
+
+test("eliminar una meta con FoodLogs conserva consumo, mealId y permite derivar target >= consumo", () => {
+  const logs = [{ id: "rice-log", mealId: "target-lunch", kcal: 300, proteina: 21, carbs: 42, grasas: 7 }];
+  const day = {
+    mealsConfig: [{
+      mealId: "target-lunch",
+      tipo: "almuerzo",
+      nombre: "Almuerzo",
+      personalTarget: true,
+      targetOrigin: "manual",
+      meta: { kcal: 700, proteina: 45, carbs: 80, grasas: 20 },
+      metaConfirmed: true,
+      metaConfirmation: { mode: "manual_consumption", previousMeta: { kcal: 700 } },
+    }],
+    meals: { "target-lunch": logs, picoteo: [{ id: "snack-log", kcal: 50 }] },
+  };
+  const result = removePersonalMealTargetFromTrackingDay(day, "target-lunch");
+
+  assert.equal(result.mealsConfig.some((meal) => meal.mealId === "target-lunch"), false);
+  assert.strictEqual(result.meals["target-lunch"], logs);
+  assert.equal(result.meals["target-lunch"][0].id, "rice-log");
+  assert.deepEqual(result.meals.picoteo, day.meals.picoteo);
+  assert.equal(JSON.stringify(result).includes("metaConfirmation"), false);
+
+  const reloaded = JSON.parse(JSON.stringify(result));
+  assert.equal(personalMealTargetsFromTrackingDay(reloaded).length, 0);
+  assert.equal(reloaded.meals["target-lunch"][0].mealId, "target-lunch");
+
+  const consumed = consumedMealsWithoutPersonalTarget(reloaded);
+  assert.equal(consumed.length, 1);
+  assert.equal(consumed[0].id, "target-lunch");
+  const basePlan = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2000, proteina: 140, carbs: 220, grasas: 60 },
+    consumedNutrition: consumed[0].consumed,
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    seed: "consumed-without-target-reload",
+  });
+  const regenerated = mergeConsumedMealsIntoPersonalTargetPlan(basePlan, consumed);
+  const lunch = regenerated.meals.find((meal) => meal.id === "target-lunch");
+  assert.ok(lunch.target.kcal >= 300);
+  assert.ok(lunch.target.proteina >= 21);
+  assert.ok(lunch.target.carbs >= 42);
+  assert.ok(lunch.target.grasas >= 7);
+});
+
+test("eliminar una meta vacía redistribuye kcal y macros completos entre las Auto restantes", () => {
+  const day = {
+    mealsConfig: [
+      { mealId: "breakfast", tipo: "desayuno", personalTarget: true, targetOrigin: "auto", meta: { kcal: 700, proteina: 40, carbs: 90, grasas: 20 } },
+      { mealId: "lunch", tipo: "almuerzo", personalTarget: true, targetOrigin: "auto", meta: { kcal: 600, proteina: 50, carbs: 60, grasas: 18 } },
+      { mealId: "dinner", tipo: "cena", personalTarget: true, targetOrigin: "auto", meta: { kcal: 300, proteina: 20, carbs: 30, grasas: 12 } },
+    ],
+    meals: {
+      breakfast: [{ id: "rice", kcal: 300, proteina: 8, carbs: 65, grasas: 1 }],
+      lunch: [{ id: "chicken", kcal: 250, proteina: 45, carbs: 0, grasas: 8 }],
+      dinner: [],
+    },
+  };
+  const before = personalMealTargetTotals(personalMealTargetsFromTrackingDay(day));
+  const result = removePersonalMealTargetFromTrackingDay(day, "dinner", { redistribute: true });
+  const after = personalMealTargetTotals(personalMealTargetsFromTrackingDay(result));
+
+  assert.equal(result.mealsConfig.some((meal) => meal.mealId === "dinner"), false);
+  assert.deepEqual(after, before);
+  assert.deepEqual(result.redistributedTarget, { kcal: 300, proteina: 20, carbs: 30, grasas: 12 });
+  assert.deepEqual(result.redistributionRecipientIds, ["breakfast", "lunch"]);
+  assert.equal(result.meals.breakfast.length, 1);
+  assert.equal(result.meals.lunch.length, 1);
+});
+
+test("eliminar sin redistribuir deja visible el faltante contra la meta diaria", () => {
+  const day = {
+    mealsConfig: [
+      { mealId: "breakfast", tipo: "desayuno", personalTarget: true, targetOrigin: "auto", meta: { kcal: 700, proteina: 40, carbs: 80, grasas: 20 } },
+      { mealId: "lunch", tipo: "almuerzo", personalTarget: true, targetOrigin: "auto", meta: { kcal: 600, proteina: 50, carbs: 60, grasas: 18 } },
+      { mealId: "snack", tipo: "merienda", personalTarget: true, targetOrigin: "auto", meta: { kcal: 400, proteina: 30, carbs: 40, grasas: 12 } },
+      { mealId: "dinner", tipo: "cena", personalTarget: true, targetOrigin: "auto", meta: { kcal: 300, proteina: 20, carbs: 30, grasas: 10 } },
+    ],
+    meals: {
+      picoteo: [{ id: "free-food", kcal: 600, proteina: 20, carbs: 110, grasas: 9 }],
+      breakfast: [{ id: "breakfast-food", kcal: 300, proteina: 20, carbs: 30, grasas: 8 }],
+      lunch: [{ id: "lunch-food", kcal: 250, proteina: 25, carbs: 25, grasas: 7 }],
+      snack: [{ id: "snack-food", kcal: 150, proteina: 10, carbs: 15, grasas: 4 }],
+      dinner: [],
+    },
+  };
+  const removed = removePersonalMealTargetFromTrackingDay(day, "dinner", { redistribute: false });
+  const reconciliation = personalMealTargetDayReconciliation({
+    dailyTarget: { kcal: 2600, proteina: 160, carbs: 320, grasas: 69 },
+    trackingDay: removed,
+    freeCalories: 0,
+  });
+
+  assert.equal(reconciliation.difference.kcal, -300);
+  assert.equal(reconciliation.forecast.kcal, 2300);
+  assert.equal(reconciliation.hasDifference, true);
+  assert.equal(reconciliation.canAdjust, false);
+
+  const preservedMeals = personalMealTargetsFromTrackingDay(removed)
+    .filter((meal) => !personalMealTargetCanRegenerate(meal, removed));
+  const regenerated = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2600, proteina: 160, carbs: 320, grasas: 69 },
+    consumedNutrition: { kcal: 600, proteina: 20, carbs: 110, grasas: 9 },
+    mealTypes: ["desayuno", "almuerzo", "merienda", "cena"],
+    existingMeals: preservedMeals,
+    freeCalories: 0,
+    seed: "only-fill-deleted-dinner",
+  });
+
+  assert.deepEqual(
+    regenerated.meals.slice(0, 3).map((meal) => [meal.id, meal.target.kcal]),
+    [["breakfast", 700], ["lunch", 600], ["snack", 400]]
+  );
+  assert.equal(regenerated.meals[3].type, "cena");
+  assert.equal(regenerated.meals[3].target.kcal, 300);
+  assert.equal(regenerated.plannedTarget.kcal, 2000);
+});
+
+test("eliminar una meta consumida redistribuye sólo su restante y nunca duplica FoodLogs", () => {
+  const dinnerLogs = [{ id: "dinner-log", kcal: 200, proteina: 20, carbs: 15, grasas: 7 }];
+  const day = {
+    mealsConfig: [
+      { mealId: "breakfast", tipo: "desayuno", personalTarget: true, targetOrigin: "auto", meta: { kcal: 500, proteina: 35, carbs: 60, grasas: 15 } },
+      { mealId: "lunch", tipo: "almuerzo", personalTarget: true, targetOrigin: "manual", meta: { kcal: 600, proteina: 45, carbs: 70, grasas: 18 } },
+      { mealId: "dinner", tipo: "cena", personalTarget: true, targetOrigin: "auto", meta: { kcal: 300, proteina: 30, carbs: 25, grasas: 10 } },
+    ],
+    meals: { breakfast: [], lunch: [], dinner: dinnerLogs },
+  };
+  const result = removePersonalMealTargetFromTrackingDay(day, "dinner", { redistribute: true });
+  const targets = personalMealTargetsFromTrackingDay(result);
+
+  assert.deepEqual(result.redistributedTarget, { kcal: 100, proteina: 10, carbs: 10, grasas: 3 });
+  assert.equal(targets.find((meal) => meal.id === "breakfast").target.kcal, 600);
+  assert.equal(targets.find((meal) => meal.id === "lunch").target.kcal, 600);
+  assert.strictEqual(result.meals.dinner, dinnerLogs);
+  assert.equal(result.meals.dinner.length, 1);
+});
+
+test("una meta coach o locked no puede eliminarse individualmente", () => {
+  for (const config of [
+    { mealId: "coach", targetOrigin: "coach", personalTarget: true, meta: { kcal: 500 } },
+    { mealId: "locked", targetOrigin: "manual", targetLocked: true, personalTarget: true, meta: { kcal: 500 } },
+  ]) {
+    assert.throws(() => removePersonalMealTargetFromTrackingDay({
+      mealsConfig: [config],
+      meals: { [config.mealId]: [] },
+    }, config.mealId), /bloqueada/);
+  }
+});
+
+test("consumo sin target recibe una meta >= consumo sin descontarse dos veces", () => {
+  const trackingDay = {
+    mealsConfig: [{ mealId: "almuerzo", tipo: "almuerzo", nombre: "Almuerzo", meta: null }],
+    meals: {
+      almuerzo: [{ kcal: 300, proteina: 25, carbs: 35, grasas: 9 }],
+      picoteo: [{ kcal: 50, proteina: 2, carbs: 8, grasas: 1 }],
+    },
+  };
+  const consumed = consumedMealsWithoutPersonalTarget(trackingDay);
+  const basePlan = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2000, proteina: 150, carbs: 220, grasas: 60 },
+    consumedNutrition: { kcal: 350, proteina: 27, carbs: 43, grasas: 10 },
+    freeEligibleNutrition: { kcal: 50, proteina: 2, carbs: 8, grasas: 1 },
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    freeCalories: 100,
+  });
+  const merged = mergeConsumedMealsIntoPersonalTargetPlan(basePlan, consumed);
+  const lunch = merged.meals.find((meal) => meal.id === "almuerzo");
+
+  assert.equal(consumed.length, 1);
+  assert.ok(lunch.target.kcal >= 300);
+  assert.ok(lunch.target.proteina >= 25);
+  assert.equal(personalMealTargetTotals(merged.meals).kcal, merged.plannedTarget.kcal);
+});
+
+test("una comida guardada infiere su momento y nombre aunque use un mealId propio", () => {
+  const consumed = consumedMealsWithoutPersonalTarget({
+    meals: {
+      saved_meal_123: [{
+        kcal: 111,
+        proteina: 22,
+        carbs: 0,
+        grasas: 3,
+        mealType: "desayuno",
+        savedMealName: "Desayuno",
+      }],
+    },
+  });
+
+  assert.equal(consumed.length, 1);
+  assert.equal(consumed[0].id, "saved_meal_123");
+  assert.equal(consumed[0].type, "desayuno");
+  assert.equal(consumed[0].name, "Desayuno");
+  assert.equal(consumed[0].consumed.kcal, 111);
+});
+
+test("dos registros reales del mismo momento forman una sola meta sin doble conteo", () => {
+  const trackingDay = {
+    mealsConfig: [{
+      mealId: "menu_target_desayuno_old",
+      tipo: "desayuno",
+      nombre: "Desayuno",
+      meta: null,
+    }],
+    meals: {
+      menu_target_desayuno_old: [{ kcal: 111, proteina: 22, carbs: 0, grasas: 3 }],
+      saved_breakfast: [{
+        kcal: 111,
+        proteina: 22,
+        carbs: 0,
+        grasas: 3,
+        mealType: "desayuno",
+        savedMealName: "Desayuno",
+      }],
+    },
+  };
+  const consumed = consumedMealsWithoutPersonalTarget(trackingDay);
+  const combined = combineConsumedMealsByType(consumed);
+  const baseline = generationTrackingBreakdown(trackingDay).total;
+  const basePlan = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2625, proteina: 172, carbs: 329, grasas: 69 },
+    consumedNutrition: baseline,
+    mealTypes: ["desayuno", "almuerzo", "merienda", "cena"],
+    seed: "saved-breakfast-preview",
+  });
+  const merged = mergeConsumedMealsIntoPersonalTargetPlan(basePlan, consumed);
+  const breakfast = merged.meals.find((meal) => meal.type === "desayuno");
+  const persisted = personalMealTargetConfigsFromPlan(merged, { idSuffix: "20261015" });
+  const reloadedDay = { ...trackingDay, mealsConfig: replacePersonalMealTargetConfigs(trackingDay, persisted) };
+
+  assert.equal(combined.length, 1);
+  assert.equal(combined[0].consumed.kcal, 222);
+  assert.deepEqual(combined[0].sourceMealIds, ["menu_target_desayuno_old", "saved_breakfast"]);
+  assert.ok(breakfast.target.kcal >= 222);
+  assert.equal(merged.meals.filter((meal) => meal.type === "desayuno").length, 1);
+  assert.equal(personalMealTargetTotals(merged.meals).kcal, 2625);
+  assert.deepEqual(
+    persisted.find((meal) => meal.mealId === breakfast.id).consumptionSourceMealIds,
+    ["menu_target_desayuno_old", "saved_breakfast"]
+  );
+  assert.equal(consumedMealsWithoutPersonalTarget(reloadedDay).length, 0);
+});
+
+test("Auto -> Por meta oculta sólo composición automática pendiente", () => {
+  const auto = { id: "auto-breakfast", tipoComida: "desayuno", compositionOrigin: "auto", items: [{ cantidad: 100 }] };
+  const manual = { id: "manual-lunch", tipoComida: "almuerzo", compositionOrigin: "manual", items: [{ cantidad: 100 }] };
+  const doneAuto = { id: "auto-dinner", tipoComida: "cena", compositionOrigin: "auto", items: [{ cantidad: 100 }] };
+  const result = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: [auto, manual, doneAuto],
+    completedMealIds: ["auto-dinner"],
+    trackingDay: {
+      mealsConfig: [
+        { mealId: "menu_target_desayuno_20261013_1", tipo: "desayuno", targetOrigin: "auto", meta: { kcal: 500 } },
+        { mealId: "menu_target_almuerzo_20261013_2", tipo: "almuerzo", targetOrigin: "auto", meta: { kcal: 700 } },
+        { mealId: "menu_target_cena_20261013_3", tipo: "cena", targetOrigin: "auto", meta: { kcal: 600 } },
+      ],
+    },
+  });
+
+  assert.deepEqual(result.meals, [manual, doneAuto]);
+  assert.deepEqual(result.supersededMeals, [auto]);
+});
+
+test("Auto legacy mal etiquetado como manual se reemplaza por metas y conserva sólo lo Hecho", () => {
+  const legacyMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `generated-meal-${index + 1}`,
+    tipoComida: type,
+    compositionOrigin: "manual",
+    generationSource: "meal_target_first_fit_v2",
+    target: { kcal: 500 },
+    items: [{ cantidad: 100 }],
+  }));
+  const trackingDay = {
+    mealsConfig: legacyMeals.map((meal, index) => ({
+      mealId: `menu_target_${meal.tipoComida}_20261013_${index + 1}`,
+      tipo: meal.tipoComida,
+      targetOrigin: "auto",
+      personalTarget: true,
+      meta: { kcal: 500 },
+    })),
+  };
+
+  assert.deepEqual(plannedMealCompositionOrigins(legacyMeals, { menuSource: "manual" }), [
+    "auto", "auto", "auto", "auto",
+  ]);
+  const pending = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: legacyMeals,
+    trackingDay,
+    menuSource: "manual",
+  });
+  assert.deepEqual(pending.meals, []);
+
+  const withBreakfastDone = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: legacyMeals,
+    trackingDay,
+    completedMealIds: ["generated-meal-1"],
+    menuSource: "manual",
+  });
+  assert.deepEqual(withBreakfastDone.meals, [legacyMeals[0]]);
+});
+
+test("Auto legacy sin generationSource se detecta por metas vacías que duplican su nutrición", () => {
+  const nutrition = [
+    { kcal: 630, proteina: 42.3, carbs: 83.1, grasas: 14.3 },
+    { kcal: 666, proteina: 46.2, carbs: 90, grasas: 16 },
+    { kcal: 680, proteina: 42.8, carbs: 88, grasas: 17.6 },
+    { kcal: 650, proteina: 37.2, carbs: 68, grasas: 25.5 },
+  ];
+  const legacyMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `old-menu-${type}`,
+    tipoComida: type,
+    compositionOrigin: "manual",
+    totals: nutrition[index],
+    items: [{ cantidad: 100, ...nutrition[index] }],
+  }));
+  const trackingDay = {
+    meals: {},
+    mealsConfig: legacyMeals.map((meal, index) => ({
+      mealId: `menu_target_${meal.tipoComida}_20261013_${index + 1}`,
+      tipo: meal.tipoComida,
+      targetOrigin: "manual",
+      personalTarget: true,
+      meta: nutrition[index],
+    })),
+  };
+  const targets = personalMealTargetsFromTrackingDay(trackingDay);
+
+  assert.deepEqual(plannedMealCompositionOrigins(legacyMeals, {
+    menuSource: "manual",
+    targetMeals: targets,
+    trackingDay,
+  }), ["auto", "auto", "auto", "auto"]);
+  assert.deepEqual(reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: legacyMeals,
+    trackingDay,
+    menuSource: "manual",
+  }).meals, []);
+});
+
+test("la detección legacy preserva una composición/meta editada manualmente", () => {
+  const legacyMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `old-menu-${type}`,
+    tipoComida: type,
+    compositionOrigin: "manual",
+    totals: { kcal: 500 + index * 10, proteina: 30, carbs: 60, grasas: 15 },
+    items: [{ cantidad: 100 }],
+  }));
+  const trackingDay = {
+    meals: {},
+    mealsConfig: legacyMeals.map((meal, index) => ({
+      mealId: `menu_target_${meal.tipoComida}_20261013_${index + 1}`,
+      tipo: meal.tipoComida,
+      targetOrigin: "manual",
+      targetEdited: index === 1,
+      personalTarget: true,
+      meta: index === 1 ? { ...meal.totals, kcal: 720 } : meal.totals,
+    })),
+  };
+
+  const result = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: legacyMeals,
+    trackingDay,
+    menuSource: "manual",
+  });
+  assert.deepEqual(result.meals, [legacyMeals[1]]);
+  assert.deepEqual(result.supersededMeals, [legacyMeals[0], legacyMeals[2], legacyMeals[3]]);
+});
+
+test("una comida automática suprimida no reaparece al eliminar las metas Por meta", () => {
+  const oldMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `old-${type}`,
+    tipoComida: type,
+    items: [{ cantidad: 100, kcal: 500 + index * 10 }],
+  }));
+  const result = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: oldMeals,
+    trackingDay: { mealsConfig: [], meals: {} },
+    suppressedMealIds: oldMeals.map((meal) => meal.id),
+  });
+
+  assert.deepEqual(result.meals, []);
+  assert.deepEqual(result.supersededMeals, oldMeals);
+});
+
+test("la migración puede retirar un Auto legacy usando el último plan Por meta local", () => {
+  const nutrition = [500, 600, 450, 550].map((kcal) => ({
+    kcal,
+    proteina: 35,
+    carbs: 55,
+    grasas: 15,
+  }));
+  const oldMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `old-${type}`,
+    tipoComida: type,
+    compositionOrigin: "manual",
+    totals: nutrition[index],
+    items: [{ cantidad: 100 }],
+  }));
+  const legacyTargetMeals = oldMeals.map((meal, index) => ({
+    id: `deleted-target-${index}`,
+    type: meal.tipoComida,
+    target: nutrition[index],
+  }));
+  const result = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: oldMeals,
+    trackingDay: { mealsConfig: [], meals: {} },
+    legacyTargetMeals,
+    menuSource: "manual",
+  });
+
+  assert.deepEqual(result.meals, []);
+  assert.deepEqual(result.supersededMeals, oldMeals);
+});
+
+test("un Auto legacy identificado por generated-meal no reaparece aunque ya no queden metas", () => {
+  const oldMeals = ["desayuno", "almuerzo", "merienda", "cena"].map((type, index) => ({
+    id: `generated-meal-${type}`,
+    tipoComida: type,
+    totals: { kcal: 500 + index * 20 },
+    items: [{ cantidad: 100 }],
+  }));
+  const result = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: oldMeals,
+    trackingDay: { mealsConfig: [], meals: {} },
+    legacyTargetMeals: [
+      { id: "removed-breakfast", type: "desayuno", target: { kcal: 1 } },
+      { id: "removed-lunch", type: "almuerzo", target: { kcal: 1 } },
+      { id: "removed-snack", type: "merienda", target: { kcal: 1 } },
+      { id: "removed-dinner", type: "cena", target: { kcal: 1 } },
+    ],
+    menuSource: "manual",
+  });
+
+  assert.deepEqual(plannedMealCompositionOrigins(oldMeals, { menuSource: "manual" }), [
+    "auto", "auto", "auto", "auto",
+  ]);
+  assert.deepEqual(result.meals, []);
+  assert.deepEqual(result.supersededMeals, oldMeals);
+});
+
+test("una edición manual explícita conserva su comida aunque mantenga un id generated-meal", () => {
+  const edited = {
+    id: "generated-meal-edited",
+    tipoComida: "almuerzo",
+    compositionOrigin: "manual",
+    items: [{ cantidad: 100 }],
+  };
+
+  assert.equal(plannedMealCompositionOrigin(edited), "manual");
+});
+
+test("un menú automático nuevo respeta una composición editada manualmente", () => {
+  const meals = [
+    { id: "auto", tipoComida: "desayuno", compositionOrigin: "auto", generationSource: "solver", target: { kcal: 500 }, items: [{ cantidad: 100 }] },
+    { id: "edited", tipoComida: "almuerzo", compositionOrigin: "manual", generationSource: "solver", target: { kcal: 700 }, items: [{ cantidad: 100 }] },
+  ];
+
+  assert.deepEqual(plannedMealCompositionOrigins(meals, { menuSource: "autonomous" }), ["auto", "manual"]);
+});
+
+test("Auto Hecho -> Por meta reparte sólo el restante entre las otras comidas", () => {
+  const plan = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 2200, proteina: 150, carbs: 240, grasas: 70 },
+    consumedNutrition: { kcal: 510, proteina: 35, carbs: 55, grasas: 17 },
+    mealTypes: ["almuerzo", "merienda", "cena"],
+    minimumMealCount: 1,
+    seed: "auto-done-to-target",
+  });
+
+  assert.deepEqual(plan.meals.map((meal) => meal.type), ["almuerzo", "merienda", "cena"]);
+  assert.deepEqual(personalMealTargetTotals(plan.meals), {
+    kcal: 1690,
+    proteina: 115,
+    carbs: 185,
+    grasas: 53,
+  });
+});
+
+test("legacy sin origen distingue auto por fecha y protege Planificar otra aleatorio", () => {
+  assert.equal(personalMealTargetOrigin({ mealId: "menu_target_desayuno_20261013_1" }), "auto");
+  assert.equal(personalMealTargetOrigin({ mealId: "menu_target_desayuno_1" }), "auto");
+  assert.equal(personalMealTargetOrigin({ mealId: "menu_target_desayuno_lx9ab2" }), "manual");
 });
 
 test("conserva las comidas configuradas y expone sólo las creadas por meta", () => {
@@ -813,6 +1456,44 @@ test("persistencia reemplaza sólo metas personales vacías y conserva otras com
   assert.deepEqual(personalMealTargetTotals(personalMealTargetsFromTrackingDay({ mealsConfig: replaced })), plan.plannedTarget);
 });
 
+test("regenerar una meta sobre consumo sin target reutiliza el mealId sin duplicar la ficha", () => {
+  const trackingDay = {
+    mealsConfig: [
+      { mealId: "picoteo", tipo: "snack", nombre: "Picoteo", meta: null },
+      {
+        mealId: "menu_target_desayuno_old",
+        tipo: "desayuno",
+        nombre: "Desayuno",
+        meta: null,
+        personalTarget: true,
+      },
+    ],
+    meals: {
+      menu_target_desayuno_old: [
+        { id: "rice", kcal: 338.5, proteina: 8, carbs: 75.5, grasas: 0.5 },
+      ],
+      picoteo: [{ id: "banana", kcal: 90, proteina: 1, carbs: 20, grasas: 0 }],
+    },
+  };
+  const consumed = consumedMealsWithoutPersonalTarget(trackingDay);
+  const basePlan = buildPersonalMealTargetDayPlan({
+    dailyTarget: { kcal: 1800, proteina: 120, carbs: 200, grasas: 60 },
+    consumedNutrition: generationTrackingBreakdown(trackingDay).total,
+    freeEligibleNutrition: generationTrackingBreakdown(trackingDay).freeEligible,
+    mealTypes: ["desayuno", "almuerzo", "cena"],
+    seed: "reuse-consumed-id",
+  });
+  const merged = mergeConsumedMealsIntoPersonalTargetPlan(basePlan, consumed);
+  const targets = personalMealTargetConfigsFromPlan(merged, { idSuffix: "20261014" });
+  const replaced = replacePersonalMealTargetConfigs(trackingDay, targets);
+  const breakfastConfigs = replaced.filter((meal) => meal.mealId === "menu_target_desayuno_old");
+
+  assert.equal(breakfastConfigs.length, 1);
+  assert.ok(breakfastConfigs[0].meta.kcal >= 338.5);
+  assert.equal(replaced.some((meal) => meal.mealId === "picoteo"), true);
+  assert.equal(personalMealTargetsFromTrackingDay({ mealsConfig: replaced }).length, 3);
+});
+
 test("reconciliación: Picoteo menor, igual o mayor que las libres se deriva sin doble descuento", () => {
   const cases = [
     { food: { kcal: 50, proteina: 3.75, carbs: 5, grasas: 1.5 }, free: 50, difference: 0 },
@@ -975,8 +1656,8 @@ test("100 g de arroz sobre la meta de la captura informa sólo carbohidratos", (
 test("reconciliación: mantener es puro y ajustar conserva la proporción 60/40", () => {
   const day = {
     mealsConfig: [
-      { mealId: "menu_target_lunch", tipo: "almuerzo", meta: { kcal: 600, proteina: 60, carbs: 60, grasas: 20 } },
-      { mealId: "menu_target_dinner", tipo: "cena", meta: { kcal: 400, proteina: 40, carbs: 40, grasas: 10 } },
+      { mealId: "menu_target_lunch", tipo: "almuerzo", targetOrigin: "auto", meta: { kcal: 600, proteina: 60, carbs: 60, grasas: 20 } },
+      { mealId: "menu_target_dinner", tipo: "cena", targetOrigin: "auto", meta: { kcal: 400, proteina: 40, carbs: 40, grasas: 10 } },
     ],
     meals: { picoteo: [{ kcal: 150, proteina: 10, carbs: 20, grasas: 3 }] },
   };
@@ -999,8 +1680,8 @@ test("reconciliación: el mínimo de 100 kcal deja residual y nunca crea valores
     freeCalories: 0,
     trackingDay: {
       mealsConfig: [
-        { mealId: "menu_target_lunch", tipo: "almuerzo", meta: { kcal: 200, proteina: 20, carbs: 20, grasas: 5 } },
-        { mealId: "menu_target_dinner", tipo: "cena", meta: { kcal: 200, proteina: 20, carbs: 20, grasas: 5 } },
+        { mealId: "menu_target_lunch", tipo: "almuerzo", targetOrigin: "auto", meta: { kcal: 200, proteina: 20, carbs: 20, grasas: 5 } },
+        { mealId: "menu_target_dinner", tipo: "cena", targetOrigin: "auto", meta: { kcal: 200, proteina: 20, carbs: 20, grasas: 5 } },
       ],
       meals: { picoteo: [{ kcal: 300, proteina: 50, carbs: 50, grasas: 20 }] },
     },
@@ -1109,9 +1790,9 @@ test("reconciliación: sin metas vacías elegibles informa residual sin modifica
 
 test("editar consumo y agregar o quitar Picoteo recalcula desde el snapshot sin deltas", () => {
   const configs = [
-    { mealId: "menu_target_breakfast", tipo: "desayuno", meta: { kcal: 500, proteina: 40, carbs: 60, grasas: 12 } },
-    { mealId: "menu_target_lunch", tipo: "almuerzo", meta: { kcal: 700, proteina: 55, carbs: 70, grasas: 22 } },
-    { mealId: "menu_target_dinner", tipo: "cena", meta: { kcal: 700, proteina: 55, carbs: 70, grasas: 22 } },
+    { mealId: "menu_target_breakfast", tipo: "desayuno", targetOrigin: "auto", meta: { kcal: 500, proteina: 40, carbs: 60, grasas: 12 } },
+    { mealId: "menu_target_lunch", tipo: "almuerzo", targetOrigin: "auto", meta: { kcal: 700, proteina: 55, carbs: 70, grasas: 22 } },
+    { mealId: "menu_target_dinner", tipo: "cena", targetOrigin: "auto", meta: { kcal: 700, proteina: 55, carbs: 70, grasas: 22 } },
   ];
   const rice = (quantity) => ({
     id: "rice",

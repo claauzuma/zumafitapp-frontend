@@ -45,6 +45,7 @@ import {
 import { createNavigationPrefetchHandlers } from "../routes/routePrefetch.js";
 import { getMenuTrackingWeek } from "../tracking/trackingApi.js";
 import { buildWeeklyCalorieSummary } from "./homeWeeklyCalories.js";
+import { homeTrialDaysRemaining, shouldShowHomeTrialReminder } from "./homeTrialReminder.js";
 
 const CSS = `
 *{ box-sizing:border-box; }
@@ -1511,6 +1512,8 @@ export default function InicioEntrenado() {
   const usage = ownMenusUsage(summary, capabilities);
   const usageKnown = usageQuery.isSuccess && Number.isFinite(Number(usage.used));
   const trial = accessContextQuery.data?.trial || null;
+  const trialReminderDays = homeTrialDaysRemaining(trial);
+  const showTrialReminder = shouldShowHomeTrialReminder(trial);
   const objective = normalizeGoalFromUser(currentUser);
   const hasObjective = objective.configured;
   const goalLoadFailed = authMeQuery.isError && !hasObjective;
@@ -1676,10 +1679,10 @@ export default function InicioEntrenado() {
           <div className="planMuted">No pudimos cargar tu plan ahora. Reintenta desde Mi plan.</div>
         ) : null}
 
-        {trial?.active ? (
+        {showTrialReminder ? (
           <div className="trialActive zfh-trial">
             <div>
-              <strong>Prueba Pro activa · te quedan {trial.daysRemaining ?? trial.daysLeft ?? 0} días</strong>
+              <strong>Prueba Pro activa · te quedan {trialReminderDays} días</strong>
               <span>Finaliza el {formatHomeDate(trial.endsAt) || "día indicado por el servidor"}</span>
             </div>
             <button type="button" onClick={() => navigate("/app/planes")}>Ver funciones Pro</button>

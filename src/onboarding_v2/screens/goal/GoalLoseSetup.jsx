@@ -1,5 +1,6 @@
 // src/onboarding_v2/screens/goal/GoalLoseSetup.jsx
 import React, { useMemo, useEffect, useState } from "react";
+import { Gauge, Scale } from "lucide-react";
 
 function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
@@ -144,16 +145,23 @@ export default function GoalLoseSetup({
       </div>
       {calculationError ? <div className="ob2-error" role="alert">{calculationError}</div> : null}
 
-      <h1 className="ob2-h1">¿Cuál es tu peso objetivo?</h1>
-      <p className="ob2-p">
-        Podés ajustarlo después. Lo usamos como referencia.
-        <br />
-        <span style={{ color: "#bdbdbd", fontSize: 12 }}>
-          Mínimo recomendado: {minHealthyKg.toFixed(1)} kg ·
-          {" "}Tu peso actual: {Number.isFinite(currentWeight) ? currentWeight.toFixed(1) : "—"} kg ·
-          {" "}{deltaText}
-        </span>
-      </p>
+      <section className="ob2-goal-block ob2-goal-block--weight">
+        <div className="ob2-goal-block-heading">
+          <span className="ob2-goal-block-icon"><Scale size={22} strokeWidth={1.8} /></span>
+          <div>
+            <span className="ob2-goal-kicker">Meta de peso</span>
+            <h1 className="ob2-h1">¿Cuál es tu peso objetivo?</h1>
+          </div>
+        </div>
+        <p className="ob2-p">
+          Podés ajustarlo después. Lo usamos como referencia.
+          <br />
+          <span className="ob2-goal-detail">
+            Mínimo recomendado: {minHealthyKg.toFixed(1)} kg ·
+            {" "}Tu peso actual: {Number.isFinite(currentWeight) ? currentWeight.toFixed(1) : "—"} kg ·
+            {" "}{deltaText}
+          </span>
+        </p>
 
       <div className="ob2-centerNum ob2-goalTarget">
         {!editingTarget ? (
@@ -163,7 +171,7 @@ export default function GoalLoseSetup({
             style={{
               all: "unset",
               cursor: "pointer",
-              fontWeight: 1000,
+              fontWeight: 760,
               fontSize: "inherit",
               letterSpacing: "-0.2px",
             }}
@@ -190,7 +198,7 @@ export default function GoalLoseSetup({
               padding: "6px 10px",
               textAlign: "center",
               fontSize: "inherit",
-              fontWeight: 1000,
+              fontWeight: 760,
               maxWidth: 140,
               margin: "0 auto",
               display: "block",
@@ -220,17 +228,23 @@ export default function GoalLoseSetup({
           <span>{finalMax.toFixed(1)}</span>
         </div>
       </div>
+      </section>
 
-      <h1 className="ob2-h1" style={{ marginTop: 18 }}>
-        ¿A qué ritmo querés lograrlo?
-      </h1>
-      <p className="ob2-p">
-        Recomendado: 0.5% por semana.
-        <span style={{ color: "#bdbdbd", fontSize: 12 }}>
-          {" "}
-          ({weeklyLossKg.toFixed(2)} kg/sem · déficit {Math.round(dailyDeficit)} kcal/día)
-        </span>
-      </p>
+      <section className="ob2-goal-block ob2-goal-block--pace">
+        <div className="ob2-goal-block-heading">
+          <span className="ob2-goal-block-icon"><Gauge size={22} strokeWidth={1.8} /></span>
+          <div>
+            <span className="ob2-goal-kicker">Ritmo sostenible</span>
+            <h1 className="ob2-h1">¿A qué ritmo querés lograrlo?</h1>
+          </div>
+        </div>
+        <p className="ob2-p">
+          Recomendado: 0.5% por semana.
+          <span className="ob2-goal-detail">
+            {" "}
+            ({weeklyLossKg.toFixed(2)} kg/sem · déficit {Math.round(dailyDeficit)} kcal/día)
+          </span>
+        </p>
 
       <div className="ob2-grid2" style={{ marginTop: 10 }}>
         <div className="ob2-box">
@@ -249,7 +263,7 @@ export default function GoalLoseSetup({
                 style={{
                   all: "unset",
                   cursor: "pointer",
-                  fontWeight: 1000,
+                  fontWeight: 760,
                   fontSize: 22,
                   letterSpacing: "-0.2px",
                 }}
@@ -303,6 +317,7 @@ export default function GoalLoseSetup({
           <span>1.5%</span>
         </div>
       </div>
+      </section>
 
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">
