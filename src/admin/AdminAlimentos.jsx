@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Apple, Check, ChevronLeft, ChevronRight, Columns3, Database, Pencil, Plus, RefreshCcw, RotateCcw, Save, Search, X } from "lucide-react";
+import { AlertTriangle, Apple, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Database, Pencil, Plus, RefreshCcw, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 
 import { formatNumber, normalizeFood } from "../nutricion/nutricionUtils.js";
+import { deleteCustomFood, listCustomFoods } from "../nutricion/nutricionApi.js";
 import AdminFoodEditor from "./AdminFoodEditor.jsx";
 import { GENERATION_MEAL_TYPES, GENERATION_MODES, GENERATION_ROLES, PORTION_UNITS, enabledSummary, generationForFood, mealTypesSummary } from "./adminFoodGeneration.js";
 import {
@@ -110,6 +111,8 @@ export default function AdminAlimentos() {
 
         <div className="nf-summary"><Stat label="Registros en BD" value={formatNumber(summary.total)} /><Stat label="Coincidencias" value={formatNumber(summary.filtered)} /><Stat label="A revisar" value={formatNumber(summary.review)} tone={Number(summary.review) > 0 ? "warning" : ""} /><Stat label="Nombre + unidad repetidos" value={formatNumber(summary.duplicates)} tone={Number(summary.duplicates) > 0 ? "warning" : ""} /></div>
 
+        <AdminCustomFoodsPanel />
+
         <div className="nf-toolbar nf-foodToolbar">
           <label className="nf-searchWrap"><Search size={17} aria-hidden="true" /><input className="nf-search" value={filters.search} onChange={(event) => changeFilter("search", event.target.value)} placeholder="Buscar alimento, categoría o tag..." aria-label="Buscar en el catálogo de alimentos" /></label>
           <FilterSelect value={filters.category} onChange={(value) => changeFilter("category", value)} label="Filtrar por categoría" first="Todas las categorías" options={facets.categories || []} />
@@ -137,6 +140,65 @@ export default function AdminAlimentos() {
       </section>
       {editorFood !== undefined ? <AdminFoodEditor key={editorFood?.raw?._id || "new-food"} food={editorFood} saving={updateGeneration.isPending || createFood.isPending} onClose={() => setEditorFood(undefined)} onSave={saveEditor} /> : null}
     </div>
+  );
+}
+
+function AdminCustomFoodsPanel() {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await listCustomFoods();
+      setItems(Array.isArray(response.items) ? response.items : []);
+    } catch (loadError) {
+      setError(loadError?.message || "No se pudieron cargar los alimentos personalizados.");
+    } finally {
+      setLoading(false);
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && !loaded && !loading) load();
+  }, [load, loaded, loading, open]);
+
+  async function remove(food) {
+    if (!window.confirm(`Eliminar definitivamente ${food.name}?`)) return;
+    try {
+      await deleteCustomFood(food.id);
+      setItems((current) => current.filter((item) => item.id !== food.id));
+    } catch (removeError) {
+      setError(removeError?.message || "No se pudo eliminar el alimento personalizado.");
+    }
+  }
+
+  return (
+    <section className={`nf-clientCustomFoods ${open ? "open" : ""}`}>
+      <button type="button" className="nf-clientCustomFoodsToggle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span><Database size={16} /><span><strong>Alimentos privados de clientes</strong><small>Visibles para su creador y administradores</small></span></span>
+        <span className="nf-clientCustomFoodsCount">{open ? items.length : "Privados"}<ChevronDown size={16} /></span>
+      </button>
+      {open ? <div className="nf-clientCustomFoodsBody">
+        <div className="nf-clientCustomFoodsHead"><span>Siempre quedan fuera de las combinaciones automáticas.</span><button type="button" onClick={load} disabled={loading}><RefreshCcw className={loading ? "refreshing" : ""} size={15} /> Actualizar</button></div>
+        {error ? <div className="nf-error">{error}</div> : null}
+        {loading ? <div className="nf-clientCustomFoodsEmpty">Cargando alimentos privados...</div> : null}
+        {!loading && !items.length ? <div className="nf-clientCustomFoodsEmpty">Todavía ningún cliente creó alimentos personalizados.</div> : null}
+        {!loading && items.length ? <div className="nf-clientCustomFoodsGrid">{items.map((food) => {
+          const owner = food.raw?.owner || {};
+          return <article key={food.id}>
+            <div><strong>{food.name}</strong><small>{owner.nombre || owner.email || `Cliente ${food.ownerId || ""}`}</small></div>
+            <span>{food.unit === "unidad" ? "1 unidad" : `100 ${food.unit}`} · {formatNumber(food.kcal, 1)} kcal · P {formatNumber(food.protein, 1)} / C {formatNumber(food.carbs, 1)} / G {formatNumber(food.fat, 1)}</span>
+            <button type="button" onClick={() => remove(food)} aria-label={`Eliminar ${food.name}`} title="Eliminar alimento privado"><Trash2 size={15} /></button>
+          </article>;
+        })}</div> : null}
+      </div> : null}
+    </section>
   );
 }
 

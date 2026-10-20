@@ -41,6 +41,7 @@ import {
   restoreWeeklyWeekToBase,
   setWeeklyDayDraftValue,
   weeklyBaseDraft,
+  weeklyBalanceEnabled as resolveWeeklyBalanceEnabled,
   weeklyDayVisualState,
   weeklyGoalsPayloadSignature as weeklyPayloadSignature,
 } from "../clientGoals/weeklyNutritionGoals.js";
@@ -405,6 +406,7 @@ export default function Objetivos() {
   const [nutritionDraft, setNutritionDraft] = useState({ kcal: "", p: "", c: "", g: "" });
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [weeklyMode, setWeeklyMode] = useState("same_all_days");
+  const [weeklyBalanceEnabled, setWeeklyBalanceEnabled] = useState(false);
   const [dayDrafts, setDayDrafts] = useState({});
   const [trainingDays, setTrainingDays] = useState(TRAINING_DAYS_DEFAULT);
   const [weeklyEditor, setWeeklyEditor] = useState(null);
@@ -444,8 +446,11 @@ export default function Objetivos() {
   const changesLimit = goalsAccess.changesLimit;
   const changesRemaining = goalsAccess.changesRemaining;
   const weeklyPlan = user?.menu?.weeklyPlan || EMPTY_OBJECT;
-  const storedWeeklyMode = weeklyPlan?.mode || WEEKLY_MODE_AUTOMATIC;
+  const storedWeeklyMode = weeklyPlan?.mode === "unrestricted"
+    ? WEEKLY_MODE_AUTOMATIC
+    : weeklyPlan?.mode || WEEKLY_MODE_AUTOMATIC;
   const effectiveStoredWeeklyMode = canUseWeeklyTargets ? storedWeeklyMode : WEEKLY_MODE_AUTOMATIC;
+  const storedWeeklyBalanceEnabled = canUseWeeklyTargets && resolveWeeklyBalanceEnabled(weeklyPlan);
   const storedTrainingDays = Array.isArray(weeklyPlan?.trainingDays) && weeklyPlan.trainingDays.length
     ? weeklyPlan.trainingDays
     : TRAINING_DAYS_DEFAULT;
@@ -477,18 +482,18 @@ export default function Objetivos() {
     }), { kcal: 0, p: 0, c: 0, g: 0 });
     return { total, average: { kcal: total.kcal / 7, p: total.p / 7, c: total.c / 7, g: total.g / 7 } };
   }, [dayDrafts, nutritionDraft, weeklyMode]);
-  const weeklyPageDirty = weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays))
-    !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+  const weeklyPageDirty = weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays, weeklyBalanceEnabled))
+    !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays, storedWeeklyBalanceEnabled));
   const trainingPreviewDay = DAYS.find((day) => trainingDays.includes(day.key));
   const restPreviewDay = DAYS.find((day) => !trainingDays.includes(day.key));
   const trainingPreview = dayDrafts[trainingPreviewDay?.key] || weeklyBaseDraft(target);
   const restPreview = dayDrafts[restPreviewDay?.key] || weeklyBaseDraft(target);
   const weeklyEditorLocalDirty = Boolean(weeklyEditor) && weeklyPayloadSignature(
-    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays)
-  ) !== weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays));
+    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays, weeklyBalanceEnabled)
+  ) !== weeklyPayloadSignature(buildWeeklyPayload(weeklyMode, dayDrafts, trainingDays, weeklyBalanceEnabled));
   const weeklyEditorSaveDirty = Boolean(weeklyEditor) && weeklyPayloadSignature(
-    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays)
-  ) !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+    buildWeeklyPayload(weeklyMode, weeklyEditor?.workingDayDrafts || {}, trainingDays, weeklyBalanceEnabled)
+  ) !== weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays, storedWeeklyBalanceEnabled));
   weeklyEditorDirtyRef.current = weeklyEditorLocalDirty;
   const weeklyEditorOpen = Boolean(weeklyEditor);
   const weeklyEditorDay = DAYS.find((day) => day.key === weeklyEditor?.dayKey) || DAYS[0];
@@ -518,6 +523,7 @@ export default function Objetivos() {
         queryClientHook.invalidateQueries({ queryKey: clientAccessContextKey }),
         queryClientHook.invalidateQueries({ queryKey: clientPlanCapabilitiesKey }),
         queryClientHook.invalidateQueries({ queryKey: queryKeys.trackingDay(new Date().toISOString().slice(0, 10)) }),
+        queryClientHook.invalidateQueries({ queryKey: ["menuTrackingWeek"] }),
       ]);
     },
     onError: (error) => {
@@ -532,8 +538,9 @@ export default function Objetivos() {
     setNutritionDraft(initialDraft);
     setDayDrafts(storedDayDrafts);
     setWeeklyMode(effectiveStoredWeeklyMode);
+    setWeeklyBalanceEnabled(storedWeeklyBalanceEnabled);
     setTrainingDays(storedTrainingDays);
-  }, [effectiveStoredWeeklyMode, initialDraft, storedDayDrafts, storedTrainingDays]);
+  }, [effectiveStoredWeeklyMode, initialDraft, storedDayDrafts, storedTrainingDays, storedWeeklyBalanceEnabled]);
 
   useEffect(() => {
     setRecalculationData(currentProfileData);
@@ -800,8 +807,9 @@ export default function Objetivos() {
     const effectiveWeeklyMode = overrides.weeklyMode || weeklyMode;
     const effectiveDayDrafts = overrides.dayDrafts || dayDrafts;
     const effectiveTrainingDays = overrides.trainingDays || trainingDays;
-    const effectiveWeeklyUnchanged = weeklyPayloadSignature(buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays))
-      === weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays));
+    const effectiveBalanceEnabled = overrides.weeklyBalanceEnabled ?? weeklyBalanceEnabled;
+    const effectiveWeeklyUnchanged = weeklyPayloadSignature(buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays, effectiveBalanceEnabled))
+      === weeklyPayloadSignature(buildWeeklyPayload(effectiveStoredWeeklyMode, storedDayDrafts, storedTrainingDays, storedWeeklyBalanceEnabled));
     const effectiveNutritionUnchanged = nutritionDraftUnchanged && effectiveWeeklyUnchanged && !profileUpdateChanged;
     setStatus(null);
     if (nutritionLockedByCoach) {
@@ -860,7 +868,7 @@ export default function Objetivos() {
       }
     }
     if (canUseWeeklyTargets) {
-      payload.weeklyPlan = buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays);
+      payload.weeklyPlan = buildWeeklyPayload(effectiveWeeklyMode, effectiveDayDrafts, effectiveTrainingDays, effectiveBalanceEnabled);
     }
     mutation.mutate(payload);
   }
@@ -1184,6 +1192,27 @@ export default function Objetivos() {
                 );
               })}
             </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={weeklyBalanceEnabled}
+              disabled={!canEditNutrition || !canUseWeeklyTargets}
+              className={`og-balanceSwitch ${weeklyBalanceEnabled ? "active" : ""}`}
+              onClick={() => setWeeklyBalanceEnabled((current) => !current)}
+            >
+              <span className="og-balanceSwitchIcon"><Flame size={20} /></span>
+              <span className="og-balanceSwitchCopy">
+                <strong>Balance calorico semanal</strong>
+                <small>Compensa solamente las diferencias de calorias hasta el domingo.</small>
+              </span>
+              <span className="og-switchTrack" aria-hidden="true"><i /></span>
+              <b>{weeklyBalanceEnabled ? "Activado" : "Desactivado"}</b>
+            </button>
+
+            {weeklyBalanceEnabled ? (
+              <aside className="og-balanceInfo"><Info size={16} /><span>Las calorias pendientes se suman o restan hasta el domingo. La proteina no genera deuda ni credito: cada dia vuelve a su meta configurada.</span></aside>
+            ) : null}
 
             {weeklyMode === WEEKLY_MODE_AUTOMATIC ? (
               <>

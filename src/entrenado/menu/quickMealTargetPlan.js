@@ -1856,15 +1856,32 @@ export function replacePersonalMealTargetConfigs(trackingDay = null, targetConfi
   const existingMeals = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
   const nextTargets = Array.isArray(targetConfigs) ? targetConfigs : [];
   const claimedTargetIds = new Set(nextTargets.map(mealConfigId).filter(Boolean));
+  const targetTypes = new Set(nextTargets.map((meal) => (
+    String(meal?.tipo || meal?.type || meal?.mealType || "").trim().toLowerCase()
+  )).filter(Boolean));
+  const loggedMeals = trackingDay?.meals && typeof trackingDay.meals === "object"
+    ? trackingDay.meals
+    : {};
   // Al borrar una meta, el backend conserva una configuración sin `meta` para
   // que sus FoodLogs sigan teniendo nombre/tipo. Si luego regeneramos usando
   // ese mismo mealId, esa ficha histórica debe ser reemplazada por la nueva
   // meta, no viajar junto a ella. Dos configs con el mismo ID hacen que el
   // backend renombre una y separan artificialmente consumo y objetivo.
-  const preserved = existingMeals.filter((meal) => (
-    !isPersonalMealTargetConfig(meal)
-    && !claimedTargetIds.has(mealConfigId(meal))
-  ));
+  const preserved = existingMeals.filter((meal) => {
+    const id = mealConfigId(meal);
+    if (isPersonalMealTargetConfig(meal) || claimedTargetIds.has(id)) return false;
+    const type = String(meal?.tipo || meal?.type || meal?.mealType || "").trim().toLowerCase();
+    const hasLogs = Array.isArray(loggedMeals[id]) && loggedMeals[id].length > 0;
+    const structural = id === "picoteo"
+      || id === "manual_completion_general"
+      || id.startsWith("manual_completion_")
+      || id.startsWith("daily_target_");
+    const supersededEmptyMeal = targetTypes.has(type)
+      && !targetHasNutrition(mealConfigTarget(meal))
+      && !hasLogs
+      && !structural;
+    return !supersededEmptyMeal;
+  });
   return [
     ...preserved,
     ...nextTargets.map((meal, index) => ({

@@ -31,6 +31,42 @@ export async function listAlimentos(filters = {}) {
   };
 }
 
+export async function listCustomFoods() {
+  const data = await apiFetch("/api/alimentos/personalizados", {
+    method: "GET",
+    timeoutMs: 12000,
+  });
+  return {
+    ...data,
+    items: Array.isArray(data?.items) ? data.items.map(normalizeFood) : [],
+  };
+}
+
+export async function createCustomFood(payload) {
+  const data = await apiFetch("/api/alimentos/personalizados", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return normalizeFood(data?.alimento || {});
+}
+
+export async function updateCustomFood(foodId, payload) {
+  const data = await apiFetch(`/api/alimentos/personalizados/${foodId}`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 12000,
+  });
+  return normalizeFood(data?.alimento || {});
+}
+
+export async function deleteCustomFood(foodId) {
+  return await apiFetch(`/api/alimentos/personalizados/${foodId}`, {
+    method: "DELETE",
+    timeoutMs: 12000,
+  });
+}
+
 export async function listComidas(filters = {}, foods = []) {
   const params = new URLSearchParams();
   const scope = String(filters.scope || "").trim();

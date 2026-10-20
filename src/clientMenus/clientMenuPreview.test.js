@@ -59,6 +59,8 @@ test("usar el menu crea y activa el plan sin registrar consumo", () => {
     comidas: [{ nombre: "Almuerzo", items: [{ alimentoId: "rice", cantidad: 100, unidad: "g" }] }],
   });
   assert.equal(payload.activate, true);
+  assert.equal(payload.activationScope, "date");
+  assert.equal(payload.activationDate, "");
   assert.equal(payload.source, "autonomous");
   assert.equal(payload.estrategiaObjetivo, "custom");
   assert.equal(payload.kcalObjetivo, 2000);
@@ -66,6 +68,20 @@ test("usar el menu crea y activa el plan sin registrar consumo", () => {
   assert.equal(Object.hasOwn(payload, "menuTarget"), false);
   assert.equal(Object.hasOwn(payload, "objectiveMode"), false);
   assert.equal(Object.hasOwn(payload, "foodLogs"), false);
+});
+
+test("usar una propuesta generada la limita a la fecha elegida", () => {
+  const payload = buildGeneratedMenuActivationPayload({
+    nombre: "Menu del martes",
+    fechaInicio: "2026-10-20",
+    selectedDays: ["tuesday"],
+    menuTarget: { kcal: 2400, proteina: 170, carbs: 290, grasas: 64 },
+    comidas: [{ nombre: "Cena", items: [{ alimentoId: "fish", cantidad: 180, unidad: "g" }] }],
+  });
+
+  assert.equal(payload.activationScope, "date");
+  assert.equal(payload.activationDate, "2026-10-20");
+  assert.deepEqual(payload.selectedDays, ["tuesday"]);
 });
 
 test("review RECOMMENDED queda verde por contrato aunque los numeros sean extremos", () => {

@@ -1,7 +1,11 @@
 // src/apiCredentials.js
-export const API_BASE = "https://zumafitapp-backend-production.up.railway.app";
-//"http://localhost:8080";
-// "http://192.168.1.38:8080"
-//"https://zumafitapp-backend-production.up.railway.app"; 
-// ✅ En DEV: ""  -> usa /api y lo agarra el proxy
-// ✅ En PROD: "https://tu-backend.railway.app"
+// En desarrollo usamos rutas relativas para que Vite reenvie /api al backend.
+// Asi tambien funciona desde otro equipo sin depender de la IP local de esta PC.
+const viteEnv = import.meta.env || {};
+const configuredApiBase = String(viteEnv.VITE_API_BASE || "").trim();
+
+export const API_BASE = configuredApiBase || (
+  viteEnv.DEV
+    ? ""
+    : "https://zumafitapp-backend-production.up.railway.app"
+);

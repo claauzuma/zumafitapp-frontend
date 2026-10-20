@@ -13,6 +13,8 @@ export const WEEKLY_NUTRITION_DAYS = [
 export const WEEKLY_MODE_AUTOMATIC = "same_all_days";
 export const WEEKLY_MODE_PER_DAY = "per_day";
 export const WEEKLY_MODE_TRAINING_REST = "training_rest";
+// Legacy: the first version stored balance as a standalone mode.
+export const WEEKLY_MODE_UNRESTRICTED = "unrestricted";
 
 const WEEKLY_MODES = new Set([
   WEEKLY_MODE_AUTOMATIC,
@@ -34,7 +36,12 @@ function maybeNumber(value) {
 }
 
 export function normalizeWeeklyMode(mode) {
+  if (mode === WEEKLY_MODE_UNRESTRICTED) return WEEKLY_MODE_AUTOMATIC;
   return WEEKLY_MODES.has(mode) ? mode : WEEKLY_MODE_AUTOMATIC;
+}
+
+export function weeklyBalanceEnabled(weeklyPlan = {}) {
+  return weeklyPlan?.balanceEnabled === true || weeklyPlan?.mode === WEEKLY_MODE_UNRESTRICTED;
 }
 
 export function weeklyBaseDraft(target = {}) {
@@ -74,10 +81,16 @@ export function sameWeeklyNutritionDraft(left = {}, right = {}) {
   return FIELDS.every((field) => a[field] === b[field]);
 }
 
-export function buildWeeklyGoalsPayload(mode, dayDrafts = {}, trainingDays = []) {
+export function buildWeeklyGoalsPayload(mode, dayDrafts = {}, trainingDays = [], balanceEnabled = false) {
   const normalizedMode = normalizeWeeklyMode(mode);
   if (normalizedMode === WEEKLY_MODE_AUTOMATIC) {
-    return { mode: WEEKLY_MODE_AUTOMATIC, caloriesByDay: {}, macrosByDay: {}, trainingDays: [] };
+    return {
+      mode: normalizedMode,
+      caloriesByDay: {},
+      macrosByDay: {},
+      trainingDays: [],
+      ...(balanceEnabled ? { balanceEnabled: true } : {}),
+    };
   }
 
   const caloriesByDay = {};
@@ -101,6 +114,7 @@ export function buildWeeklyGoalsPayload(mode, dayDrafts = {}, trainingDays = [])
     trainingDays: normalizedMode === WEEKLY_MODE_TRAINING_REST
       ? [...new Set(trainingDays)].filter((day) => WEEKLY_NUTRITION_DAYS.some((entry) => entry.key === day))
       : [],
+    ...(balanceEnabled ? { balanceEnabled: true } : {}),
   };
 }
 
@@ -110,6 +124,7 @@ export function weeklyGoalsPayloadSignature(payload = {}) {
     caloriesByDay: payload.caloriesByDay || {},
     macrosByDay: payload.macrosByDay || {},
     trainingDays: [...new Set(Array.isArray(payload.trainingDays) ? payload.trainingDays : [])].sort(),
+    balanceEnabled: weeklyBalanceEnabled(payload),
   });
 }
 

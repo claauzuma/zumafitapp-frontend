@@ -193,6 +193,8 @@ export function buildGeneratedMenuActivationPayload(preview = {}, target = null)
     ...clean,
     source: clean.source || "autonomous",
     activate: true,
+    activationScope: "date",
+    activationDate: clean.fechaInicio || clean.selectedDate || "",
     estrategiaObjetivo: "custom",
     kcalObjetivo: number(selectedTarget.kcal),
     macrosObjetivo: {

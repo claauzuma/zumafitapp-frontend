@@ -5,6 +5,7 @@ import {
   WEEKLY_MODE_AUTOMATIC,
   WEEKLY_MODE_PER_DAY,
   WEEKLY_MODE_TRAINING_REST,
+  WEEKLY_MODE_UNRESTRICTED,
   adjustWeeklyDayDraftValue,
   buildWeeklyGoalsPayload,
   canUseWeeklyMode,
@@ -17,6 +18,7 @@ import {
   sameWeeklyNutritionDraft,
   setWeeklyDayDraftValue,
   weeklyBaseDraft,
+  weeklyBalanceEnabled,
   weeklyDayVisualState,
   weeklyGoalsPayloadSignature,
 } from "./weeklyNutritionGoals.js";
@@ -41,6 +43,21 @@ test("automatico persiste un contrato lineal sin overrides diarios", () => {
     macrosByDay: {},
     trainingDays: [],
   });
+});
+
+test("el balance es un switch independiente del modo", () => {
+  assert.deepEqual(buildWeeklyGoalsPayload(WEEKLY_MODE_AUTOMATIC, {}, ["monday"], true), {
+    mode: WEEKLY_MODE_AUTOMATIC,
+    caloriesByDay: {},
+    macrosByDay: {},
+    trainingDays: [],
+    balanceEnabled: true,
+  });
+  assert.equal(weeklyBalanceEnabled({ mode: WEEKLY_MODE_UNRESTRICTED }), true);
+  assert.equal(
+    weeklyGoalsPayloadSignature({ mode: WEEKLY_MODE_UNRESTRICTED }),
+    weeklyGoalsPayloadSignature({ mode: WEEKLY_MODE_AUTOMATIC, balanceEnabled: true })
+  );
 });
 
 test("reload reconstruye calorias y macros semanales existentes", () => {

@@ -11,6 +11,10 @@ import {
   buildTrackingMenuDestinations,
 } from "../tracking/trackingMenuDestinations.js";
 import {
+  activePlanningMealIds,
+  orphanedGeneratedMealConfigIds,
+} from "../tracking/orphanedMealConfigs.js";
+import {
   buildTrackingDestinationFit,
 } from "../tracking/trackingDestinationFit.js";
 import {
@@ -186,6 +190,7 @@ const [registrationSaving, setRegistrationSaving] = useState(false);
   const [goalMealId, setGoalMealId] = useState("");
   const [goalDraft, setGoalDraft] = useState(() => emptyTotals());
   const [deleteMealCandidate, setDeleteMealCandidate] = useState(null);
+  const orphanCleanupRef = useRef(new Set());
   const [trackingDraftOwner] = useState(() => trackingDraftStorageOwner(getCachedUser() || {}));
   const [restoredTrackingDraftState] = useState(() => loadTrackingDraftState(
     trackingDraftBrowserStorage(),
@@ -300,6 +305,53 @@ const trackingMenuDestinations =
       ),
     [menuTrackingDay]
   );
+
+const activePlanningIds = useMemo(
+  () => activePlanningMealIds(trackingMenuDestinations),
+  [trackingMenuDestinations]
+);
+
+const orphanedGeneratedMealIds = useMemo(() => {
+  if (!trackingQuery.isSuccess || !menuTrackingQuery.isSuccess) return [];
+  const draftMealIds = configuredMeals
+    .filter((meal) => (
+      trackingFoodDrafts[trackingDraftKey(date, meal.id)] || []
+    ).length > 0)
+    .map((meal) => meal.id);
+  return orphanedGeneratedMealConfigIds({
+    trackingDay: tracking,
+    destinationResult: trackingMenuDestinations,
+    draftMealIds,
+  });
+}, [
+  configuredMeals,
+  date,
+  menuTrackingQuery.isSuccess,
+  tracking,
+  trackingFoodDrafts,
+  trackingMenuDestinations,
+  trackingQuery.isSuccess,
+]);
+
+useEffect(() => {
+  if (!orphanedGeneratedMealIds.length || updateMealsMutation.isPending) return;
+  const signature = `${date}:${orphanedGeneratedMealIds.slice().sort().join("|")}`;
+  if (orphanCleanupRef.current.has(signature)) return;
+  orphanCleanupRef.current.add(signature);
+  const orphanIds = new Set(orphanedGeneratedMealIds);
+  const nextMealsConfig = (Array.isArray(tracking?.mealsConfig) ? tracking.mealsConfig : [])
+    .filter((config) => !orphanIds.has(String(config?.mealId || config?.id || "")));
+
+  void updateMealsMutation
+    .mutateAsync({ date, mealsConfig: nextMealsConfig })
+    .catch(() => {});
+}, [
+  date,
+  orphanedGeneratedMealIds,
+  tracking?.mealsConfig,
+  updateMealsMutation,
+  updateMealsMutation.isPending,
+]);
 
   const trackingDestinationFit =
   useMemo(
@@ -2117,19 +2169,15 @@ async function removeFood(meal, item) {
    * automáticamente aunque queden
    * temporalmente sin alimentos.
    */
+  const generatedTargetMeal = mealId.startsWith("menu_target_");
   const protectedMeal =
     meal.manualCompletionMoment === true ||
     meal.manualCompletionGeneral === true ||
-    hasMealTarget(meal.target) ||
-    mealId.startsWith(
-      "menu_target_"
-    ) ||
-    mealId.startsWith(
-      "daily_target_"
-    ) ||
-    mealId.startsWith(
-      "flexible_"
-    );
+    mealId.startsWith("daily_target_") ||
+    mealId.startsWith("flexible_") ||
+    activePlanningIds.has(mealId) ||
+    (hasMealTarget(meal.target) && !generatedTargetMeal) ||
+    (!menuTrackingQuery.isSuccess && generatedTargetMeal);
 
   /*
    * Si este era el último alimento,
@@ -2855,6 +2903,13 @@ async function removeFood(meal, item) {
             totals={totals}
             pendingTotals={pendingDraftTotals}
             projectedTotals={projectedTotals}
+          />
+        ) : null}
+
+        {!manualCompletionActive ? (
+          <TrackingWeeklyBalance
+            balance={menuTrackingDay?.weeklyBalance || tracking?.weeklyBalance}
+            objective={objective}
           />
         ) : null}
 
@@ -5573,6 +5628,27 @@ function DraftFoodThumb({ draft = {} }) {
   );
 }
 
+function TrackingWeeklyBalance({ balance = null, objective = null }) {
+  if (!balance?.active) return null;
+  const kcal = Number(balance.calorieCarry) || 0;
+  const signed = (value, unit) => Math.abs(value) < 0.05
+    ? `0 ${unit}`
+    : `${value > 0 ? "+" : "-"}${formatNumber(Math.abs(value), 0)} ${unit}`;
+  return (
+    <aside className="td-weekBalance" role="status">
+      <span className="td-weekBalanceIcon"><CalendarDays size={18} /></span>
+      <div className="td-weekBalanceCopy">
+        <span><strong>Balance semanal</strong><small>{balance.isClosingDay ? "Cierre del domingo" : "Se reinicia el lunes"}</small></span>
+        <p>Base: <b>{formatNumber(balance?.baseTarget?.kcal, 0)} kcal</b> · Meta ajustada: <b>{formatNumber(objective?.kcal, 0)} kcal</b>. La proteina sigue siendo diaria.</p>
+      </div>
+      <div className="td-weekBalanceValues">
+        <span className={kcal < 0 ? "negative" : "positive"}><small>Calorias</small><b>{signed(kcal, "kcal")}</b></span>
+        <span className="protein"><small>Proteina diaria</small><b>{formatNumber(balance?.baseTarget?.p, 0)} g</b></span>
+      </div>
+    </aside>
+  );
+}
+
 function DailySummaryCard({
   expanded,
   onToggle,
@@ -6270,6 +6346,7 @@ function emptyTrackingDay(date) {
     date,
     objetivo: null,
     objetivoSource: "",
+    weeklyBalance: null,
     totals: emptyTotals(),
     remaining: null,
     planificado: null,

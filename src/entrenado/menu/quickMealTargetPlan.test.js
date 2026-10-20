@@ -1456,6 +1456,31 @@ test("persistencia reemplaza sólo metas personales vacías y conserva otras com
   assert.deepEqual(personalMealTargetTotals(personalMealTargetsFromTrackingDay({ mealsConfig: replaced })), plan.plannedTarget);
 });
 
+test("persistencia quita una card vacía si una meta nueva ya representa ese momento", () => {
+  const trackingDay = {
+    mealsConfig: [
+      { mealId: "almuerzo_vacio", tipo: "almuerzo", nombre: "Almuerzo", meta: null },
+      { mealId: "almuerzo_con_registro", tipo: "almuerzo", nombre: "Segundo almuerzo", meta: null },
+    ],
+    meals: {
+      almuerzo_vacio: [],
+      almuerzo_con_registro: [{ id: "food-1", kcal: 241 }],
+    },
+  };
+  const targets = [{
+    mealId: "menu_target_almuerzo",
+    tipo: "almuerzo",
+    nombre: "Almuerzo",
+    personalTarget: true,
+    meta: { kcal: 821, proteina: 60, carbs: 94.4, grasas: 24.4 },
+  }];
+  const replaced = replacePersonalMealTargetConfigs(trackingDay, targets);
+
+  assert.equal(replaced.some((meal) => meal.mealId === "almuerzo_vacio"), false);
+  assert.equal(replaced.some((meal) => meal.mealId === "almuerzo_con_registro"), true);
+  assert.equal(replaced.some((meal) => meal.mealId === "menu_target_almuerzo"), true);
+});
+
 test("regenerar una meta sobre consumo sin target reutiliza el mealId sin duplicar la ficha", () => {
   const trackingDay = {
     mealsConfig: [

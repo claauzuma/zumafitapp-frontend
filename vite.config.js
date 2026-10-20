@@ -14,7 +14,8 @@ export default defineConfig({
 
     proxy: {
       "/api": {
-        target: "http://192.168.0.249:8080",
+        // Loopback evita depender de una IP local que puede cambiar.
+        target: "http://127.0.0.1:8080",
         changeOrigin: true,
         secure: false,
       },

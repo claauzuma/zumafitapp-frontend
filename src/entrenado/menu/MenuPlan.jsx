@@ -71,9 +71,16 @@ import {
   isFlexibleMarginCompleted,
   replaceFlexibleMarginEntries,
 } from "../../menus/flexibleMarginTracking.js";
-import { generateMealQuantities, listAlimentos } from "../../nutricion/nutricionApi.js";
+import {
+  createCustomFood,
+  deleteCustomFood,
+  generateMealQuantities,
+  listAlimentos,
+  listCustomFoods,
+  updateCustomFood,
+} from "../../nutricion/nutricionApi.js";
 import { buildMenuItemSnapshot, getFoodImageUrl, placeholderForFoodCategory } from "../../nutricion/nutricionUtils.js";
-import { authorizeClientMenuGeneration, deleteClientMenu, getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
+import { authorizeClientMenuGeneration, createClientMenu, deleteClientMenu, getClientMenu, updateClientMenu } from "../../clientMenus/clientMenusApi.js";
 import { generateClientMenuPreview } from "../../clientMenus/clientMenuGeneration.js";
 import { MEAL_NUTRITION_POLICY } from "../../nutricion/mealNutritionResult.js";
 import {
@@ -86,7 +93,7 @@ import {
   useCurrentLocalDate,
 } from "../../hooks/useCurrentLocalDate.js";
 import { createNavigationPrefetchHandlers } from "../../routes/routePrefetch.js";
-import { createSavedMeal } from "../../savedMeals/savedMealsApi.js";
+import { createSavedMeal, listSavedMeals } from "../../savedMeals/savedMealsApi.js";
 import { createDayFavorite } from "./dayFavoritesApi.js";
 import {
   addFoodLogsBatch,
@@ -111,7 +118,10 @@ import {
   replacementBelongsToMeal,
 } from "./mealAlternativeSelection.js";
 import { menuWeekCacheKey, menuWeekCacheOwner } from "./menuWeekCache.js";
-import { isMealTargetCalorieComplete } from "./mealTargetCompletion.js";
+import {
+  isMealTargetCalorieComplete,
+  MEAL_TARGET_KCAL_TOLERANCE,
+} from "./mealTargetCompletion.js";
 import {
   appendPersonalMealTargetConfig,
   assertPersonalMealTargetNotBelowConsumed,
@@ -167,6 +177,7 @@ import {
   DEFAULT_MENU_GENERATION_SETTINGS,
   automaticGenerationRequiresPlan,
   buildAutonomousMenuGenerationRequest,
+  dayKeyFromIsoDate,
   generationActionForSettings,
   generationModeLabel,
   libraryTargetPath,
@@ -541,13 +552,40 @@ function activeMenuIdFrom(row = {}, activePlan = {}) {
   const primary = row?.assignment?.primaryMenu || {};
   const snapshot = primary.menuSnapshot || {};
   return String(
-    activePlan?.menuId ||
-      primary.menuId ||
+    primary.menuId ||
       snapshot.baseId ||
+      activePlan?.menuId ||
       snapshot.id ||
       snapshot._id ||
       ""
   );
+}
+
+function isDateScopedOwnMenuChoice(choice = {}, date = "") {
+  const assignment = choice?.assignment || {};
+  const snapshot = choice?.snapshot || assignment?.menuSnapshot || {};
+  const snapshotId = String(snapshot.id || snapshot._id || "");
+  const explicitDate = String(assignment.activationDate || "").slice(0, 10);
+  const inferredDate = date && snapshot.baseId && snapshotId.endsWith(`-${date}`) ? date : "";
+  const activationDate = explicitDate || inferredDate;
+  const source = String(assignment.source || snapshot.source || "").trim().toLowerCase();
+  const editableDailySource = ["manual", "autonomous", "automatic"].includes(source);
+  return Boolean(
+    activationDate &&
+    (!date || activationDate === date) &&
+    editableDailySource &&
+    (assignment.menuId || snapshot.baseId)
+  );
+}
+
+function canQuickEditMenuChoice(choice = {}, activePlanSource = "none", date = "") {
+  return menuSourceMeta(activePlanSource).key === "own" || isDateScopedOwnMenuChoice(choice, date);
+}
+
+function isFreePlannedMenuMeal(row = {}) {
+  const choice = trackingChoice(row);
+  return isDateScopedOwnMenuChoice(choice, row?.date) &&
+    String(choice?.assignment?.source || choice?.snapshot?.source || "").trim().toLowerCase() === "manual";
 }
 
 function activeMenuDisplayName(choice = {}, activePlan = {}, source = "none") {
@@ -1183,6 +1221,30 @@ function plannedMealTargets(row = {}, trackingDay = null) {
   const personalTargets = personalMealTargetsFromTrackingDay(trackingDay)
     .filter((meal) => !knownIds.has(String(meal.id)));
   return [...coachTargets, ...personalTargets];
+}
+
+function plannedCompositionsByTarget(row = {}, targetMeals = [], plannedMeals = []) {
+  const targetsById = new Map(
+    (Array.isArray(targetMeals) ? targetMeals : [])
+      .map((target) => [String(target?.id || target?.mealId || ""), target])
+      .filter(([id]) => id)
+  );
+  const matches = new Map();
+
+  (Array.isArray(plannedMeals) ? plannedMeals : []).forEach((meal, mealIndex) => {
+    if (!mealHasContent(meal) || plannedMealCompositionOrigin(meal) === "auto") return;
+    const executionId = menuTargetExecutionContext(row, meal, meal, mealIndex).id;
+    const target = targetsById.get(String(executionId));
+    if (!target) return;
+    matches.set(String(target.id || target.mealId), {
+      meal,
+      mealIndex,
+      executionId: String(executionId),
+      baseMealId: mealId(meal, mealIndex),
+    });
+  });
+
+  return matches;
 }
 
 function menuConsumedTotals(row = {}) {
@@ -3028,7 +3090,12 @@ const [
 const [
   quickPlanMealStep,
   setQuickPlanMealStep,
-] = useState("type");
+] = useState("mode");
+
+const [
+  quickPlanMealMode,
+  setQuickPlanMealMode,
+] = useState("target");
 
 const [
   quickPlanMealKcal,
@@ -3187,7 +3254,12 @@ async function loadWeek(start = weekStart, options = {}) {
   const permissions = useMemo(() => weekData?.permissions || {}, [weekData?.permissions]);
   const activePlan = weekData?.activePlan || {};
   const activePlanSource = activePlan?.source || "none";
-  const canQuickEditActiveMenu = menuSourceMeta(activePlanSource).key === "own";
+  const selectedMenuChoice = trackingChoice(selectedDisplayRow || selectedRow || {});
+  const canQuickEditActiveMenu = canQuickEditMenuChoice(
+    selectedMenuChoice,
+    activePlanSource,
+    (selectedDisplayRow || selectedRow)?.date
+  );
   const canMarkMeals = permissions.canMarkMenuMealsCompleted !== false;
   const canUseMenuAlternatives = permissions.canUseMenuAlternatives !== false;
   const canUseFlexibleRecommendations = canUseFlexibleMarginCalculation(permissions);
@@ -4862,7 +4934,8 @@ async function createQuickPlannedMeal() {
     await loadWeek(weekStart, { silent: true });
 
     setQuickPlanMealOpen(false);
-    setQuickPlanMealStep("type");
+    setQuickPlanMealStep("mode");
+    setQuickPlanMealMode("target");
     setQuickPlanMealKcal("");
     setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
     setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
@@ -4889,13 +4962,138 @@ async function createQuickPlannedMeal() {
   }
 }
 
+function openQuickFreeMealEditor() {
+  const date = selectedRow?.date || selectedQuickDate;
+  if (!date || saving) return;
+  if (!canCreateAutonomousMenu) {
+    setToast("Tu acceso actual no permite crear comidas libres.");
+    window.setTimeout(() => setToast(""), 3000);
+    return;
+  }
+
+  const typeLabels = {
+    desayuno: "Desayuno",
+    almuerzo: "Almuerzo",
+    merienda: "Merienda",
+    cena: "Cena",
+    picoteo: "Picoteo",
+    snack: "Snack",
+  };
+  const title = typeLabels[quickPlanMealType] || "Comida";
+  const currentChoice = trackingChoice(selectedDisplayRow || selectedRow || {});
+  const baseMeals = choiceMeals(currentChoice)
+    .filter(mealHasContent)
+    .map(normalizeQuickMeal);
+
+  setQuickPlanMealOpen(false);
+  setQuickPlanMealStep("mode");
+  setQuickMealEditor({
+    mode: "create-free",
+    date,
+    title,
+    mealType: quickPlanMealType,
+    baseMeals,
+    requireFood: true,
+    mealDraft: normalizeQuickMeal({
+      id: uid("meal"),
+      nombre: title,
+      tipoComida: quickPlanMealType,
+      orden: baseMeals.length + 1,
+      target: null,
+      compositionOrigin: "manual",
+      generationSource: "",
+      items: [],
+    }, baseMeals.length),
+    token: `free-${date}-${quickPlanMealType}-${Date.now()}`,
+  });
+}
+
+
+async function registerPlannedTargetComposition({
+  row,
+  targetMeal,
+  targetExecution,
+  plannedMeal,
+  mealIndex = 0,
+} = {}) {
+  const date = row?.date || selectedQuickDate;
+  const execution = targetExecution || menuTargetExecutionContext(
+    row || {},
+    targetMeal || {},
+    targetMeal || {},
+    mealIndex
+  );
+  const sourceItems = Array.isArray(plannedMeal?.items)
+    ? plannedMeal.items
+    : Array.isArray(plannedMeal?.foods)
+      ? plannedMeal.foods
+      : Array.isArray(plannedMeal?.alimentos)
+        ? plannedMeal.alimentos
+        : [];
+
+  if (!date || !execution?.id || !sourceItems.length || saving) return false;
+
+  const items = sourceItems.map((item, index) => ({
+    ...normalizeQuickMenuItem(item, index),
+    // Un ID visual sintetizado no debe llegar al backend como si fuera ObjectId.
+    alimentoId: item?.alimentoId || item?.foodId || item?.alimentoObjectId || null,
+    quantitySource: "manual",
+  }));
+  const compositionId = String(
+    plannedMeal?.id || plannedMeal?._id || mealId(plannedMeal, mealIndex)
+  );
+  const requestId = [
+    "planned",
+    date,
+    safeMenuTargetId(execution.id),
+    safeMenuTargetId(compositionId),
+  ].filter(Boolean).join("-").slice(0, 120);
+  const batch = buildCompletionTrackingBatch({
+    date,
+    trackingExecutionId: execution.id,
+    replacementMeal: {
+      requestId,
+      mealType: execution.type || plannedMeal?.tipoComida || plannedMeal?.type || "otra",
+      originalMealName: execution.label || mealName(targetMeal || plannedMeal, mealIndex),
+      items,
+    },
+  });
+
+  if (!batch) {
+    setToast("No se pudo preparar la comida planificada para Tracking.");
+    window.setTimeout(() => setToast(""), 3200);
+    return false;
+  }
+
+  setSaving(true);
+  try {
+    const updatedTracking = await addFoodLogsBatch(batch);
+    if (updatedTracking) {
+      queryClient.setQueryData(queryKeys.trackingDay(date), updatedTracking);
+    }
+    await Promise.all([
+      selectedTrackingQuery.refetch(),
+      loadWeek(weekStart, { silent: true }),
+    ]);
+    setToast(`${execution.label || "Comida"} registrada como consumida.`);
+    window.setTimeout(() => setToast(""), 3000);
+    return true;
+  } catch (error) {
+    setToast(error?.message || "No se pudo registrar la comida planificada.");
+    window.setTimeout(() => setToast(""), 3600);
+    return false;
+  } finally {
+    setSaving(false);
+  }
+}
+
 
   const autonomousActions = {
     visible: showAutonomousQuickActions,
     canUseLibrary: canUseAutonomousLibrary,
     canCreate: canCreateAutonomousMenu,
     canGenerate: canGenerateAutonomousMenu,
-    canPlanMeal: canCreatePersonalMealTarget,
+    canPlanMeal: canCreatePersonalMealTarget || canCreateAutonomousMenu,
     canEditSettings: canEditAutonomousSettings,
     settings: quickSettings,
     targetDayEditContext,
@@ -4919,6 +5117,7 @@ async function createQuickPlannedMeal() {
     ),
     onSaveDay: openSaveDayFavorite,
     onSaveMeal: saveMenuMealAsSavedMeal,
+    onRegisterPlannedTargetComposition: registerPlannedTargetComposition,
     onOpenSavedDays: () => navigate("/app/menu/favoritas"),
     hasAutomaticMenuPlanning: canQuickEditActiveMenu && (() => {
       const choice = trackingChoice(selectedDisplayRow || selectedRow || {});
@@ -4937,8 +5136,10 @@ onPlanMeal: () => {
   );
 
   setQuickPlanMealStep(
-    "type"
+    "mode"
   );
+
+  setQuickPlanMealMode("target");
 
   setQuickPlanMealKcal("");
   setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
@@ -5440,10 +5641,13 @@ if (payload.action === "native_target_complete") {
   }
 
   function requestDeleteAutomaticMenuMeal(row, meal, mealIndex = 0) {
-    if (saving || menuSourceMeta(activePlanSource).key !== "own") return;
+    const targetRow = row || selectedRow;
+    const choice = trackingChoice(targetRow);
+    if (saving || !canQuickEditMenuChoice(choice, activePlanSource, targetRow?.date)) return;
     setAutomaticMenuPlanAction({
       kind: "one",
-      row: row || selectedRow,
+      planningKind: isFreePlannedMenuMeal(targetRow, meal) ? "free" : "automatic",
+      row: targetRow,
       meal,
       mealIndex,
       mealName: mealName(meal, mealIndex),
@@ -5451,10 +5655,12 @@ if (payload.action === "native_target_complete") {
   }
 
   function requestDeleteAutomaticMenuMeals(row = selectedRow) {
-    if (saving || menuSourceMeta(activePlanSource).key !== "own") return;
+    const targetRow = row || selectedRow;
+    const choice = trackingChoice(targetRow);
+    if (saving || !canQuickEditMenuChoice(choice, activePlanSource, targetRow?.date)) return;
     setAutomaticMenuPlanAction({
       kind: "all",
-      row: row || selectedRow,
+      row: targetRow,
     });
   }
 
@@ -5512,8 +5718,10 @@ if (payload.action === "native_target_complete") {
   }
 
   async function openQuickMealEditor(context = {}) {
-    if (!canQuickEditActiveMenu || saving) return;
     const row = context.row || selectedRow;
+    const choice = trackingChoice(row);
+    const dateScopedOwnMenu = isDateScopedOwnMenuChoice(choice, row?.date);
+    if (!canQuickEditMenuChoice(choice, activePlanSource, row?.date) || saving) return;
     const baseMeal = context.baseMeal || context.meal || {};
     const mealIndex = Number(context.mealIndex) || 0;
     const menuId = activeMenuIdFrom(row, activePlan);
@@ -5535,7 +5743,6 @@ if (payload.action === "native_target_complete") {
 
     try {
       const menu = await getClientMenu(menuId);
-      const choice = trackingChoice(row);
       const draft = normalizeClientMenuForQuickEdit(menu || {}, choice, activePlan);
       const resolvedMealIndex = findQuickMealIndex(draft, baseMeal, mealIndex);
       const mealDraft = draft.comidas[resolvedMealIndex] || normalizeQuickMeal(baseMeal, mealIndex);
@@ -5545,6 +5752,10 @@ if (payload.action === "native_target_complete") {
         draft,
         mealDraft,
         mealIndex: resolvedMealIndex,
+        mode: dateScopedOwnMenu
+          ? isFreePlannedMenuMeal(row, mealDraft) ? "edit-free" : "edit-day"
+          : "edit-menu",
+        dateScoped: dateScopedOwnMenu,
         token: `${menuId}-${resolvedMealIndex}-${Date.now()}`,
       });
     } catch (err) {
@@ -5556,8 +5767,112 @@ if (payload.action === "native_target_complete") {
     }
   }
 
-  async function saveQuickMealChanges(nextMeal) {
-    if (!quickMealEditor?.menuId || !quickMealEditor?.draft || saving) return;
+  async function saveQuickMealChanges(nextMeal, options = {}) {
+    if (!quickMealEditor || saving) return;
+
+    if (quickMealEditor.mode === "create-free") {
+      const date = quickMealEditor.date || selectedRow?.date || selectedQuickDate;
+      const items = (nextMeal?.items || []).map((item, index) => ({
+        ...normalizeQuickMenuItem(item, index),
+        alimentoId: item?.alimentoId || item?.foodId || item?.alimentoObjectId || null,
+        quantitySource: "manual",
+      }));
+      if (!date || !items.length) {
+        setToast("Agregá al menos un alimento para registrar la comida.");
+        window.setTimeout(() => setToast(""), 2800);
+        return;
+      }
+
+      const mealStatus = options?.mealStatus === "done" ? "done" : "planned";
+      if (mealStatus === "done") {
+        const mealType = nextMeal?.tipoComida || quickMealEditor.mealType || "otra";
+        const token = String(quickMealEditor.token || uid("free-tracking"))
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .slice(-36);
+        const trackingMealId = `tracked_${mealType}_${date}_${token}`.slice(0, 80);
+        const requestId = `free-done-${date}-${token}`.slice(0, 120);
+
+        setSaving(true);
+        try {
+          const updatedTracking = await addFoodLogsBatch({
+            requestId,
+            date,
+            mealId: trackingMealId,
+            mealType,
+            mealName: nextMeal?.nombre || quickMealEditor.title || "Comida",
+            source: "free_meal_registration",
+            items,
+          });
+          if (updatedTracking) {
+            queryClient.setQueryData(queryKeys.trackingDay(date), updatedTracking);
+          }
+          await Promise.all([
+            selectedTrackingQuery.refetch(),
+            loadWeek(weekStart, { silent: true }),
+          ]);
+          setQuickMealEditor(null);
+          setToast(`${quickMealEditor.title || "Comida"} registrada como hecha.`);
+          window.setTimeout(() => setToast(""), 2800);
+        } catch (err) {
+          setToast(err?.message || "No se pudo registrar la comida como hecha.");
+          window.setTimeout(() => setToast(""), 3200);
+        } finally {
+          setSaving(false);
+        }
+        return;
+      }
+
+      const baseMeals = Array.isArray(quickMealEditor.baseMeals)
+        ? quickMealEditor.baseMeals.map(normalizeQuickMeal)
+        : [];
+      const plannedMeal = normalizeQuickMeal({
+        ...nextMeal,
+        nombre: nextMeal.nombre || quickMealEditor.title || "Comida",
+        tipoComida: nextMeal.tipoComida || quickMealEditor.mealType || "otra",
+        orden: baseMeals.length + 1,
+        target: null,
+        targetMealId: null,
+        targetOrigin: null,
+        compositionOrigin: "manual",
+        generationSource: "",
+        plannerSlotIndex: null,
+        items,
+      }, baseMeals.length);
+      const menuName = `Plan libre - ${quickMealEditor.title || "Comida"} - ${date}`;
+      const payload = {
+        ...quickMenuPayload({
+          nombre: menuName,
+          descripcion: "Comida libre planificada para una fecha puntual.",
+          source: "manual",
+          selectedDays: [dayKeyFromIsoDate(date)],
+        }, [...baseMeals, plannedMeal]),
+        fechaInicio: date,
+        selectedDate: date,
+        activationScope: "date",
+        activationDate: date,
+        activate: true,
+      };
+
+      setSaving(true);
+      try {
+        await createClientMenu(payload);
+        await Promise.all([
+          loadWeek(weekStart, { silent: true }),
+          selectedTrackingQuery.refetch(),
+        ]);
+        setQuickMealEditor(null);
+        setToast(`${quickMealEditor.title || "Comida"} planificada sin meta.`);
+        window.setTimeout(() => setToast(""), 2800);
+      } catch (err) {
+        setToast(err?.message || "No se pudo planificar la comida libre.");
+        window.setTimeout(() => setToast(""), 3200);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (!quickMealEditor.menuId || !quickMealEditor.draft) return;
     const draft = quickMealEditor.draft;
     const mealIndex = quickMealEditor.mealIndex;
     const nextComidas = (draft.comidas || []).map((meal, index) =>
@@ -5573,13 +5888,18 @@ if (payload.action === "native_target_complete") {
         : normalizeQuickMeal(meal, index)
     );
     const payload = quickMenuPayload(draft, nextComidas);
+    const plannedTotals = sumTotals(nextComidas.map((meal) => sumTotals(meal.items || [])));
+    const dayTarget = targetTotals(quickMealEditor.row || {});
+    const plannedKcalOverage = dayTarget.kcal > 0 ? plannedTotals.kcal - dayTarget.kcal : 0;
     setSaving(true);
     try {
       await updateClientMenu(quickMealEditor.menuId, payload);
       await loadWeek(weekStart, { silent: true });
       setQuickMealEditor(null);
-      setToast("Alimentos del menu actualizados.");
-      window.setTimeout(() => setToast(""), 2600);
+      setToast(plannedKcalOverage > 0.5
+        ? `Cambios guardados. La planificación excede la meta del día por ${formatNumber(plannedKcalOverage, 0)} kcal.`
+        : "Alimentos del menú actualizados.");
+      window.setTimeout(() => setToast(""), plannedKcalOverage > 0.5 ? 4200 : 2600);
     } catch (err) {
       setToast(err?.message || "No se pudieron guardar los cambios.");
       window.setTimeout(() => setToast(""), 2600);
@@ -6773,15 +7093,15 @@ async function setMealTargetMode({
       {/* HEADER */}
       <div className="mb-4">
         <span className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-300/70">
-          Planificación
+          Comida del día
         </span>
 
         <h3 className="mt-1 text-[18px] font-black text-white">
-          Planificar comida
+          Registrar comida
         </h3>
 
         <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
-          Elegí qué comida querés reservar dentro de tu objetivo diario.
+          Elegí qué comida querés registrar dentro de tu objetivo diario.
         </p>
       </div>
 
@@ -6915,7 +7235,8 @@ async function setMealTargetMode({
     "
     onClick={() => {
       setQuickPlanMealOpen(false);
-      setQuickPlanMealStep("type");
+      setQuickPlanMealStep("mode");
+      setQuickPlanMealMode("target");
       setQuickPlanMealKcal("");
       setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
       setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
@@ -6939,23 +7260,84 @@ async function setMealTargetMode({
       {/* HEADER */}
       <div className="mb-4">
         <span className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-300/70">
-          Planificación
+          Comida del día
         </span>
 
         <h3 className="mt-1 text-[18px] font-black text-white">
-          {quickPlanMealStep === "type"
-            ? "Planificar comida"
-            : "Definir meta"}
+          {quickPlanMealStep === "mode"
+            ? "¿Cómo querés registrarla?"
+            : quickPlanMealStep === "type"
+              ? "Elegir comida"
+              : "Definir meta"}
         </h3>
 
         <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
-          {quickPlanMealStep === "type"
-            ? "Elegí qué comida querés reservar dentro de tu objetivo diario."
-            : "Definí las calorías y los macros objetivo de esta comida."}
+          {quickPlanMealStep === "mode"
+            ? "Podés crear una meta planificada o registrar una comida libre como pendiente o hecha."
+            : quickPlanMealStep === "type"
+              ? `Elegí qué comida querés registrar ${quickPlanMealMode === "free" ? "libremente" : "por meta"}.`
+              : "Definí las calorías y los macros objetivo de esta comida."}
         </p>
       </div>
 
-      {quickPlanMealStep === "type" ? (
+      {quickPlanMealStep === "mode" ? (
+        <>
+          <div className="grid gap-2">
+            <button
+              type="button"
+              disabled={!canCreatePersonalMealTarget}
+              onClick={() => {
+                setQuickPlanMealMode("target");
+                setQuickPlanMealStep("type");
+              }}
+              className="flex min-h-[82px] items-center gap-3 rounded-2xl border border-emerald-300/30 bg-emerald-300/[0.07] p-3 text-left transition hover:border-emerald-300/55 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-300/30 bg-emerald-300/10 text-emerald-200">
+                <Target size={20} strokeWidth={2.3} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[14px] font-black text-white">Por meta</strong>
+                <span className="mt-1 block text-[10px] font-bold leading-relaxed text-zinc-400">
+                  Definí kcal y macros. Queda como objetivo pendiente, no como consumo.
+                </span>
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-emerald-200" />
+            </button>
+
+            <button
+              type="button"
+              disabled={!canCreateAutonomousMenu}
+              onClick={() => {
+                setQuickPlanMealMode("free");
+                setQuickPlanMealStep("type");
+              }}
+              className="flex min-h-[82px] items-center gap-3 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/[0.08] p-3 text-left transition hover:border-[#FFE16A]/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE16A]">
+                <Utensils size={20} strokeWidth={2.3} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[14px] font-black text-white">Libre</strong>
+                <span className="mt-1 block text-[10px] font-bold leading-relaxed text-zinc-400">
+                  Elegí alimentos y cantidades sin fijar una meta para la comida.
+                </span>
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-[#FFE16A]" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuickPlanMealOpen(false);
+              setQuickPlanMealMode("target");
+            }}
+            className="mt-4 min-h-[44px] w-full rounded-xl border border-white/10 bg-white/[0.025] text-[11px] font-black text-zinc-400"
+          >
+            Cancelar
+          </button>
+        </>
+      ) : quickPlanMealStep === "type" ? (
         <>
           {/* TIPO DE COMIDA */}
           <div className="grid grid-cols-2 gap-2">
@@ -6964,6 +7346,7 @@ async function setMealTargetMode({
               ["almuerzo", "Almuerzo"],
               ["merienda", "Merienda"],
               ["cena", "Cena"],
+              ["picoteo", "Picoteo"],
               ["snack", "Snack"],
             ].map(
               ([value, label]) => {
@@ -7015,19 +7398,7 @@ async function setMealTargetMode({
             <button
               type="button"
               onClick={() => {
-                setQuickPlanMealOpen(
-                  false
-                );
-
-                setQuickPlanMealStep(
-                  "type"
-                );
-
-                setQuickPlanMealKcal(
-                  ""
-                );
-                setQuickPlanMealMacros({ proteina: "", carbs: "", grasas: "" });
-                setQuickPlanMealMacroLocks({ proteina: false, carbs: false, grasas: false });
+                setQuickPlanMealStep("mode");
               }}
               className="
                 min-h-[44px]
@@ -7040,15 +7411,17 @@ async function setMealTargetMode({
                 text-zinc-400
               "
             >
-              Cancelar
+              Volver
             </button>
 
             <button
               type="button"
               onClick={() => {
-                setQuickPlanMealStep(
-                  "target"
-                );
+                if (quickPlanMealMode === "free") {
+                  openQuickFreeMealEditor();
+                  return;
+                }
+                setQuickPlanMealStep("target");
               }}
               className="
                 flex
@@ -7067,12 +7440,11 @@ async function setMealTargetMode({
                 text-black
               "
             >
-              <Target
-                size={15}
-                strokeWidth={2.4}
-              />
+              {quickPlanMealMode === "free"
+                ? <Utensils size={15} strokeWidth={2.4} />
+                : <Target size={15} strokeWidth={2.4} />}
 
-              Continuar
+              {quickPlanMealMode === "free" ? "Elegir alimentos" : "Continuar"}
             </button>
           </div>
         </>
@@ -7102,6 +7474,8 @@ async function setMealTargetMode({
                   "Merienda",
                 cena:
                   "Cena",
+                picoteo:
+                  "Picoteo",
                 snack:
                   "Snack",
               }[
@@ -7350,6 +7724,7 @@ async function setMealTargetMode({
       {automaticMenuPlanAction ? (
         <AutomaticMenuPlanRemovalDialog
           kind={automaticMenuPlanAction.kind}
+          planningKind={automaticMenuPlanAction.planningKind}
           mealName={automaticMenuPlanAction.mealName}
           saving={saving}
           onCancel={() => !saving && setAutomaticMenuPlanAction(null)}
@@ -7770,8 +8145,9 @@ function TrackingOnlyConfirmModal({ saving, onCancel, onConfirm }) {
   );
 }
 
-function AutomaticMenuPlanRemovalDialog({ kind = "one", mealName: selectedMealName = "", saving, onCancel, onConfirm }) {
+function AutomaticMenuPlanRemovalDialog({ kind = "one", planningKind = "automatic", mealName: selectedMealName = "", saving, onCancel, onConfirm }) {
   const removeAll = kind === "all";
+  const freePlanning = planningKind === "free";
   return (
     <section className="fixed inset-0 z-[135] flex items-end justify-center bg-black/80 px-3 pb-3 pt-8 backdrop-blur-md sm:items-center sm:p-6" role="alertdialog" aria-modal="true" aria-labelledby="automatic-menu-removal-title">
       <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onCancel} aria-label="Cerrar confirmación" />
@@ -7781,14 +8157,18 @@ function AutomaticMenuPlanRemovalDialog({ kind = "one", mealName: selectedMealNa
             <Trash2 size={22} />
           </span>
           <div className="min-w-0 flex-1">
-            <span className="text-[10px] font-black uppercase tracking-wide text-rose-200">Planificación automática</span>
+            <span className="text-[10px] font-black uppercase tracking-wide text-rose-200">
+              {freePlanning ? "Planificación libre" : "Planificación automática"}
+            </span>
             <h3 id="automatic-menu-removal-title" className="mt-1 text-xl font-black leading-tight text-white">
               {removeAll ? "¿Eliminar todas las comidas?" : `¿Eliminar ${String(selectedMealName || "esta comida").toLowerCase()}?`}
             </h3>
             <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-300">
               {removeAll
                 ? "El día volverá a quedar sin menú planificado y podrás generar uno nuevo o crear metas."
-                : "Se quitará únicamente esta comida del menú automático."}
+                : freePlanning
+                  ? "Se quitará esta comida planificada de este día. La comida original guardada en tu biblioteca no se modifica."
+                  : "Se quitará únicamente esta comida del menú automático."}
             </p>
           </div>
           <button type="button" onClick={onCancel} disabled={saving} className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-200 disabled:opacity-60" aria-label="Cerrar">
@@ -8730,8 +9110,21 @@ function MobileDayMenu({
     menuSource: activeChoice?.snapshot?.source,
   }).meals;
   const effectiveMeals = effectiveMealEntriesForDay(displayRow, activeMeals, weekRows, trackingDay);
-  const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
-  const manualEntries = effectiveMeals.filter((entry) => entry.manual);
+  const targetOnlyMeals = plannedMealTargets(displayRow, trackingDay);
+  const plannedTargetCompositions = plannedCompositionsByTarget(
+    displayRow,
+    targetOnlyMeals,
+    activeMeals
+  );
+  const attachedPlannedMealIds = new Set(
+    [...plannedTargetCompositions.values()].map((entry) => String(entry.baseMealId))
+  );
+  const visibleEffectiveMeals = effectiveMeals.filter((entry) => (
+    !attachedPlannedMealIds.has(String(mealId(entry.baseMeal || entry.meal, entry.mealIndex)))
+  ));
+  const generatedEntries = visibleEffectiveMeals.filter((entry) => entry.generated);
+  const manualEntries = visibleEffectiveMeals.filter((entry) => entry.manual);
+  const removablePlanningEntries = visibleEffectiveMeals.filter((entry) => !entry.manual && !entry.generated);
   const countableMeals = countableMealEntries(effectiveMeals);
   const completedCount = completedCountableMeals(effectiveMeals);
   const target = targetTotals(displayRow);
@@ -8740,13 +9133,12 @@ function MobileDayMenu({
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
   const activeMenuStatus = activeChoice ? choiceStatus(row, activeChoice) : menuState(row);
-  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
+  const canQuickEditMeals = canQuickEditMenuChoice(activeChoice, activePlanSource, displayRow?.date);
   const emptyCopy = emptyMenuCopy(activePlanSource);
-  const targetOnlyMeals = plannedMealTargets(displayRow, trackingDay);
   const hasRetiredMenuPlanning = suppressedMenuMealIds(displayRow).length > 0
     || (autonomousActions?.legacyTargetPlanDate === displayRow?.date
       && (autonomousActions?.legacyTargetMeals?.length || 0) > 0);
-  const showPhysicalMenuPlanning = effectiveMeals.length > 0
+  const showPhysicalMenuPlanning = visibleEffectiveMeals.length > 0
     || (!targetOnlyMeals.length && !hasRetiredMenuPlanning);
   const plannedTrackingMealIds = activeMeals.map((meal, index) => (
     menuTargetExecutionContext(displayRow, meal, meal, index).id
@@ -8789,6 +9181,7 @@ function MobileDayMenu({
         expanded={isGoalExpanded}
         onToggle={() => setIsGoalExpanded((current) => !current)}
         target={target}
+        planned={activeChoice ? choiceTotals(activeChoice) : {}}
         consumed={consumed}
         remaining={remaining}
         percent={percent}
@@ -8800,6 +9193,8 @@ function MobileDayMenu({
         mealsCount={countableMeals.length || 0}
         showOverageNotice={!autonomousActions?.personalTargetReconciliation?.hasDifference}
       />
+
+      <WeeklyBalanceNotice balance={displayRow?.weeklyBalance || trackingDay?.weeklyBalance} />
 
       <AutonomousMenuQuickActions />
 
@@ -8836,7 +9231,7 @@ function MobileDayMenu({
         </div>
       */}
 
-{!primary?.snapshot && !targetOnlyMeals.length ? (
+{!targetOnlyMeals.length && !visibleEffectiveMeals.length ? (
   <>
     <MobileStandaloneTracking
       trackingDay={trackingDay}
@@ -8893,6 +9288,18 @@ function MobileDayMenu({
   meal={meal}
   mealIndex={mealIndex}
   disabled={saving}
+  plannedComposition={plannedTargetCompositions.get(String(meal.id)) || null}
+  onEditPlanned={canQuickEditMeals && plannedTargetCompositions.has(String(meal.id))
+    ? () => {
+        const composition = plannedTargetCompositions.get(String(meal.id));
+        onQuickEditMeal?.({
+          row: displayRow,
+          meal: composition.meal,
+          baseMeal: composition.meal,
+          mealIndex: composition.mealIndex,
+        });
+      }
+    : null}
 
   onEditTarget={editablePersonalMealTargetIds([meal]).length
     ? () => autonomousActions?.onEditPersonalTarget?.(meal)
@@ -8978,7 +9385,7 @@ onGenerate={(completionContext = {}) =>
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/[0.06] px-3 text-[10px] font-black text-emerald-200 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Target size={15} strokeWidth={2.4} />
-              Planificar otra
+              Registrar otra
             </button>
           </div>
 
@@ -9047,8 +9454,8 @@ onGenerate={(completionContext = {}) =>
               {completedMealsLabel(completedCount, countableMeals.length || 0)}
             </span>
           </div>
-          {effectiveMeals.length ? (
-            effectiveMeals.map((entry) => (
+          {visibleEffectiveMeals.length ? (
+            visibleEffectiveMeals.map((entry) => (
               <MobileMealCard
                 key={entry.key}
                 row={displayRow}
@@ -9079,12 +9486,23 @@ onGenerate={(completionContext = {}) =>
           {autonomousActions?.hasAutomaticMenuPlanning ? (
             <button
               type="button"
-              onClick={() => autonomousActions?.onDeleteAutomaticMenuMeals?.(displayRow)}
+              onClick={() => {
+                if (removablePlanningEntries.length === 1) {
+                  const entry = removablePlanningEntries[0];
+                  autonomousActions?.onDeleteAutomaticMenuMeal?.(
+                    displayRow,
+                    entry.baseMeal || entry.meal,
+                    entry.mealIndex
+                  );
+                  return;
+                }
+                autonomousActions?.onDeleteAutomaticMenuMeals?.(displayRow);
+              }}
               disabled={saving}
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-300/25 bg-rose-300/[0.06] px-3 text-[11px] font-black text-rose-100 transition active:scale-[0.99] disabled:opacity-45"
             >
               <Trash2 size={15} />
-              Eliminar comidas
+              {removablePlanningEntries.length === 1 ? "Eliminar comida" : "Eliminar comidas"}
             </button>
           ) : null}
           <GeneratedWeeklyActions
@@ -9102,10 +9520,44 @@ onGenerate={(completionContext = {}) =>
   );
 }
 
+function WeeklyBalanceNotice({ balance = null }) {
+  if (!balance?.active) return null;
+  const kcal = Number(balance.calorieCarry) || 0;
+  const hasAdjustment = Math.abs(kcal) > 0.5;
+  const signed = (value, suffix) => Math.abs(value) < 0.05
+    ? `0 ${suffix}`
+    : `${value > 0 ? "+" : "-"}${formatNumber(Math.abs(value), 0)} ${suffix}`;
+  return (
+    <aside className="mt-2 overflow-hidden rounded-[1.05rem] border border-amber-300/25 bg-[radial-gradient(circle_at_95%_0,rgba(250,204,21,.14),transparent_38%),linear-gradient(145deg,rgba(18,25,27,.98),rgba(7,13,17,.98))] shadow-[0_10px_24px_rgba(0,0,0,.22)]">
+      <div className="flex items-start gap-2.5 p-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-300/25 bg-amber-300/10 text-amber-200"><CalendarDays size={17} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-[12px] font-black text-white">Balance semanal</strong>
+            <span className="rounded-full border border-amber-300/20 bg-amber-300/[.08] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-amber-200">{balance.isClosingDay ? "Cierre domingo" : "Cierra el domingo"}</span>
+          </div>
+          <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
+            {hasAdjustment ? "Tu meta de hoy ya incluye lo pendiente de los dias registrados." : "Estas al dia: hoy no hay ajustes pendientes."}
+          </p>
+          <span className="mt-1 block text-[9px] font-bold text-zinc-500">Meta base del dia: {displayKcal(balance?.baseTarget?.kcal)}</span>
+          {hasAdjustment ? (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <span className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2"><small className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">Ajuste calorico</small><b className={`mt-0.5 block text-sm font-black ${kcal < 0 ? "text-rose-300" : "text-amber-200"}`}>{signed(kcal, "kcal")}</b></span>
+              <span className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2"><small className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">Proteina diaria</small><b className="mt-0.5 block text-sm font-black text-sky-200">{formatNumber(balance?.baseTarget?.p, 0)} g</b></span>
+            </div>
+          ) : null}
+          <span className="mt-2 block text-[9px] font-semibold text-zinc-500">Solo se compensan calorias · La proteina no genera deuda · Sin tracking no se acumula nada</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function MobileGoalAccordion({
   expanded,
   onToggle,
   target = {},
+  planned = {},
   consumed = {},
   remaining = {},
   percent = 0,
@@ -9119,14 +9571,22 @@ function MobileGoalAccordion({
 }) {
   const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
   const remainingKcal = Number(remaining?.kcal) || 0;
-  const remainingKcalValue = Math.abs(remainingKcal);
-  const isCalorieOver = remainingKcal < -0.5;
-  const remainingKcalLabel = remainingKcal < -0.5 ? "excedidas" : "restantes";
-  const remainingKcalTone = remainingKcal < -0.5
+  const isWithinCalorieTolerance = Math.abs(remainingKcal) <= MEAL_TARGET_KCAL_TOLERANCE;
+  const displayPercent = isWithinCalorieTolerance ? 100 : safePercent;
+  const remainingKcalValue = isWithinCalorieTolerance ? 0 : Math.abs(remainingKcal);
+  const isCalorieOver = remainingKcal < -MEAL_TARGET_KCAL_TOLERANCE;
+  const plannedKcalOverage = Math.max(0, (Number(planned?.kcal) || 0) - (Number(target?.kcal) || 0));
+  const isPlanOver = plannedKcalOverage > MEAL_TARGET_KCAL_TOLERANCE;
+  const remainingKcalLabel = isWithinCalorieTolerance
+    ? "Cumplido"
+    : isCalorieOver ? "Excediste" : "Te quedan";
+  const remainingKcalTone = isCalorieOver
     ? "text-rose-300"
-    : remainingKcal <= 0.5
+    : isWithinCalorieTolerance
       ? "text-emerald-300"
       : "text-sky-200";
+  const effectiveTrackingTone = isWithinCalorieTolerance ? "green" : trackingTone;
+  const effectiveTrackingLabel = isWithinCalorieTolerance ? "Cumplido" : trackingLabelText;
   const detailId = "mobile-goal-day-detail";
   const ChevronIcon = expanded ? ChevronUp : ChevronDown;
   const macroSummary = `P${formatNumber(target.proteina, 0)} / C${formatNumber(target.carbs, 0)} / G${formatNumber(target.grasas, 0)}`;
@@ -9177,12 +9637,14 @@ function MobileGoalAccordion({
           </span>
           <span className="min-w-0 border-l border-white/10 pl-2.5 text-right">
             <span className="block truncate text-[9px] font-black uppercase tracking-[0.08em] text-zinc-400">
-              {remainingKcalLabel === "excedidas" ? "Excediste" : "Te quedan"}
+              {remainingKcalLabel}
             </span>
             <strong className={`mt-0.5 block whitespace-nowrap text-[18px] font-black leading-none ${remainingKcalTone}`}>
               {displayKcal(remainingKcalValue)}
             </strong>
-            <span className="mt-1 block text-[9px] font-black leading-none text-emerald-300">{safePercent}% consumido</span>
+            <span className="mt-1 block text-[9px] font-black leading-none text-emerald-300">
+              {isWithinCalorieTolerance ? `Dentro de ±${MEAL_TARGET_KCAL_TOLERANCE} kcal` : `${safePercent}% consumido`}
+            </span>
           </span>
         </span>
         <span className="shrink-0">
@@ -9199,13 +9661,35 @@ function MobileGoalAccordion({
               ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.62)]"
               : "bg-gradient-to-r from-[#D4AF37] via-emerald-400 to-cyan-300 shadow-[0_0_12px_rgba(45,212,191,.55)]"
             }`}
-            style={{ width: `${safePercent}%` }}
+            style={{ width: `${displayPercent}%` }}
           >
             <span className="absolute inset-x-0 top-0 h-px bg-white/60" />
             <span className="absolute inset-y-0 right-0 w-2 bg-white/25 blur-[2px]" />
           </span>
         </span>
       </button>
+
+      {isPlanOver && !isCalorieOver ? (
+        <div
+          className="border-t border-amber-300/20 bg-[linear-gradient(90deg,rgba(146,64,14,.22),rgba(69,26,3,.08))] px-2.5 py-2.5"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-amber-300/25 bg-amber-300/10 text-amber-100">
+              <AlertTriangle size={15} strokeWidth={2.3} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <strong className="block text-[11px] font-black text-amber-100">
+                Tu planificación supera la meta por {displayKcal(plannedKcalOverage)}
+              </strong>
+              <span className="mt-0.5 block text-[9px] font-bold leading-relaxed text-zinc-400">
+                Podés mantenerla o editarla. Todavía no cuenta como consumo hasta que la registres.
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {isCalorieOver && showOverageNotice ? (
         <div
@@ -9238,8 +9722,8 @@ function MobileGoalAccordion({
                   <Target size={13} />
                   {activeMenuStatus.label}
                 </span>
-                <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(trackingTone)}`}>
-                  {trackingLabelText}
+                <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-[11px] font-black ${toneClass(effectiveTrackingTone)}`}>
+                  {effectiveTrackingLabel}
                 </span>
               </div>
               <h2 className="mt-3 text-xl font-black leading-tight text-white">
@@ -9249,7 +9733,7 @@ function MobileGoalAccordion({
                 P {formatNumber(target.proteina, 0)} g - C {formatNumber(target.carbs, 0)} g - G {formatNumber(target.grasas, 0)} g
               </p>
             </div>
-            <MobileProgressRing percent={percent} />
+            <MobileProgressRing percent={displayPercent} />
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2">
@@ -9260,7 +9744,14 @@ function MobileGoalAccordion({
               tone="green"
               progress={target.kcal ? (consumed.kcal / target.kcal) * 100 : 0}
             />
-            <MobileMetric label="Faltante" value={displayKcal(remaining.kcal)} detail={`P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`} tone={remaining.kcal < -20 ? "red" : "blue"} />
+            <MobileMetric
+              label={isWithinCalorieTolerance ? "Balance" : "Faltante"}
+              value={displayKcal(isWithinCalorieTolerance ? 0 : remaining.kcal)}
+              detail={isWithinCalorieTolerance
+                ? `Dentro de ±${MEAL_TARGET_KCAL_TOLERANCE} kcal`
+                : `P ${formatNumber(remaining.proteina, 0)} / C ${formatNumber(remaining.carbs, 0)} / G ${formatNumber(remaining.grasas, 0)}`}
+              tone={isWithinCalorieTolerance ? "green" : remaining.kcal < -20 ? "red" : "blue"}
+            />
             <MobileMetric label="Comidas" value={`${completedCount} / ${mealsCount}`} detail="completadas" tone="gold" />
           </div>
         </div>
@@ -9844,7 +10335,7 @@ function MobileDayDetailView({
   const consumed = consumedTotals(displayRow);
   const remaining = remainingTotals(displayRow);
   const percent = completionPercent(displayRow);
-  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
+  const canQuickEditMeals = canQuickEditMenuChoice(detailChoice, activePlanSource, displayRow?.date);
   const emptyCopy = emptyMenuCopy(activePlanSource);
   const targetOnlyMeals = plannedMealTargets(displayRow, trackingDay);
   const hasRetiredMenuPlanning = suppressedMenuMealIds(displayRow).length > 0
@@ -10193,7 +10684,7 @@ function MobileEmptyCard({
       </span>
     </button>
 
-    {/* PLANIFICAR COMIDA */}
+    {/* REGISTRAR COMIDA */}
     <button
       type="button"
       disabled={autonomousActions?.canPlanMeal === false}
@@ -10230,7 +10721,7 @@ function MobileEmptyCard({
       />
 
       <span className="whitespace-nowrap">
-        Planificar comida
+        Registrar comida
       </span>
     </button>
   </div>
@@ -10474,7 +10965,7 @@ async function deleteTrackingGroup(
             Tracking de hoy
           </span>
 
-          <h3 className="mt-0.5 text-[13px] font-black text-white">
+          <h3 className="mt-0.5 text-base font-black tracking-[-0.01em] text-white">
             Lo que ya comiste
           </h3>
         </div>
@@ -10527,25 +11018,25 @@ async function deleteTrackingGroup(
 
               <div className="min-w-0">
                 <span className="flex min-w-0 items-baseline gap-2">
-                  <strong className="truncate text-[15px] font-black leading-tight text-white">{group.label}</strong>
-                  <strong className={`shrink-0 text-[11px] font-black ${visual.kcalText}`}>
+                  <strong className="truncate text-[16px] font-black leading-tight tracking-[-0.01em] text-white">{group.label}</strong>
+                  <strong className={`shrink-0 text-[12px] font-black ${visual.kcalText}`}>
                     {formatNumber(group.totals.kcal, 0)} kcal
                   </strong>
                 </span>
                 <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className={`inline-flex min-h-5 items-center rounded-full border px-2 text-[8px] font-black uppercase tracking-wide ${visual.status}`}>
+                  <span className={`inline-flex min-h-5 items-center rounded-full border px-2 text-[9px] font-black uppercase tracking-wide ${visual.status}`}>
                     Registrada
                   </span>
-                  <span className="inline-flex min-h-5 items-center rounded-full border border-white/10 bg-black/25 px-2 text-[8px] font-black text-zinc-300">
+                  <span className="inline-flex min-h-5 items-center rounded-full border border-white/10 bg-black/25 px-2 text-[9px] font-black text-zinc-300">
                     {mealType}
                   </span>
                   {group.entirelyFromSavedMeal ? (
-                    <span className="inline-flex min-h-5 items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/[0.08] px-2 text-[8px] font-black text-[#FFE8A3]">
+                    <span className="inline-flex min-h-5 items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/[0.08] px-2 text-[9px] font-black text-[#FFE8A3]">
                       Mis comidas
                     </span>
                   ) : null}
                 </span>
-                <small className="mt-1.5 block text-[8.5px] font-bold text-zinc-400">
+                <small className="mt-1.5 block text-[9px] font-bold text-zinc-400">
                   {group.items.length} {group.items.length === 1 ? "alimento consumido" : "alimentos consumidos"}
                 </small>
               </div>
@@ -11027,11 +11518,17 @@ function MobileMealCard({
     manual,
   };
 
+  const freePlannedMeal = isFreePlannedMenuMeal(row, trackingMeal);
+  const dailyPlannedMeal = isDateScopedOwnMenuChoice(trackingChoice(row), row?.date);
+
   const canEditThisMeal =
-    canQuickEdit &&
+    (canQuickEdit || dailyPlannedMeal) &&
     !manual &&
     !generated;
   const canDeleteAutomaticPlanning = autonomousActions?.hasAutomaticMenuPlanning === true
+    && !manual
+    && !generated;
+  const canDeletePlanning = (canDeleteAutomaticPlanning || dailyPlannedMeal)
     && !manual
     && !generated;
 
@@ -11457,7 +11954,7 @@ function MobileMealCard({
                 min-w-0
                 flex-1
 
-                grid-cols-[52px_minmax(0,1fr)]
+                grid-cols-[48px_minmax(0,1fr)]
 
                 items-center
                 gap-3
@@ -11472,7 +11969,7 @@ function MobileMealCard({
                 meal={trackingMeal}
                 index={mealIndex}
                 done={targetCompleted}
-                size="lg"
+                size="md"
               />
 
 
@@ -11480,11 +11977,11 @@ function MobileMealCard({
 
                 <span className="flex min-w-0 items-baseline gap-2">
 
-                  <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
+                  <span className="min-w-0 truncate text-[16px] font-black leading-tight tracking-[-0.01em] text-white">
                     {targetExecution.label}
                   </span>
 
-                  <span className="shrink-0 text-xs font-black text-[#FFE16B]">
+                  <span className="shrink-0 text-[12px] font-black text-[#FFE16B]">
                     {displayKcal(
                       targetGoal.kcal
                     )}
@@ -11500,7 +11997,7 @@ function MobileMealCard({
                   <span
                     className="
                       inline-flex
-                      min-h-6
+                      min-h-5
                       items-center
                       gap-1
 
@@ -11513,7 +12010,7 @@ function MobileMealCard({
 
                       px-2
 
-                      text-[10px]
+                      text-[9px]
                       font-black
                       uppercase
                       tracking-wide
@@ -11532,7 +12029,7 @@ function MobileMealCard({
                   <span
                     className="
                       inline-flex
-                      min-h-6
+                      min-h-5
                       items-center
 
                       rounded-full
@@ -11544,7 +12041,7 @@ function MobileMealCard({
 
                       px-2
 
-                      text-[10px]
+                      text-[9px]
                       font-black
                       text-zinc-300
                     "
@@ -11636,8 +12133,8 @@ function MobileMealCard({
                 }
                 className="
                   grid
-                  h-10
-                  w-10
+                  h-9
+                  w-9
                   shrink-0
                   place-items-center
 
@@ -11660,11 +12157,31 @@ function MobileMealCard({
                 title="Abrir Por meta"
               >
                 {targetCompleted ? (
-                  <CheckCircle2 size={19} strokeWidth={2.3} />
+                  <CheckCircle2 size={17} strokeWidth={2.3} />
                 ) : (
-                  <Target size={19} strokeWidth={2.3} />
+                  <Target size={17} strokeWidth={2.3} />
                 )}
               </button>
+
+              {canDeletePlanning ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    autonomousActions?.onDeleteAutomaticMenuMeal?.(
+                      row,
+                      trackingMeal,
+                      mealIndex
+                    );
+                  }}
+                  disabled={saving}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rose-300/30 bg-rose-300/[0.08] text-rose-200 transition active:scale-[0.96] disabled:opacity-45"
+                  aria-label={`Eliminar planificación de ${targetExecution.label}`}
+                  title="Eliminar planificación"
+                >
+                  <Trash2 size={15} />
+                </button>
+              ) : null}
 
 
               {/* EXPANDIR */}
@@ -12141,14 +12658,14 @@ function MobileMealCard({
 
   return (
     <article
-      className={`relative overflow-hidden rounded-[1.05rem] border p-[1px] transition ${visual.frame} ${
+      className={`relative overflow-hidden rounded-[1.05rem] border transition ${visual.frame} ${
         completedVisual
-          ? "border-emerald-200/60 ring-2 ring-emerald-300/40 shadow-[0_0_28px_rgba(16,185,129,.22),0_18px_38px_rgba(0,0,0,.34)]"
+          ? "ring-1 ring-emerald-300/25"
           : "ring-1 ring-white/[0.035]"
       }`}
     >
       <div
-        className={`relative overflow-hidden rounded-[calc(1.05rem-1px)] p-3 ${visual.card}`}
+        className={`relative overflow-hidden rounded-[1.05rem] p-3 ${visual.card}`}
       >
 
         <span
@@ -12158,17 +12675,13 @@ function MobileMealCard({
 
         {completedVisual ? (
           <span
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(52,211,153,.16),transparent_38%),rgba(16,185,129,.07)]"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_92%_8%,rgba(52,211,153,.10),transparent_34%)]"
             aria-hidden="true"
           />
         ) : null}
 
         <span
-          className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${
-            completedVisual
-              ? "bg-gradient-to-b from-emerald-100 via-emerald-300 to-emerald-500 shadow-[0_0_22px_rgba(16,185,129,.72)]"
-              : visual.rail
-          }`}
+          className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${visual.rail}`}
           aria-hidden="true"
         />
 
@@ -12198,21 +12711,21 @@ function MobileMealCard({
             aria-expanded={
               isExpanded
             }
-            className="grid min-w-0 flex-1 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 text-left active:scale-[0.995]"
+            className="grid min-w-0 flex-1 grid-cols-[48px_minmax(0,1fr)] items-center gap-2.5 text-left active:scale-[0.995]"
           >
 
             <MealTypeIcon
               meal={meal}
               index={mealIndex}
               done={completedVisual}
-              size="lg"
+              size="md"
             />
 
             <span className="min-w-0">
 
               <span className="flex min-w-0 items-baseline gap-2">
 
-                <span className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
+                <span className="min-w-0 truncate text-[16px] font-black leading-tight tracking-[-0.01em] text-white first-letter:uppercase">
                   {mealName(
                     meal,
                     mealIndex
@@ -12220,7 +12733,7 @@ function MobileMealCard({
                 </span>
 
                 <span
-                  className={`shrink-0 text-xs font-black ${visual.kcalText}`}
+                  className={`shrink-0 text-[12px] font-black ${visual.kcalText}`}
                 >
                   {displayKcal(
                     totals.kcal
@@ -12230,33 +12743,28 @@ function MobileMealCard({
               </span>
 
 
-              <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+              <span className="mt-1.5 flex min-h-[30px] min-w-0 items-center gap-2">
 
                 <span
-                  className={`inline-flex min-h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-black ${statusClass}`}
+                  className={`inline-flex min-h-5 shrink-0 items-center gap-1 rounded-full border px-2 text-[9px] font-black uppercase tracking-wide ${statusClass}`}
                 >
                   <StatusIcon
-                    size={12}
+                    size={10}
                     strokeWidth={2.6}
                   />
 
                   {statusLabel}
                 </span>
 
-              </span>
-
-
-              {!isExpanded ? (
-                <span className="mt-2 flex min-h-[30px] items-center">
-
+                {!isExpanded ? (
                   <MobileFoodThumbStack
                     foods={foods}
                     compact
-                    maxVisible={5}
+                    maxVisible={3}
                   />
+                ) : null}
 
-                </span>
-              ) : null}
+              </span>
 
 
               {generatedEntry?.replacesMealNames
@@ -12291,7 +12799,7 @@ function MobileMealCard({
               onClick={
                 handlePrimaryAction
               }
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border text-xs font-black transition active:scale-[0.96] disabled:opacity-50 ${
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border text-xs font-black transition active:scale-[0.96] disabled:opacity-50 ${
                 manual
                   ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
                   : completedVisual
@@ -12315,17 +12823,17 @@ function MobileMealCard({
             >
 
               {manual ? (
-                <Trash2 size={18} />
+                <Trash2 size={16} />
               ) : generated ? (
                 <Calculator
-                  size={18}
+                  size={16}
                 />
               ) : done ? (
                 <CheckCircle2
-                  size={20}
+                  size={18}
                 />
               ) : (
-                <Square size={18} />
+                <Square size={16} />
               )}
 
             </button>
@@ -12364,6 +12872,36 @@ function MobileMealCard({
           </div>
 
         </div>
+
+
+        {!isExpanded ? (
+          <div className="relative z-10 mt-3 grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
+            <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] pr-1.5">
+              <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Planificado</small>
+              <strong className={`truncate text-[10px] font-black ${visual.kcalText}`}>
+                {displayKcal(totals.kcal)}
+              </strong>
+            </span>
+            <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] px-1.5">
+              <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Proteína</small>
+              <strong className="truncate text-[10px] font-black text-emerald-200">
+                {formatNumber(totals.proteina, 1)} g
+              </strong>
+            </span>
+            <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] px-1.5">
+              <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Carbos</small>
+              <strong className="truncate text-[10px] font-black text-sky-200">
+                {formatNumber(totals.carbs, 1)} g
+              </strong>
+            </span>
+            <span className="grid min-w-0 gap-0.5 pl-1.5">
+              <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Grasas</small>
+              <strong className="truncate text-[10px] font-black text-violet-200">
+                {formatNumber(totals.grasas, 1)} g
+              </strong>
+            </span>
+          </div>
+        ) : null}
 
 
         {isExpanded ? (
@@ -12477,7 +13015,7 @@ function MobileMealCard({
                 </button>
               ) : null}
 
-              {canDeleteAutomaticPlanning ? (
+              {canDeletePlanning ? (
                 <button
                   type="button"
                   onClick={() => autonomousActions?.onDeleteAutomaticMenuMeal?.(row, trackingMeal, mealIndex)}
@@ -12485,11 +13023,24 @@ function MobileMealCard({
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-rose-300/25 bg-rose-300/[0.07] px-3 text-xs font-black text-rose-100 disabled:opacity-55"
                 >
                   <Trash2 size={15} />
-                  Eliminar comida
+                  {freePlannedMeal ? "Eliminar planificación" : "Eliminar comida"}
                 </button>
               ) : null}
 
 
+              {dailyPlannedMeal ? (
+                onSaveAsSavedMeal ? (
+                  <button
+                    type="button"
+                    onClick={saveAsMeal}
+                    disabled={saving || !foods.length}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.08] px-3 text-xs font-black text-emerald-100 disabled:opacity-40"
+                  >
+                    <Save size={15} />
+                    Guardar en Mis comidas
+                  </button>
+                ) : null
+              ) : (
               <MealCompactActions
                 onDetail={(event) =>
                   openMealDetail(
@@ -12546,6 +13097,7 @@ function MobileMealCard({
                   !foods.length
                 }
               />
+              )}
 
             </div>
 
@@ -12635,6 +13187,7 @@ function PersonalTargetNutritionPanel({
   totals = {},
   visual,
   remaining = false,
+  registered = false,
   overageReview = null,
 }) {
   const hasOverage = remaining && (overageReview
@@ -12642,16 +13195,18 @@ function PersonalTargetNutritionPanel({
     : ["kcal", "proteina", "carbs", "grasas"].some((key) => Number(totals?.[key]) < -0.05));
   const exceededKeys = new Set(overageReview?.exceededKeys || []);
   return (
-    <div className={`min-w-0 rounded-xl border px-2.5 py-2 ${remaining ? hasOverage ? "border-sky-300/25 bg-sky-300/[0.045]" : "border-teal-300/15 bg-teal-300/[0.035]" : visual.panel}`}>
+    <div className={`min-w-0 rounded-xl border px-2.5 py-2 ${remaining ? hasOverage ? "border-sky-300/25 bg-sky-300/[0.045]" : "border-teal-300/15 bg-teal-300/[0.035]" : registered ? "border-emerald-300/20 bg-emerald-300/[0.055]" : visual.panel}`}>
       <div className="flex items-center gap-1.5">
         {remaining
           ? hasOverage
             ? <CircleAlert size={12} className="text-sky-300" />
             : <RefreshCw size={12} className="text-teal-300" />
+          : registered
+            ? <CheckCircle2 size={12} className="text-emerald-300" />
           : <Target size={12} className={visual.accent} />}
         <span className="text-[8.5px] font-black uppercase tracking-[.13em] text-zinc-500">{label}</span>
       </div>
-      <strong className={`mt-0.5 block text-[12px] font-black min-[390px]:text-[13px] ${remaining ? hasOverage ? "text-sky-200" : "text-teal-200" : visual.accent}`}>
+      <strong className={`mt-0.5 block text-[12px] font-black min-[390px]:text-[13px] ${remaining ? hasOverage ? "text-sky-200" : "text-teal-200" : registered ? "text-emerald-200" : visual.accent}`}>
         {formatNumber(totals.kcal, 0)} kcal
       </strong>
       <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
@@ -12715,6 +13270,8 @@ function PlannedMealTargetCard({
   meal,
   mealIndex,
   disabled,
+  plannedComposition = null,
+  onEditPlanned,
   onSettings,
   onEditTarget,
   onDeleteTarget,
@@ -12727,6 +13284,7 @@ function PlannedMealTargetCard({
   const [expanded, setExpanded] =
     useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [plannedConsumptionOpen, setPlannedConsumptionOpen] = useState(false);
 
 
   /*
@@ -12776,6 +13334,10 @@ function PlannedMealTargetCard({
   const trackedItems = consumptionSourceMealIds.flatMap((sourceMealId) => (
     Array.isArray(trackingMeals[sourceMealId]) ? trackingMeals[sourceMealId] : []
   ));
+  const plannedMeal = plannedComposition?.meal || null;
+  const plannedFoods = plannedMeal ? mealFoods(plannedMeal) : [];
+  const plannedTotals = plannedMeal ? mealTotals(plannedMeal) : emptyTotals();
+  const hasPlannedComposition = plannedFoods.length > 0;
 
 
   /*
@@ -12794,6 +13356,9 @@ function PlannedMealTargetCard({
     );
 
   const hasTrackedItems = trackedItems.length > 0;
+  const canRegisterPlannedComposition = hasPlannedComposition
+    && !hasTrackedItems
+    && typeof autonomousActions?.onRegisterPlannedTargetComposition === "function";
   const completionState = personalMealTargetCompletionState({
     target,
     consumed: trackedTotals,
@@ -12803,6 +13368,7 @@ function PlannedMealTargetCard({
   });
   const mealCompleted = completionState.completed;
   const manuallyClosed = completionState.manual;
+  const hasPendingPlannedComposition = hasPlannedComposition && !mealCompleted;
 
   const manualOverageReview = manualMealTargetOverageReview({
     target,
@@ -13040,6 +13606,13 @@ function PlannedMealTargetCard({
               Por meta
             </span>
 
+            {hasPendingPlannedComposition ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/25 bg-sky-300/[0.08] px-2 py-0.5 text-[8.5px] font-black text-sky-100">
+                <ClipboardCheck size={10} />
+                Planificada · {plannedFoods.length} {plannedFoods.length === 1 ? "alimento" : "alimentos"}
+              </span>
+            ) : null}
+
 
             <span
               className={`
@@ -13206,6 +13779,10 @@ function PlannedMealTargetCard({
             type="button"
             onClick={(event) => {
               event.stopPropagation();
+              if (canRegisterPlannedComposition) {
+                setPlannedConsumptionOpen(true);
+                return;
+              }
               if (completionState.manual) {
                 onToggleTargetConfirmed?.();
                 return;
@@ -13213,19 +13790,24 @@ function PlannedMealTargetCard({
               if (completionState.automatic) return;
               setConfirmationOpen(true);
             }}
-            disabled={disabled || !onToggleTargetConfirmed || completionState.automatic || (!completionState.manual && !hasTrackedItems)}
+            disabled={disabled || (
+              !canRegisterPlannedComposition
+              && (!onToggleTargetConfirmed || completionState.automatic || (!completionState.manual && !hasTrackedItems))
+            )}
             className={`grid h-9 w-9 place-items-center rounded-full border transition active:scale-95 disabled:cursor-not-allowed ${
               mealCompleted
                 ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,.18)]"
                 : completionState.manualStale
                   ? "border-amber-300/40 bg-amber-300/10 text-amber-200"
+                : canRegisterPlannedComposition
+                  ? "border-emerald-300/45 bg-emerald-300/12 text-emerald-200 shadow-[0_0_16px_rgba(52,211,153,.13)] hover:bg-emerald-300/20"
                 : hasTrackedItems
                   ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-200 hover:bg-emerald-300/20"
                   : "border-white/[0.07] bg-white/[0.035] text-zinc-700"
             }`}
-            aria-label={completionState.manual ? `Reabrir ${mealName(meal, mealIndex)}` : mealCompleted ? `${mealName(meal, mealIndex)} hecha automáticamente` : `Confirmar ${mealName(meal, mealIndex)}`}
+            aria-label={canRegisterPlannedComposition ? `Marcar ${mealName(meal, mealIndex)} como realizada` : completionState.manual ? `Reabrir ${mealName(meal, mealIndex)}` : mealCompleted ? `${mealName(meal, mealIndex)} hecha automáticamente` : `Confirmar ${mealName(meal, mealIndex)}`}
             aria-pressed={mealCompleted}
-            title={completionState.manual ? "Comida cerrada manualmente · tocar para reabrir" : completionState.automatic ? "Hecha automáticamente por estar dentro de ±10 kcal" : hasTrackedItems ? "Cerrar comida con el consumo registrado" : "Registrá alimentos para confirmar"}
+            title={canRegisterPlannedComposition ? "Registrar los alimentos planificados como consumidos" : completionState.manual ? "Comida cerrada manualmente · tocar para reabrir" : completionState.automatic ? "Hecha automáticamente por estar dentro de ±10 kcal" : hasTrackedItems ? "Cerrar comida con el consumo registrado" : "Registrá alimentos para confirmar"}
           >
             <CheckCircle2 size={17} strokeWidth={2.5} />
           </button>
@@ -13283,59 +13865,53 @@ function PlannedMealTargetCard({
 
       {!expanded && mealCompleted ? (
         <div
-          className="mx-3 mb-3 grid gap-2 min-[430px]:grid-cols-[minmax(0,1fr)_8.75rem]"
+          className="mx-3 mb-3 grid gap-2"
           aria-label={`Resumen consumido de ${mealName(meal, mealIndex)}`}
         >
-          <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-emerald-300/15 bg-black/25 min-[360px]:grid-cols-4">
-            {[
-              ["Calorías", `${formatNumber(trackedTotals.kcal, 0)} kcal`],
-              ["Proteína", `${formatNumber(trackedTotals.proteina, 1)} g`],
-              ["Carbohidratos", `${formatNumber(trackedTotals.carbs, 1)} g`],
-              ["Grasas", `${formatNumber(trackedTotals.grasas, 1)} g`],
-            ].map(([label, value], index) => (
-              <div
-                key={label}
-                className={`min-w-0 px-2 py-2.5 text-center ${
-                  index > 0 ? "min-[360px]:border-l min-[360px]:border-white/[0.08]" : ""
-                } ${index % 2 === 1 ? "border-l border-white/[0.08] min-[360px]:border-l" : ""} ${
-                  index > 1 ? "border-t border-white/[0.08] min-[360px]:border-t-0" : ""
-                }`}
-              >
-                <span className="block truncate text-[7px] font-black uppercase tracking-[0.08em] text-zinc-500">
-                  {label}
-                </span>
-                <strong className="mt-1 block truncate text-[11px] font-black text-zinc-100">
-                  {value}
-                </strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.055] px-3 py-2.5">
-            <span className="block text-[7px] font-black uppercase tracking-[0.08em] text-zinc-500">
-              Consumo registrado
-            </span>
-            <strong className="mt-1 block whitespace-nowrap text-[11px] font-black text-white">
-              {formatNumber(trackedTotals.kcal, 0)} / {formatNumber(target.kcal, 0)} kcal
-            </strong>
-            <span className="mt-1.5 flex items-center gap-1.5 text-[8px] font-bold text-emerald-200">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_7px_rgba(110,231,183,.8)]" aria-hidden="true" />
-              Tracking real
-            </span>
+          <div className="grid grid-cols-1 gap-2 min-[350px]:grid-cols-2">
+            <PersonalTargetNutritionPanel
+              label="Meta"
+              totals={target}
+              visual={targetVisual}
+            />
+            <PersonalTargetNutritionPanel
+              label="Registrado"
+              totals={trackedTotals}
+              visual={targetVisual}
+              registered
+            />
           </div>
         </div>
       ) : null}
 
       {!expanded && !mealCompleted ? (
-        <div className="mx-3 mb-3 grid grid-cols-1 gap-2 min-[350px]:grid-cols-2">
-          <PersonalTargetNutritionPanel label="Meta" totals={target} visual={targetVisual} />
-          <PersonalTargetNutritionPanel
-            label="Restante"
-            totals={remaining}
-            visual={targetVisual}
-            remaining
-            overageReview={manualOverageReview}
-          />
+        <div className="mx-3 mb-3 grid gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[350px]:grid-cols-2">
+            <PersonalTargetNutritionPanel label="Meta" totals={target} visual={targetVisual} />
+            <PersonalTargetNutritionPanel
+              label="Restante"
+              totals={remaining}
+              visual={targetVisual}
+              remaining
+              overageReview={manualOverageReview}
+            />
+          </div>
+          {hasPendingPlannedComposition ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="flex min-h-11 items-center gap-2.5 rounded-xl border border-sky-300/20 bg-sky-300/[0.055] px-3 text-left"
+            >
+              <MobileFoodThumbStack foods={plannedFoods} compact maxVisible={3} />
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[10px] font-black text-sky-100">Comida guardada planificada</strong>
+                <span className="mt-0.5 block truncate text-[8.5px] font-bold text-zinc-500">
+                  {formatNumber(plannedTotals.kcal, 0)} kcal · Todavía no cuenta como consumo
+                </span>
+              </span>
+              <ChevronDown size={15} className="shrink-0 text-sky-200" />
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -13356,6 +13932,70 @@ function PlannedMealTargetCard({
             pt-3
           "
         >
+
+          {hasPendingPlannedComposition ? (
+            <section className="mb-3 rounded-2xl border border-sky-300/20 bg-sky-300/[0.045] p-3" aria-label="Planificación pendiente">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[9px] font-black uppercase tracking-[.13em] text-sky-200">Planificación pendiente</span>
+                  <p className="mt-1 text-[9px] font-bold leading-relaxed text-zinc-400">
+                    Esta es la comida guardada que elegiste. No se suma como consumida hasta que la registres.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-sky-300/20 bg-sky-300/[0.08] px-2 py-1 text-[9px] font-black text-sky-100">
+                  {formatNumber(plannedTotals.kcal, 0)} kcal
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                {plannedFoods.map((food, foodIndex) => (
+                  <div
+                    key={`${food.id}-${foodIndex}`}
+                    className="flex min-w-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-black/20 px-2.5 py-2"
+                  >
+                    <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/[0.09] bg-black/25">
+                      {food.imageUrl ? (
+                        <img src={food.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                      ) : (
+                        <Apple size={15} className="text-zinc-500" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-[11px] font-black text-white">{food.name}</strong>
+                      <span className="mt-0.5 block truncate text-[8.5px] font-bold text-zinc-500">{foodMacroLine(food)}</span>
+                    </span>
+                    <span className="shrink-0 rounded-full border border-sky-300/20 bg-sky-300/[0.08] px-2 py-1 text-[9px] font-black text-sky-100">
+                      {food.amount || foodAmount(food.cantidad, food.unidad)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {canRegisterPlannedComposition ? (
+                <button
+                  type="button"
+                  onClick={() => setPlannedConsumptionOpen(true)}
+                  disabled={disabled}
+                  className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200/40 bg-[linear-gradient(110deg,rgba(45,224,178,.20),rgba(52,211,153,.10))] px-3 text-[10px] font-black text-emerald-100 shadow-[0_8px_24px_rgba(45,224,178,.10)] transition hover:bg-emerald-300/[0.18] active:scale-[0.99] disabled:opacity-45"
+                >
+                  <CheckCircle2 size={15} />
+                  Marcar como realizada
+                </button>
+              ) : null}
+
+              {onEditPlanned ? (
+                <button
+                  type="button"
+                  onClick={onEditPlanned}
+                  disabled={disabled}
+                  className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-sky-300/30 bg-sky-300/[0.08] px-3 text-[10px] font-black text-sky-100 disabled:opacity-45"
+                >
+                  <PencilLine size={14} />
+                  Editar alimentos planificados
+                </button>
+              ) : null}
+            </section>
+          ) : null}
 
           <section aria-label="Progreso de macronutrientes">
             <div className="mb-2 flex items-center gap-1.5 text-[8.5px] font-black uppercase tracking-[.16em] text-zinc-500">
@@ -13923,7 +14563,104 @@ onClick={() => {
         />
       ) : null}
 
+      {plannedConsumptionOpen ? (
+        <PlannedMealConsumptionConfirmationModal
+          meal={meal}
+          mealIndex={mealIndex}
+          plannedFoods={plannedFoods}
+          plannedTotals={plannedTotals}
+          saving={disabled}
+          onCancel={() => setPlannedConsumptionOpen(false)}
+          onConfirm={() => {
+            setPlannedConsumptionOpen(false);
+            void autonomousActions?.onRegisterPlannedTargetComposition?.({
+              row,
+              targetMeal: meal,
+              targetExecution,
+              plannedMeal,
+              mealIndex,
+            });
+          }}
+        />
+      ) : null}
+
     </article>
+  );
+}
+
+
+function PlannedMealConsumptionConfirmationModal({
+  meal,
+  mealIndex,
+  plannedFoods = [],
+  plannedTotals = {},
+  saving,
+  onCancel,
+  onConfirm,
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[185] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-planned-consumption-title"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-t-[1.6rem] border border-emerald-200/20 bg-[radial-gradient(circle_at_100%_0,rgba(45,212,191,.13),transparent_36%),linear-gradient(160deg,#101923,#071018)] p-4 shadow-[0_28px_90px_rgba(0,0,0,.65)] sm:rounded-[1.6rem]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-slate-600/60 sm:hidden" />
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-[.14em] text-emerald-300">Registrar consumo</span>
+            <h3 id="confirm-planned-consumption-title" className="mt-1 text-xl font-black text-white">
+              ¿Comiste este {mealName(meal, mealIndex).toLowerCase()}?
+            </h3>
+            <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-400">
+              Se registrarán en Tracking los alimentos y cantidades que dejaste planificados.
+            </p>
+          </div>
+          <button type="button" onClick={onCancel} disabled={saving} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-zinc-300 disabled:opacity-50" aria-label="Cerrar confirmación">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-emerald-200/15 bg-black/20 p-3">
+          <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
+            <span className="text-xs font-black text-zinc-300">
+              {plannedFoods.length} {plannedFoods.length === 1 ? "alimento" : "alimentos"}
+            </span>
+            <strong className="text-sm font-black text-emerald-200">
+              {formatNumber(plannedTotals.kcal, 0)} kcal
+            </strong>
+          </div>
+          <div className="mt-2 grid gap-1.5">
+            {plannedFoods.map((food, index) => (
+              <div key={`${food.id}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2.5">
+                <span className="min-w-0 truncate text-xs font-bold text-zinc-100">{food.name}</span>
+                <span className="shrink-0 text-[10px] font-black text-[#FFE8A3]">
+                  {food.amount || foodAmount(food.cantidad, food.unidad)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-3 text-[10px] font-bold leading-relaxed text-zinc-500">
+          Si comiste cantidades distintas, cancelá y usá “Editar alimentos planificados” antes de registrarla.
+        </p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onCancel} disabled={saving} className="min-h-12 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-xs font-black text-zinc-200 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="min-h-12 rounded-xl border border-emerald-200/40 bg-[linear-gradient(110deg,#2de0b2,#66f0d5)] px-3 text-xs font-black text-[#041d19] shadow-[0_8px_26px_rgba(45,224,178,.20)] disabled:opacity-50">
+            Registrar comida
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -14758,13 +15495,21 @@ function DesktopMealsSection({
   }).meals;
   const effectiveMeals = effectiveMealEntriesForDay(displayRow, baseMeals, weekRows, trackingDay);
   const targetOnlyMeals = plannedMealTargets(displayRow, trackingDay);
-  const generatedEntries = effectiveMeals.filter((entry) => entry.generated);
-  const manualEntries = effectiveMeals.filter((entry) => entry.manual);
+  const plannedTargetCompositions = plannedCompositionsByTarget(displayRow, targetOnlyMeals, baseMeals);
+  const attachedPlannedMealIds = new Set(
+    [...plannedTargetCompositions.values()].map((entry) => String(entry.baseMealId))
+  );
+  const visibleEffectiveMeals = effectiveMeals.filter((entry) => (
+    !attachedPlannedMealIds.has(String(mealId(entry.baseMeal || entry.meal, entry.mealIndex)))
+  ));
+  const generatedEntries = visibleEffectiveMeals.filter((entry) => entry.generated);
+  const manualEntries = visibleEffectiveMeals.filter((entry) => entry.manual);
+  const removablePlanningEntries = visibleEffectiveMeals.filter((entry) => !entry.manual && !entry.generated);
   const countableMeals = countableMealEntries(effectiveMeals);
   const completedCount = completedCountableMeals(effectiveMeals);
 
   if (
-    !effectiveMeals.length
+    !visibleEffectiveMeals.length
     && (
       targetOnlyMeals.length
       || suppressedMenuMealIds(displayRow).length
@@ -14785,11 +15530,11 @@ function DesktopMealsSection({
         </span>
       </div>
 
-      {effectiveMeals.length ? (
+      {visibleEffectiveMeals.length ? (
         <>
           <DesktopMealsGrid
             row={displayRow}
-            effectiveMeals={effectiveMeals}
+            effectiveMeals={visibleEffectiveMeals}
             onToggleMeal={onToggleMeal}
             onOpenMeal={onOpenMeal}
             canQuickEditMeals={canQuickEditMeals}
@@ -14802,12 +15547,23 @@ function DesktopMealsSection({
           {autonomousActions?.hasAutomaticMenuPlanning ? (
             <button
               type="button"
-              onClick={() => autonomousActions?.onDeleteAutomaticMenuMeals?.(displayRow)}
+              onClick={() => {
+                if (removablePlanningEntries.length === 1) {
+                  const entry = removablePlanningEntries[0];
+                  autonomousActions?.onDeleteAutomaticMenuMeal?.(
+                    displayRow,
+                    entry.baseMeal || entry.meal,
+                    entry.mealIndex
+                  );
+                  return;
+                }
+                autonomousActions?.onDeleteAutomaticMenuMeals?.(displayRow);
+              }}
               disabled={saving}
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-300/25 bg-rose-300/[0.06] px-3 text-xs font-black text-rose-100 disabled:opacity-45"
             >
               <Trash2 size={15} />
-              Eliminar comidas
+              {removablePlanningEntries.length === 1 ? "Eliminar comida" : "Eliminar comidas"}
             </button>
           ) : null}
           <GeneratedWeeklyActions
@@ -14897,8 +15653,13 @@ function DesktopMealCard({
   const statusLabel = manual ? "Registrado" : generated ? "Generada" : done ? "Hecha" : "Pendiente";
   const StatusIcon = manual ? Utensils : generated ? Calculator : done ? CheckCircle2 : Square;
   const detailPayload = { row, meal, baseMeal: trackingMeal, mealIndex, generated, manual };
-  const canEditThisMeal = canQuickEdit && !manual && !generated;
+  const freePlannedMeal = isFreePlannedMenuMeal(row, trackingMeal);
+  const dailyPlannedMeal = isDateScopedOwnMenuChoice(trackingChoice(row), row?.date);
+  const canEditThisMeal = (canQuickEdit || dailyPlannedMeal) && !manual && !generated;
   const canDeleteAutomaticPlanning = autonomousActions?.hasAutomaticMenuPlanning === true
+    && !manual
+    && !generated;
+  const canDeletePlanning = (canDeleteAutomaticPlanning || dailyPlannedMeal)
     && !manual
     && !generated;
   const mealChoices = Array.isArray(entry.mealChoices) ? entry.mealChoices : [];
@@ -15063,7 +15824,7 @@ function DesktopMealCard({
                 {foods.length ? "Editar alimentos" : "Agregar alimentos"}
               </button>
             ) : null}
-            {canDeleteAutomaticPlanning ? (
+            {canDeletePlanning ? (
               <button
                 type="button"
                 onClick={() => autonomousActions?.onDeleteAutomaticMenuMeal?.(row, trackingMeal, mealIndex)}
@@ -15071,9 +15832,22 @@ function DesktopMealCard({
                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-rose-300/25 bg-rose-300/[0.07] px-3 text-xs font-black text-rose-100 disabled:opacity-55"
               >
                 <Trash2 size={15} />
-                Eliminar comida
+                {freePlannedMeal ? "Eliminar planificación" : "Eliminar comida"}
               </button>
             ) : null}
+{dailyPlannedMeal ? (
+  onSaveAsSavedMeal ? (
+    <button
+      type="button"
+      onClick={saveAsMeal}
+      disabled={saving || !foods.length}
+      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.08] px-3 text-xs font-black text-emerald-100 disabled:opacity-40"
+    >
+      <Save size={15} />
+      Guardar en Mis comidas
+    </button>
+  ) : null
+) : (
 <MealCompactActions
   onDetail={(event) => openMealDetail(event, "detail")}
   onReplace={(event) => openMealDetail(event, "replace")}
@@ -15085,6 +15859,7 @@ function DesktopMealCard({
   canUseTarget={!manual && !generated && !done}
   saveDisabled={saving || !foods.length}
 />
+)}
           </div>
         </div>
       ) : null}
@@ -15238,10 +16013,22 @@ function DayDetail({
   if (!row) return null;
   const choices = menuChoices(row);
   const selectedAlternative = row?.tracking?.selectedAlternative;
-  const canQuickEditMeals = menuSourceMeta(activePlanSource).key === "own";
   const hasTarget = hasConfiguredTarget(row);
   const activeChoice = trackingChoice(row) || choices[0] || null;
+  const canQuickEditMeals = canQuickEditMenuChoice(activeChoice, activePlanSource, row?.date);
   const targetOnlyMeals = plannedMealTargets(row, trackingDay);
+  const reconciledPlannedMeals = reconcilePlannedMealsWithPersonalTargets({
+    plannedMeals: activeChoice ? choiceMeals(activeChoice) : [],
+    trackingDay,
+    completedMealIds: row?.tracking?.completedMenuMealIds,
+    suppressedMealIds: suppressedMenuMealIds(row),
+    menuSource: activeChoice?.snapshot?.source,
+  }).meals;
+  const plannedTargetCompositions = plannedCompositionsByTarget(
+    row,
+    targetOnlyMeals,
+    reconciledPlannedMeals
+  );
   const plannedTrackingMealIds = choiceMeals(activeChoice).map((meal, index) => (
     menuTargetExecutionContext(row, meal, meal, index).id
   ));
@@ -15282,6 +16069,8 @@ function DayDetail({
           </button>
         </div>
       </div>
+
+      <WeeklyBalanceNotice balance={row?.weeklyBalance || trackingDay?.weeklyBalance} />
 
       {hasTarget ? (
         <div className="rounded-3xl border border-white/10 bg-black/20 p-3">
@@ -15366,6 +16155,18 @@ function DayDetail({
                 meal={meal}
                 mealIndex={index}
                 disabled={saving}
+                plannedComposition={plannedTargetCompositions.get(String(meal.id)) || null}
+                onEditPlanned={canQuickEditMeals && plannedTargetCompositions.has(String(meal.id))
+                  ? () => {
+                      const composition = plannedTargetCompositions.get(String(meal.id));
+                      onQuickEditMeal?.({
+                        row,
+                        meal: composition.meal,
+                        baseMeal: composition.meal,
+                        mealIndex: composition.mealIndex,
+                      });
+                    }
+                  : null}
                 onEditTarget={editablePersonalMealTargetIds([meal]).length
                   ? () => autonomousActions?.onEditPersonalTarget?.(meal)
                   : null}
@@ -16493,11 +17294,17 @@ function FlexibleMarginEditor({
 function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave }) {
   const [draftMeal, setDraftMeal] = useState(() => context.mealDraft || null);
   const [picker, setPicker] = useState(null);
+  const [savedMealPickerOpen, setSavedMealPickerOpen] = useState(false);
+  const [freeMealStatus, setFreeMealStatus] = useState("done");
+  const [quantityDrafts, setQuantityDrafts] = useState({});
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     setDraftMeal(context.mealDraft || null);
     setPicker(null);
+    setSavedMealPickerOpen(false);
+    setFreeMealStatus("done");
+    setQuantityDrafts({});
     setLocalError("");
   }, [context.token, context.mealDraft]);
 
@@ -16505,6 +17312,8 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
   const items = draftMeal?.items || [];
   const totals = sumTotals(items);
   const titleId = "quick-meal-editor-title";
+  const freePlanningMode = context.mode === "create-free" || context.mode === "edit-free";
+  const dailyPlanningMode = freePlanningMode || context.mode === "edit-day";
 
   function updateItem(itemId, patch) {
     setDraftMeal((current) => ({
@@ -16514,14 +17323,43 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
   }
 
   function removeItem(itemId) {
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
     setDraftMeal((current) => ({
       ...(current || {}),
       items: (current?.items || []).filter((item) => item.id !== itemId),
     }));
   }
 
+  function updateQuantityDraft(item, rawValue) {
+    setLocalError("");
+    setQuantityDrafts((current) => ({ ...current, [item.id]: rawValue }));
+    if (rawValue === "") return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    updateItem(item.id, rescaleQuickMenuItem(item, parsed));
+  }
+
+  function commitQuantityDraft(item) {
+    const rawValue = quantityDrafts[item.id];
+    if (rawValue === undefined) return;
+    const parsed = Number(rawValue);
+    if (rawValue !== "" && Number.isFinite(parsed) && parsed > 0) {
+      updateItem(item.id, rescaleQuickMenuItem(item, parsed));
+    }
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[item.id];
+      return next;
+    });
+  }
+
   function applyPickedFood(food, quantity, unit) {
     const nextItem = buildQuickMenuItemFromFood(food, quantity, unit);
+    setLocalError("");
     setDraftMeal((current) => {
       const currentItems = current?.items || [];
       if (picker?.mode === "replace") {
@@ -16538,30 +17376,74 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
     setPicker(null);
   }
 
+  function applySavedMeal(meal = {}) {
+    const sourceItems = Array.isArray(meal.items)
+      ? meal.items
+      : Array.isArray(meal.alimentos)
+        ? meal.alimentos
+        : [];
+    if (!sourceItems.length) {
+      setLocalError("La comida guardada no tiene alimentos para agregar.");
+      return;
+    }
+    const nextItems = sourceItems.map((item, index) => ({
+      ...normalizeQuickMenuItem(item, index),
+      id: uid("item"),
+    }));
+    setDraftMeal((current) => ({
+      ...(current || {}),
+      nombre: meal.nombre || meal.name || current?.nombre || context.title || "Comida",
+      tipoComida: current?.tipoComida || context.mealType || meal.tipoComida || "otra",
+      items: nextItems,
+    }));
+    setQuantityDrafts({});
+    setPicker(null);
+    setSavedMealPickerOpen(false);
+    setLocalError("");
+  }
+
   function save() {
     if (!draftMeal || saving) return;
+    if (context.requireFood && !(draftMeal.items || []).length) {
+      setLocalError("Agregá al menos un alimento para registrar esta comida.");
+      return;
+    }
     const invalid = (draftMeal.items || []).some((item) => !(Number(item.cantidad) > 0));
     if (invalid) {
       setLocalError("Todas las cantidades deben ser mayores a 0.");
       return;
     }
-    onSave?.({
-      ...draftMeal,
-      items: (draftMeal.items || []).map(normalizeQuickMenuItem),
-    });
+    onSave?.(
+      {
+        ...draftMeal,
+        items: (draftMeal.items || []).map(normalizeQuickMenuItem),
+      },
+      { mealStatus: freeMealStatus }
+    );
   }
 
   return (
-    <section className="fixed inset-0 z-[95] flex items-end bg-black/72 px-2 pt-8 backdrop-blur-md sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <section
+      className="fixed inset-0 z-[95] flex items-end bg-black/72 px-2 pt-8 backdrop-blur-md sm:items-center sm:px-4 sm:py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={savedMealPickerOpen ? undefined : titleId}
+      aria-label={savedMealPickerOpen ? "Elegir una comida guardada" : undefined}
+    >
       <button type="button" className="absolute inset-0 cursor-default" onClick={saving ? undefined : onClose} aria-label="Cerrar edicion rapida" />
       <div className="relative mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.7rem] border border-white/10 bg-[radial-gradient(circle_at_15%_0,rgba(45,212,191,.14),transparent_34%),radial-gradient(circle_at_100%_8%,rgba(212,175,55,.16),transparent_30%),linear-gradient(180deg,#101923,#070b10)] shadow-[0_28px_90px_rgba(0,0,0,.72)] sm:rounded-[1.7rem]">
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-white/[0.025] p-4">
+        {!savedMealPickerOpen ? (
+          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 bg-white/[0.025] p-4">
           <div className="min-w-0">
             <span className="inline-flex min-h-7 items-center gap-2 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 text-[11px] font-black uppercase tracking-wide text-[#FFE8A3]">
-              <PencilLine size={14} />
-              Editar alimentos
+              {dailyPlanningMode ? <Utensils size={14} /> : <PencilLine size={14} />}
+              {freePlanningMode
+                ? context.mode === "create-free" ? "Comida libre" : "Planificación libre"
+                : context.mode === "edit-day" ? "Planificación del día" : "Editar alimentos"}
             </span>
-            <h3 id={titleId} className="mt-3 truncate text-2xl font-black leading-tight text-white">Editar {title}</h3>
+            <h3 id={titleId} className="mt-3 truncate text-2xl font-black leading-tight text-white">
+              {context.mode === "create-free" ? `Registrar ${title}` : `Editar ${title}`}
+            </h3>
             <p className="mt-1 text-sm font-bold text-zinc-400">
               {displayKcal(totals.kcal)} - P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}
             </p>
@@ -16569,7 +17451,8 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
           <button type="button" onClick={onClose} disabled={saving} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.055] text-zinc-100 disabled:opacity-50" aria-label="Cerrar">
             <X size={20} />
           </button>
-        </header>
+          </header>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {context.loading ? (
@@ -16587,9 +17470,19 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
             </div>
           ) : (
             <div className="grid gap-3">
+              {!savedMealPickerOpen ? (
+                <>
               <div className="rounded-3xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3 text-xs font-bold leading-relaxed text-zinc-300">
-                <strong className="block text-[#FFE8A3]">Estas editando tu dia base.</strong>
-                Los cambios se veran durante toda la semana. El cumplimiento continuara siendo independiente por fecha.
+                <strong className="block text-[#FFE8A3]">
+                  {dailyPlanningMode ? "Ajustá esta comida a tu manera." : "Estás editando tu día base."}
+                </strong>
+                {dailyPlanningMode
+                  ? context.mode === "create-free"
+                    ? freeMealStatus === "done"
+                      ? "Podés ajustar los alimentos y cantidades. Al confirmar, se registrará directamente como consumida en Tracking."
+                      : "Podés ajustar los alimentos y cantidades. Al confirmar, quedará pendiente sólo para este día y no contará como consumo."
+                    : "Podés cambiar cantidades, agregar, reemplazar o quitar alimentos. Los cambios afectan sólo a este día y no cuentan como consumo."
+                  : "Los cambios se verán durante toda la semana. El cumplimiento continuará siendo independiente por fecha."}
               </div>
 
               {items.length ? (
@@ -16597,50 +17490,50 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
                   {items.map((item) => {
                     const normalized = normalizeMealFood(item);
                     return (
-                      <article key={item.id} className="rounded-[1.15rem] border border-white/10 bg-white/[0.035] p-3">
-                        <div className="flex min-w-0 items-start gap-3">
+                      <article key={item.id} className="group rounded-[1.15rem] border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.035)] transition hover:border-white/15">
+                        <div className="flex min-w-0 items-center gap-2.5">
                           <FoodThumb food={normalized} size="sm" />
                           <div className="min-w-0 flex-1">
                             <strong className="block truncate text-sm font-black text-white">{item.nombreSnapshot || item.nombre || normalized.name}</strong>
-                            <span className="mt-1 block text-xs font-bold text-zinc-500">
+                            <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">
                               {displayKcal(item.kcal)} - P {formatNumber(item.proteina, 1)} / C {formatNumber(item.carbs, 1)} / G {formatNumber(item.grasas, 1)}
                             </span>
                           </div>
-                        </div>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-                          <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">
-                            Cantidad
-                            <span className="flex min-h-11 items-center overflow-hidden rounded-2xl border border-white/10 bg-black/24">
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={item.cantidad}
-                                onChange={(event) => {
-                                  setLocalError("");
-                                  updateItem(item.id, rescaleQuickMenuItem(item, event.target.value));
-                                }}
-                                className="min-w-0 flex-1 bg-transparent px-3 text-sm font-black text-white outline-none"
-                                aria-label={`Cantidad de ${item.nombreSnapshot || item.nombre || normalized.name}`}
-                              />
-                              <span className="shrink-0 border-l border-white/10 px-3 text-xs font-black normal-case text-[#FFE8A3]">{item.unidad || "g"}</span>
-                            </span>
-                          </label>
                           <button
                             type="button"
                             onClick={() => setPicker({ mode: "replace", itemId: item.id, label: item.nombreSnapshot || item.nombre || normalized.name })}
-                            className="min-h-11 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-3 text-xs font-black text-sky-100"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-sky-300/20 bg-sky-300/[0.08] text-sky-100 transition hover:border-sky-300/35 hover:bg-sky-300/15"
+                            aria-label={`Editar ${item.nombreSnapshot || item.nombre || normalized.name}`}
+                            title="Editar o reemplazar alimento"
                           >
-                            Reemplazar
+                            <PencilLine size={15} />
                           </button>
                           <button
                             type="button"
                             onClick={() => removeItem(item.id)}
-                            className="min-h-11 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-rose-300/20 bg-rose-400/[0.07] text-rose-200 transition hover:border-rose-300/35 hover:bg-rose-400/15"
+                            aria-label={`Eliminar ${item.nombreSnapshot || item.nombre || normalized.name}`}
+                            title="Eliminar alimento"
                           >
-                            Eliminar
+                            <Trash2 size={15} />
                           </button>
                         </div>
+                        <label className="mt-2 flex min-h-10 items-center overflow-hidden rounded-xl border border-white/[0.09] bg-black/25 transition focus-within:border-[#D4AF37]/40 focus-within:bg-black/35">
+                          <span className="shrink-0 pl-3 text-[9px] font-black uppercase tracking-[0.14em] text-zinc-500">Cantidad</span>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={Object.prototype.hasOwnProperty.call(quantityDrafts, item.id) ? quantityDrafts[item.id] : item.cantidad}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => updateQuantityDraft(item, event.target.value)}
+                            onBlur={() => commitQuantityDraft(item)}
+                            className="min-w-0 flex-1 bg-transparent px-2 text-right text-sm font-black tabular-nums text-white outline-none"
+                            aria-label={`Cantidad de ${item.nombreSnapshot || item.nombre || normalized.name}`}
+                          />
+                          <span className="mr-1 grid min-h-8 min-w-9 shrink-0 place-items-center rounded-lg bg-white/[0.05] px-2 text-[11px] font-black text-[#FFE8A3]">{item.unidad || "g"}</span>
+                        </label>
                       </article>
                     );
                   })}
@@ -16648,18 +17541,53 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
               ) : (
                 <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-4 text-sm font-bold text-zinc-400">
                   <strong className="block text-base font-black text-white">Todavia no agregaste alimentos.</strong>
-                  <span className="mt-1 block">Agrega el primero para armar esta comida dentro de tu menu activo.</span>
+                  <span className="mt-1 block">
+                    {dailyPlanningMode
+                      ? context.mode === "edit-day"
+                        ? "Agregá un alimento para volver a completar esta comida planificada."
+                        : "Agregá el primero para armar esta comida sin una meta fija."
+                      : "Agregá el primero para armar esta comida dentro de tu menú activo."}
+                  </span>
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => setPicker({ mode: "add" })}
-                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3]"
-              >
-                <Plus size={17} />
-                Agregar alimento
-              </button>
+              <div className={`grid gap-2 ${freePlanningMode && !items.length ? "sm:grid-cols-2" : ""}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedMealPickerOpen(false);
+                    setPicker({ mode: "add" });
+                  }}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 text-sm font-black text-[#FFE8A3]"
+                >
+                  <Plus size={17} />
+                  Agregar alimento
+                </button>
+
+                {freePlanningMode && !items.length ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPicker(null);
+                      setSavedMealPickerOpen((current) => !current);
+                    }}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.07] px-4 text-sm font-black text-emerald-100"
+                  >
+                    <BookOpen size={17} />
+                    Usar comida guardada
+                  </button>
+                ) : null}
+              </div>
+                </>
+              ) : null}
+
+              {savedMealPickerOpen ? (
+                <QuickSavedMealPicker
+                  mealType={context.mealType || draftMeal?.tipoComida || ""}
+                  onSelect={applySavedMeal}
+                  onCancel={() => setSavedMealPickerOpen(false)}
+                />
+              ) : null}
 
               {picker ? (
                 <QuickFoodPicker
@@ -16680,20 +17608,466 @@ function QuickMealEditorDrawer({ context = {}, saving, onClose, onRetry, onSave 
           )}
         </div>
 
-        <footer className="grid shrink-0 gap-2 border-t border-white/10 bg-[#080d12]/96 p-4 sm:grid-cols-2">
-          <button type="button" onClick={onClose} disabled={saving} className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-zinc-200 disabled:opacity-50">
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || context.loading || !!context.error || !draftMeal}
-            className="min-h-12 rounded-2xl bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 text-sm font-black text-[#080808] shadow-[0_14px_30px_rgba(212,175,55,.20)] disabled:opacity-60"
-          >
-            {saving ? "Guardando..." : "Guardar cambios"}
-          </button>
-        </footer>
+        {!savedMealPickerOpen ? (
+          <footer className="shrink-0 border-t border-white/10 bg-[#080d12]/96 p-4">
+          {context.mode === "create-free" ? (
+            <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <div>
+                  <strong className="block text-xs font-black text-white">Estado de la comida</strong>
+                  <span className="mt-0.5 block text-[10px] font-bold text-zinc-500">
+                    Elegí si queda pendiente o si ya la comiste.
+                  </span>
+                </div>
+                <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wide ${freeMealStatus === "done" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-200" : "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#FFE8A3]"}`}>
+                  {freeMealStatus === "done" ? "Hecha" : "Planificada"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-black/25 p-1" role="group" aria-label="Estado de la comida">
+                <button
+                  type="button"
+                  onClick={() => setFreeMealStatus("planned")}
+                  aria-pressed={freeMealStatus === "planned"}
+                  className={`min-h-11 rounded-xl border px-3 text-xs font-black transition ${freeMealStatus === "planned" ? "border-[#D4AF37]/45 bg-[#D4AF37]/15 text-[#FFE8A3] shadow-[0_8px_22px_rgba(212,175,55,.12)]" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}
+                >
+                  Planificada
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreeMealStatus("done")}
+                  aria-pressed={freeMealStatus === "done"}
+                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-black transition ${freeMealStatus === "done" ? "border-emerald-300/40 bg-emerald-300/15 text-emerald-100 shadow-[0_8px_22px_rgba(52,211,153,.12)]" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}
+                >
+                  <CheckCircle2 size={15} />
+                  Hecha
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={onClose} disabled={saving} className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-zinc-200 disabled:opacity-50">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || context.loading || !!context.error || !draftMeal}
+              className="min-h-12 rounded-2xl bg-gradient-to-r from-[#facc15] to-[#f5d76e] px-4 text-sm font-black text-[#080808] shadow-[0_14px_30px_rgba(212,175,55,.20)] disabled:opacity-60"
+            >
+              {saving ? "Guardando..." : context.mode === "create-free" ? "Confirmar" : "Guardar cambios"}
+            </button>
+          </div>
+          </footer>
+        ) : null}
       </div>
+    </section>
+  );
+}
+
+function QuickSavedMealPicker({ mealType = "", onSelect, onCancel }) {
+  const [sameTypeOnly, setSameTypeOnly] = useState(true);
+  const [search, setSearch] = useState("");
+  const [meals, setMeals] = useState([]);
+  const [expandedMealId, setExpandedMealId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
+  const typeLabels = {
+    desayuno: "Desayuno",
+    almuerzo: "Almuerzo",
+    merienda: "Merienda",
+    cena: "Cena",
+    picoteo: "Picoteo",
+    snack: "Snack",
+  };
+  const typeLabel = typeLabels[mealType] || "Este tipo";
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    listSavedMeals({
+      scope: "mine",
+      tipoComida: sameTypeOnly && mealType ? mealType : "todos",
+      limit: 80,
+    })
+      .then((data) => {
+        if (!active) return;
+        const nextMeals = Array.isArray(data?.comidas) ? data.comidas : [];
+        setMeals(nextMeals.sort((left, right) => {
+          const favoriteDifference = Number(Boolean(right?.favorita)) - Number(Boolean(left?.favorita));
+          if (favoriteDifference) return favoriteDifference;
+          return String(left?.nombre || "").localeCompare(String(right?.nombre || ""), "es");
+        }));
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setMeals([]);
+        setError(requestError?.message || "No pudimos cargar tus comidas guardadas.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [mealType, retryKey, sameTypeOnly]);
+
+  useEffect(() => {
+    setExpandedMealId("");
+  }, [sameTypeOnly, search]);
+
+  const visibleMeals = meals.filter((meal) => {
+    const term = search.trim().toLocaleLowerCase("es");
+    if (!term) return true;
+    const itemNames = (Array.isArray(meal?.items) ? meal.items : [])
+      .map((item) => item?.nombre || item?.nombreSnapshot || item?.name || "")
+      .join(" ");
+    return `${meal?.nombre || ""} ${itemNames}`.toLocaleLowerCase("es").includes(term);
+  });
+
+  return (
+    <section className="rounded-3xl border border-emerald-300/20 bg-emerald-300/[0.045] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-wide text-emerald-200">Mis comidas</span>
+          <strong className="mt-1 block text-base font-black text-white">Elegí una comida guardada</strong>
+          <p className="mt-1 text-xs font-bold text-zinc-500">Se copiarán sus alimentos y después podrás ajustar las cantidades.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-200" aria-label="Cerrar comidas guardadas">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
+        <button
+          type="button"
+          onClick={() => setSameTypeOnly(true)}
+          className={`min-h-9 rounded-xl px-2 text-[11px] font-black transition ${sameTypeOnly ? "bg-emerald-300/15 text-emerald-100" : "text-zinc-500"}`}
+        >
+          {typeLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSameTypeOnly(false)}
+          className={`min-h-9 rounded-xl px-2 text-[11px] font-black transition ${!sameTypeOnly ? "bg-emerald-300/15 text-emerald-100" : "text-zinc-500"}`}
+        >
+          Todas
+        </button>
+      </div>
+
+      <label className="mt-3 flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-[#080d12] px-3">
+        <Search size={15} className="shrink-0 text-emerald-200" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por nombre o alimento"
+          className="min-w-0 flex-1 bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
+        />
+      </label>
+
+      {loading ? (
+        <div className="mt-3 flex min-h-24 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/20 text-sm font-black text-zinc-400">
+          <RefreshCw size={16} className="animate-spin text-emerald-200" />
+          Cargando tus comidas...
+        </div>
+      ) : null}
+
+      {!loading && error ? (
+        <div className="mt-3 rounded-2xl border border-rose-300/25 bg-rose-300/[0.08] p-3 text-sm font-bold text-rose-100">
+          {error}
+          <button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-2 block min-h-9 rounded-xl border border-rose-200/25 px-3 text-xs font-black">Reintentar</button>
+        </div>
+      ) : null}
+
+      {!loading && !error && visibleMeals.length ? (
+        <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
+          {visibleMeals.map((meal, mealIndex) => {
+            const mealItems = Array.isArray(meal?.items) ? meal.items : [];
+            const currentMealId = String(meal?.id || meal?._id || `${meal?.nombre || "meal"}-${mealIndex}`);
+            const expanded = expandedMealId === currentMealId;
+            const totals = hasTotalValue(totalFromLike(meal?.totales || meal?.totals))
+              ? totalFromLike(meal?.totales || meal?.totals)
+              : sumTotals(mealItems);
+            const firstFood = mealItems[0] ? normalizeMealFood(mealItems[0]) : null;
+            return (
+              <article
+                key={currentMealId}
+                className={`overflow-hidden rounded-2xl border bg-black/25 transition ${expanded ? "border-emerald-300/30 shadow-[0_10px_24px_rgba(0,0,0,.20)]" : "border-white/10"}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedMealId((current) => current === currentMealId ? "" : currentMealId)}
+                  disabled={!mealItems.length}
+                  aria-expanded={expanded}
+                  className="flex min-h-[68px] w-full min-w-0 items-center gap-3 p-3 text-left disabled:opacity-45"
+                >
+                  <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045]">
+                    {firstFood ? <FoodThumb food={firstFood} size="sm" /> : <Utensils size={18} className="text-zinc-500" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <strong className="truncate text-sm font-black text-white">{meal?.nombre || "Comida guardada"}</strong>
+                      {meal?.favorita ? <Heart size={12} fill="currentColor" className="shrink-0 text-rose-300" /> : null}
+                    </span>
+                    <span className="mt-1 block truncate text-[11px] font-bold text-zinc-500">
+                      {mealItems.length} {mealItems.length === 1 ? "alimento" : "alimentos"} · P {formatNumber(totals.proteina, 0)} / C {formatNumber(totals.carbs, 0)} / G {formatNumber(totals.grasas, 0)}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <strong className="text-xs font-black text-[#FFE16A]">{formatNumber(totals.kcal, 0)} kcal</strong>
+                    <span className={`grid h-8 w-8 place-items-center rounded-xl border transition ${expanded ? "rotate-180 border-emerald-300/25 bg-emerald-300/10 text-emerald-100" : "border-white/10 bg-white/[0.035] text-zinc-500"}`}>
+                      <ChevronDown size={16} />
+                    </span>
+                  </span>
+                </button>
+
+                {expanded ? (
+                  <div className="border-t border-white/10 bg-white/[0.025] p-3">
+                    <div className="grid gap-1.5">
+                      {mealItems.map((item, itemIndex) => {
+                        const food = normalizeMealFood(item, itemIndex);
+                        const itemNutrition = totalFromLike(item);
+                        const quantity = Number(item?.cantidad ?? item?.quantity ?? food?.quantity) || 0;
+                        const unit = item?.unidad || item?.unit || food?.unit || "g";
+                        return (
+                          <div key={`${currentMealId}-food-${String(item?.id || item?.alimentoId || itemIndex)}`} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-black/20 px-2.5 py-2">
+                            <FoodThumb food={food} size="sm" />
+                            <span className="min-w-0 flex-1">
+                              <strong className="block truncate text-xs font-black text-zinc-100">{food.name}</strong>
+                              <span className="mt-0.5 block text-[10px] font-bold text-zinc-500">
+                                {formatNumber(quantity, quantity % 1 ? 1 : 0)} {unit}
+                              </span>
+                            </span>
+                            <strong className="shrink-0 text-[11px] font-black text-[#FFE8A3]">{formatNumber(itemNutrition.kcal, 0)} kcal</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelect?.(meal)}
+                      className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/[0.10] px-3 text-sm font-black text-emerald-100"
+                    >
+                      <CheckCircle2 size={16} />
+                      Usar esta comida
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!loading && !error && !visibleMeals.length ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-white/15 bg-black/20 p-3 text-sm font-bold text-zinc-400">
+          <strong className="block text-white">{search.trim() ? "No encontramos coincidencias." : sameTypeOnly ? `No tenés ${typeLabel.toLowerCase()}s guardados.` : "Todavía no tenés comidas guardadas."}</strong>
+          {sameTypeOnly && !search.trim() ? (
+            <button type="button" onClick={() => setSameTypeOnly(false)} className="mt-2 min-h-9 rounded-xl border border-emerald-300/25 bg-emerald-300/[0.07] px-3 text-xs font-black text-emerald-100">
+              Ver todas mis comidas
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+const EMPTY_CUSTOM_FOOD = {
+  nombre: "",
+  unidad: "g",
+  calorias: "",
+  proteinas: "",
+  carbohidratos: "",
+  grasas: "",
+};
+
+function customFoodDraft(food = null) {
+  if (!food) return { ...EMPTY_CUSTOM_FOOD };
+  return {
+    nombre: food.nombre || food.name || "",
+    unidad: food.unidad || food.unit || "g",
+    calorias: String(food.kcal ?? ""),
+    proteinas: String(food.proteina ?? food.protein ?? ""),
+    carbohidratos: String(food.carbs ?? ""),
+    grasas: String(food.grasas ?? food.fat ?? ""),
+  };
+}
+
+function customFoodCalories(draft = {}) {
+  const protein = Math.max(0, Number(String(draft.proteinas || "0").replace(",", ".")) || 0);
+  const carbs = Math.max(0, Number(String(draft.carbohidratos || "0").replace(",", ".")) || 0);
+  const fat = Math.max(0, Number(String(draft.grasas || "0").replace(",", ".")) || 0);
+  return Math.round((protein * 4 + carbs * 4 + fat * 9) * 10) / 10;
+}
+
+function CustomFoodLibrary({ onClose, onSelect }) {
+  const [state, setState] = useState({ items: [], usage: 0, limit: 0, canCreate: false, plan: "free" });
+  const [view, setView] = useState("list");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(() => customFoodDraft());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await listCustomFoods();
+      setState({
+        items: Array.isArray(data.items) ? data.items : [],
+        usage: Number(data.usage) || 0,
+        limit: Number(data.limit) || 0,
+        canCreate: data.canCreate === true,
+        plan: data.plan || "free",
+      });
+    } catch (err) {
+      setError(err?.message || "No pudimos cargar tus alimentos personalizados.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function openForm(food = null) {
+    setEditing(food);
+    setDraft(customFoodDraft(food));
+    setError("");
+    setView("form");
+  }
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveFood() {
+    if (!draft.nombre.trim()) {
+      setError("Escribi un nombre para el alimento.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const payload = {
+        nombre: draft.nombre.trim(),
+        unidad: draft.unidad,
+        calorias: customFoodCalories(draft),
+        proteinas: draft.proteinas,
+        carbohidratos: draft.carbohidratos,
+        grasas: draft.grasas,
+      };
+      if (editing) {
+        const updated = await updateCustomFood(editing.id, payload);
+        setState((current) => ({
+          ...current,
+          items: current.items.map((item) => item.id === updated.id ? updated : item),
+        }));
+        setEditing(null);
+        setView("list");
+      } else {
+        const created = await createCustomFood(payload);
+        onSelect?.(created);
+      }
+    } catch (err) {
+      setError(err?.message || "No pudimos guardar el alimento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeFood(food) {
+    if (!window.confirm(`Eliminar ${foodDisplayName(food)} de tus alimentos personalizados?`)) return;
+    setError("");
+    try {
+      await deleteCustomFood(food.id);
+      setState((current) => ({
+        ...current,
+        usage: Math.max(0, current.usage - 1),
+        items: current.items.filter((item) => item.id !== food.id),
+      }));
+    } catch (err) {
+      setError(err?.message || "No pudimos eliminar el alimento.");
+    }
+  }
+
+  const atLimit = state.limit > 0 && state.usage >= state.limit;
+  return (
+    <section className="rounded-3xl border border-emerald-300/20 bg-emerald-300/[0.055] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <button type="button" onClick={view === "form" ? () => setView("list") : onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/20 text-zinc-100" aria-label="Volver">
+          <ChevronLeft size={16} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">Biblioteca privada</span>
+          <strong className="block truncate text-sm font-black text-white">{view === "form" ? (editing ? "Editar alimento" : "Nuevo alimento") : "Mis alimentos"}</strong>
+        </div>
+        {state.limit ? <span className="rounded-full border border-emerald-300/20 bg-black/20 px-2.5 py-1 text-[10px] font-black text-emerald-100">{state.usage}/{state.limit}</span> : null}
+      </div>
+
+      {error ? <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-xs font-bold text-rose-100">{error}</div> : null}
+
+      {view === "form" ? (
+        <div className="mt-3 grid gap-3">
+          <div className="rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3">
+            <div className="flex items-center gap-2 text-[#FFE8A3]"><Sparkles size={15} /><strong className="text-xs font-black">{draft.unidad === "unidad" ? "Valores nutricionales por 1 unidad" : `Valores nutricionales cada 100 ${draft.unidad}`}</strong></div>
+            <p className="mt-1 text-[11px] font-bold text-zinc-500">Solo vos y el administrador pueden verlo. No se usa en generaciones automaticas.</p>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
+            <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">Nombre<input autoFocus maxLength={80} value={draft.nombre} onChange={(event) => updateDraft("nombre", event.target.value)} placeholder="Ej. Yogur casero" className="min-h-11 rounded-2xl border border-white/10 bg-black/25 px-3 text-sm font-black normal-case text-white outline-none" /></label>
+            <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-zinc-500">Unidad<select value={draft.unidad} onChange={(event) => updateDraft("unidad", event.target.value)} className="min-h-11 rounded-2xl border border-white/10 bg-[#0b1115] px-3 text-sm font-black normal-case text-white outline-none"><option value="g">100 g</option><option value="ml">100 ml</option><option value="unidad">1 unid</option></select></label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-1 rounded-2xl border border-amber-300/15 bg-amber-300/[0.04] p-2.5 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+              Calorias
+              <span className="flex items-center gap-2"><output className="min-w-0 flex-1 text-base font-black normal-case text-amber-200">{formatNumber(customFoodCalories(draft), 1)}</output><span className="text-[10px] text-zinc-600">kcal</span></span>
+            </div>
+            {[
+              ["proteinas", "Proteinas", "g", "text-emerald-200"],
+              ["carbohidratos", "Carbos", "g", "text-sky-200"],
+              ["grasas", "Grasas", "g", "text-violet-200"],
+            ].map(([field, fieldLabel, suffix, color]) => (
+              <label key={field} className="grid gap-1 rounded-2xl border border-white/10 bg-black/20 p-2.5 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                {fieldLabel}
+                <span className="flex items-center gap-2"><input type="number" min="0" step="0.1" inputMode="decimal" value={draft[field]} onChange={(event) => updateDraft(field, event.target.value)} placeholder="0" className={`min-w-0 flex-1 bg-transparent text-base font-black normal-case outline-none ${color}`} /><span className="text-[10px] text-zinc-600">{suffix}</span></span>
+              </label>
+            ))}
+          </div>
+          <button type="button" disabled={saving} onClick={saveFood} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/[0.12] px-4 text-sm font-black text-emerald-100 disabled:opacity-50">
+            {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+            {editing ? "Guardar cambios" : "Crear y usar alimento"}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2">
+          {loading ? <div className="grid min-h-24 place-items-center"><RefreshCw size={18} className="animate-spin text-emerald-300" /></div> : null}
+          {!loading && state.canCreate ? (
+            <button type="button" disabled={atLimit} onClick={() => openForm()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300/35 bg-emerald-300/[0.06] px-3 text-sm font-black text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45">
+              <Plus size={16} /> {atLimit ? "Limite de 30 alcanzado" : "Crear alimento personalizado"}
+            </button>
+          ) : null}
+          {!loading && !state.canCreate ? (
+            <div className="rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.055] p-3 text-xs font-bold text-zinc-300"><strong className="block text-[#FFE8A3]">Funcion exclusiva para clientes Pro</strong><span className="mt-1 block text-zinc-500">Con Pro podes crear hasta 30 alimentos privados.</span></div>
+          ) : null}
+          {!loading && state.items.map((food) => (
+            <article key={food.id} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+              <button type="button" onClick={() => onSelect?.(food)} className="min-w-0 flex-1 p-1 text-left">
+                <strong className="block truncate text-sm font-black text-white">{foodDisplayName(food)}</strong>
+                <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">{foodDisplayUnit(food) === "unidad" ? "1 unidad" : `100 ${foodDisplayUnit(food)}`} · {displayKcal(food.kcal)} · P {formatNumber(food.proteina, 1)} / C {formatNumber(food.carbs, 1)} / G {formatNumber(food.grasas, 1)}</span>
+              </button>
+              {state.canCreate ? <button type="button" onClick={() => openForm(food)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-sky-300/20 bg-sky-300/[0.07] text-sky-200" aria-label={`Editar ${foodDisplayName(food)}`}><PencilLine size={15} /></button> : null}
+              <button type="button" onClick={() => removeFood(food)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-rose-300/20 bg-rose-300/[0.07] text-rose-200" aria-label={`Eliminar ${foodDisplayName(food)}`}><Trash2 size={15} /></button>
+            </article>
+          ))}
+          {!loading && state.canCreate && !state.items.length ? <div className="rounded-2xl border border-dashed border-white/10 p-3 text-xs font-bold text-zinc-500">Todavia no creaste alimentos. El primero queda listo para usar apenas lo guardes.</div> : null}
+        </div>
+      )}
     </section>
   );
 }
@@ -16711,6 +18085,7 @@ function QuickFoodPicker({ mode = "add", label = "", mealName = "comida", onPick
   const [unit, setUnit] = useState("g");
   const [servings, setServings] = useState("1");
   const [selectionError, setSelectionError] = useState("");
+  const [customFoodsOpen, setCustomFoodsOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -16760,6 +18135,7 @@ function QuickFoodPicker({ mode = "add", label = "", mealName = "comida", onPick
     setQuantity(String(nextQuantity));
     setServings("1");
     setSelectionError("");
+    setCustomFoodsOpen(false);
   }
 
   function submitFood() {
@@ -16824,6 +18200,10 @@ function QuickFoodPicker({ mode = "add", label = "", mealName = "comida", onPick
     );
   }
 
+  if (customFoodsOpen) {
+    return <CustomFoodLibrary onClose={() => setCustomFoodsOpen(false)} onSelect={selectFood} />;
+  }
+
   return (
     <section className="rounded-3xl border border-white/10 bg-black/20 p-3">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -16835,6 +18215,10 @@ function QuickFoodPicker({ mode = "add", label = "", mealName = "comida", onPick
           <X size={16} />
         </button>
       </div>
+      <button type="button" onClick={() => setCustomFoodsOpen(true)} className="mb-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.055] px-3 text-left">
+        <span className="flex min-w-0 items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-emerald-200"><Plus size={15} /></span><span className="min-w-0"><strong className="block truncate text-xs font-black text-emerald-100">Mis alimentos personalizados</strong><span className="block truncate text-[10px] font-bold text-zinc-500">Crear, editar o elegir · Pro</span></span></span>
+        <ChevronRight size={16} className="shrink-0 text-emerald-300" />
+      </button>
       <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-[#080d12] px-3">
         <Search size={16} className="shrink-0 text-[#FFD76B]" />
         <input

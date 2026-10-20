@@ -289,6 +289,7 @@ function emptyTrackingDay(date) {
     date,
     objetivo: null,
     objetivoSource: "",
+    weeklyBalance: null,
     totals: emptyTotals(),
     remaining: null,
     planificado: null,
