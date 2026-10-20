@@ -411,6 +411,28 @@ export function trackingDraftKey(date = "", mealId = "") {
   return `${String(date)}:${String(mealId)}`;
 }
 
+export function appendTrackingFoodDraftToMeal(
+  draftsByMeal = {},
+  { date = "", mealId = "", food = {}, quantity = "", draftId = "", automatic = false } = {}
+) {
+  const key = trackingDraftKey(date, mealId);
+  const currentDrafts = Array.isArray(draftsByMeal[key]) ? draftsByMeal[key] : [];
+  const baseDraft = createTrackingFoodDraft(
+    food,
+    automatic ? "" : quantity,
+    draftId,
+    trackingDraftsQuantityMode(currentDrafts)
+  );
+  const nextDraft = automatic
+    ? markTrackingDraftAutomatic(baseDraft)
+    : markTrackingDraftManual(baseDraft);
+
+  return {
+    ...draftsByMeal,
+    [key]: [...currentDrafts, nextDraft],
+  };
+}
+
 export function trackingDateDrafts(draftsByMeal = {}, date = "") {
   const prefix = `${String(date)}:`;
   return Object.entries(draftsByMeal || {}).reduce((drafts, [key, entries]) => (

@@ -16,6 +16,14 @@ export async function applyDayFavorite(id, date) {
   });
 }
 
+export async function updateDayFavorite(id, payload = {}) {
+  return await apiFetch(`/api/clientes/me/day-favorites/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: payload,
+    timeoutMs: 14000,
+  });
+}
+
 export async function deleteDayFavorite(id) {
   return await apiFetch(`/api/clientes/me/day-favorites/${encodeURIComponent(id)}`, {
     method: "DELETE",

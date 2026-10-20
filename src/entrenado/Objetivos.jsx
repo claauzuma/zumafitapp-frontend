@@ -1108,7 +1108,7 @@ export default function Objetivos() {
       ) : null}
 
       {activeTab === "nutrition" ? (
-        <section className="og-panel og-summaryPanel">
+        <>
           <section className="og-targetCard">
             <div className="og-targetCardTop">
               <div>
@@ -1297,9 +1297,9 @@ export default function Objetivos() {
               </aside>
             ) : null}
           </section>
-        </section>
+        </>
       ) : (
-        <section className="og-panel">
+        <>
           <section className="og-targetCard og-trainingTargetCard">
             <div className="og-targetCardTop">
               <div>
@@ -1374,7 +1374,7 @@ export default function Objetivos() {
               </button>
             </div>
           </div>
-        </section>
+        </>
       )}
 
       {editNutrition ? (

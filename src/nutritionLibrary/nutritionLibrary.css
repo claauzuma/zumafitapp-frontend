@@ -3789,7 +3789,56 @@
   color: #6ee7b7;
 }
 .nl-context-card-actions button.icon.active { color: #ffe480; }
+.nl-context-card-actions button.icon.danger,
+.nl-actions button.danger { border-color: rgba(251,113,133,.24); color: #fda4af; }
 .nl-context-card-actions button:disabled { opacity: .45; }
+
+.nl-owned-meal-editor {
+  width: min(620px, 100%);
+  max-height: min(780px, calc(100dvh - 24px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(52,211,153,.22);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(12,23,32,.995), rgba(5,10,15,.995));
+  padding: 16px;
+  box-shadow: 0 28px 70px rgba(0,0,0,.65);
+}
+.nl-owned-meal-editor > header,
+.nl-owned-meal-editor > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.nl-owned-meal-editor h2 { margin: 5px 0 0; color: #fff; font-size: clamp(20px,5vw,27px); font-weight: 950; }
+.nl-owned-meal-fields { display: grid; grid-template-columns: minmax(0,1fr) 150px; gap: 8px; margin-top: 16px; }
+.nl-owned-meal-fields label > span { display: block; margin: 0 0 5px 2px; color: #8294a5; font-size: 9px; font-weight: 950; text-transform: uppercase; }
+.nl-owned-meal-fields input,
+.nl-owned-meal-fields select {
+  width: 100%; min-height: 44px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px;
+  background: #0c141d; padding: 0 11px; color: #fff; font: inherit; font-size: 13px; font-weight: 850; outline: none;
+}
+.nl-owned-meal-foods { display: grid; gap: 7px; margin-top: 13px; }
+.nl-owned-meal-foods article {
+  display: grid; grid-template-columns: 38px minmax(0,1fr) 112px 36px; align-items: center; gap: 8px;
+  border: 1px solid rgba(255,255,255,.07); border-radius: 13px; background: rgba(255,255,255,.025); padding: 8px;
+}
+.nl-owned-meal-foods article > div { min-width: 0; }
+.nl-owned-meal-foods article > div strong,
+.nl-owned-meal-foods article > div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nl-owned-meal-foods article > div strong { color: #fff; font-size: 12px; font-weight: 900; }
+.nl-owned-meal-foods article > div span { margin-top: 3px; color: #8294a5; font-size: 9px; font-weight: 750; }
+.nl-owned-meal-foods article > label { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; border: 1px solid rgba(255,255,255,.09); border-radius: 9px; background: rgba(0,0,0,.22); }
+.nl-owned-meal-foods article > label input { width: 100%; min-width: 0; height: 36px; border: 0; background: transparent; padding: 0 7px; color: #fff; font: inherit; font-size: 12px; font-weight: 900; outline: none; }
+.nl-owned-meal-foods article > label b { padding-right: 7px; color: #7dd3fc; font-size: 9px; }
+.nl-owned-meal-foods article > button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(251,113,133,.18); border-radius: 9px; background: rgba(251,113,133,.05); color: #fda4af; }
+.nl-owned-meal-editor > p { margin: 12px 0; color: #7f8fa1; font-size: 10px; font-weight: 750; line-height: 1.45; }
+.nl-owned-meal-editor > footer button { display: inline-flex; min-height: 44px; flex: 1; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; background: rgba(255,255,255,.04); color: #dce7f5; font: inherit; font-size: 12px; font-weight: 950; }
+.nl-owned-meal-editor > footer button.primary { border-color: transparent; background: linear-gradient(135deg,#6ee7b7,#2dd4bf); color: #04110d; }
+.nl-owned-meal-editor button:disabled { opacity: .48; }
+
+@media (max-width: 560px) {
+  .nl-modal:has(.nl-owned-meal-editor) { place-items: end center; padding: 0; }
+  .nl-owned-meal-editor { max-height: 94dvh; border-radius: 20px 20px 0 0; padding: 14px 10px; }
+  .nl-owned-meal-fields { grid-template-columns: minmax(0,1fr) 112px; }
+  .nl-owned-meal-foods article { grid-template-columns: 34px minmax(0,1fr) 88px 34px; gap: 6px; padding: 7px; }
+}
 
 .nl-context-preview-layer { z-index: 130; padding: 10px; }
 .nl-context-confirm-layer { z-index: 140; padding: 12px; }

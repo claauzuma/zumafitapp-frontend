@@ -9158,7 +9158,7 @@ function MobileDayMenu({
     });
 
   return (
-    <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <section className="mx-auto w-full max-w-[760px] overflow-x-hidden px-0.5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <MobileDayPicker
         row={row}
         onPrevious={onPrevious}
@@ -9590,6 +9590,18 @@ function MobileGoalAccordion({
   const detailId = "mobile-goal-day-detail";
   const ChevronIcon = expanded ? ChevronUp : ChevronDown;
   const macroSummary = `P${formatNumber(target.proteina, 0)} / C${formatNumber(target.carbs, 0)} / G${formatNumber(target.grasas, 0)}`;
+  const remainingMacroSummary = [
+    ["P", remaining?.proteina],
+    ["C", remaining?.carbs],
+    ["G", remaining?.grasas],
+  ].map(([label, value]) => `${label} ${formatNumber(Math.max(0, Number(value) || 0), 0)}`).join(" · ");
+  const proteinTarget = Math.max(0, Number(target?.proteina) || 0);
+  const proteinConsumed = Math.max(0, Number(consumed?.proteina) || 0);
+  const proteinOverage = Math.max(0, proteinConsumed - proteinTarget);
+  const isProteinOverLimit = proteinTarget > 0 && proteinOverage > 10;
+  const proteinPercent = proteinTarget > 0
+    ? Math.max(0, Math.min(100, Math.round((proteinConsumed / proteinTarget) * 100)))
+    : 0;
 
   if (!hasTarget) {
     return (
@@ -9619,7 +9631,7 @@ function MobileGoalAccordion({
     <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
       <button
         type="button"
-        className="relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5 pb-[18px] pt-2.5 text-left"
+        className="relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 px-2.5 py-2.5 text-left"
         aria-expanded={expanded}
         aria-controls={detailId}
         onClick={onToggle}
@@ -9642,7 +9654,10 @@ function MobileGoalAccordion({
             <strong className={`mt-0.5 block whitespace-nowrap text-[18px] font-black leading-none ${remainingKcalTone}`}>
               {displayKcal(remainingKcalValue)}
             </strong>
-            <span className="mt-1 block text-[9px] font-black leading-none text-emerald-300">
+            <span className="mt-1 block whitespace-nowrap text-[9px] font-black leading-none text-sky-100">
+              {remainingMacroSummary}
+            </span>
+            <span className="mt-1 block text-[8px] font-black leading-none text-emerald-300">
               {isWithinCalorieTolerance ? `Dentro de ±${MEAL_TARGET_KCAL_TOLERANCE} kcal` : `${safePercent}% consumido`}
             </span>
           </span>
@@ -9652,19 +9667,46 @@ function MobileGoalAccordion({
             <ChevronIcon size={15} strokeWidth={2.4} aria-hidden="true" />
           </span>
         </span>
-        <span
-          className="absolute bottom-1 left-[54px] right-[46px] h-2 overflow-hidden rounded-full border border-white/10 bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)]"
-          aria-hidden="true"
-        >
-          <span
-            className={`relative block h-full overflow-hidden rounded-full transition-[width] duration-500 ease-out ${isCalorieOver
-              ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.62)]"
-              : "bg-gradient-to-r from-[#D4AF37] via-emerald-400 to-cyan-300 shadow-[0_0_12px_rgba(45,212,191,.55)]"
-            }`}
-            style={{ width: `${displayPercent}%` }}
-          >
-            <span className="absolute inset-x-0 top-0 h-px bg-white/60" />
-            <span className="absolute inset-y-0 right-0 w-2 bg-white/25 blur-[2px]" />
+        <span className="col-start-2 col-end-4 grid min-w-0 gap-1.5 pr-0.5">
+          <span className="grid min-w-0 gap-0.5">
+            <span className="flex items-center justify-between gap-2 text-[7.5px] font-black uppercase tracking-[0.08em] text-zinc-500">
+              <span>Calorías</span>
+              <span className={isCalorieOver ? "text-rose-300" : "text-zinc-400"}>{displayPercent}%</span>
+            </span>
+            <span className="h-2 overflow-hidden rounded-full border border-white/10 bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)]">
+              <span
+                className={`relative block h-full overflow-hidden rounded-full transition-[width] duration-500 ease-out ${isCalorieOver
+                  ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.62)]"
+                  : "bg-gradient-to-r from-[#D4AF37] via-emerald-400 to-cyan-300 shadow-[0_0_12px_rgba(45,212,191,.55)]"
+                }`}
+                style={{ width: `${displayPercent}%` }}
+              >
+                <span className="absolute inset-x-0 top-0 h-px bg-white/60" />
+                <span className="absolute inset-y-0 right-0 w-2 bg-white/25 blur-[2px]" />
+              </span>
+            </span>
+          </span>
+          <span className="grid min-w-0 gap-0.5">
+            <span className={`flex items-center justify-between gap-2 text-[7.5px] font-black uppercase tracking-[0.08em] ${isProteinOverLimit ? "text-rose-300" : "text-orange-200"}`}>
+              <span>Proteína</span>
+              <span className="normal-case tracking-normal">
+                {isProteinOverLimit
+                  ? `Exceso +${formatNumber(proteinOverage, 0)} g`
+                  : `${formatNumber(proteinConsumed, 0)} / ${formatNumber(proteinTarget, 0)} g`}
+              </span>
+            </span>
+            <span className={`h-2 overflow-hidden rounded-full border bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)] ${isProteinOverLimit ? "border-rose-300/30" : "border-orange-200/20"}`}>
+              <span
+                className={`relative block h-full overflow-hidden rounded-full transition-[width,background-color] duration-500 ease-out ${isProteinOverLimit
+                  ? "bg-gradient-to-r from-rose-800 via-red-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.65)]"
+                  : "bg-gradient-to-r from-amber-600 via-orange-400 to-orange-200 shadow-[0_0_12px_rgba(251,146,60,.48)]"
+                }`}
+                style={{ width: `${isProteinOverLimit ? 100 : proteinPercent}%` }}
+              >
+                <span className="absolute inset-x-0 top-0 h-px bg-white/55" />
+                <span className="absolute inset-y-0 right-0 w-2 bg-white/20 blur-[2px]" />
+              </span>
+            </span>
           </span>
         </span>
       </button>
@@ -10357,7 +10399,7 @@ function MobileDayDetailView({
     });
 
   return (
-    <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
+    <section className="mx-auto w-full max-w-[760px] px-0.5 pb-3">
       <MobileTopBar title={detailChoice?.type === "alternative" ? detailChoice.label : "Menú del día"} onBack={onBack} />
       <MobileDayPicker
         row={row}
@@ -10480,7 +10522,7 @@ function MobileAlternativesView({
   const selectedIndex = selectedAlternativeIndex(row);
 
   return (
-    <section className="mx-auto w-full max-w-[760px] px-1 pb-3">
+    <section className="mx-auto w-full max-w-[760px] px-0.5 pb-3">
       <MobileTopBar title="Alternativas del día" onBack={onBack} />
 
       <div className="mt-4 grid gap-3">
@@ -11007,42 +11049,42 @@ async function deleteTrackingGroup(
           <span className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${visual.rail}`} aria-hidden="true" />
 
           {/* HEADER DE LA COMIDA */}
-          <div className="relative z-10 flex items-center justify-between gap-2.5 border-b border-white/[0.07] px-3 py-3">
+          <div className="relative z-10 flex items-start gap-2 border-b border-white/[0.07] px-2.5 py-2.5">
             <button
               type="button"
               onClick={() => toggleTrackingGroup(group.id)}
-              className="flex min-w-0 flex-1 items-center gap-2.5 text-left active:scale-[0.995]"
+              className="flex min-w-0 flex-1 items-start gap-1.5 text-left active:scale-[0.995]"
               aria-expanded={expanded}
             >
-              <MealTypeIcon meal={trackedMeal} index={groupIndex} done size="md" />
+              <MealTypeIcon meal={trackedMeal} index={groupIndex} done size="sm" />
 
-              <div className="min-w-0">
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <strong className="truncate text-[16px] font-black leading-tight tracking-[-0.01em] text-white">{group.label}</strong>
-                  <strong className={`shrink-0 text-[12px] font-black ${visual.kcalText}`}>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <span className="flex min-w-0 items-baseline gap-1">
+                  <strong className="whitespace-nowrap text-[14px] font-black leading-tight tracking-[-0.01em] text-white">{group.label}</strong>
+                  <strong className={`shrink-0 whitespace-nowrap text-[10px] font-black ${visual.kcalText}`}>
                     {formatNumber(group.totals.kcal, 0)} kcal
                   </strong>
                 </span>
-                <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className={`inline-flex min-h-5 items-center rounded-full border px-2 text-[9px] font-black uppercase tracking-wide ${visual.status}`}>
+                <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+                  <span className={`inline-flex min-h-[18px] items-center rounded-full border px-1.5 text-[8px] font-black uppercase tracking-wide ${visual.status}`}>
                     Registrada
                   </span>
-                  <span className="inline-flex min-h-5 items-center rounded-full border border-white/10 bg-black/25 px-2 text-[9px] font-black text-zinc-300">
+                  <span className="inline-flex min-h-[18px] items-center rounded-full border border-white/10 bg-black/25 px-1.5 text-[8px] font-black text-zinc-300">
                     {mealType}
                   </span>
                   {group.entirelyFromSavedMeal ? (
-                    <span className="inline-flex min-h-5 items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/[0.08] px-2 text-[9px] font-black text-[#FFE8A3]">
+                    <span className="inline-flex min-h-[18px] items-center rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/[0.08] px-1.5 text-[8px] font-black text-[#FFE8A3]">
                       Mis comidas
                     </span>
                   ) : null}
                 </span>
-                <small className="mt-1.5 block text-[9px] font-bold text-zinc-400">
+                <small className="mt-1 block whitespace-nowrap text-[8px] font-bold text-zinc-400">
                   {group.items.length} {group.items.length === 1 ? "alimento consumido" : "alimentos consumidos"}
                 </small>
               </div>
             </button>
 
-<div className="flex shrink-0 items-center gap-1.5">
+<div className="flex shrink-0 items-center justify-end gap-1 pt-0.5">
   {/* AGREGAR */}
   <button
     type="button"
@@ -11056,8 +11098,8 @@ async function deleteTrackingGroup(
     }}
     className={`
       grid
-      h-9
-      w-9
+      h-8
+      w-8
       place-items-center
       rounded-full
       border
@@ -11090,7 +11132,7 @@ async function deleteTrackingGroup(
         tags: ["tracking"],
       });
     }}
-    className="grid h-9 w-9 place-items-center rounded-full border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] text-[#FFE8A3] transition hover:border-[#D4AF37]/40 hover:bg-[#D4AF37]/10"
+    className="grid h-8 w-8 place-items-center rounded-full border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] text-[#FFE8A3] transition hover:border-[#D4AF37]/40 hover:bg-[#D4AF37]/10"
     aria-label={`Guardar ${group.label} en Mis comidas`}
     title="Guardar en Mis comidas"
   >
@@ -11113,8 +11155,8 @@ async function deleteTrackingGroup(
     }}
     className="
       grid
-      h-9
-      w-9
+      h-8
+      w-8
       place-items-center
       rounded-full
       border
@@ -11151,8 +11193,8 @@ async function deleteTrackingGroup(
     }
     className="
       grid
-      h-9
-      w-8
+      h-8
+      w-7
       place-items-center
       rounded-full
       border
@@ -13404,28 +13446,6 @@ function PlannedMealTargetCard({
   };
 
 
-  /*
-   * =========================================
-   * PROGRESO
-   * =========================================
-   */
-
-  const progress =
-    target.kcal > 0
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(
-              (
-                trackedTotals.kcal /
-                target.kcal
-              ) * 100
-            )
-          )
-        )
-      : 0;
-
   const exceeded =
     trackedTotals.kcal >
     target.kcal + 0.5;
@@ -13637,92 +13657,6 @@ function PlannedMealTargetCard({
             >
               {statusLabel}
             </span>
-
-          </div>
-
-
-          {/* =================================
-              PROGRESO COMPACTO
-              ================================= */}
-
-          <div
-            className="
-              mt-2
-              flex
-              items-center
-              justify-between
-              gap-3
-            "
-          >
-
-            <strong
-              className="
-                text-[11px]
-                font-black
-                text-white
-              "
-            >
-              {formatNumber(trackedTotals.kcal, 0)} / {formatNumber(target.kcal, 0)} kcal
-            </strong>
-
-
-            <span
-              className="
-                text-[9px]
-                font-bold
-                text-zinc-500
-              "
-            >
-              {completionState.manualStale
-                ? "El consumo cambió · reabrí para actualizar"
-                : completionState.manual
-                  ? "Meta cerrada con tu consumo"
-                  : completionState.automatic
-                    ? "Hecha automáticamente"
-                : exceeded
-                ? `Excedido ${formatNumber(
-                    Math.abs(
-                      remaining.kcal
-                    ),
-                    0
-                  )} kcal`
-
-                : `Restan ${formatNumber(
-                    Math.max(
-                      0,
-                      remaining.kcal
-                    ),
-                    0
-                  )} kcal`}
-            </span>
-
-          </div>
-
-
-          {/* BARRA */}
-
-          <div
-            className="
-              mt-1.5
-              h-1.5
-              overflow-hidden
-              rounded-full
-              bg-white/[0.09]
-            "
-          >
-
-            <div
-              className={`
-                h-full
-                rounded-full
-                ${targetVisual.progress}
-                transition-all
-              `}
-              style={{
-                width:
-                  `${progress}%`,
-              }}
-            />
 
           </div>
 
@@ -15137,8 +15071,12 @@ function MealTypeIcon({ meal, index, done, size = "md" }) {
     meal: Utensils,
   };
   const Icon = icons[iconType] || Utensils;
-  const sizeClass = size === "lg" ? "h-[58px] w-[58px] rounded-[1.05rem]" : "h-12 w-12 rounded-2xl";
-  const iconSize = size === "lg" ? 31 : 23;
+  const sizeClass = size === "lg"
+    ? "h-[58px] w-[58px] rounded-[1.05rem]"
+    : size === "sm"
+      ? "h-9 w-9 rounded-xl"
+      : "h-12 w-12 rounded-2xl";
+  const iconSize = size === "lg" ? 31 : size === "sm" ? 18 : 23;
   return (
     <span className={`grid shrink-0 place-items-center border ${sizeClass} ${visual.icon} ${done ? "ring-1 ring-white/20" : ""}`}>
       <Icon size={iconSize} strokeWidth={1.7} />

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyTrackingDraftProposals,
+  appendTrackingFoodDraftToMeal,
   buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
   createTrackingRegisteredReplacementDraft,
@@ -51,6 +52,38 @@ import {
 const rice = { id: "rice", nombre: "Arroz", unidad: "g", kcal: 340, proteina: 7, carbs: 76, grasas: 1 };
 const chicken = { id: "chicken", nombre: "Pollo", unidad: "g", kcal: 165, proteina: 31, carbs: 0, grasas: 3.6 };
 const banana = { id: "banana", nombre: "Banana", unidad: "g", kcal: 89, proteina: 1.1, carbs: 23, grasas: 0.3 };
+
+test("agregar desde una comida conserva esa comida como único destino", () => {
+  const initial = {
+    [trackingDraftKey("2026-10-20", "desayuno")]: [createTrackingFoodDraft(banana, 100, "existing")],
+  };
+  const next = appendTrackingFoodDraftToMeal(initial, {
+    date: "2026-10-20",
+    mealId: "almuerzo",
+    food: rice,
+    quantity: 80,
+    draftId: "new-rice",
+  });
+
+  assert.equal(next[trackingDraftKey("2026-10-20", "desayuno")].length, 1);
+  assert.equal(next[trackingDraftKey("2026-10-20", "almuerzo")].length, 1);
+  assert.equal(next[trackingDraftKey("2026-10-20", "almuerzo")][0].id, "new-rice");
+  assert.equal(next[trackingDraftKey("2026-10-20", "almuerzo")][0].quantity, 80);
+  assert.equal(isTrackingDraftAutomatic(next[trackingDraftKey("2026-10-20", "almuerzo")][0]), false);
+});
+
+test("un alimento Auto abierto desde Almuerzo también queda en Almuerzo", () => {
+  const next = appendTrackingFoodDraftToMeal({}, {
+    date: "2026-10-20",
+    mealId: "almuerzo",
+    food: chicken,
+    draftId: "auto-chicken",
+    automatic: true,
+  });
+  const draft = next[trackingDraftKey("2026-10-20", "almuerzo")][0];
+  assert.equal(draft.quantity, "");
+  assert.equal(isTrackingDraftAutomatic(draft), true);
+});
 
 test("un alimento nuevo propone una cantidad manual razonable segun su unidad", () => {
   assert.equal(defaultTrackingFoodManualQuantity(rice), 100);

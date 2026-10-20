@@ -6538,7 +6538,7 @@
 
     padding:
       14px
-      10px
+      2px
       calc(28px + env(safe-area-inset-bottom));
   }
 
@@ -6853,7 +6853,7 @@
 @media (max-width: 390px) {
 
   .td-shell {
-    padding-inline: 7px;
+    padding-inline: 2px;
   }
 
   .td-summaryV3Calories strong,

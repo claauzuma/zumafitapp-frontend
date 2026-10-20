@@ -5,13 +5,16 @@ import {
   CheckCircle2,
   Copy,
   Database,
+  Edit3,
   Eye,
   Loader2,
   Lock,
   Search,
+  Save,
   SlidersHorizontal,
   Star,
   Target,
+  Trash2,
   Users,
   Utensils,
   X,
@@ -20,7 +23,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthMe } from "../authQueries.js";
 import { queryClient, queryKeys } from "../queryClient.js";
-import { addSavedMealToTracking } from "../savedMeals/savedMealsApi.js";
+import { addSavedMealToTracking, deleteSavedMeal, updateSavedMeal } from "../savedMeals/savedMealsApi.js";
 import { getProfessionalClients } from "../profesional/profesionalApi.js";
 import { formatNumber } from "../nutricion/nutricionUtils.js";
 import AppToast from "../ui/AppToast.jsx";
@@ -155,6 +158,40 @@ function foodAmount(food = {}) {
   return `${formatNumber(quantity, Number.isInteger(quantity) ? 0 : 1)} ${unit}`.trim();
 }
 
+function editableMeal(item = {}) {
+  return {
+    ...item,
+    nombre: item.nombre || "Comida",
+    tipoComida: item.tipoComida || "otro",
+    items: foodItems(item).map((food) => {
+      const amount = Number(food.cantidad ?? food.quantity ?? 0);
+      const nutrition = totals(food);
+      return {
+        ...food,
+        cantidad: Number.isFinite(amount) ? amount : 0,
+        _baseCantidad: Number.isFinite(amount) && amount > 0 ? amount : 1,
+        _baseKcal: nutrition.kcal,
+        _baseProteina: nutrition.proteina,
+        _baseCarbs: nutrition.carbs,
+        _baseGrasas: nutrition.grasas,
+      };
+    }),
+  };
+}
+
+function editableMealPayload(meal = {}) {
+  return {
+    nombre: String(meal.nombre || "").trim(),
+    descripcion: meal.descripcion || "",
+    tipoComida: meal.tipoComida || "otro",
+    tags: Array.isArray(meal.tags) ? meal.tags : [],
+    favorita: !!meal.favorita,
+    items: (meal.items || []).map((food) => Object.fromEntries(
+      Object.entries(food).filter(([key]) => !key.startsWith("_base"))
+    )),
+  };
+}
+
 function defaultTabs(mode, user) {
   const tabs = TABS[mode] || TABS.client;
   return tabs.filter((tab) => !tab.coachOnly || hasCoach(user));
@@ -216,6 +253,7 @@ export default function NutritionLibraryPage({ mode = "client" }) {
   const [assignItem, setAssignItem] = useState(null);
   const [previewItem, setPreviewItem] = useState(null);
   const [applyConfirmItem, setApplyConfirmItem] = useState(null);
+  const [editMeal, setEditMeal] = useState(null);
   const [clients, setClients] = useState([]);
   const [selectedClientIds, setSelectedClientIds] = useState([]);
   const mutationLockRef = useRef(false);
@@ -488,6 +526,50 @@ export default function NutritionLibraryPage({ mode = "client" }) {
       await refreshCurrent();
     } catch (err) {
       setToast({ type: "error", message: err?.message || "No se pudo actualizar favorito." });
+    } finally {
+      mutationLockRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteMeal(item) {
+    if (!itemId(item) || saving || mutationLockRef.current || !item.permissions?.canEdit) return;
+    if (!window.confirm(`¿Eliminar “${item.nombre || "esta comida"}” de Mis comidas?`)) return;
+    mutationLockRef.current = true;
+    setSaving(true);
+    try {
+      await deleteSavedMeal(itemId(item));
+      if (previewItem && itemId(previewItem) === itemId(item)) setPreviewItem(null);
+      setToast({ type: "success", message: "Comida guardada eliminada." });
+      await refreshCurrent();
+    } catch (err) {
+      setToast({ type: "error", message: err?.message || "No se pudo eliminar la comida." });
+    } finally {
+      mutationLockRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveMeal() {
+    if (!editMeal || saving || mutationLockRef.current) return;
+    if (!String(editMeal.nombre || "").trim()) {
+      setToast({ type: "warning", message: "Escribí un nombre para la comida." });
+      return;
+    }
+    if (!editMeal.items?.length || editMeal.items.some((food) => Number(food.cantidad) <= 0)) {
+      setToast({ type: "warning", message: "La comida debe conservar alimentos con cantidades válidas." });
+      return;
+    }
+    mutationLockRef.current = true;
+    setSaving(true);
+    try {
+      await updateSavedMeal(itemId(editMeal), editableMealPayload(editMeal));
+      setEditMeal(null);
+      setPreviewItem(null);
+      setToast({ type: "success", message: "Comida guardada actualizada." });
+      await refreshCurrent();
+    } catch (err) {
+      setToast({ type: "error", message: err?.message || "No se pudo modificar la comida." });
     } finally {
       mutationLockRef.current = false;
       setSaving(false);
@@ -819,6 +901,8 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 onCopy={handleCopy}
                 onFavorite={handleFavorite}
                 onAddToTracking={handleAddToTracking}
+                onEdit={(item) => setEditMeal(editableMeal(item))}
+                onDelete={handleDeleteMeal}
                 onPreview={setPreviewItem}
                 onAssign={(value) => {
                   setAssignItem(value);
@@ -837,6 +921,8 @@ export default function NutritionLibraryPage({ mode = "client" }) {
                 onCopy={handleCopy}
                 onFavorite={handleFavorite}
                 onAddToTracking={handleAddToTracking}
+                onEdit={(item) => setEditMeal(editableMeal(item))}
+                onDelete={handleDeleteMeal}
                 onPreview={setPreviewItem}
                 onAssign={(value) => {
                   setAssignItem(value);
@@ -904,6 +990,16 @@ export default function NutritionLibraryPage({ mode = "client" }) {
           saving={saving}
           onCancel={() => setApplyConfirmItem(null)}
           onConfirm={handleApplyConfirmed}
+        />
+      ) : null}
+
+      {editMeal ? (
+        <SavedMealQuickEditor
+          meal={editMeal}
+          setMeal={setEditMeal}
+          saving={saving}
+          onClose={() => setEditMeal(null)}
+          onSave={handleSaveMeal}
         />
       ) : null}
 
@@ -983,7 +1079,7 @@ function FacetChoiceGroup({ label, helper, allLabel, value, options = [], onChan
   );
 }
 
-function LibraryCard({ item, professionalMode, contextual = false, saving, copyLimitReached, onCopy, onFavorite, onAddToTracking, onAssign, onPreview }) {
+function LibraryCard({ item, professionalMode, contextual = false, saving, copyLimitReached, onCopy, onFavorite, onAddToTracking, onAssign, onPreview, onEdit, onDelete }) {
   const t = totals(item);
   const isMenu = item.kind === "menu";
   const favorite = !!(item.favorita || item.favorito);
@@ -1044,6 +1140,8 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
           <button type="button" className={`icon ${favorite ? "active" : ""}`} disabled={!permissions.canFavorite || saving} onClick={(event) => { event.stopPropagation(); onFavorite(item); }} aria-label={favorite ? "Quitar de favoritos" : "Agregar a favoritos"}>
             <Star size={14} fill={favorite ? "currentColor" : "none"} />
           </button>
+          {!isMenu && permissions.canEdit ? <button type="button" className="icon detail" onClick={(event) => { event.stopPropagation(); onEdit(item); }} disabled={saving} aria-label="Editar comida"><Edit3 size={14} /></button> : null}
+          {!isMenu && permissions.canEdit ? <button type="button" className="icon danger" onClick={(event) => { event.stopPropagation(); onDelete(item); }} disabled={saving} aria-label="Eliminar comida"><Trash2 size={14} /></button> : null}
         </div>
       </article>
     );
@@ -1135,8 +1233,61 @@ function LibraryCard({ item, professionalMode, contextual = false, saving, copyL
             Asignar
           </button>
         ) : null}
+        {!isMenu && permissions.canEdit ? <button type="button" onClick={() => onEdit(item)} disabled={saving}><Edit3 size={15} />Editar</button> : null}
+        {!isMenu && permissions.canEdit ? <button type="button" className="danger" onClick={() => onDelete(item)} disabled={saving}><Trash2 size={15} />Eliminar</button> : null}
       </div>
     </article>
+  );
+}
+
+function SavedMealQuickEditor({ meal, setMeal, saving, onClose, onSave }) {
+  function updateQuantity(index, value) {
+    setMeal((current) => ({
+      ...current,
+      items: current.items.map((food, foodIndex) => {
+        if (foodIndex !== index) return food;
+        const quantity = value;
+        const parsed = Number(value);
+        const ratio = Number.isFinite(parsed) ? parsed / (Number(food._baseCantidad) || 1) : 0;
+        return {
+          ...food,
+          cantidad: quantity,
+          kcal: Math.max(0, Number(food._baseKcal || 0) * ratio),
+          proteina: Math.max(0, Number(food._baseProteina || 0) * ratio),
+          proteinas: Math.max(0, Number(food._baseProteina || 0) * ratio),
+          carbs: Math.max(0, Number(food._baseCarbs || 0) * ratio),
+          carbohidratos: Math.max(0, Number(food._baseCarbs || 0) * ratio),
+          grasas: Math.max(0, Number(food._baseGrasas || 0) * ratio),
+        };
+      }),
+    }));
+  }
+
+  return (
+    <section className="nl-modal" role="dialog" aria-modal="true" aria-label="Editar comida guardada">
+      <div className="nl-owned-meal-editor">
+        <header>
+          <div><span className="nl-kicker"><Edit3 size={14} /> Mis comidas</span><h2>Editar comida guardada</h2></div>
+          <button type="button" className="nl-icon" onClick={onClose} disabled={saving} aria-label="Cerrar"><X size={18} /></button>
+        </header>
+        <div className="nl-owned-meal-fields">
+          <label><span>Nombre</span><input value={meal.nombre} maxLength={180} onChange={(event) => setMeal((current) => ({ ...current, nombre: event.target.value }))} /></label>
+          <label><span>Tipo</span><select value={meal.tipoComida} onChange={(event) => setMeal((current) => ({ ...current, tipoComida: event.target.value }))}>{MEAL_TYPES.filter(([value]) => value !== "todos").map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        </div>
+        <div className="nl-owned-meal-foods">
+          {meal.items.map((food, index) => (
+            <article key={`${food.alimentoId || food.id || foodName(food)}-${index}`}>
+              <FoodThumb food={food} />
+              <div><strong>{foodName(food)}</strong><span>{formatNumber(food.kcal, 0)} kcal · P {formatNumber(food.proteina ?? food.proteinas, 1)} / C {formatNumber(food.carbs ?? food.carbohidratos, 1)} / G {formatNumber(food.grasas, 1)}</span></div>
+              <label><input type="number" min="0" step="0.1" value={food.cantidad} onChange={(event) => updateQuantity(index, event.target.value)} aria-label={`Cantidad de ${foodName(food)}`} /><b>{food.unidad || "g"}</b></label>
+              <button type="button" onClick={() => setMeal((current) => ({ ...current, items: current.items.filter((_, foodIndex) => foodIndex !== index) }))} aria-label={`Quitar ${foodName(food)}`}><Trash2 size={15} /></button>
+            </article>
+          ))}
+        </div>
+        <p>Podés cambiar el nombre, el tipo, las cantidades o quitar alimentos. Sólo se modifica tu copia privada.</p>
+        <footer><button type="button" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="primary" onClick={onSave} disabled={saving}>{saving ? <Loader2 className="nl-spin" size={16} /> : <Save size={16} />}Guardar cambios</button></footer>
+      </div>
+    </section>
   );
 }
 

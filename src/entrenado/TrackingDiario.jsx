@@ -82,6 +82,7 @@ import {
 } from "../tracking/manualDayCompletion.js";
 import {
   applyTrackingDraftProposals,
+  appendTrackingFoodDraftToMeal,
   buildTrackingQuantityCalculationRequest,
   createTrackingFoodDraft,
   createTrackingRegisteredReplacementDraft,
@@ -1831,20 +1832,7 @@ if (!selectedMeal) {
     return;
   }
 
-  /*
-   * =========================================
-   * NUEVO FLUJO
-   * =========================================
-   *
-   * TODAVÍA NO:
-   *
-   * - creamos FoodLog
-   * - creamos draft
-   * - elegimos mealId técnico
-   *
-   * Primero guardamos temporalmente
-   * qué quiere registrar el usuario.
-   */
+  /* Preparamos el alimento sin crear todavía un FoodLog. */
   const nextItem = {
   id:
     typeof globalThis.crypto?.randomUUID === "function"
@@ -1916,32 +1904,33 @@ if (
 
 
 /*
- * Si agregamos desde una comida
- * concreta del Tracking,
- * mantenemos por ahora el flujo normal.
+ * Si el picker se abrió desde una comida concreta, el destino ya está
+ * elegido. El alimento queda en el borrador de esa misma card.
  */
-setPendingTrackingRegistration({
-  sourceMeal: selectedMeal,
+const draftKey = trackingDraftKey(date, selectedMeal.id);
 
-  items: [
-    nextItem,
-  ],
-
-  createdAt:
-    Date.now(),
+setTrackingFoodDrafts((current) => {
+  return appendTrackingFoodDraftToMeal(current, {
+    date,
+    mealId: selectedMeal.id,
+    food: selectedFood,
+    quantity: hasEnteredQuantity ? quantityValue : "",
+    draftId: nextItem.id,
+    automatic: !hasEnteredQuantity,
+  });
 });
-  /*
-   * Cerramos solamente el picker
-   * de alimentos.
-   */
-  closeFoodPicker();
 
-  /*
-   * Y abrimos el nuevo selector:
-   *
-   * ¿Dónde querés registrarlo?
-   */
-  setDestinationModalOpen(true);
+setQuantityCalculationFeedback((current) => {
+  if (!current[draftKey]) return current;
+  const next = { ...current };
+  delete next[draftKey];
+  return next;
+});
+closeFoodPicker();
+setToast({
+  type: "success",
+  message: `${selectedFood.nombre || selectedFood.name || "El alimento"} se agregó a ${selectedMeal.label}.`,
+});
 }
 
 

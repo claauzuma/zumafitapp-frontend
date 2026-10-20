@@ -182,7 +182,7 @@ const CSS = `
 .cs-content{
   max-width: 1200px;
   margin: 0 auto;
-  padding: 16px 14px 26px;
+  padding: 16px clamp(9px, 1.5vw, 14px) 26px;
 }
 
 .cs-coachNotice{

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, CheckCircle2, Heart, LoaderCircle, Sparkles, Target, Trash2, Utensils, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Edit3, Heart, LoaderCircle, Save, Sparkles, Target, Trash2, Utensils, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { getMenuTrackingWeek } from "../../tracking/trackingApi.js";
 import { queryClient } from "../../queryClient.js";
-import { applyDayFavorite, deleteDayFavorite, listDayFavorites } from "./dayFavoritesApi.js";
+import { applyDayFavorite, deleteDayFavorite, listDayFavorites, updateDayFavorite } from "./dayFavoritesApi.js";
 import { dayFavoriteCompatibility } from "./dayFavoritePlan.js";
 
 function localDate() {
@@ -30,6 +30,21 @@ function Metric({ label, value }) {
   return <div className="rounded-xl border border-white/[0.07] bg-black/20 px-2 py-2"><span className="block text-[8px] font-black uppercase tracking-wide text-zinc-500">{label}</span><strong className="mt-1 block text-xs text-white">{value}</strong></div>;
 }
 
+function editableFavorite(favorite = {}) {
+  return {
+    ...favorite,
+    name: favorite.name || "Mi día guardado",
+    physicalMeals: (favorite.physicalMeals || []).map((meal) => ({
+      ...meal,
+      items: (meal.items || []).map((item) => ({ ...item })),
+    })),
+    targetMeals: (favorite.targetMeals || []).map((meal) => ({
+      ...meal,
+      target: { ...(meal.target || {}) },
+    })),
+  };
+}
+
 export default function MenuFavoritas() {
   const navigate = useNavigate();
   const [date, setDate] = useState(localDate);
@@ -39,6 +54,7 @@ export default function MenuFavoritas() {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [confirmFavorite, setConfirmFavorite] = useState(null);
+  const [editFavorite, setEditFavorite] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +108,37 @@ export default function MenuFavoritas() {
     }
   }
 
+  async function saveFavorite() {
+    if (!editFavorite || busyId) return;
+    const name = String(editFavorite.name || "").trim();
+    if (!name) {
+      setError("Escribí un nombre para el día guardado.");
+      return;
+    }
+    if (!(editFavorite.physicalMeals?.length || editFavorite.targetMeals?.length)) {
+      setError("El día guardado debe conservar al menos una comida.");
+      return;
+    }
+    setBusyId(editFavorite.id);
+    setError("");
+    try {
+      const result = await updateDayFavorite(editFavorite.id, {
+        name,
+        physicalMeals: editFavorite.physicalMeals,
+        targetMeals: editFavorite.targetMeals,
+      });
+      setData((current) => ({
+        ...current,
+        items: current.items.map((item) => item.id === editFavorite.id ? result.favorite : item),
+      }));
+      setEditFavorite(null);
+    } catch (saveError) {
+      setError(saveError?.message || "No pudimos modificar este día.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#07090c] px-3 pb-12 pt-4 text-zinc-100 sm:px-6">
       <div className="mx-auto w-full max-w-3xl">
@@ -125,7 +172,7 @@ export default function MenuFavoritas() {
             return (
               <article key={favorite.id} className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(145deg,#111820,#090d12)] shadow-xl">
                 <div className="p-4">
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-emerald-200">{sourceLabel(favorite.sourceType)}</span><h2 className="mt-2 truncate text-lg font-black text-white">{favorite.name}</h2><p className="mt-1 text-xl font-black text-[#FFE080]">{kcal(favorite.plannedTotals?.kcal)}</p></div><button type="button" onClick={() => removeFavorite(favorite)} disabled={busyId === favorite.id} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-300/20 bg-rose-300/[0.06] text-rose-200 disabled:opacity-40" aria-label={`Eliminar ${favorite.name}`}><Trash2 size={17} /></button></div>
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-emerald-200">{sourceLabel(favorite.sourceType)}</span><h2 className="mt-2 truncate text-lg font-black text-white">{favorite.name}</h2><p className="mt-1 text-xl font-black text-[#FFE080]">{kcal(favorite.plannedTotals?.kcal)}</p></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => setEditFavorite(editableFavorite(favorite))} disabled={busyId === favorite.id} className="grid h-10 w-10 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-200 disabled:opacity-40" aria-label={`Editar ${favorite.name}`}><Edit3 size={17} /></button><button type="button" onClick={() => removeFavorite(favorite)} disabled={busyId === favorite.id} className="grid h-10 w-10 place-items-center rounded-xl border border-rose-300/20 bg-rose-300/[0.06] text-rose-200 disabled:opacity-40" aria-label={`Eliminar ${favorite.name}`}><Trash2 size={17} /></button></div></div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center"><Metric label="Proteína" value={`${Math.round(favorite.plannedTotals?.proteina || 0)} g`} /><Metric label="Carbohidratos" value={`${Math.round(favorite.plannedTotals?.carbs || 0)} g`} /><Metric label="Grasas" value={`${Math.round(favorite.plannedTotals?.grasas || 0)} g`} /></div>
                   <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black text-zinc-300">{favorite.physicalMeals?.length ? <span className="rounded-full border border-white/10 px-2.5 py-1"><Utensils size={11} className="mr-1 inline" />{favorite.physicalMeals.length} comidas planificadas</span> : null}{favorite.targetMeals?.length ? <span className="rounded-full border border-white/10 px-2.5 py-1"><Target size={11} className="mr-1 inline" />{favorite.targetMeals.length} metas</span> : null}</div>
                 </div>
@@ -149,6 +196,93 @@ export default function MenuFavoritas() {
           </section>
         </div>
       ) : null}
+
+      {editFavorite ? (
+        <DayFavoriteEditor
+          favorite={editFavorite}
+          setFavorite={setEditFavorite}
+          saving={busyId === editFavorite.id}
+          onClose={() => setEditFavorite(null)}
+          onSave={saveFavorite}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function DayFavoriteEditor({ favorite, setFavorite, saving, onClose, onSave }) {
+  function updatePhysicalMeal(index, patch) {
+    setFavorite((current) => ({
+      ...current,
+      physicalMeals: current.physicalMeals.map((meal, mealIndex) => mealIndex === index ? { ...meal, ...patch } : meal),
+    }));
+  }
+
+  function updateTargetMeal(index, patch) {
+    setFavorite((current) => ({
+      ...current,
+      targetMeals: current.targetMeals.map((meal, mealIndex) => mealIndex === index ? { ...meal, ...patch } : meal),
+    }));
+  }
+
+  function removePhysicalItem(mealIndex, itemIndex) {
+    setFavorite((current) => ({
+      ...current,
+      physicalMeals: current.physicalMeals
+        .map((meal, index) => index === mealIndex ? { ...meal, items: meal.items.filter((_, foodIndex) => foodIndex !== itemIndex) } : meal)
+        .filter((meal) => meal.items.length),
+    }));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[95] grid place-items-end bg-black/75 backdrop-blur-sm sm:place-items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Editar día guardado">
+      <section className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-[1.6rem] border border-white/10 bg-[#0d141b] p-4 shadow-2xl sm:rounded-[1.6rem] sm:p-5">
+        <header className="flex items-start justify-between gap-3">
+          <div><span className="text-[10px] font-black uppercase tracking-[.18em] text-emerald-300">Día guardado</span><h2 className="mt-1 text-xl font-black text-white">Editar planificación</h2></div>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 text-zinc-300" aria-label="Cerrar"><X size={17} /></button>
+        </header>
+
+        <label className="mt-5 block text-[10px] font-black uppercase tracking-wide text-zinc-400">Nombre
+          <input value={favorite.name} onChange={(event) => setFavorite((current) => ({ ...current, name: event.target.value }))} maxLength={80} className="mt-2 min-h-12 w-full rounded-xl border border-white/10 bg-black/25 px-3 text-sm font-black text-white outline-none focus:border-emerald-300/50" />
+        </label>
+
+        <div className="mt-5 grid gap-3">
+          {favorite.physicalMeals.map((meal, mealIndex) => (
+            <article key={meal.id || `physical-${mealIndex}`} className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.035] p-3">
+              <div className="flex items-center gap-2">
+                <input value={meal.nombre || ""} onChange={(event) => updatePhysicalMeal(mealIndex, { nombre: event.target.value })} className="min-h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-sm font-black text-white outline-none" aria-label="Nombre de la comida" />
+                <button type="button" onClick={() => setFavorite((current) => ({ ...current, physicalMeals: current.physicalMeals.filter((_, index) => index !== mealIndex) }))} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-300/20 text-rose-200" aria-label="Quitar comida"><Trash2 size={16} /></button>
+              </div>
+              <div className="mt-2 grid gap-1.5">
+                {(meal.items || []).map((item, itemIndex) => (
+                  <div key={`${item.id || item.nombreSnapshot}-${itemIndex}`} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2">
+                    <div className="min-w-0"><strong className="block truncate text-xs text-white">{item.nombreSnapshot || item.nombre || "Alimento"}</strong><span className="text-[10px] font-bold text-zinc-500">{item.cantidad || 0} {item.unidad || "g"} · {kcal(item.kcal)}</span></div>
+                    <button type="button" onClick={() => removePhysicalItem(mealIndex, itemIndex)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-rose-200" aria-label="Quitar alimento"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+
+          {favorite.targetMeals.map((meal, mealIndex) => (
+            <article key={meal.id || `target-${mealIndex}`} className="rounded-2xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.045] p-3">
+              <div className="flex items-center gap-2">
+                <input value={meal.name || ""} onChange={(event) => updateTargetMeal(mealIndex, { name: event.target.value })} className="min-h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-sm font-black text-white outline-none" aria-label="Nombre de la meta" />
+                <button type="button" onClick={() => setFavorite((current) => ({ ...current, targetMeals: current.targetMeals.filter((_, index) => index !== mealIndex) }))} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-300/20 text-rose-200" aria-label="Quitar meta"><Trash2 size={16} /></button>
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {[['kcal', 'Kcal'], ['proteina', 'P'], ['carbs', 'C'], ['grasas', 'G']].map(([key, label]) => <label key={key} className="text-[9px] font-black uppercase text-zinc-500">{label}<input type="number" min="0" step="0.1" value={meal.target?.[key] ?? 0} onChange={(event) => updateTargetMeal(mealIndex, { target: { ...meal.target, [key]: event.target.value } })} className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-2 text-xs font-black text-white outline-none" /></label>)}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <p className="mt-4 text-xs font-bold leading-relaxed text-zinc-500">Podés cambiar nombres y metas, o quitar comidas y alimentos. Los cambios afectan sólo este día guardado.</p>
+        <footer className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="min-h-11 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-black text-zinc-300">Cancelar</button>
+          <button type="button" onClick={onSave} disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-300 to-teal-300 text-sm font-black text-[#04110d] disabled:opacity-50">{saving ? <LoaderCircle size={17} className="animate-spin" /> : <Save size={17} />}Guardar cambios</button>
+        </footer>
+      </section>
+    </div>
   );
 }
