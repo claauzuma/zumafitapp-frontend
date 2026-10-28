@@ -10,6 +10,7 @@ import {
   restoreLiveTabSnapshot,
 } from "./appSessionContinuity.js";
 import "./index.css";
+import "./styles/design-system.css";
 
 const liveTabResume = restoreLiveTabSnapshot(queryClient);
 installLiveTabContinuity(queryClient);

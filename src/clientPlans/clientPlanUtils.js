@@ -8,7 +8,7 @@ export const PLAN_PRESETS = {
       ownMeals: 5,
       favorites: 3,
       menuDays: 1,
-      trackingHistoryDays: 7,
+      trackingHistoryDays: 14,
       manualObjectiveChangeDays: 30,
       manualObjectiveChangesPerWindow: 2,
       equivalentMealFoods: 0,
@@ -34,7 +34,7 @@ export const PLAN_PRESETS = {
   },
   pro: {
     plan: "pro",
-    limits: { ownMenus: 10, ownMeals: 100, favorites: 20, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 6 },
+    limits: { ownMenus: 10, ownMeals: 100, favorites: 20, menuDays: 7, trackingHistoryDays: 14, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 6 },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,
@@ -58,7 +58,7 @@ export const PLAN_PRESETS = {
   },
   vip: {
     plan: "vip",
-    limits: { ownMenus: 50, ownMeals: 500, favorites: 100, menuDays: 7, trackingHistoryDays: null, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 10 },
+    limits: { ownMenus: 50, ownMeals: 500, favorites: 100, menuDays: 7, trackingHistoryDays: 14, manualObjectiveChangeDays: null, manualObjectiveChangesPerWindow: null, equivalentMealFoods: 10 },
     canTrack: true,
     canCreateOwnMenu: true,
     canEditOwnMenu: true,

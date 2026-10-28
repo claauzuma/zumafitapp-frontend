@@ -4,6 +4,10 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowRight,
   BriefcaseBusiness,
+  Check,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import { apiFetch } from "./Api.js";
@@ -17,6 +21,7 @@ import {
   getCachedToken, // fallback token
 } from "./authCache.js";
 import BrandLogo from "./ui/BrandLogo.jsx";
+import FullPageLoader from "./FullPageLoader.jsx";
 import fondoZumaFit from "./assets/fondozumafit.png";
 
 // Importante para Google: volver aca para que corra /me y redirija por rol.
@@ -822,24 +827,7 @@ return;
 
   // Si estamos booting, no mostramos el form para evitar flash en Safari/WebView.
   if (booting) {
-    return (
-      <div className="auth-page">
-        <style>{AUTH_CSS}</style>
-        <div className="ap-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="ap-overlay-card">
-            <div className="ap-overlay-glow" />
-            <div className="ap-overlay-row">
-              <div className="ap-spinner" />
-              <div>
-                <p className="ap-oload-title">Cargando sesion...</p>
-                <p className="ap-oload-sub">Estamos verificando tu acceso.</p>
-              </div>
-            </div>
-            <div className="ap-shimmer" />
-          </div>
-        </div>
-      </div>
-    );
+    return <FullPageLoader title="Cargando sesión..." sub="Estamos verificando tu acceso." />;
   }
 
   return (
@@ -847,19 +835,7 @@ return;
       <style>{AUTH_CSS}</style>
 
       {loading && (
-        <div className="ap-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="ap-overlay-card">
-            <div className="ap-overlay-glow" />
-            <div className="ap-overlay-row">
-              <div className="ap-spinner" />
-              <div>
-                <p className="ap-oload-title">{loadingText}</p>
-                <p className="ap-oload-sub">{loadingSub}</p>
-              </div>
-            </div>
-            <div className="ap-shimmer" />
-          </div>
-        </div>
+        <FullPageLoader title={loadingText} sub={loadingSub} variant="overlay" />
       )}
 
       <header className="ap-nav">
@@ -871,8 +847,17 @@ return;
       </header>
 
       <section className="ap-hero" aria-label="ZumaFit">
-        <BrandLogo className="ap-heroLogo" size="client" priority />
-        <p>Tu plan, tus macros, <strong>tu progreso.</strong></p>
+        <div className="ap-hero-content">
+          <BrandLogo className="ap-heroLogo" size="client" priority />
+          <span className="ap-hero-kicker">TU SISTEMA FITNESS PERSONAL</span>
+          <h2>Convertí tus objetivos en progreso real.</h2>
+          <p>Nutrición, entrenamiento y seguimiento en un solo lugar.</p>
+          <div className="ap-hero-features" aria-label="Funciones principales">
+            <span><Check size={15} /> Planes adaptados</span>
+            <span><Check size={15} /> Tracking simple</span>
+            <span><Check size={15} /> Progreso visible</span>
+          </div>
+        </div>
       </section>
 
       <div className="ap-tabs-wrap">
@@ -902,6 +887,7 @@ return;
 
       <main className="ap-main">
         <section className="ap-card" aria-labelledby="auth-title">
+          <div className="ap-card-kicker"><i /> TU ESPACIO ZUMAFIT</div>
           <h1 id="auth-title" className="ap-title">
             {mode === "select"
               ? "Elegí cómo querés usar ZumaFit"
@@ -910,7 +896,7 @@ return;
                 ? "Recuperá tu cuenta"
                 : step === "reset"
                 ? "Elegí una nueva contraseña"
-                : "Bienvenido de nuevo"
+                : "Volvé a tu progreso"
               : step === "verify"
               ? "Verificá tu email"
               : "Creá tu cuenta y empezá tu transformación"}
@@ -923,7 +909,7 @@ return;
                 ? "Te vamos a mandar un código si el email existe."
                 : step === "reset"
                 ? "Ingresá el código y tu nueva contraseña."
-                : "Ingresá con tu email."
+                : "Tu plan, tus comidas y tus objetivos te están esperando."
               : step === "verify"
               ? "Ingresá el código de 6 dígitos que te enviamos."
               : "Registrate con tu email o con Google."}
@@ -980,15 +966,9 @@ return;
                   onClick={loginWithGoogle}
                   disabled={loading || googleLoading}
                 >
-                  <span className="ap-google-g" aria-hidden="true">
-                    <span className="g1">G</span>
-                    <span className="g2">o</span>
-                    <span className="g3">o</span>
-                    <span className="g4">g</span>
-                    <span className="g5">l</span>
-                    <span className="g6">e</span>
-                  </span>
-                  <span>Continuar con Google</span>
+                  <span className="ap-google-mark" aria-hidden="true">G</span>
+                  <span className="ap-social-copy">Continuar con Google</span>
+                  <ArrowRight className="ap-social-arrow" size={18} aria-hidden="true" />
                   {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
                 </button>
               ) : (
@@ -1019,15 +999,9 @@ return;
                 disabled={loading || googleLoading}
                 title="Continuar con Google"
               >
-                <span className="ap-google-g" aria-hidden="true">
-                  <span className="g1">G</span>
-                  <span className="g2">o</span>
-                  <span className="g3">o</span>
-                  <span className="g4">g</span>
-                  <span className="g5">l</span>
-                  <span className="g6">e</span>
-                </span>
-                <span>{mode === "register" ? "Crear cuenta con Google" : "Continuar con Google"}</span>
+                <span className="ap-google-mark" aria-hidden="true">G</span>
+                <span className="ap-social-copy">{mode === "register" ? "Crear cuenta con Google" : "Continuar con Google"}</span>
+                <ArrowRight className="ap-social-arrow" size={18} aria-hidden="true" />
                 {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
               </button>
             </div>
@@ -1083,28 +1057,36 @@ return;
 
               <label className="ap-field">
                 <span>Email</span>
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={loading || googleLoading}
-                />
+                <div className="ap-input-shell">
+                  <Mail size={18} aria-hidden="true" />
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="tu@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={loading || googleLoading}
+                  />
+                </div>
               </label>
 
               <label className="ap-field">
                 <span>Contraseña</span>
                 <div className="ap-pass-row">
-                  <input
-                    type={peek ? "text" : "password"}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    disabled={loading || googleLoading}
-                  />
+                  <div className="ap-input-shell">
+                    <LockKeyhole size={18} aria-hidden="true" />
+                    <input
+                      type={peek ? "text" : "password"}
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      placeholder="Tu contraseña"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      disabled={loading || googleLoading}
+                    />
+                  </div>
                   <button
                     type="button"
                     className="ap-peek"
@@ -1122,15 +1104,19 @@ return;
                 <label className="ap-field">
                   <span>Confirmar contraseña</span>
                   <div className="ap-pass-row">
-                    <input
-                      type={peek ? "text" : "password"}
-                      autoComplete="new-password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      disabled={loading || googleLoading}
-                    />
+                    <div className="ap-input-shell">
+                      <LockKeyhole size={18} aria-hidden="true" />
+                      <input
+                        type={peek ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder="Repetí tu contraseña"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        disabled={loading || googleLoading}
+                      />
+                    </div>
                     <span className="ap-pass-spacer" aria-hidden="true" />
                   </div>
                 </label>
@@ -1194,7 +1180,16 @@ return;
 
               <button className="btn submit" type="submit" disabled={loading || googleLoading}>
                 {loading ? "Procesando..." : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+                {!loading ? <ArrowRight size={20} aria-hidden="true" /> : null}
               </button>
+
+              {mode === "login" ? (
+                <div className="ap-login-trust" aria-label="Características del acceso">
+                  <span><ShieldCheck size={14} /> Acceso seguro</span>
+                  <i />
+                  <span>Tu progreso siempre sincronizado</span>
+                </div>
+              ) : null}
 
               {mode === "login" ? (
                 <p className="ap-muted ap-small">
@@ -1453,14 +1448,15 @@ return;
 
 const AUTH_CSS = `
 :root{
-  --auth-bg:#020507;
-  --auth-surface:rgba(9,14,20,.92);
-  --auth-surface-soft:rgba(18,24,31,.82);
-  --auth-border:rgba(255,211,83,.24);
-  --auth-gold:#f4c542;
-  --auth-gold-soft:#ffe178;
-  --auth-text:#f7f7f7;
-  --auth-muted:#a7adb5;
+  --auth-bg:#030608;
+  --auth-surface:rgba(8,13,18,.94);
+  --auth-surface-soft:rgba(15,22,29,.86);
+  --auth-border:rgba(148,163,184,.16);
+  --auth-gold:#f6c945;
+  --auth-gold-soft:#ffe68a;
+  --auth-mint:#58e6bd;
+  --auth-text:#f8fafc;
+  --auth-muted:#94a3b8;
 }
 *{ box-sizing:border-box; }
 html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-text); }
@@ -1469,16 +1465,14 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   min-height:100dvh;
   color:var(--auth-text);
   background:
-    radial-gradient(circle at 50% -12%, rgba(244,197,66,.16), transparent 34%),
-    linear-gradient(180deg,#020507,#05070a 55%,#020507);
+    radial-gradient(circle at 72% -8%, rgba(88,230,189,.08), transparent 28%),
+    radial-gradient(circle at 28% 0, rgba(244,197,66,.11), transparent 32%),
+    linear-gradient(180deg,#030608,#060a0e 55%,#020405);
   display:flex;
   flex-direction:column;
 }
 .ap-nav{
-  position:absolute;
-  inset:0 0 auto 0;
-  z-index:4;
-  pointer-events:none;
+  display:none;
 }
 .ap-nav-inner{
   width:min(960px,100%);
@@ -1505,26 +1499,45 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   place-items:center;
   text-align:center;
   background:
-    linear-gradient(180deg, rgba(2,5,8,.20) 0%, rgba(2,5,8,.34) 42%, rgba(2,5,8,.94) 100%),
-    radial-gradient(circle at 50% 38%, rgba(244,197,66,.12), transparent 38%),
+    linear-gradient(180deg, rgba(2,5,8,.12) 0%, rgba(2,5,8,.38) 46%, rgba(2,5,8,.96) 100%),
+    radial-gradient(circle at 50% 38%, rgba(244,197,66,.10), transparent 42%),
     var(--auth-hero-bg);
   background-size:cover;
   background-position:center 24%;
   border-bottom:1px solid rgba(255,255,255,.08);
 }
+.ap-hero-content{ width:min(720px,100%); display:grid; justify-items:center; }
 .ap-heroLogo .brand-logo-img{ height:clamp(58px,12vw,96px); max-width:min(420px,82vw); }
-.ap-hero p{
-  margin:18px 0 0;
-  color:rgba(247,247,247,.78);
-  font-size:clamp(14px,3vw,22px);
-  font-weight:800;
+.ap-hero-kicker{
+  margin-top:24px;
+  color:var(--auth-gold-soft);
+  font-size:12px;
+  font-weight:950;
   letter-spacing:.20em;
-  text-transform:uppercase;
 }
-.ap-hero strong{ color:var(--auth-gold-soft); }
+.ap-hero h2{
+  max-width:700px;
+  margin:13px 0 0;
+  color:#fff;
+  font-size:clamp(34px,5vw,62px);
+  line-height:1.02;
+  letter-spacing:-.045em;
+  text-wrap:balance;
+}
+.ap-hero p{
+  max-width:590px;
+  margin:15px 0 0;
+  color:rgba(226,232,240,.74);
+  font-size:clamp(15px,2vw,20px);
+  font-weight:650;
+  line-height:1.45;
+}
+.ap-hero-features{ display:flex; flex-wrap:wrap; justify-content:center; gap:9px; margin-top:22px; }
+.ap-hero-features span{ min-height:34px; display:flex; align-items:center; gap:6px; padding:0 11px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(4,10,14,.48); color:#dbe4ec; font-size:12px; font-weight:800; backdrop-filter:blur(12px); }
+.ap-hero-features svg{ color:var(--auth-mint); }
 .ap-tabs-wrap{
   width:min(900px,100%);
-  margin:-34px auto 0;
+  margin:-28px auto 0;
   padding:0 14px;
   position:relative;
   z-index:5;
@@ -1533,28 +1546,28 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   display:flex;
   gap:0;
   border:1px solid rgba(255,255,255,.12);
-  border-radius:24px;
-  background:rgba(10,15,20,.82);
-  padding:6px;
-  box-shadow:0 20px 60px rgba(0,0,0,.40);
-  backdrop-filter:blur(18px);
+  border-radius:18px;
+  background:rgba(8,13,18,.88);
+  padding:5px;
+  box-shadow:0 18px 55px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.035);
+  backdrop-filter:blur(22px);
 }
 .ap-tab{
   flex:1 1 0;
-  min-height:62px;
-  border-radius:19px;
+  min-height:54px;
+  border-radius:13px;
   border:1px solid transparent;
   background:transparent;
   color:rgba(247,247,247,.72);
-  font-size:clamp(15px,3vw,22px);
-  font-weight:1000;
+  font-size:clamp(14px,2.6vw,18px);
+  font-weight:900;
   cursor:pointer;
 }
 .ap-tab.active{
-  color:var(--auth-gold-soft);
-  border-color:rgba(255,211,83,.50);
-  background:linear-gradient(135deg, rgba(244,197,66,.18), rgba(255,255,255,.04));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  color:#0a0c0c;
+  border-color:rgba(255,230,138,.72);
+  background:linear-gradient(135deg,#eebc32,#ffe789);
+  box-shadow:0 8px 22px rgba(238,188,50,.14), inset 0 1px 0 rgba(255,255,255,.48);
 }
 .ap-tab:focus-visible,.ap-link-btn:focus-visible,.ap-social-btn:focus-visible,.btn.submit:focus-visible,.ap-peek:focus-visible,.ap-choice-card:focus-within{
   outline:none;
@@ -1564,33 +1577,36 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
 .ap-main{
   width:min(900px,100%);
   margin:0 auto;
-  padding:0 14px 28px;
+  padding:10px 14px 28px;
 }
 .ap-card{
   width:100%;
   border:1px solid var(--auth-border);
-  border-radius:0 0 30px 30px;
+  border-radius:26px;
   background:
-    radial-gradient(circle at 16% 0, rgba(244,197,66,.10), transparent 34%),
-    linear-gradient(145deg, rgba(18,24,31,.92), rgba(4,8,13,.96));
-  box-shadow:0 26px 80px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.05);
+    radial-gradient(circle at 100% 0, rgba(88,230,189,.065), transparent 28%),
+    radial-gradient(circle at 0 0, rgba(244,197,66,.075), transparent 32%),
+    linear-gradient(145deg, rgba(13,20,27,.96), rgba(4,8,12,.98));
+  box-shadow:0 28px 90px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.045);
   padding:clamp(26px,6vw,56px);
   backdrop-filter:blur(14px);
 }
+.ap-card-kicker{ display:flex; align-items:center; gap:7px; margin-bottom:10px; color:var(--auth-mint); font-size:10px; font-weight:950; letter-spacing:.13em; }
+.ap-card-kicker i{ width:7px; height:7px; border-radius:50%; background:var(--auth-mint); box-shadow:0 0 14px rgba(88,230,189,.68); }
 .ap-title{
   margin:0;
-  font-size:clamp(34px,7vw,54px);
-  line-height:1.05;
+  font-size:clamp(31px,6vw,48px);
+  line-height:1.06;
   letter-spacing:-.035em;
   font-weight:1000;
 }
 .ap-sub{
   max-width:640px;
-  margin:14px 0 24px;
+  margin:9px 0 20px;
   color:rgba(247,247,247,.66);
-  font-size:clamp(18px,3.2vw,26px);
+  font-size:clamp(15px,2.8vw,20px);
   line-height:1.36;
-  font-weight:700;
+  font-weight:600;
 }
 .ap-social{ display:grid; gap:10px; margin:0 0 6px; }
 .ap-social-btn{
@@ -1598,17 +1614,20 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   min-height:62px;
   display:flex;
   align-items:center;
-  justify-content:center;
-  gap:14px;
-  border:1px solid rgba(255,255,255,.14);
-  border-radius:18px;
-  background:linear-gradient(145deg, rgba(9,20,32,.80), rgba(8,12,18,.86));
-  color:var(--auth-text);
+  justify-content:flex-start;
+  gap:11px;
+  border:1px solid rgba(255,255,255,.82);
+  border-radius:15px;
+  background:linear-gradient(180deg,#fff,#f1f5f9);
+  color:#111827;
+  padding:0 15px;
   cursor:pointer;
-  font-size:clamp(15px,3vw,22px);
-  font-weight:1000;
-  transition:transform .12s ease, border-color .18s ease, filter .18s ease;
+  font-size:clamp(14px,2.7vw,17px);
+  font-weight:900;
+  box-shadow:0 10px 28px rgba(0,0,0,.18);
+  transition:transform .12s ease, border-color .18s ease, filter .18s ease, box-shadow .18s ease;
 }
+.ap-social-btn:hover{ filter:brightness(1.02); box-shadow:0 13px 32px rgba(0,0,0,.25); }
 .ap-social-btn:active{ transform:scale(.99); }
 .ap-social-btn.is-loading{ border-color:rgba(244,197,66,.48); filter:brightness(1.06); }
 .ap-social-btn:disabled{ opacity:.7; cursor:not-allowed; }
@@ -1617,45 +1636,50 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   border:2px solid rgba(245,215,110,.25);
   border-top-color:rgba(245,215,110,.95);
   display:inline-block;
-  animation:apSpin .8s linear infinite;
+  animation:apMiniSpin .8s linear infinite;
 }
-.ap-google-g{ display:inline-flex; align-items:baseline; gap:0; font-weight:1000; letter-spacing:-.2px; line-height:1; font-size:22px; user-select:none; }
-.ap-google-g span{ font-weight:1000; }
-.ap-google-g .g1{ color:#4285F4; }.ap-google-g .g2{ color:#EA4335; }.ap-google-g .g3{ color:#FBBC05; }.ap-google-g .g4{ color:#4285F4; }.ap-google-g .g5{ color:#34A853; }.ap-google-g .g6{ color:#EA4335; }
+@keyframes apMiniSpin{ to{ transform:rotate(360deg); } }
+.ap-google-mark{ width:30px; height:30px; flex:0 0 auto; display:grid; place-items:center; border-radius:9px; background:#fff; color:#4285f4; border:1px solid #e2e8f0; font-family:Arial,sans-serif; font-size:18px; font-weight:900; box-shadow:0 2px 7px rgba(15,23,42,.10); }
+.ap-social-copy{ flex:1; text-align:center; }
+.ap-social-arrow{ color:#64748b; flex:0 0 auto; }
 .ap-divider{
   display:flex;
   align-items:center;
   gap:16px;
-  margin:26px 0;
+  margin:18px 0;
   color:rgba(247,247,247,.50);
-  font-size:clamp(14px,2.6vw,18px);
-  font-weight:700;
+  font-size:clamp(12px,2.3vw,14px);
+  font-weight:750;
 }
 .ap-divider::before,.ap-divider::after{ content:""; flex:1; height:1px; background:rgba(255,255,255,.14); }
-.ap-form{ display:grid; gap:18px; }
-.ap-field{ display:grid; gap:9px; color:rgba(247,247,247,.92); font-size:clamp(15px,3vw,20px); font-weight:850; }
+.ap-form{ display:grid; gap:14px; }
+.ap-field{ display:grid; gap:7px; color:rgba(241,245,249,.88); font-size:clamp(13px,2.6vw,16px); font-weight:850; }
 .ap-field input{
   width:100%;
   min-height:58px;
-  border:1px solid rgba(255,255,255,.16);
-  border-radius:17px;
-  background:rgba(3,10,16,.76);
+  border:1px solid rgba(148,163,184,.19);
+  border-radius:14px;
+  background:rgba(3,9,14,.74);
   color:var(--auth-text);
-  padding:0 18px;
+  padding:0 15px;
   font:inherit;
   font-weight:800;
   outline:none;
 }
 .ap-field input::placeholder{ color:rgba(247,247,247,.34); }
-.ap-field input:focus{ border-color:rgba(255,211,83,.58); box-shadow:0 0 0 4px rgba(244,197,66,.12); }
+.ap-field input:focus{ border-color:rgba(255,211,83,.54); box-shadow:0 0 0 3px rgba(244,197,66,.10); }
 .ap-field input:disabled{ opacity:.68; }
+.ap-input-shell{ min-width:0; min-height:58px; display:flex; align-items:center; gap:10px; padding:0 14px; border:1px solid rgba(148,163,184,.19); border-radius:14px; background:rgba(3,9,14,.74); color:#64748b; transition:border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+.ap-input-shell:focus-within{ border-color:rgba(255,211,83,.54); background:rgba(6,12,17,.92); box-shadow:0 0 0 3px rgba(244,197,66,.10); color:var(--auth-gold-soft); }
+.ap-input-shell input{ min-width:0; min-height:56px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.ap-input-shell input:focus{ border:0; box-shadow:none; }
 .ap-pass-row{ display:grid; grid-template-columns:minmax(0,1fr) 54px; gap:10px; align-items:stretch; }
 .ap-peek,.ap-pass-spacer{
   width:54px;
   min-height:58px;
-  border-radius:17px;
-  border:1px solid rgba(255,255,255,.16);
-  background:rgba(3,10,16,.76);
+  border-radius:14px;
+  border:1px solid rgba(148,163,184,.19);
+  background:rgba(3,9,14,.74);
   color:var(--auth-gold-soft);
   display:grid;
   place-items:center;
@@ -1668,11 +1692,12 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   align-items:center;
   gap:10px;
   color:rgba(247,247,247,.78);
-  font-size:clamp(14px,2.8vw,18px);
-  font-weight:700;
+  font-size:clamp(13px,2.5vw,15px);
+  font-weight:650;
 }
 .ap-check input{ width:20px; height:20px; accent-color:var(--auth-gold); }
-.ap-link,.ap-link-btn{ color:var(--auth-gold-soft); text-decoration:underline; text-underline-offset:3px; background:transparent; border:0; cursor:pointer; font:inherit; font-weight:850; }
+.ap-link,.ap-link-btn{ color:#f9d965; text-decoration:none; background:transparent; border:0; cursor:pointer; font:inherit; font-weight:850; }
+.ap-link:hover,.ap-link-btn:hover{ text-decoration:underline; text-underline-offset:3px; }
 .ap-link-btn:disabled{ opacity:.55; cursor:not-allowed; text-decoration:none; }
 .ap-error,.ap-success{
   border-radius:16px;
@@ -1685,13 +1710,13 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
 .ap-success{ border:1px solid rgba(52,211,153,.28); background:rgba(5,56,38,.34); color:#c8f7df; }
 .btn.submit{
   width:100%;
-  min-height:66px;
+  min-height:58px;
   border:0;
-  border-radius:18px;
-  background:linear-gradient(135deg,#ffc414,#ffe47a 58%,#f1b915);
+  border-radius:15px;
+  background:linear-gradient(135deg,#f0b91f,#ffe57d 56%,#f2bd29);
   color:#080807;
-  font-size:clamp(18px,3.6vw,27px);
-  font-weight:1000;
+  font-size:clamp(16px,3vw,20px);
+  font-weight:950;
   cursor:pointer;
   box-shadow:0 18px 44px rgba(244,197,66,.20);
   display:inline-flex;
@@ -1699,7 +1724,12 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   justify-content:center;
   gap:12px;
 }
+.btn.submit:hover:not(:disabled){ filter:brightness(1.035); transform:translateY(-1px); box-shadow:0 20px 48px rgba(244,197,66,.25); }
 .btn.submit:disabled{ opacity:.68; cursor:not-allowed; }
+.ap-login-trust{ display:flex; align-items:center; justify-content:center; gap:9px; margin-top:-2px; color:#7f8d9d; font-size:11px; font-weight:700; }
+.ap-login-trust span{ display:flex; align-items:center; gap:5px; }
+.ap-login-trust svg{ color:var(--auth-mint); }
+.ap-login-trust i{ width:3px; height:3px; border-radius:50%; background:#475569; }
 .ap-muted{ color:rgba(247,247,247,.58); }
 .ap-small{ font-size:clamp(14px,2.8vw,18px); text-align:center; }
 .ap-centered{ text-align:center; }
@@ -1812,52 +1842,7 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
 }
 .ap-verified-title{ margin:0; font-weight:1000; color:#c8f7df; }
 .ap-verified-sub{ margin:4px 0 0; font-size:12px; color:#d9f8e8; }
-.ap-foot{ padding:16px; text-align:center; border-top:1px solid rgba(255,255,255,.08); }
-.ap-overlay{
-  position:fixed; inset:0;
-  background:rgba(2,5,8,.74);
-  backdrop-filter:blur(8px) saturate(140%);
-  display:flex; align-items:center; justify-content:center;
-  z-index:9999; padding:18px;
-}
-.ap-overlay-card{
-  width:min(520px,100%);
-  border:1px solid rgba(255,211,83,.22);
-  background:linear-gradient(180deg,#121923,#070b10);
-  border-radius:22px;
-  padding:18px 16px;
-  position:relative;
-  overflow:hidden;
-  box-shadow:0 22px 80px rgba(0,0,0,.70);
-}
-.ap-overlay-glow{
-  position:absolute; inset:-2px;
-  background:radial-gradient(600px 200px at 20% 0%, rgba(245,215,110,.18), transparent 60%);
-  pointer-events:none;
-}
-.ap-overlay-row{ display:flex; align-items:center; gap:12px; position:relative; }
-.ap-spinner{
-  width:44px; height:44px; border-radius:50%;
-  border:3px solid rgba(245,215,110,.18);
-  border-top-color:rgba(245,215,110,.95);
-  animation:apSpin .9s linear infinite;
-  flex:0 0 auto;
-}
-@keyframes apSpin{ to{ transform:rotate(360deg); } }
-.ap-oload-title{ font-weight:1000; margin:0; color:var(--auth-gold-soft); font-size:16px; }
-.ap-oload-sub{ margin:4px 0 0; color:rgba(247,247,247,.74); font-size:13px; line-height:1.4; }
-.ap-shimmer{
-  margin-top:14px; height:10px; border-radius:999px;
-  background:rgba(255,255,255,.06);
-  overflow:hidden; position:relative;
-}
-.ap-shimmer::after{
-  content:""; position:absolute; inset:0;
-  transform:translateX(-60%);
-  background:linear-gradient(90deg,transparent,rgba(245,215,110,.35),transparent);
-  animation:apShimmer 1.2s ease-in-out infinite;
-}
-@keyframes apShimmer{ 0%{ transform:translateX(-60%); } 100%{ transform:translateX(160%); } }
+.ap-foot{ padding:16px; text-align:center; border-top:1px solid rgba(148,163,184,.10); font-size:12px; }
 .ap-eye{ display:block; color:var(--auth-gold-soft); }
 @media (min-width:1024px){
   .auth-page{
@@ -1872,40 +1857,48 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
     grid-row:1 / -1;
     min-height:100dvh;
     align-content:center;
+    justify-items:start;
+    text-align:left;
     border-right:1px solid rgba(255,255,255,.08);
     border-bottom:0;
-    padding:120px 56px;
-    background-position:center center;
+    padding:120px clamp(56px,7vw,112px);
+    background-position:center 44%;
   }
+  .ap-hero-content{ width:min(650px,82%); justify-items:start; }
+  .ap-heroLogo .brand-logo-img{ height:62px; max-width:220px; }
+  .ap-hero-kicker{ margin-top:24px; }
+  .ap-hero-features{ justify-content:flex-start; }
   .ap-tabs-wrap{
     grid-column:2;
     grid-row:2;
     width:100%;
     margin:0;
-    padding:0 34px;
+    padding:0 28px;
     align-self:end;
   }
-  .ap-tabs{ border-radius:21px; padding:5px; }
-  .ap-tab{ min-height:52px; border-radius:16px; font-size:17px; }
+  .ap-tabs{ border-radius:16px; padding:4px; }
+  .ap-tab{ min-height:48px; border-radius:12px; font-size:15px; }
   .ap-main{
     grid-column:2;
     grid-row:3;
     width:100%;
-    padding:0 34px;
+    padding:10px 28px 0;
     align-self:start;
   }
-  .ap-card{ border-radius:0 0 28px 28px; padding:30px; }
-  .ap-title{ font-size:38px; line-height:1.04; }
-  .ap-sub{ margin:10px 0 18px; font-size:17px; line-height:1.38; }
-  .ap-social-btn{ min-height:54px; border-radius:16px; font-size:16px; }
-  .ap-divider{ margin:18px 0; font-size:14px; }
+  .ap-card{ border-radius:24px; padding:26px; }
+  .ap-title{ font-size:35px; line-height:1.05; }
+  .ap-sub{ margin:8px 0 16px; font-size:15px; line-height:1.4; }
+  .ap-social-btn{ min-height:50px; border-radius:13px; font-size:14px; }
+  .ap-divider{ margin:14px 0; font-size:12px; }
   .ap-form{ gap:12px; }
   .ap-field{ gap:6px; font-size:14px; }
-  .ap-field input{ min-height:50px; border-radius:14px; padding:0 14px; }
+  .ap-field input{ min-height:48px; border-radius:12px; padding:0 13px; }
+  .ap-input-shell{ min-height:48px; border-radius:12px; padding:0 13px; }
+  .ap-input-shell input{ min-height:46px; padding:0; }
   .ap-pass-row{ grid-template-columns:minmax(0,1fr) 48px; gap:8px; }
-  .ap-peek,.ap-pass-spacer{ width:48px; min-height:50px; border-radius:14px; }
+  .ap-peek,.ap-pass-spacer{ width:48px; min-height:48px; border-radius:12px; }
   .ap-check{ font-size:14px; }
-  .btn.submit{ min-height:54px; border-radius:16px; font-size:18px; }
+  .btn.submit{ min-height:52px; border-radius:13px; font-size:16px; }
   .ap-small{ font-size:14px; }
   .ap-account-select{ gap:16px; }
   .ap-register-steps span{ width:32px; height:32px; }
@@ -1937,36 +1930,39 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .auth-page{ min-height:100svh; }
   .ap-nav{ display:none; }
   .ap-hero{
-    min-height:178px;
-    padding:24px 12px 40px;
-    background-position:58% top;
+    min-height:218px;
+    padding:24px 18px 44px;
+    background-position:center 35%;
     background-size:cover;
   }
   .ap-heroLogo .brand-logo-img{ height:44px; max-width:158px; }
+  .ap-hero-kicker{ margin-top:14px; font-size:9px; letter-spacing:.16em; }
+  .ap-hero h2{ max-width:330px; margin-top:8px; font-size:25px; line-height:1.06; }
   .ap-hero p{
-    margin-top:12px;
+    margin-top:7px;
     max-width:320px;
     font-size:12px;
     line-height:1.35;
-    letter-spacing:.16em;
   }
-  .ap-tabs-wrap{ margin-top:-30px; padding-inline:10px; }
-  .ap-tabs{ border-radius:18px; padding:4px; }
+  .ap-hero-features{ display:none; }
+  .ap-tabs-wrap{ margin-top:-28px; padding-inline:10px; }
+  .ap-tabs{ border-radius:16px; padding:4px; }
   .ap-tab{
     min-height:46px;
-    border-radius:14px;
-    font-size:16px;
+    border-radius:12px;
+    font-size:14px;
   }
-  .ap-main{ padding:0 10px 16px; }
-  .ap-card{ padding:18px 16px 20px; border-radius:0 0 22px 22px; }
+  .ap-main{ padding:9px 10px 16px; }
+  .ap-card{ padding:18px 16px 20px; border-radius:22px; }
+  .ap-card-kicker{ margin-bottom:8px; font-size:9px; }
   .ap-title{
-    font-size:clamp(29px,8vw,34px);
+    font-size:clamp(28px,7.6vw,32px);
     line-height:1.08;
     letter-spacing:-.025em;
   }
   .ap-sub{
     margin:8px 0 16px;
-    font-size:16px;
+    font-size:14px;
     line-height:1.34;
   }
   .ap-social{ gap:8px; margin-bottom:2px; }
@@ -1976,19 +1972,21 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
     gap:10px;
     font-size:16px;
   }
-  .ap-google-g{ font-size:20px; }
+  .ap-google-mark{ width:28px; height:28px; font-size:17px; }
   .ap-divider{
     gap:11px;
     margin:14px 0;
     font-size:13px;
   }
-  .ap-form{ gap:14px; }
-  .ap-field{ gap:6px; font-size:15px; }
+  .ap-form{ gap:12px; }
+  .ap-field{ gap:6px; font-size:13px; }
   .ap-field input{
     min-height:54px;
-    border-radius:15px;
+    border-radius:13px;
     padding:0 14px;
   }
+  .ap-input-shell{ min-height:54px; border-radius:13px; padding:0 13px; }
+  .ap-input-shell input{ min-height:52px; padding:0; }
   .ap-pass-row{
     grid-template-columns:minmax(0,1fr) 48px;
     gap:8px;
@@ -1996,18 +1994,19 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-peek,.ap-pass-spacer{
     width:48px;
     min-height:54px;
-    border-radius:15px;
+    border-radius:13px;
   }
   .ap-row-between{ align-items:center; gap:10px; }
   .ap-check{ font-size:14px; gap:8px; }
   .ap-check input{ width:18px; height:18px; }
   .btn.submit{
-    min-height:56px;
-    border-radius:16px;
-    font-size:18px;
+    min-height:54px;
+    border-radius:14px;
+    font-size:16px;
     box-shadow:0 14px 34px rgba(244,197,66,.18);
   }
   .ap-small{ font-size:14px; }
+  .ap-login-trust{ font-size:10px; gap:7px; }
   .ap-account-select{ gap:14px; }
   .ap-register-steps{
     gap:8px;
@@ -2060,9 +2059,10 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-foot{ padding:10px 14px 14px; font-size:13px; }
 }
 @media (max-width:430px){
-  .ap-hero{ min-height:168px; padding-top:20px; padding-bottom:38px; }
+  .ap-hero{ min-height:194px; padding-top:20px; padding-bottom:40px; }
   .ap-heroLogo .brand-logo-img{ height:42px; max-width:150px; }
-  .ap-hero p{ font-size:11px; letter-spacing:.15em; }
+  .ap-hero h2{ max-width:310px; font-size:23px; }
+  .ap-hero p{ display:none; }
   .ap-card{ padding:16px 14px 18px; }
   .ap-title{ font-size:30px; }
   .ap-sub{ font-size:15px; margin-bottom:14px; }
@@ -2084,7 +2084,8 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-choice-radio{ width:22px; height:22px; }
 }
 @media (max-width:370px){
-  .ap-hero{ min-height:154px; padding-top:16px; padding-bottom:34px; }
+  .ap-hero{ min-height:186px; padding-top:16px; padding-bottom:38px; }
+  .ap-hero h2{ font-size:21px; }
   .ap-tabs-wrap{ margin-top:-28px; padding-inline:8px; }
   .ap-tabs{ padding:4px; }
   .ap-tab{ min-height:44px; }

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ZumaFit">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17212c"/>
+      <stop offset="1" stop-color="#05080c"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="16" y1="13" x2="49" y2="53" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff0a0"/>
+      <stop offset=".45" stop-color="#f5d76e"/>
+      <stop offset="1" stop-color="#e69a17"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#bg)" stroke="#f5d76e" stroke-opacity=".32" stroke-width="2"/>
+  <path d="M17 16h34l-4 8-18 18h19l-4 8H12l4-8 18-18H14l3-8Z" fill="url(#gold)"/>
+  <path d="m39 17-7 12h8l-13 19 5-15h-8l8-16h7Z" fill="#fff8d1" fill-opacity=".92"/>
+</svg>

@@ -1,0 +1,17 @@
+{
+  "name": "ZumaFit",
+  "short_name": "ZumaFit",
+  "description": "Nutrición, entrenamiento, menús y progreso en un solo lugar.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05080c",
+  "theme_color": "#05080c",
+  "icons": [
+    {
+      "src": "/zumafit-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

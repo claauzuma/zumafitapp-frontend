@@ -812,7 +812,7 @@ const manualCompletionActive =
     if (historyOldestDate && nextDate < historyOldestDate) {
       setToast({
         type: "info",
-        message: `Tu plan permite consultar los ultimos ${trackingHistoryDays} dias de Tracking.`,
+        message: `Solo se conserva el detalle de los ultimos ${trackingHistoryDays} dias de Tracking.`,
       });
       return;
     }
@@ -2898,7 +2898,6 @@ async function removeFood(meal, item) {
         {!manualCompletionActive ? (
           <TrackingWeeklyBalance
             balance={menuTrackingDay?.weeklyBalance || tracking?.weeklyBalance}
-            objective={objective}
           />
         ) : null}
 
@@ -5617,9 +5616,10 @@ function DraftFoodThumb({ draft = {} }) {
   );
 }
 
-function TrackingWeeklyBalance({ balance = null, objective = null }) {
+function TrackingWeeklyBalance({ balance = null }) {
   if (!balance?.active) return null;
   const kcal = Number(balance.calorieCarry) || 0;
+  if (Math.abs(kcal) <= 0.5) return null;
   const signed = (value, unit) => Math.abs(value) < 0.05
     ? `0 ${unit}`
     : `${value > 0 ? "+" : "-"}${formatNumber(Math.abs(value), 0)} ${unit}`;
@@ -5627,13 +5627,10 @@ function TrackingWeeklyBalance({ balance = null, objective = null }) {
     <aside className="td-weekBalance" role="status">
       <span className="td-weekBalanceIcon"><CalendarDays size={18} /></span>
       <div className="td-weekBalanceCopy">
-        <span><strong>Balance semanal</strong><small>{balance.isClosingDay ? "Cierre del domingo" : "Se reinicia el lunes"}</small></span>
-        <p>Base: <b>{formatNumber(balance?.baseTarget?.kcal, 0)} kcal</b> · Meta ajustada: <b>{formatNumber(objective?.kcal, 0)} kcal</b>. La proteina sigue siendo diaria.</p>
+        <strong>Ajuste semanal aplicado</strong>
+        <small>Incluido en la meta de hoy · {balance.isClosingDay ? "Cierra hoy" : "Cierra el domingo"}</small>
       </div>
-      <div className="td-weekBalanceValues">
-        <span className={kcal < 0 ? "negative" : "positive"}><small>Calorias</small><b>{signed(kcal, "kcal")}</b></span>
-        <span className="protein"><small>Proteina diaria</small><b>{formatNumber(balance?.baseTarget?.p, 0)} g</b></span>
-      </div>
+      <b className={`td-weekBalanceValue ${kcal < 0 ? "negative" : "positive"}`}>{signed(kcal, "kcal")}</b>
     </aside>
   );
 }

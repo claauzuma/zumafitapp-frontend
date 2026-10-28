@@ -1,7 +1,23 @@
 // src/ClientShell.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Crown, Target } from "lucide-react";
+import {
+  BookOpen,
+  Brain,
+  ClipboardCheck,
+  Crown,
+  Dumbbell,
+  House,
+  LogOut,
+  Menu,
+  MoreHorizontal,
+  Newspaper,
+  Target,
+  TrendingUp,
+  Users,
+  Utensils,
+  X,
+} from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "./Api.js";
 import { setAuthGuest, setAuthLogged, getCachedUser, isImpersonating } from "./authCache.js";
@@ -48,8 +64,11 @@ const CSS = `
 }
 
 .cs-wrap{
-  min-height:100vh;
-  background: var(--bg);
+  min-height:100dvh;
+  background:
+    radial-gradient(900px 420px at 8% -6%, rgba(245,215,110,.065), transparent 58%),
+    radial-gradient(760px 420px at 102% 18%, rgba(79,209,181,.035), transparent 58%),
+    var(--bg);
   color: var(--txt);
 }
 
@@ -58,9 +77,10 @@ const CSS = `
   position: sticky;
   top: 0;
   z-index: 80;
-  border-bottom:1px solid #1b1b1b;
-  background: rgba(11,11,11,.92);
-  backdrop-filter: blur(8px) saturate(140%);
+  border-bottom:1px solid rgba(255,255,255,.075);
+  background: rgba(5,8,12,.84);
+  backdrop-filter: blur(18px) saturate(145%);
+  box-shadow:0 10px 34px rgba(0,0,0,.16);
 }
 .cs-header-inner{
   max-width: 1200px;
@@ -143,7 +163,7 @@ const CSS = `
   justify-content:center;
   position:relative;
   overflow:hidden;
-  transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease, filter .18s ease;
+  transition: transform var(--zf-motion-instant, .09s) ease, box-shadow var(--zf-motion-fast, .15s) ease, border-color var(--zf-motion-fast, .15s) ease, filter var(--zf-motion-fast, .15s) ease, background-color var(--zf-motion-fast, .15s) ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -180,9 +200,14 @@ const CSS = `
 
 /* content */
 .cs-content{
-  max-width: 1200px;
+  width:100%;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 16px clamp(9px, 1.5vw, 14px) 26px;
+  padding: 20px clamp(12px, 2vw, 22px) 34px;
+}
+
+.cs-mobileNav{
+  display:none;
 }
 
 .cs-coachNotice{
@@ -260,6 +285,7 @@ const CSS = `
   padding:18px;
   background:rgba(3,7,12,.68);
   backdrop-filter:blur(10px) saturate(145%);
+  animation:csBackdropIn .18s ease both;
 }
 .cs-planModal{
   width:min(520px, 100%);
@@ -272,6 +298,7 @@ const CSS = `
   box-shadow:0 26px 90px rgba(0,0,0,.72);
   padding:20px;
   color:#f8fafc;
+  animation:csDialogIn .32s cubic-bezier(.22,1,.36,1) both;
 }
 .cs-planModalBadge{
   display:inline-flex;
@@ -346,23 +373,33 @@ const CSS = `
   z-index: 9998;
   background: rgba(11,11,11,.55);
   backdrop-filter: blur(6px) saturate(140%);
+  animation:csBackdropIn .18s ease both;
 }
 .cs-drawer{
   position:fixed;
   top:0;
   right:0;
-  height: 100vh;
+  height: 100dvh;
   width: min(380px, 92vw);
   z-index: 9999;
   border-left:1px solid var(--border);
   background: linear-gradient(180deg,#121212,#0b0b0b);
   box-shadow: -18px 0 70px rgba(0,0,0,.65);
-  transform: translateX(110%);
-  transition: transform .18s ease;
+  transform: translate3d(110%,0,0);
+  transition: transform .24s cubic-bezier(.22,1,.36,1);
   display:flex;
   flex-direction:column;
 }
-.cs-drawer.open{ transform: translateX(0); }
+.cs-drawer.open{ transform: translate3d(0,0,0); }
+
+@keyframes csBackdropIn{
+  from{ opacity:0; }
+  to{ opacity:1; }
+}
+@keyframes csDialogIn{
+  from{ opacity:0; transform:translate3d(0,14px,0) scale(.985); }
+  to{ opacity:1; transform:translate3d(0,0,0) scale(1); }
+}
 
 .cs-d-head{
   padding: 14px 14px 12px;
@@ -601,21 +638,90 @@ const CSS = `
 }
 @keyframes cnShimmer{ 0%{ transform: translateX(-60%);} 100%{ transform: translateX(160%);} }
 
-@media (max-width:520px){
+@media (max-width:767px){
   .cs-header-inner{
-    min-height:82px;
-    padding:11px 12px;
+    min-height:64px;
+    padding:7px 12px;
     gap:10px;
   }
-  .cs-btn{ width:42px; height:42px; border-radius:13px; }
+  .cs-btn{ width:44px; height:44px; border-radius:14px; }
   .cs-logo{ width:40px; height:40px; border-radius:13px; }
   .cs-brandLogo .brand-logo-img{
-    height:48px;
-    max-width:196px;
+    height:39px;
+    max-width:158px;
   }
   .cs-sub{
-    font-size:12px;
+    display:none;
   }
+  .cs-logoutBtn{ display:none; }
+  .cs-content{
+    padding:14px 10px calc(var(--zf-mobile-nav-height, 74px) + 34px + env(safe-area-inset-bottom));
+  }
+  .cs-mobileNav{
+    position:fixed;
+    z-index:86;
+    right:10px;
+    bottom:calc(8px + env(safe-area-inset-bottom));
+    left:10px;
+    min-height:var(--zf-mobile-nav-height, 74px);
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:3px;
+    padding:7px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:22px;
+    background:linear-gradient(180deg,rgba(15,22,30,.94),rgba(6,10,15,.97));
+    box-shadow:0 22px 60px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.055);
+    backdrop-filter:blur(20px) saturate(155%);
+  }
+  .cs-mobileNavItem{
+    position:relative;
+    min-width:0;
+    min-height:58px;
+    border:0;
+    border-radius:16px;
+    background:transparent;
+    color:#8f9baa;
+    text-decoration:none;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    padding:4px 2px;
+    font:inherit;
+    font-size:10px;
+    font-weight:850;
+    cursor:pointer;
+    transition:color .16s ease, background-color .16s ease, transform .1s ease;
+  }
+  .cs-mobileNavItem svg{
+    width:21px;
+    height:21px;
+    transition:transform .2s cubic-bezier(.22,1,.36,1);
+  }
+  .cs-mobileNavItem::before{
+    content:"";
+    position:absolute;
+    top:2px;
+    width:18px;
+    height:2px;
+    border-radius:999px;
+    background:var(--gold);
+    opacity:0;
+    transform:scaleX(.4);
+    transition:opacity .16s ease, transform .22s cubic-bezier(.22,1,.36,1);
+  }
+  .cs-mobileNavItem.active{
+    color:#fff1a8;
+    background:linear-gradient(180deg,rgba(245,215,110,.13),rgba(245,215,110,.035));
+  }
+  .cs-mobileNavItem.active::before{
+    opacity:1;
+    transform:scaleX(1);
+  }
+  .cs-mobileNavItem.active svg{ transform:translateY(-1px) scale(1.06); }
+  .cs-mobileNavItem:active{ transform:scale(.96); }
   .cs-avatar{ width:46px; height:46px; }
   .cs-coachNotice{
     align-items:flex-start;
@@ -626,6 +732,11 @@ const CSS = `
   }
   .cs-actionBtn{
     flex:1 1 140px;
+    min-height:44px;
+  }
+  .cs-drawer{
+    width:min(390px,94vw);
+    padding-bottom:env(safe-area-inset-bottom);
   }
 }
 
@@ -712,7 +823,7 @@ function ClientCoachAssignmentNotice({ notice, busy = false, onDismiss, onProfil
  * - Ajustes también se quitó del drawer (queda solo "Salir" abajo).
  */
 const NAV_TOP = [
-  { to: "/app/inicio", label: "Inicio", sub: "Resumen y accesos", icon: "🏠", enabled: true },
+  { to: "/app/inicio", label: "Inicio", sub: "Resumen y accesos", icon: <House size={19} aria-hidden="true" />, enabled: true },
 ];
 
 const NAV_SECTIONS = [
@@ -720,24 +831,24 @@ const NAV_SECTIONS = [
     title: "Tu plan",
     items: [
       { to: "/app/objetivos", label: "Objetivos", sub: "Nutricion y entrenamiento", icon: <Target size={19} aria-hidden="true" />, enabled: true },
-      { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: "🍽️", enabled: true },
-      { to: "/app/nutricion", label: "Mis comidas", sub: "Guardadas y favoritas", icon: "M", enabled: true },
-      { to: "/app/tracking", label: "Tracking", sub: "Registro diario", icon: "T", enabled: true },
-      { to: "/app/rutinas", label: "Rutina", sub: "Entrenamiento", icon: "🏋️", enabled: true },
-      { to: "/app/equivalencias", label: "Equivalencias", sub: "Intercambios de alimentos", icon: "🧠", enabled: false },
+      { to: "/app/menu", label: "Menú", sub: "Comidas y planificación", icon: <Utensils size={19} aria-hidden="true" />, enabled: true },
+      { to: "/app/nutricion", label: "Mis comidas", sub: "Guardadas y favoritas", icon: <BookOpen size={19} aria-hidden="true" />, enabled: true },
+      { to: "/app/tracking", label: "Tracking", sub: "Registro diario", icon: <ClipboardCheck size={19} aria-hidden="true" />, enabled: true },
+      { to: "/app/rutinas", label: "Rutina", sub: "Entrenamiento", icon: <Dumbbell size={19} aria-hidden="true" />, enabled: true },
+      { to: "/app/equivalencias", label: "Equivalencias", sub: "Intercambios de alimentos", icon: <Brain size={19} aria-hidden="true" />, enabled: false },
     ],
   },
   {
     title: "Tu progreso",
     items: [
-      { to: "/app/progresos", label: "Progresos", sub: "Medidas y fotos", icon: "📈", enabled: true },
+      { to: "/app/progresos", label: "Progresos", sub: "Medidas y fotos", icon: <TrendingUp size={19} aria-hidden="true" />, enabled: true },
     ],
   },
   {
     title: "Social",
     items: [
-      { to: "/app/amigos", label: "Amigos", sub: "Conexiones", icon: "🤝", enabled: false },
-      { to: "/app/feed", label: "Feed", sub: "Actividad", icon: "📰", enabled: false },
+      { to: "/app/amigos", label: "Amigos", sub: "Conexiones", icon: <Users size={19} aria-hidden="true" />, enabled: false },
+      { to: "/app/feed", label: "Feed", sub: "Actividad", icon: <Newspaper size={19} aria-hidden="true" />, enabled: false },
     ],
   },
 ];
@@ -1174,7 +1285,7 @@ export default function ClientShell() {
             <span className="cs-planModalBadge">Tu cuenta Free está lista</span>
             <h2 id="trial-welcome-title">Probá ZumaFit Pro gratis durante 14 días</h2>
             <p>
-              Accedé a menús semanales, más capacidad, biblioteca global, equivalencias, historial completo y progreso avanzado.
+              Accedé a menús semanales, más capacidad, biblioteca global, equivalencias, 14 días de historial nutricional y progreso avanzado.
               La prueba no se activa sola.
             </p>
             <ul className="cs-planModalList">
@@ -1262,25 +1373,25 @@ export default function ClientShell() {
             <button
               ref={menuButtonRef}
               type="button"
-              className="cs-btn"
+              className="cs-btn cs-menuBtn"
               onClick={() => setOpen(true)}
               aria-label="Abrir menú"
               title="Menú"
               aria-expanded={open}
               aria-controls="client-main-menu"
             >
-              ☰
+              <Menu size={22} strokeWidth={2.3} aria-hidden="true" />
             </button>
 
             <button
               type="button"
-              className={`cs-btn ${loading ? "is-loading" : ""}`}
+              className={`cs-btn cs-logoutBtn ${loading ? "is-loading" : ""}`}
               onClick={logout}
               disabled={loading || isImpersonating()}
               aria-label={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión..." : "Cerrar sesión"}
               title={isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando sesión..." : "Cerrar sesión"}
             >
-              {isImpersonating() ? "SL" : loading ? "…" : "⎋"}
+              {isImpersonating() ? "SL" : loading ? "…" : <LogOut size={21} strokeWidth={2.2} aria-hidden="true" />}
             </button>
           </div>
         </div>
@@ -1313,7 +1424,7 @@ export default function ClientShell() {
           </div>
 
           <button type="button" className="cs-btn" onClick={() => closeDrawer({ restoreFocus: true })} aria-label="Cerrar menú" title="Cerrar">
-            ✕
+            <X size={21} strokeWidth={2.3} aria-hidden="true" />
           </button>
         </div>
 
@@ -1370,6 +1481,55 @@ export default function ClientShell() {
         ) : null}
         <Outlet />
       </main>
+
+      {!isOnboardingRoute ? (
+        <nav className="cs-mobileNav" aria-label="Navegación principal">
+          <NavLink
+            to="/app/inicio"
+            end
+            className={({ isActive }) => `cs-mobileNavItem ${isActive ? "active" : ""}`}
+            {...createNavigationPrefetchHandlers("/app/inicio")}
+          >
+            <House aria-hidden="true" />
+            <span>Inicio</span>
+          </NavLink>
+          <NavLink
+            to="/app/menu"
+            className={({ isActive }) => `cs-mobileNavItem ${isActive ? "active" : ""}`}
+            {...createNavigationPrefetchHandlers("/app/menu")}
+          >
+            <Utensils aria-hidden="true" />
+            <span>Menú</span>
+          </NavLink>
+          <NavLink
+            to="/app/tracking"
+            className={({ isActive }) => `cs-mobileNavItem ${isActive ? "active" : ""}`}
+            {...createNavigationPrefetchHandlers("/app/tracking")}
+          >
+            <ClipboardCheck aria-hidden="true" />
+            <span>Tracking</span>
+          </NavLink>
+          <NavLink
+            to="/app/progresos"
+            className={({ isActive }) => `cs-mobileNavItem ${isActive ? "active" : ""}`}
+            {...createNavigationPrefetchHandlers("/app/progresos")}
+          >
+            <TrendingUp aria-hidden="true" />
+            <span>Progreso</span>
+          </NavLink>
+          <button
+            type="button"
+            className={`cs-mobileNavItem ${open ? "active" : ""}`}
+            onClick={() => setOpen(true)}
+            aria-label="Abrir más opciones"
+            aria-expanded={open}
+            aria-controls="client-main-menu"
+          >
+            <MoreHorizontal aria-hidden="true" />
+            <span>Más</span>
+          </button>
+        </nav>
+      ) : null}
     </div>
   );
 }

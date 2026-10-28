@@ -35,6 +35,7 @@ import {
   planFromCapabilities,
 } from "../clientPlans/clientPlanUtils.js";
 import { normalizeGoalFromUser } from "../clientNutrition/nutritionState.js";
+import { weeklyBalanceEnabled } from "../clientGoals/weeklyNutritionGoals.js";
 import { assignmentFlexibleCalories } from "../menus/menuAssignmentCompatibility.js";
 import {
   flexibleMarginEntries,
@@ -607,11 +608,11 @@ const HOME_V2_CSS = `
 }
 
 .zfh-hero{
-  padding:20px;
-  min-height:190px;
+  padding:16px 18px;
+  min-height:126px;
   display:grid;
-  align-content:space-between;
-  gap:28px;
+  align-content:center;
+  gap:0;
 }
 
 .zfh-hero::after{
@@ -676,7 +677,7 @@ const HOME_V2_CSS = `
   z-index:1;
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
-  align-items:end;
+  align-items:center;
   gap:16px;
 }
 
@@ -713,17 +714,19 @@ const HOME_V2_CSS = `
 .zfh-chip svg{ color:#60a5fa; }
 
 .zfh-planBadge{
-  min-width:98px;
-  min-height:58px;
+  min-width:78px;
+  min-height:44px;
   display:flex;
   align-items:center;
   justify-content:center;
   gap:9px;
   border:1px solid rgba(245,215,110,.22);
-  border-radius:18px;
+  border-radius:15px;
   color:#f8d75a;
   background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(255,255,255,.035));
+  cursor:pointer;
   font-weight:950;
+  font-size:11px;
   letter-spacing:.045em;
   text-transform:uppercase;
 }
@@ -1022,15 +1025,15 @@ const HOME_V2_CSS = `
 @media (max-width:680px){
   .zfh{ gap:9px; }
   .zfh-panel{ border-radius:17px; }
-  .zfh-hero{ min-height:142px; padding:12px 14px; gap:10px; }
+  .zfh-hero{ min-height:104px; padding:11px 13px; gap:0; }
   .zfh-planLink{ display:none; }
   .zfh-planLabel{ min-height:31px; padding:0 11px; font-size:10px; }
   .zfh-heroBody{ grid-template-columns:minmax(0,1fr) auto; gap:10px; }
-  .zfh-hello{ font-size:29px; }
-  .zfh-planBadge{ min-width:72px; min-height:44px; padding:0 9px; border-radius:15px; font-size:11px; }
+  .zfh-hello{ font-size:27px; }
+  .zfh-planBadge{ min-width:64px; min-height:38px; padding:0 8px; border-radius:13px; font-size:10px; }
   .zfh-planBadge svg{ width:16px; }
-  .zfh-identity{ margin-top:8px; gap:5px; }
-  .zfh-chip{ min-height:29px; padding:0 8px; font-size:9px; }
+  .zfh-identity{ margin-top:7px; gap:5px; }
+  .zfh-chip{ min-height:27px; padding:0 8px; font-size:9px; }
   .zfh-chip svg{ width:13px; }
   .zfh-menuCard{ min-height:152px; padding:12px 14px; gap:8px; background-position:right center; background-size:auto 100%; }
   .zfh-objective{ padding:14px; }
@@ -1066,7 +1069,6 @@ const HOME_V2_CSS = `
   .zfh-planLink{ width:40px; padding:0; }
   .zfh-planLink span{ display:none; }
   .zfh-planBadge{ min-width:54px; }
-  .zfh-planBadge span{ display:none; }
   .zfh-menuCopy{ max-width:82%; }
   .zfh-weekHead{ align-items:flex-start; flex-direction:column; gap:3px; }
   .zfh-macro strong{ font-size:11px; }
@@ -1509,6 +1511,9 @@ export default function InicioEntrenado() {
   const capabilities = accessCapabilities || capabilitiesQuery.data || user?.nutritionCapabilities || null;
   const rawPlan = capabilities?.plan || currentUser?.nutritionCapabilities?.plan || currentUser?.plan;
   const plan = rawPlan ? planFromCapabilities(currentUser, capabilities) : "";
+  const planKind = planKindFromValue(plan, capabilities);
+  const usesProCalorieCompensation = planKind !== "free"
+    && weeklyBalanceEnabled(currentUser?.menu?.weeklyPlan || {});
   const usage = ownMenusUsage(summary, capabilities);
   const usageKnown = usageQuery.isSuccess && Number.isFinite(Number(usage.used));
   const trial = accessContextQuery.data?.trial || null;
@@ -1522,7 +1527,7 @@ export default function InicioEntrenado() {
   const coachControlsNutrition =
     ["coach", "professional", "profesional"].includes(String(authority.nutrition || authority.menu || "").toLowerCase()) ||
     (!!accessContext?.hasCoach && String(authority.nutrition || "").toLowerCase() === "coach");
-  const canLoadPendingFollowup = isClientRole && hasObjective;
+  const canLoadPendingFollowup = isClientRole && hasObjective && !usesProCalorieCompensation;
   const currentMenuTrackingQuery = useQuery({
     queryKey: ["menuTrackingWeek", currentWeekStart],
     queryFn: () => getMenuTrackingWeek(currentWeekStart),
@@ -1544,16 +1549,18 @@ export default function InicioEntrenado() {
     [currentMenuTrackingQuery.data, previousMenuTrackingQuery.data]
   );
   const rawPendingFollowup = useMemo(
-    () => getPendingFollowupSummary({
-      days: followupDays,
-      capabilities,
-      todayDateKey,
-      plan,
-      coachControlsNutrition,
-      hasObjective,
-      isClientRole,
-    }),
-    [capabilities, coachControlsNutrition, followupDays, hasObjective, isClientRole, plan, todayDateKey]
+    () => usesProCalorieCompensation
+      ? null
+      : getPendingFollowupSummary({
+          days: followupDays,
+          capabilities,
+          todayDateKey,
+          plan,
+          coachControlsNutrition,
+          hasObjective,
+          isClientRole,
+        }),
+    [capabilities, coachControlsNutrition, followupDays, hasObjective, isClientRole, plan, todayDateKey, usesProCalorieCompensation]
   );
   const pendingFollowup = useMemo(
     () => {
@@ -1601,7 +1608,6 @@ export default function InicioEntrenado() {
           icon: Apple,
         };
   const NextActionIcon = nextAction.icon;
-  const planKind = planKindFromValue(plan, capabilities);
   const planLabel = accessContext?.hasCoach || capabilities?.hasCoach
     ? "con Coach"
     : rawPlan ? clientPlanLabel(plan) : "Sin confirmar";
@@ -1654,13 +1660,6 @@ export default function InicioEntrenado() {
 
       <div className="zfh">
         <section className="zfh-panel zfh-hero" aria-labelledby="home-client-title">
-          <div className="zfh-heroTop">
-            <span className="zfh-planLabel">Plan {planLabel}</span>
-            <button type="button" className="zfh-planLink" onClick={() => navigate("/app/planes")}>
-              <span>Ver mi plan</span><ArrowRight size={16} aria-hidden="true" />
-            </button>
-          </div>
-
           <div className="zfh-heroBody">
             <div>
               <h1 className="zfh-hello" id="home-client-title">{titulo}</h1>
@@ -1669,9 +1668,9 @@ export default function InicioEntrenado() {
                 <span className="zfh-chip"><ListChecks size={15} aria-hidden="true" />{menuUsageText}</span>
               </div>
             </div>
-            <span className={`zfh-planBadge ${planKind}`} aria-label={`Plan ${planLabel}`}>
+            <button type="button" className={`zfh-planBadge ${planKind}`} aria-label={`Ver plan ${planLabel}`} onClick={() => navigate("/app/planes")}>
               <Crown size={20} aria-hidden="true" /><span>{planLabel}</span>
-            </span>
+            </button>
           </div>
         </section>
 

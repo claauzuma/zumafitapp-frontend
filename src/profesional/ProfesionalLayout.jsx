@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  MoreHorizontal,
   Settings,
   UserCircle,
   Users,
@@ -28,6 +29,7 @@ export default function ProfesionalLayout({ me: meProp }) {
   const meQuery = useProfessionalMe();
   const me = meProp || meQuery.data || getCachedUser() || null;
   const navItems = useMemo(() => buildNavItems(me), [me]);
+  const mobileQuickItems = useMemo(() => navItems.slice(0, 4), [navItems]);
   const plan = coachProfessionalPlanLabel(coachProfessionalPlanFromUser(me));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -172,6 +174,34 @@ export default function ProfesionalLayout({ me: meProp }) {
           <Outlet context={{ me }} />
         </main>
 
+        <nav className="pl-bottomNav" aria-label="Navegación profesional principal">
+          {mobileQuickItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => `pl-bottomItem ${isActive ? "active" : ""}`}
+                {...createNavigationPrefetchHandlers(item.to)}
+              >
+                <Icon size={21} strokeWidth={2.2} aria-hidden="true" />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+          <button
+            type="button"
+            className={`pl-bottomItem ${mobileOpen ? "active" : ""}`}
+            onClick={() => setMobileOpen(true)}
+            aria-label="Abrir más opciones"
+            aria-expanded={mobileOpen}
+          >
+            <MoreHorizontal size={22} strokeWidth={2.2} aria-hidden="true" />
+            <span>Más</span>
+          </button>
+        </nav>
+
         <style>{styles}</style>
       </div>
       <AppToast toast={toast} onClose={() => setToast(null)} />
@@ -293,6 +323,9 @@ const styles = `
   display:none;
 }
 .pl-mobileBar{
+  display:none;
+}
+.pl-bottomNav{
   display:none;
 }
 .pl-brandBlock{
@@ -469,6 +502,7 @@ const styles = `
   border:none;
   background:rgba(0,0,0,.52);
   backdrop-filter:blur(3px);
+  animation:pl-backdrop-in .18s ease both;
 }
 .pl-drawer{
   position:fixed;
@@ -484,15 +518,19 @@ const styles = `
   background:linear-gradient(180deg, #101010, #080808);
   border-left:1px solid rgba(255,255,255,.08);
   box-shadow:-18px 0 40px rgba(0,0,0,.40);
-  transform:translateX(100%);
+  transform:translate3d(100%,0,0);
   visibility:hidden;
   pointer-events:none;
-  transition:transform .22s ease;
+  transition:transform .24s cubic-bezier(.22,1,.36,1);
 }
 .pl-drawer.open{
-  transform:translateX(0);
+  transform:translate3d(0,0,0);
   visibility:visible;
   pointer-events:auto;
+}
+@keyframes pl-backdrop-in{
+  from{ opacity:0; }
+  to{ opacity:1; }
 }
 .pl-drawerHead{
   display:flex;
@@ -576,6 +614,83 @@ const styles = `
   .pl-drawer{
     width:min(92vw, 330px);
     padding:14px;
+  }
+}
+@media (max-width: 767px){
+  .pl-mobileBar{
+    min-height:64px;
+    padding:7px 12px;
+  }
+  .pl-menuBtn{
+    width:44px;
+    height:44px;
+    border-radius:14px;
+  }
+  .pl-main{
+    padding:14px 10px calc(var(--zf-mobile-nav-height, 74px) + 34px + env(safe-area-inset-bottom));
+  }
+  .pl-bottomNav{
+    position:fixed;
+    z-index:86;
+    right:10px;
+    bottom:calc(8px + env(safe-area-inset-bottom));
+    left:10px;
+    min-height:var(--zf-mobile-nav-height, 74px);
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:3px;
+    padding:7px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:22px;
+    background:linear-gradient(180deg,rgba(15,22,30,.94),rgba(6,10,15,.97));
+    box-shadow:0 22px 60px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.055);
+    backdrop-filter:blur(20px) saturate(155%);
+  }
+  .pl-bottomItem{
+    position:relative;
+    min-width:0;
+    min-height:58px;
+    border:0;
+    border-radius:16px;
+    background:transparent;
+    color:#8f9baa;
+    text-decoration:none;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    padding:4px 2px;
+    font:inherit;
+    font-size:10px;
+    font-weight:850;
+    cursor:pointer;
+    transition:color .16s ease, background-color .16s ease, transform .1s ease;
+  }
+  .pl-bottomItem::before{
+    content:"";
+    position:absolute;
+    top:2px;
+    width:18px;
+    height:2px;
+    border-radius:999px;
+    background:var(--pl-gold);
+    opacity:0;
+    transform:scaleX(.4);
+    transition:opacity .16s ease, transform .22s cubic-bezier(.22,1,.36,1);
+  }
+  .pl-bottomItem.active{
+    color:#fff1a8;
+    background:linear-gradient(180deg,rgba(245,215,110,.13),rgba(245,215,110,.035));
+  }
+  .pl-bottomItem.active::before{
+    opacity:1;
+    transform:scaleX(1);
+  }
+  .pl-bottomItem.active svg{ transform:translateY(-1px) scale(1.06); }
+  .pl-bottomItem:active{ transform:scale(.96); }
+  .pl-drawer{
+    padding-bottom:calc(16px + env(safe-area-inset-bottom));
   }
 }
 `;

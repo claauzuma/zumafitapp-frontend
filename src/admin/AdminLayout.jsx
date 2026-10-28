@@ -1,14 +1,15 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
 import AdminNavBar from "./AdminNavBar.jsx";
+import "./adminLayout.css";
 
 export default function AdminLayout() {
   return (
-    <div style={{ minHeight: "100vh", background: "#0b0b0b" }}>
+    <div className="admin-shell">
       <AdminNavBar />
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: 16 }}>
+      <main className="admin-main">
         <Outlet />
-      </div>
+      </main>
     </div>
   );
 }

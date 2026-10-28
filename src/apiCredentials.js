@@ -9,3 +9,4 @@ export const API_BASE = configuredApiBase || (
     ? ""
     : "https://zumafitapp-backend-production.up.railway.app"
 );
+ 

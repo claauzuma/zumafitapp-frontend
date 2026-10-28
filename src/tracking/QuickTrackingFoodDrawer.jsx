@@ -263,6 +263,7 @@ export default function QuickTrackingFoodDrawer({
   open = false,
   date = "",
   initialDestinationKey = "picoteo",
+  destinationLocked = false,
   destinations = EMPTY_DESTINATIONS,
   onClose,
   onSaved,
@@ -412,6 +413,9 @@ useEffect(() => {
     destinationOptions.find(
       (item) => item.key === destinationKey
     ) || destinationOptions[0];
+  const hasFixedDestination = destinationLocked && destinationOptions.some(
+    (item) => item.key === initialDestinationKey
+  );
 
   const preview = useMemo(() => {
     if (!selectedFood) return null;
@@ -544,7 +548,9 @@ useEffect(() => {
                 </h2>
 
                 <p className="text-[10px] font-bold text-zinc-500">
-                  Guardalo directamente en tu Tracking.
+                  {hasFixedDestination
+                    ? `Se agrega a ${selectedDestination?.label || "esta comida"}.`
+                    : "Guardalo directamente en tu Tracking."}
                 </p>
               </div>
             </div>
@@ -800,7 +806,7 @@ useEffect(() => {
               </section>
 
               {/* DESTINO */}
-              <section className="mt-5">
+              {!hasFixedDestination ? <section className="mt-5">
                 <p className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400">
                   ¿Dónde lo querés registrar?
                 </p>
@@ -885,7 +891,7 @@ useEffect(() => {
                     pero no ocupa ni reemplaza una comida.
                   </p>
                 ) : null}
-              </section>
+              </section> : null}
             </>
           ) : null}
 

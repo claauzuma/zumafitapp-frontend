@@ -103,7 +103,7 @@ export default function BasicsTDEE({ form, setForm }) {
         <div style={{ marginTop: 14, padding: 12, borderRadius: 16, border: "1px solid #2b2b2b", background: "#0b0b0b" }}>
           <p style={{ margin: 0, color: "#eaeaea", fontWeight: 900 }}>¿Cómo lo calculamos?</p>
           <p style={{ margin: "8px 0 0", color: "#bdbdbd", fontSize: 13, lineHeight: 1.45 }}>
-            Usamos la misma calculadora segura de ZumaFit: promedio de Mifflin-St Jeor y Harris-Benedict,
+            Usamos Harris-Benedict revisada con tus datos corporales y nivel de actividad,
             aplicado a tu factor de actividad.
           </p>
         </div>

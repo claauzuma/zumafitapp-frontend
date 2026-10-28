@@ -73,10 +73,26 @@ body{ background:#020507; }
   align-content:start;
   gap:clamp(24px,4vw,42px);
   overflow:hidden;
+  animation:lw-shell-in .55s cubic-bezier(.22,1,.36,1) both;
 }
 .lw-shell > *{
   position:relative;
   z-index:1;
+  min-width:0;
+}
+.lw-brand{ animation:lw-rise .45s .05s cubic-bezier(.22,1,.36,1) both; }
+.lw-copy{ animation:lw-rise .5s .1s cubic-bezier(.22,1,.36,1) both; }
+.lw-benefits{ animation:lw-rise .5s .16s cubic-bezier(.22,1,.36,1) both; }
+.lw-value{ animation:lw-rise .5s .2s cubic-bezier(.22,1,.36,1) both; }
+.lw-actions{ animation:lw-rise .5s .24s cubic-bezier(.22,1,.36,1) both; }
+.lw-trust{ animation:lw-rise .5s .28s cubic-bezier(.22,1,.36,1) both; }
+@keyframes lw-shell-in{
+  from{ opacity:0; transform:scale(.992); }
+  to{ opacity:1; transform:scale(1); }
+}
+@keyframes lw-rise{
+  from{ opacity:0; transform:translate3d(0,10px,0); }
+  to{ opacity:1; transform:translate3d(0,0,0); }
 }
 .lw-brand{
   width:max-content;
@@ -141,6 +157,7 @@ body{ background:#020507; }
   gap:10px;
   text-align:center;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  transition:transform .18s ease, border-color .18s ease, background-color .18s ease;
 }
 .lw-benefit svg{ color:var(--auth-gold); filter:drop-shadow(0 8px 24px rgba(244,197,66,.18)); }
 .lw-benefit strong{ font-size:18px; font-weight:1000; }
@@ -185,6 +202,7 @@ body{ background:#020507; }
   transition:transform .16s ease, border-color .16s ease, filter .16s ease;
 }
 .lw-btn:hover{ transform:translateY(-1px); filter:brightness(1.04); }
+.lw-btn:active{ transform:scale(.985); }
 .lw-btnPrimary{
   color:#080807;
   background:linear-gradient(135deg,#ffc414,#ffe47a 55%,#f1b915);
@@ -287,7 +305,7 @@ body{ background:#020507; }
 @media (max-width: 560px){
   .lw-hero{
     min-height:100svh;
-    padding:8px;
+    padding:max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
     background:
       radial-gradient(circle at 70% 10%, rgba(255,198,49,.10), transparent 26%),
       linear-gradient(180deg,#020507,#020507);
@@ -295,8 +313,8 @@ body{ background:#020507; }
   .lw-shell{
     min-height:0;
     border-radius:22px;
-    padding:14px;
-    gap:12px;
+    padding:16px;
+    gap:14px;
     background:
       linear-gradient(180deg, rgba(3,8,13,.14), rgba(3,8,13,.72) 72%, rgba(3,8,13,.98)),
       radial-gradient(circle at 12% 25%, rgba(244,197,66,.08), transparent 30%);
@@ -332,6 +350,7 @@ body{ background:#020507; }
     font-size:clamp(38px,11.8vw,50px);
     line-height:.94;
     letter-spacing:-.045em;
+    overflow-wrap:anywhere;
   }
   .lw-sub{
     max-width:270px;
@@ -341,19 +360,20 @@ body{ background:#020507; }
     font-weight:650;
   }
   .lw-benefits{
-    grid-template-columns:repeat(5,minmax(0,1fr));
-    gap:5px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
   }
   .lw-benefit{
-    min-height:78px;
-    padding:7px 3px 6px;
-    border-radius:10px;
-    gap:5px;
+    min-width:0;
+    min-height:82px;
+    padding:9px 7px 8px;
+    border-radius:13px;
+    gap:6px;
   }
-  .lw-benefit:last-child{ grid-column:auto; }
-  .lw-benefit svg{ width:23px; height:23px; }
-  .lw-benefit strong{ font-size:10px; line-height:1.05; }
-  .lw-benefit span{ font-size:8px; line-height:1.15; }
+  .lw-benefit:last-child{ grid-column:1/-1; }
+  .lw-benefit svg{ width:24px; height:24px; }
+  .lw-benefit strong{ font-size:12px; line-height:1.05; }
+  .lw-benefit span{ font-size:10px; line-height:1.2; }
   .lw-benefitFull{ display:none; }
   .lw-benefitShort{ display:inline; }
   .lw-value{
@@ -369,6 +389,8 @@ body{ background:#020507; }
   .lw-value p{ margin-top:4px; font-size:11px; line-height:1.35; }
   .lw-actions{ gap:10px; }
   .lw-btn{
+    width:100%;
+    min-width:0;
     min-height:54px;
     border-radius:13px;
     padding:0 13px;
@@ -380,6 +402,9 @@ body{ background:#020507; }
   .lw-trust strong{ font-size:11px; }
   .lw-trust span{ font-size:10px; }
   .lw-trust svg{ width:19px; height:19px; }
+  .lw-trust > div{ min-width:0; }
+  .lw-trust strong,
+  .lw-trust span{ white-space:normal; overflow-wrap:anywhere; }
 }
 @media (max-width: 360px){
   .lw-shell{ padding:12px; gap:10px; }
@@ -393,7 +418,7 @@ body{ background:#020507; }
   .lw-benefit{ min-height:70px; }
   .lw-benefit svg{ width:20px; height:20px; }
   .lw-benefit strong{ font-size:9px; }
-  .lw-benefit span{ display:none; }
+  .lw-benefit > span{ display:block; }
   .lw-value{ min-height:76px; padding:10px; }
   .lw-valueIcon{ width:46px; height:46px; }
   .lw-value h2{ font-size:14px; }

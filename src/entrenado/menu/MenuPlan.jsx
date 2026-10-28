@@ -160,6 +160,7 @@ import {
   reopenPersonalMealTargetConsumption,
   replacePersonalMealTargetConfigs,
   resolvePersonalMealTargetRemovals,
+  updateCoachMealTargetExecution,
 } from "./quickMealTargetPlan.js";
 import {
   buildNativeMealTargetDrawerContext,
@@ -1194,6 +1195,11 @@ function hasConfiguredTarget(row = {}) {
 
 function plannedMealTargets(row = {}, trackingDay = null) {
   const plan = row?.mealTargetPlan;
+  const executionConfigs = new Map(
+    (Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [])
+      .filter((config) => config?.coachTargetExecution === true)
+      .map((config) => [String(config.mealId || config.id || ""), config])
+  );
   const coachTargets = plan?.mode === "per_meal" && Array.isArray(plan.meals)
     ? plan.meals.map((meal, index) => ({
     id: String(meal.id || `planned-meal-${index + 1}`),
@@ -1215,7 +1221,20 @@ function plannedMealTargets(row = {}, trackingDay = null) {
     },
     foods: [],
     coachTargetOnly: true,
-  }))
+  })).map((meal) => {
+    const execution = executionConfigs.get(String(meal.id));
+    if (!execution) return meal;
+    const executionTarget = totalFromLike(execution.meta || execution.target || {});
+    return {
+      ...meal,
+      target: executionTarget,
+      totals: executionTarget,
+      metaConfirmed: execution.metaConfirmed === true,
+      metaConfirmation: execution.metaConfirmation || null,
+      coachTargetExecution: true,
+      consumptionSourceMealIds: execution.consumptionSourceMealIds || [meal.id],
+    };
+  })
     : [];
   const knownIds = new Set(coachTargets.map((meal) => String(meal.id)));
   const personalTargets = personalMealTargetsFromTrackingDay(trackingDay)
@@ -3074,6 +3093,7 @@ const [
   quickTrackingDestination,
   setQuickTrackingDestination,
 ] = useState("picoteo");
+const [quickTrackingDestinationLocked, setQuickTrackingDestinationLocked] = useState(false);
 
 
 /* PLANIFICAR COMIDA */
@@ -3202,6 +3222,28 @@ async function loadWeek(start = weekStart, options = {}) {
     loadWeek(weekStart);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
+
+  useEffect(() => {
+    let lastRefreshAt = 0;
+    const refreshVisibleWeek = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastRefreshAt < 1000) return;
+      lastRefreshAt = now;
+      void loadWeek(weekStart, { silent: true }).catch(() => {});
+    };
+
+    window.addEventListener("focus", refreshVisibleWeek);
+    window.addEventListener("pageshow", refreshVisibleWeek);
+    document.addEventListener("visibilitychange", refreshVisibleWeek);
+    return () => {
+      window.removeEventListener("focus", refreshVisibleWeek);
+      window.removeEventListener("pageshow", refreshVisibleWeek);
+      document.removeEventListener("visibilitychange", refreshVisibleWeek);
+    };
+    // Revalida asignaciones del coach al volver a la pestaña del cliente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart, selectedDate, menuCacheOwner]);
 
   useEffect(() => {
     const previousContext = dateContextRef.current;
@@ -3470,15 +3512,25 @@ const quickPlanMealCalculation = calculateLockedMealMacros({
 
   const resolvedCapabilities = capabilitiesQuery.data || {};
   const quickActionAccess = resolveAutonomousMenuActions(resolvedCapabilities);
+  const coachOwnActivationBlocked =
+    menuSourceMeta(activePlanSource).key === "coach" &&
+    resolvedCapabilities.canActivateOwnMenuOverCoachPlan !== true;
   const canUseAutonomousLibrary = quickActionAccess.library;
-  const canCreateAutonomousMenu = quickActionAccess.create;
-  const canGenerateAutonomousMenu = quickActionAccess.automatic;
-  const canEditAutonomousSettings = quickActionAccess.settings;
-  const showAutonomousQuickActions = Boolean(capabilitiesQuery.data) && quickActionAccess.visible;
+  const canCreateAutonomousMenu = quickActionAccess.create && !coachOwnActivationBlocked;
+  const canGenerateAutonomousMenu = quickActionAccess.automatic && !coachOwnActivationBlocked;
+  const canEditAutonomousSettings = quickActionAccess.settings && !coachOwnActivationBlocked;
+  const showAutonomousQuickActions = Boolean(capabilitiesQuery.data) && (
+    canUseAutonomousLibrary ||
+    canCreateAutonomousMenu ||
+    canGenerateAutonomousMenu ||
+    canEditAutonomousSettings
+  );
   const canCreatePersonalMealTarget =
-    resolvedCapabilities.canTrack !== false &&
-    permissions.canCreateMealTargets !== false &&
-    permissions.canCreateTrackingMealTargets !== false;
+    resolvedCapabilities.canTrack === true &&
+    resolvedCapabilities.canUseMealTargets === true &&
+    resolvedCapabilities.primaryAuthority !== "coach" &&
+    permissions.canCreateMealTargets === true &&
+    permissions.canCreateTrackingMealTargets === true;
 
 
 
@@ -3528,11 +3580,13 @@ function openQuickCreateMenu() {
 
 
 function openQuickTracking(
-  destinationKey = "picoteo"
+  destinationKey = "picoteo",
+  options = {}
 ) {
   setQuickTrackingDestination(
     destinationKey || "picoteo"
   );
+  setQuickTrackingDestinationLocked(options?.lockDestination === true);
 
   setQuickTrackingOpen(true);
 }
@@ -4664,13 +4718,19 @@ async function adjustPersonalTargetsToCurrentTracking() {
 }
 
 async function togglePersonalTargetConfirmed(meal) {
-  const date = selectedQuickDate;
-  if (!date || !meal?.id || saving) return;
+  const date = selectedQuickDate || selectedDisplayRow?.date || selectedRow?.date;
+  const selectedMealId = String(meal?.id || meal?.mealId || "").trim();
+  if (!date || !selectedMealId) {
+    const message = "No pudimos identificar la fecha o la comida que querés confirmar.";
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3600);
+    return { ok: false, error: message };
+  }
   setSaving(true);
   try {
     const trackingDay = await getTrackingDay(date);
     const currentMeals = personalMealTargetsFromTrackingDay(trackingDay);
-    const currentMeal = currentMeals.find((entry) => String(entry.id) === String(meal.id));
+    const currentMeal = currentMeals.find((entry) => String(entry.id) === selectedMealId);
     if (!currentMeal) throw new Error("No encontramos la comida que querés actualizar.");
     const nonTargetTracking = generationTrackingBreakdown(trackingDay, {
       excludedMealIds: currentMeals.map((entry) => entry.id),
@@ -4699,8 +4759,27 @@ async function togglePersonalTargetConfirmed(meal) {
       : confirmPersonalMealTargetConsumption(sharedOptions);
     const mealsConfig = confirmation.mealsConfig;
 
-    await updateTrackingMealsConfig({ date, mealsConfig });
-    const savedMeals = personalMealTargetsFromTrackingDay({ mealsConfig });
+    const updatedTrackingDay = await updateTrackingMealsConfig({ date, mealsConfig });
+    const savedMeals = personalMealTargetsFromTrackingDay(updatedTrackingDay);
+    const savedMeal = savedMeals.find((entry) => String(entry.id) === String(currentMeal.id));
+    const expectedMeal = personalMealTargetsFromTrackingDay({ mealsConfig })
+      .find((entry) => String(entry.id) === String(currentMeal.id));
+    const persistedTarget = savedMeal?.target || {};
+    const expectedTarget = expectedMeal?.target || {};
+    const targetWasPersisted = ["kcal", "proteina", "carbs", "grasas"].every((key) => (
+      Math.abs((Number(persistedTarget[key]) || 0) - (Number(expectedTarget[key]) || 0)) < 0.11
+    ));
+    const confirmationWasPersisted = reopening
+      ? savedMeal?.manualConsumptionConfirmed !== true
+      : savedMeal?.manualConsumptionConfirmed === true;
+    if (!savedMeal || !targetWasPersisted || !confirmationWasPersisted) {
+      throw new Error("El servidor no guardó el cierre de la comida. Actualizá el backend e intentá nuevamente.");
+    }
+
+    // La respuesta del PATCH ya es el snapshot canónico. Aplicarla de inmediato
+    // evita que un refetch simultáneo vuelva a pintar por unos instantes la meta
+    // anterior y hace visible el cierre antes de refrescar el resumen semanal.
+    queryClient.setQueryData(queryKeys.trackingDay(date), updatedTrackingDay);
     if (quickSettings.targetPlanDate === date) {
       const saved = saveMenuGenerationSettings(currentUser, {
         ...quickSettings,
@@ -4710,19 +4789,80 @@ async function togglePersonalTargetConfirmed(meal) {
       });
       setQuickSettings(saved);
     }
-    await Promise.all([
-      selectedTrackingQuery.refetch(),
-      loadWeek(weekStart, { silent: true }),
-    ]);
+    await loadWeek(weekStart, { silent: true });
     setToast(!reopening
       ? confirmation?.reconciliation?.hasResidual
         ? `${meal.name || "Meta"} cerrada con tu consumo. Quedó una diferencia diaria no compensable.`
         : `${meal.name || "Meta"} marcada como hecha y metas pendientes redistribuidas.`
       : `${meal.name || "Meta"} reabierta con su meta anterior.`);
     window.setTimeout(() => setToast(""), 2800);
+    return { ok: true };
   } catch (confirmationError) {
-    setToast(confirmationError?.message || "No pudimos actualizar el estado de la comida.");
+    const message = confirmationError?.message || "No pudimos actualizar el estado de la comida.";
+    setToast(message);
     window.setTimeout(() => setToast(""), 3600);
+    return { ok: false, error: message };
+  } finally {
+    setSaving(false);
+  }
+}
+
+async function toggleCoachTargetConfirmed(meal, row = selectedDisplayRow) {
+  const date = row?.date || selectedQuickDate || selectedRow?.date;
+  const selectedMealId = String(meal?.id || meal?.mealId || "").trim();
+  if (!date || !selectedMealId) {
+    const message = "No pudimos identificar la fecha o la comida asignada.";
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3600);
+    return { ok: false, error: message };
+  }
+
+  setSaving(true);
+  try {
+    const trackingDay = await getTrackingDay(date);
+    const coachMeals = plannedMealTargets(row, trackingDay)
+      .filter((entry) => entry.coachTargetOnly === true);
+    const currentMeal = coachMeals.find((entry) => String(entry.id) === selectedMealId);
+    if (!currentMeal) throw new Error("No encontramos la meta asignada por tu coach.");
+    const reopening = currentMeal.metaConfirmed === true
+      && currentMeal.metaConfirmation?.mode === "manual_consumption";
+    const execution = updateCoachMealTargetExecution({
+      trackingDay,
+      coachMeals,
+      mealId: selectedMealId,
+      reopen: reopening,
+    });
+    const updatedTrackingDay = await updateTrackingMealsConfig({
+      date,
+      mealsConfig: execution.mealsConfig,
+    });
+    const persistedConfig = (updatedTrackingDay?.mealsConfig || [])
+      .find((config) => String(config?.mealId || config?.id || "") === selectedMealId);
+    const persisted = persistedConfig?.coachTargetExecution === true && (
+      reopening
+        ? persistedConfig.metaConfirmed !== true
+        : persistedConfig.metaConfirmed === true
+    );
+    if (!persisted) {
+      throw new Error("El servidor no guardÃ³ el cierre de la comida. ActualizÃ¡ el backend e intentÃ¡ nuevamente.");
+    }
+
+    queryClient.setQueryData(queryKeys.trackingDay(date), updatedTrackingDay);
+    await loadWeek(weekStart, { silent: true });
+    const hasResidual = Object.values(execution.residual || {})
+      .some((value) => Math.abs(Number(value) || 0) > 0.11);
+    setToast(reopening
+      ? `${meal.name || "Meta"} reabierta. La planificaciÃ³n restante fue recalculada.`
+      : hasResidual
+        ? `${meal.name || "Meta"} cerrada. La diferencia no pudo compensarse por completo.`
+        : `${meal.name || "Meta"} cerrada y lo restante se redistribuyÃ³.`);
+    window.setTimeout(() => setToast(""), 3200);
+    return { ok: true };
+  } catch (confirmationError) {
+    const message = confirmationError?.message || "No pudimos actualizar la comida asignada.";
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3600);
+    return { ok: false, error: message };
   } finally {
     setSaving(false);
   }
@@ -5199,6 +5339,7 @@ onAutomatic: () => {
     onEditPersonalTargetDay: openPersonalTargetDayEditor,
     onUpdatePersonalTargetDay: savePersonalTargetDayEdits,
     onTogglePersonalTargetConfirmed: togglePersonalTargetConfirmed,
+    onToggleCoachTargetConfirmed: toggleCoachTargetConfirmed,
     personalTargetReconciliation: visiblePersonalTargetReconciliation,
     onMaintainPersonalTargetPlanning: () => setDismissedReconciliationSignature(
       selectedPersonalTargetReconciliation?.signature || ""
@@ -5912,7 +6053,7 @@ if (payload.action === "native_target_complete") {
     const baseDate = selectedRow?.date || todayRow?.date || todayIso();
     const nextDate = addDays(baseDate, amount);
     if (!canNavigateToMenuDate(nextDate)) {
-      setToast(`Tu plan permite consultar los últimos ${trackingHistoryDays} días de historial.`);
+      setToast(`Solo se conserva el detalle de los últimos ${trackingHistoryDays} días.`);
       window.setTimeout(() => setToast(""), 2800);
       return;
     }
@@ -7027,9 +7168,11 @@ async function setMealTargetMode({
   initialDestinationKey={
     quickTrackingDestination
   }
+  destinationLocked={quickTrackingDestinationLocked}
   destinations={selectedQuickTrackingDestinations}
   onClose={() => {
     setQuickTrackingOpen(false);
+    setQuickTrackingDestinationLocked(false);
   }}
   onSaved={() => {
     setToast(
@@ -9311,7 +9454,9 @@ function MobileDayMenu({
 
   onToggleTargetConfirmed={meal.personalTargetOnly
     ? () => autonomousActions?.onTogglePersonalTargetConfirmed?.(meal)
-    : null}
+    : meal.coachTargetOnly
+      ? () => autonomousActions?.onToggleCoachTargetConfirmed?.(meal, displayRow)
+      : null}
 
   onSettings={() =>
     onOpenMeal({
@@ -9523,32 +9668,18 @@ onGenerate={(completionContext = {}) =>
 function WeeklyBalanceNotice({ balance = null }) {
   if (!balance?.active) return null;
   const kcal = Number(balance.calorieCarry) || 0;
-  const hasAdjustment = Math.abs(kcal) > 0.5;
+  if (Math.abs(kcal) <= 0.5) return null;
   const signed = (value, suffix) => Math.abs(value) < 0.05
     ? `0 ${suffix}`
     : `${value > 0 ? "+" : "-"}${formatNumber(Math.abs(value), 0)} ${suffix}`;
   return (
-    <aside className="mt-2 overflow-hidden rounded-[1.05rem] border border-amber-300/25 bg-[radial-gradient(circle_at_95%_0,rgba(250,204,21,.14),transparent_38%),linear-gradient(145deg,rgba(18,25,27,.98),rgba(7,13,17,.98))] shadow-[0_10px_24px_rgba(0,0,0,.22)]">
-      <div className="flex items-start gap-2.5 p-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-300/25 bg-amber-300/10 text-amber-200"><CalendarDays size={17} /></span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-[12px] font-black text-white">Balance semanal</strong>
-            <span className="rounded-full border border-amber-300/20 bg-amber-300/[.08] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-amber-200">{balance.isClosingDay ? "Cierre domingo" : "Cierra el domingo"}</span>
-          </div>
-          <p className="mt-1 text-[10px] font-bold leading-relaxed text-zinc-400">
-            {hasAdjustment ? "Tu meta de hoy ya incluye lo pendiente de los dias registrados." : "Estas al dia: hoy no hay ajustes pendientes."}
-          </p>
-          <span className="mt-1 block text-[9px] font-bold text-zinc-500">Meta base del dia: {displayKcal(balance?.baseTarget?.kcal)}</span>
-          {hasAdjustment ? (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <span className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2"><small className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">Ajuste calorico</small><b className={`mt-0.5 block text-sm font-black ${kcal < 0 ? "text-rose-300" : "text-amber-200"}`}>{signed(kcal, "kcal")}</b></span>
-              <span className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2"><small className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">Proteina diaria</small><b className="mt-0.5 block text-sm font-black text-sky-200">{formatNumber(balance?.baseTarget?.p, 0)} g</b></span>
-            </div>
-          ) : null}
-          <span className="mt-2 block text-[9px] font-semibold text-zinc-500">Solo se compensan calorias · La proteina no genera deuda · Sin tracking no se acumula nada</span>
-        </div>
+    <aside className="mt-2 flex items-center gap-2.5 rounded-[.95rem] border border-amber-300/25 bg-[linear-gradient(145deg,rgba(18,25,27,.98),rgba(7,13,17,.98))] px-2.5 py-2 shadow-[0_8px_20px_rgba(0,0,0,.18)]" role="status">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[.7rem] border border-amber-300/25 bg-amber-300/10 text-amber-200"><CalendarDays size={15} /></span>
+      <div className="min-w-0 flex-1">
+        <strong className="block text-[11px] font-black text-white">Ajuste semanal aplicado</strong>
+        <span className="mt-0.5 block truncate text-[8.5px] font-bold text-zinc-500">Incluido en la meta de hoy · {balance.isClosingDay ? "Cierra hoy" : "Cierra el domingo"}</span>
       </div>
+      <strong className={`shrink-0 text-sm font-black tabular-nums ${kcal < 0 ? "text-rose-300" : "text-amber-200"}`}>{signed(kcal, "kcal")}</strong>
     </aside>
   );
 }
@@ -9642,23 +9773,20 @@ function MobileGoalAccordion({
         <span className="grid min-w-0 grid-cols-2 items-center">
           <span className="min-w-0 pr-2.5">
             <span className="block truncate text-[9px] font-black uppercase tracking-[0.08em] text-zinc-400">Meta del día</span>
-            <strong className="mt-0.5 block whitespace-nowrap text-[18px] font-black leading-none text-[#FFD76B]">
+            <strong className="mt-0.5 block whitespace-nowrap text-[20px] font-black leading-none text-[#FFD76B] min-[390px]:text-[21px]">
               {displayKcal(target.kcal)}
             </strong>
-            <span className="mt-1 block truncate text-[9px] font-black leading-none text-sky-200">{macroSummary}</span>
+            <span className="mt-1.5 block truncate text-[9.5px] font-black leading-none text-sky-200 min-[390px]:text-[10.5px]">{macroSummary}</span>
           </span>
           <span className="min-w-0 border-l border-white/10 pl-2.5 text-right">
             <span className="block truncate text-[9px] font-black uppercase tracking-[0.08em] text-zinc-400">
               {remainingKcalLabel}
             </span>
-            <strong className={`mt-0.5 block whitespace-nowrap text-[18px] font-black leading-none ${remainingKcalTone}`}>
+            <strong className={`mt-0.5 block whitespace-nowrap text-[20px] font-black leading-none min-[390px]:text-[21px] ${remainingKcalTone}`}>
               {displayKcal(remainingKcalValue)}
             </strong>
-            <span className="mt-1 block whitespace-nowrap text-[9px] font-black leading-none text-sky-100">
+            <span className="mt-1.5 block whitespace-nowrap text-[9.5px] font-black leading-none text-sky-100 min-[390px]:text-[10.5px]">
               {remainingMacroSummary}
-            </span>
-            <span className="mt-1 block text-[8px] font-black leading-none text-emerald-300">
-              {isWithinCalorieTolerance ? `Dentro de ±${MEAL_TARGET_KCAL_TOLERANCE} kcal` : `${safePercent}% consumido`}
             </span>
           </span>
         </span>
@@ -9669,9 +9797,8 @@ function MobileGoalAccordion({
         </span>
         <span className="col-start-2 col-end-4 grid min-w-0 gap-1.5 pr-0.5">
           <span className="grid min-w-0 gap-0.5">
-            <span className="flex items-center justify-between gap-2 text-[7.5px] font-black uppercase tracking-[0.08em] text-zinc-500">
+            <span className="flex items-center gap-2 text-[8px] font-black uppercase tracking-[0.08em] text-zinc-500">
               <span>Calorías</span>
-              <span className={isCalorieOver ? "text-rose-300" : "text-zinc-400"}>{displayPercent}%</span>
             </span>
             <span className="h-2 overflow-hidden rounded-full border border-white/10 bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)]">
               <span
@@ -9689,7 +9816,7 @@ function MobileGoalAccordion({
           <span className="grid min-w-0 gap-0.5">
             <span className={`flex items-center justify-between gap-2 text-[7.5px] font-black uppercase tracking-[0.08em] ${isProteinOverLimit ? "text-rose-300" : "text-orange-200"}`}>
               <span>Proteína</span>
-              <span className="normal-case tracking-normal">
+              <span className="text-[9.5px] normal-case tracking-normal min-[390px]:text-[10px]">
                 {isProteinOverLimit
                   ? `Exceso +${formatNumber(proteinOverage, 0)} g`
                   : `${formatNumber(proteinConsumed, 0)} / ${formatNumber(proteinTarget, 0)} g`}
@@ -11032,6 +11159,12 @@ async function deleteTrackingGroup(
   const mealType = String(group.id).toLowerCase() === "picoteo"
     ? "Picoteo"
     : menuTargetMealTypeLabel(normalizeMenuTargetMealType(group.mealType));
+  const previewFoods = group.items.map((item, itemIndex) => ({
+    id: item?.id || item?._id || `${group.id}-${itemIndex}`,
+    name: trackingFoodName(item),
+    imageUrl: trackingFoodImage(item),
+    category: item?.food?.categoria || item?.food?.category || item?.categoria || item?.category || "",
+  }));
 
   return (
     <article
@@ -11078,9 +11211,12 @@ async function deleteTrackingGroup(
                     </span>
                   ) : null}
                 </span>
-                <small className="mt-1 block whitespace-nowrap text-[8px] font-bold text-zinc-400">
-                  {group.items.length} {group.items.length === 1 ? "alimento consumido" : "alimentos consumidos"}
-                </small>
+                <span className="mt-1.5 flex min-w-0 items-center gap-2">
+                  <MobileFoodThumbStack foods={previewFoods} compact maxVisible={3} />
+                  <small className="min-w-0 truncate text-[8.5px] font-bold text-zinc-400">
+                    {group.items.length} {group.items.length === 1 ? "alimento consumido" : "alimentos consumidos"}
+                  </small>
+                </span>
               </div>
             </button>
 
@@ -11093,7 +11229,8 @@ async function deleteTrackingGroup(
 
       autonomousActions
         ?.onTracking?.(
-          group.id
+          group.id,
+          { lockDestination: true }
         );
     }}
     className={`
@@ -11337,7 +11474,7 @@ async function deleteTrackingGroup(
                   className="
                     block
                     truncate
-                    text-[10.5px]
+                    text-[12px]
                     font-black
                     text-zinc-100
                   "
@@ -11352,7 +11489,7 @@ async function deleteTrackingGroup(
                     mt-0.5
                     block
                     truncate
-                    text-[8px]
+                    text-[9px]
                     font-bold
                     text-zinc-500
                   "
@@ -11446,11 +11583,11 @@ async function deleteTrackingGroup(
 
     {/* TOTAL */}
     <footer className="relative z-10 flex items-center justify-between border-t border-white/[0.07] bg-black/15 px-3 py-2">
-      <span className="text-[8px] font-black text-zinc-500">
+      <span className="text-[9px] font-black text-zinc-500">
         Total {group.label.toLowerCase()}
       </span>
 
-      <span className="text-[9px] font-black text-zinc-300">
+      <span className="text-[10px] font-black text-zinc-300">
         P{" "}
         {formatNumber(
           group.totals.proteina,
@@ -12997,12 +13134,12 @@ function MobileMealCard({
 
                         <span className="min-w-0 flex-1">
 
-                          <span className="block truncate text-[12px] font-black text-zinc-100">
+                          <span className="block truncate text-[13px] font-black text-zinc-100">
                             {food.name}
                           </span>
 
                           {macroDetail ? (
-                            <span className="mt-0.5 block truncate text-[11px] font-bold text-zinc-500">
+                            <span className="mt-0.5 block truncate text-[11.5px] font-bold text-zinc-500">
                               {macroDetail}
                             </span>
                           ) : null}
@@ -13248,16 +13385,16 @@ function PersonalTargetNutritionPanel({
           : <Target size={12} className={visual.accent} />}
         <span className="text-[8.5px] font-black uppercase tracking-[.13em] text-zinc-500">{label}</span>
       </div>
-      <strong className={`mt-0.5 block text-[12px] font-black min-[390px]:text-[13px] ${remaining ? hasOverage ? "text-sky-200" : "text-teal-200" : registered ? "text-emerald-200" : visual.accent}`}>
+      <strong className={`mt-1 block text-[13px] font-black min-[390px]:text-[14px] ${remaining ? hasOverage ? "text-sky-200" : "text-teal-200" : registered ? "text-emerald-200" : visual.accent}`}>
         {formatNumber(totals.kcal, 0)} kcal
       </strong>
-      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
+      <div className="mt-1.5 grid min-w-0 grid-cols-3 gap-1 border-t border-white/[0.06] pt-1.5">
         {[
           ["proteina", "P", totals.proteina, "text-teal-200"],
           ["carbs", "C", totals.carbs, "text-sky-200"],
           ["grasas", "G", totals.grasas, "text-amber-200"],
         ].map(([key, macroLabel, value, tone]) => (
-          <span key={macroLabel} className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-black/25 px-1.5 py-0.5 text-[8.5px] font-black text-zinc-300 min-[390px]:text-[9px]">
+          <span key={macroLabel} className="inline-flex min-w-0 items-baseline gap-0.5 whitespace-nowrap text-[8px] font-black tabular-nums text-zinc-300 min-[390px]:text-[9px]">
             <span className={remaining && exceededKeys.has(key) ? "text-sky-300" : tone}>{macroLabel}</span>
             {formatNumber(value, 1)} g
           </span>
@@ -13449,6 +13586,21 @@ function PlannedMealTargetCard({
   const exceeded =
     trackedTotals.kcal >
     target.kcal + 0.5;
+  const consumedCaloriePercent = target.kcal > 0
+    ? Math.max(0, Math.min(100, (trackedTotals.kcal / target.kcal) * 100))
+    : 0;
+  const trackedPreviewFoods = trackedItems.map((item, itemIndex) => ({
+    id: item?.id || item?._id || `${targetExecution.id}-tracked-${itemIndex}`,
+    name: trackingFoodName(item),
+    imageUrl: trackingFoodImage(item),
+    category: item?.food?.categoria || item?.food?.category || item?.categoria || item?.category || "",
+  }));
+  const collapsedPreviewFoods = hasTrackedItems ? trackedPreviewFoods : plannedFoods;
+  const collapsedPreviewLabel = hasTrackedItems
+    ? `${trackedItems.length} ${trackedItems.length === 1 ? "consumido" : "consumidos"}`
+    : hasPendingPlannedComposition
+      ? `${plannedFoods.length} ${plannedFoods.length === 1 ? "planificado" : "planificados"}`
+      : "Sin consumo";
 
   const statusLabel = completionState.manualStale
     ? "Revisar cierre"
@@ -13797,6 +13949,36 @@ function PlannedMealTargetCard({
 
       </div>
 
+      {!expanded ? (
+        <div className="mx-3 mb-2.5 rounded-xl border border-white/[0.07] bg-black/20 px-2.5 py-2" aria-label={`Progreso consumido de ${mealName(meal, mealIndex)}`}>
+          <div className="flex min-w-0 items-center gap-2">
+            {collapsedPreviewFoods.length ? (
+              <MobileFoodThumbStack foods={collapsedPreviewFoods} compact maxVisible={4} />
+            ) : (
+              <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.035] text-zinc-600">
+                <Utensils size={13} aria-hidden="true" />
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className={`truncate text-[8.5px] font-black ${hasTrackedItems ? "text-emerald-200" : hasPendingPlannedComposition ? "text-sky-200" : "text-zinc-500"}`}>
+                  {collapsedPreviewLabel}
+                </span>
+                <strong className={`shrink-0 text-[9px] font-black tabular-nums ${exceeded ? "text-rose-300" : hasTrackedItems ? "text-zinc-200" : "text-zinc-500"}`}>
+                  {formatNumber(trackedTotals.kcal, 0)} / {formatNumber(target.kcal, 0)} kcal
+                </strong>
+              </span>
+              <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-white/[0.07] shadow-[inset_0_1px_2px_rgba(0,0,0,.7)]">
+                <span
+                  className={`block h-full rounded-full transition-[width] duration-500 ${exceeded ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300" : targetVisual.progress}`}
+                  style={{ width: `${consumedCaloriePercent}%` }}
+                />
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {!expanded && mealCompleted ? (
         <div
           className="mx-3 mb-3 grid gap-2"
@@ -13895,8 +14077,8 @@ function PlannedMealTargetCard({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[11px] font-black text-white">{food.name}</strong>
-                      <span className="mt-0.5 block truncate text-[8.5px] font-bold text-zinc-500">{foodMacroLine(food)}</span>
+                      <strong className="block truncate text-[12px] font-black text-white">{food.name}</strong>
+                      <span className="mt-0.5 block truncate text-[9.5px] font-bold text-zinc-500">{foodMacroLine(food)}</span>
                     </span>
                     <span className="shrink-0 rounded-full border border-sky-300/20 bg-sky-300/[0.08] px-2 py-1 text-[9px] font-black text-sky-100">
                       {food.amount || foodAmount(food.cantidad, food.unidad)}
@@ -14075,7 +14257,7 @@ function PlannedMealTargetCard({
                           className="
                             min-w-0
                             truncate
-                            text-[12px]
+                            text-[13px]
                             font-black
                             text-white
                           "
@@ -14120,7 +14302,7 @@ function PlannedMealTargetCard({
                       <p
                         className="
                           mt-1
-                          text-[9px]
+                          text-[10px]
                           font-bold
                           leading-relaxed
                           text-zinc-400
@@ -14490,9 +14672,13 @@ onClick={() => {
           visual={targetVisual}
           saving={disabled}
           onCancel={() => setConfirmationOpen(false)}
-          onConfirm={() => {
-            setConfirmationOpen(false);
-            onToggleTargetConfirmed?.();
+          onConfirm={async () => {
+            if (typeof onToggleTargetConfirmed !== "function") {
+              return { ok: false, error: "No se pudo iniciar la confirmación de esta comida." };
+            }
+            const result = await onToggleTargetConfirmed();
+            if (result?.ok === true || result === true) setConfirmationOpen(false);
+            return result;
           }}
         />
       ) : null}
@@ -14610,6 +14796,24 @@ function PersonalTargetConfirmationModal({
   onCancel,
   onConfirm,
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const [confirmationError, setConfirmationError] = useState("");
+  const busy = saving || confirming;
+  async function handleConfirm() {
+    if (busy) return;
+    setConfirmationError("");
+    setConfirming(true);
+    try {
+      const result = await onConfirm?.();
+      if (result?.ok !== true && result !== true) {
+        setConfirmationError(result?.error || "No se pudo confirmar la comida. Intentá nuevamente.");
+      }
+    } catch (error) {
+      setConfirmationError(error?.message || "No se pudo confirmar la comida. Intentá nuevamente.");
+    } finally {
+      setConfirming(false);
+    }
+  }
   const proteinCopy = review.proteinStatus === "below"
     ? `Te faltan ${formatNumber(Math.abs(review.proteinDifference), 1)} g de proteína para alcanzar la meta original.`
     : review.proteinStatus === "exceeded"
@@ -14618,7 +14822,7 @@ function PersonalTargetConfirmationModal({
   const releasedKcal = Number(review?.difference?.kcal) || 0;
 
   return (
-    <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-personal-target-title" onClick={onCancel}>
+    <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-personal-target-title" onClick={busy ? undefined : onCancel}>
       <div className="w-full max-w-md rounded-t-[1.6rem] border border-white/10 bg-[radial-gradient(circle_at_100%_0,rgba(45,212,191,.10),transparent_34%),linear-gradient(160deg,#101923,#071018)] p-4 shadow-[0_28px_90px_rgba(0,0,0,.65)] sm:rounded-[1.6rem]" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-slate-600/60 sm:hidden" />
         <div className="flex items-start justify-between gap-3">
@@ -14630,7 +14834,7 @@ function PersonalTargetConfirmationModal({
               Vas a cerrar esta meta con el consumo registrado hasta ahora.
             </p>
           </div>
-          <button type="button" onClick={onCancel} disabled={saving} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-zinc-300 disabled:opacity-50" aria-label="Cerrar confirmación">
+          <button type="button" onClick={onCancel} disabled={busy} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-zinc-300 disabled:opacity-50" aria-label="Cerrar confirmación">
             <X size={18} />
           </button>
         </div>
@@ -14680,12 +14884,20 @@ function PersonalTargetConfirmationModal({
           </div>
         </div>
 
+        {confirmationError ? (
+          <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-rose-300/30 bg-rose-300/[0.09] px-3 py-3 text-rose-100" role="alert">
+            <CircleAlert size={17} className="mt-0.5 shrink-0" />
+            <p className="text-[11px] font-black leading-relaxed">{confirmationError}</p>
+          </div>
+        ) : null}
+
         <div className="mt-5 grid grid-cols-2 gap-2">
-          <button type="button" onClick={onCancel} disabled={saving} className="min-h-12 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-xs font-black text-zinc-200 disabled:opacity-50">
+          <button type="button" onClick={onCancel} disabled={busy} className="min-h-12 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-xs font-black text-zinc-200 disabled:opacity-50">
             Seguir editando
           </button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="min-h-12 rounded-xl border border-emerald-200/40 bg-[linear-gradient(110deg,#2de0b2,#66f0d5)] px-3 text-xs font-black text-[#041d19] shadow-[0_8px_26px_rgba(45,224,178,.20)] disabled:opacity-50">
-            Confirmar comida
+          <button type="button" onClick={handleConfirm} disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-200/40 bg-[linear-gradient(110deg,#2de0b2,#66f0d5)] px-3 text-xs font-black text-[#041d19] shadow-[0_8px_26px_rgba(45,224,178,.20)] disabled:opacity-50">
+            {busy ? <RefreshCw size={14} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
+            {busy ? "Guardando..." : "Confirmar comida"}
           </button>
         </div>
       </div>
@@ -14893,9 +15105,9 @@ function MobileFoodPreviewLine({ foods = [] }) {
   return (
     <span className="grid min-w-0 gap-[3px]">
       {foods.map((food, index) => (
-        <span key={`${food.id}-${index}`} className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold leading-tight text-zinc-400">
+        <span key={`${food.id}-${index}`} className="flex min-w-0 items-center gap-1.5 text-[12px] font-bold leading-tight text-zinc-400">
           <span className="min-w-0 truncate">{food.name}</span>
-          {food.amount ? <span className="shrink-0 text-[10.5px] font-black text-[#FFE8A3]/95">{food.amount}</span> : null}
+          {food.amount ? <span className="shrink-0 text-[11px] font-black text-[#FFE8A3]/95">{food.amount}</span> : null}
         </span>
       ))}
     </span>
@@ -16113,7 +16325,9 @@ function DayDetail({
                   : null}
                 onToggleTargetConfirmed={meal.personalTargetOnly
                   ? () => autonomousActions?.onTogglePersonalTargetConfirmed?.(meal)
-                  : null}
+                  : meal.coachTargetOnly
+                    ? () => autonomousActions?.onToggleCoachTargetConfirmed?.(meal, row)
+                    : null}
                 onGenerate={(completionContext = {}) => onOpenMeal({
                   row,
                   meal,

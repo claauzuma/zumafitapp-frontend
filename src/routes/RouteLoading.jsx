@@ -1,20 +1,10 @@
 import React from "react";
 
+import FullPageLoader from "../FullPageLoader.jsx";
 import "./routeLoading.css";
 
 export function RouteLoadingFallback({ label = "Cargando seccion..." }) {
-  return (
-    <div className="route-loading" role="status" aria-live="polite" aria-busy="true">
-      <div className="route-loading-card">
-        <span className="route-loading-mark">Z</span>
-        <div>
-          <strong>{label}</strong>
-          <span>Preparando ZumaFit</span>
-        </div>
-        <i aria-hidden="true" />
-      </div>
-    </div>
-  );
+  return <FullPageLoader title={label} sub="Preparando ZumaFit." variant="contained" />;
 }
 
 export class RouteChunkErrorBoundary extends React.Component {

@@ -1,22 +1,36 @@
 // src/FullPageLoader.jsx
 import React from "react";
 
-export default function FullPageLoader({ title = "Cargando…", sub = "Preparando tu panel." }) {
+export function LoadingCard({ title = "Cargando...", sub = "Preparando tu panel." }) {
   return (
-    <div className="zl-wrap" role="status" aria-live="polite" aria-busy="true">
-      <style>{CSS}</style>
-
-      <div className="zl-card">
-        <div className="zl-glow" />
-        <div className="zl-row">
-          <div className="zl-spin" />
-          <div>
-            <p className="zl-title">{title}</p>
-            <p className="zl-sub">{sub}</p>
-          </div>
+    <div className="zl-card">
+      <div className="zl-glow" />
+      <div className="zl-row">
+        <div className="zl-spin" aria-hidden="true" />
+        <div>
+          <p className="zl-title">{title}</p>
+          <p className="zl-sub">{sub}</p>
         </div>
-        <div className="zl-shimmer" />
       </div>
+      <div className="zl-shimmer" aria-hidden="true" />
+    </div>
+  );
+}
+
+export default function FullPageLoader({
+  title = "Cargando...",
+  sub = "Preparando tu panel.",
+  variant = "page",
+}) {
+  return (
+    <div
+      className={`zl-wrap zl-${variant}`}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <style>{CSS}</style>
+      <LoadingCard title={title} sub={sub} />
     </div>
   );
 }
@@ -37,6 +51,18 @@ const CSS = `
   justify-content:center;
   padding:18px;
   color:var(--fg);
+}
+.zl-contained{
+  min-height:min(360px,70vh);
+  background:transparent;
+}
+.zl-overlay{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  min-height:100dvh;
+  background:rgba(2,5,8,.74);
+  backdrop-filter:blur(8px) saturate(140%);
 }
 .zl-card{
   width:min(520px, 100%);

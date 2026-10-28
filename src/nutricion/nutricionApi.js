@@ -1,8 +1,49 @@
 import { apiFetch } from "../Api.js";
+import { getCachedToken } from "../authCache.js";
 import { buildFoodIndex, filterFoods, filterMeals, normalizeFood, normalizeMeal } from "./nutricionUtils.js";
+
+const CUSTOM_FOODS_CACHE_MS = 60 * 1000;
+let customFoodsCache = { token: null, expiresAt: 0, items: [] };
+let customFoodsRequest = null;
+let customFoodsRevision = 0;
+
+function invalidateCustomFoodsCache() {
+  customFoodsRevision += 1;
+  customFoodsCache = { token: null, expiresAt: 0, items: [] };
+  customFoodsRequest = null;
+}
+
+async function visibleCustomFoods() {
+  const token = getCachedToken();
+  if (!token) return [];
+  if (customFoodsCache.token === token && Date.now() < customFoodsCache.expiresAt) {
+    return customFoodsCache.items;
+  }
+  if (customFoodsRequest?.token === token) return await customFoodsRequest.promise;
+
+  const revision = customFoodsRevision;
+  const promise = apiFetch("/api/alimentos/personalizados", {
+    method: "GET",
+    timeoutMs: 12000,
+  }).then((data) => {
+    const items = Array.isArray(data?.items) ? data.items : [];
+    if (revision === customFoodsRevision) {
+      customFoodsCache = { token, expiresAt: Date.now() + CUSTOM_FOODS_CACHE_MS, items };
+    }
+    return items;
+  }).catch((error) => {
+    if ([401, 403, 404].includes(Number(error?.status))) return [];
+    throw error;
+  }).finally(() => {
+    if (customFoodsRequest?.promise === promise) customFoodsRequest = null;
+  });
+  customFoodsRequest = { token, promise };
+  return await promise;
+}
 
 function alimentosQuery(filters = {}) {
   const params = new URLSearchParams();
+  params.set("view", "compact");
   const search = String(filters.search || filters.q || "").trim();
   const category = String(filters.category || filters.categoria || "").trim();
   const mode = String(filters.mode || filters.generationMode || "").trim().toUpperCase();
@@ -18,16 +59,27 @@ function alimentosQuery(filters = {}) {
 }
 
 export async function listAlimentos(filters = {}) {
-  const data = await apiFetch(`/api/alimentos${alimentosQuery(filters)}`, {
-    method: "GET",
-    timeoutMs: 12000,
-  });
+  const mode = String(filters.mode || filters.generationMode || "").trim().toUpperCase();
+  const includeCustom = filters.includeCustom !== false && (!mode || mode === "EXPLICIT_ONLY");
+  const [data, customItems] = await Promise.all([
+    apiFetch(`/api/alimentos/catalogo${alimentosQuery(filters)}`, {
+      method: "GET",
+      timeoutMs: 12000,
+    }),
+    includeCustom ? visibleCustomFoods() : Promise.resolve([]),
+  ]);
 
-  const foods = Array.isArray(data) ? data.map(normalizeFood) : [];
+  const globalFoods = Array.isArray(data) ? data.map(normalizeFood) : [];
+  const customFoods = customItems.map(normalizeFood);
+  const limit = Number(filters.limit);
+  const foods = filterFoods([...globalFoods, ...customFoods], filters);
+  const visibleFoods = Number.isFinite(limit) && limit > 0
+    ? foods.slice(0, Math.min(Math.trunc(limit), 50))
+    : foods;
   return {
-    alimentos: filterFoods(foods, filters),
-    all: foods,
-    total: foods.length,
+    alimentos: visibleFoods,
+    all: visibleFoods,
+    total: visibleFoods.length,
   };
 }
 
@@ -48,6 +100,7 @@ export async function createCustomFood(payload) {
     body: payload,
     timeoutMs: 12000,
   });
+  invalidateCustomFoodsCache();
   return normalizeFood(data?.alimento || {});
 }
 
@@ -57,14 +110,17 @@ export async function updateCustomFood(foodId, payload) {
     body: payload,
     timeoutMs: 12000,
   });
+  invalidateCustomFoodsCache();
   return normalizeFood(data?.alimento || {});
 }
 
 export async function deleteCustomFood(foodId) {
-  return await apiFetch(`/api/alimentos/personalizados/${foodId}`, {
+  const result = await apiFetch(`/api/alimentos/personalizados/${foodId}`, {
     method: "DELETE",
     timeoutMs: 12000,
   });
+  invalidateCustomFoodsCache();
+  return result;
 }
 
 export async function listComidas(filters = {}, foods = []) {

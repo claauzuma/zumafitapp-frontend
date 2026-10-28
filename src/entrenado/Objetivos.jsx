@@ -741,7 +741,7 @@ export default function Objetivos() {
       }
       if (nutritionMode === "manual" && MACRO_DRAFT_KEYS.has(key)) {
         const kcal = kcalFromDraftMacros(next);
-        if (kcal !== null) return { ...next, kcal: String(kcal) };
+        return { ...next, kcal: kcal === null ? "" : String(kcal) };
       }
       return next;
     });
@@ -1438,8 +1438,8 @@ export default function Objetivos() {
                   >
                     <Target size={18} />
                     <span>
-                      <strong>Recalcular con peso y configuracion actual</strong>
-                      <small>ZumaFit recalcula calorias y macros con tus datos actuales.</small>
+                      <strong>Recalcular objetivo</strong>
+                      <small>Harris-Benedict con tus datos actuales</small>
                     </span>
                   </button>
                   <button
@@ -1449,28 +1449,34 @@ export default function Objetivos() {
                   >
                     <Pencil size={18} />
                     <span>
-                      <strong>Editar macros manualmente</strong>
-                      <small>Proteina, carbohidratos y grasas determinan las calorias.</small>
+                      <strong>Editar macros</strong>
+                      <small>Las calorias se calculan en vivo</small>
                     </span>
                   </button>
                 </div>
 
                 {nutritionMode === "recalculate" ? (
                   <section className="og-recalculationSteps">
+                    <header className="og-recalculationHero">
+                      <span className="og-recalculationHeroIcon"><Target size={19} /></span>
+                      <div>
+                        <small>CALCULO RECOMENDADO</small>
+                        <strong>Harris-Benedict revisada</strong>
+                        <p>Tasa metabolica, actividad y objetivo personal.</p>
+                      </div>
+                      <b>{formatNumber((recalculationStep === "update_data" ? updatedAutomaticTarget : automaticTarget).kcal, " kcal")}</b>
+                    </header>
                     <div className="og-recalculationChoice" role="group" aria-label="Datos para recalcular">
                       <button type="button" className={recalculationStep === "current_data" ? "active" : ""} onClick={() => { setRecalculationStep("current_data"); setConfirmProfileUpdate(false); setProfilePreviewOnly(false); }}>Usar datos actuales</button>
                       <button type="button" className={recalculationStep === "update_data" ? "active" : ""} onClick={() => { setRecalculationStep("update_data"); setProfilePreviewOnly(false); }}>Actualizar datos</button>
                     </div>
                     <div className="og-currentData">
                       <span>Peso <strong>{formatNumber(currentProfileData.weightKg, " kg")}</strong></span>
-                      <span>Fecha <strong>{currentProfileData.date}</strong></span>
                       <span>Altura <strong>{formatNumber(currentProfileData.heightCm, " cm")}</strong></span>
                       <span>Edad <strong>{formatNumber(automaticTarget.usedData?.age, " anos")}</strong></span>
                       <span>Sexo <strong>{currentProfileData.gender || "Sin definir"}</strong></span>
                       <span>Actividad <strong>{currentProfileData.activity || "Sin definir"}</strong></span>
                       <span>Objetivo <strong>{goalLabel(currentProfileData.goalType)}</strong></span>
-                      <span>Deporte <strong>{trainingFrequencyLabel(currentProfileData.trainingFrequency)}</strong></span>
-                      <span>Criterio <strong>{recalculationStep === "update_data" ? updatedAutomaticTarget.formula : automaticTarget.description}</strong></span>
                     </div>
                     {recalculationStep === "update_data" ? (
                       <>
@@ -1485,11 +1491,11 @@ export default function Objetivos() {
                         <div className="og-previewActions"><button type="button" className="og-applyPreview" onClick={() => applyUpdatedDataPreview({ saveProfile: false })}>Usar objetivo sin guardar datos</button><button type="button" className="og-applyPreview" onClick={() => applyUpdatedDataPreview({ saveProfile: true })}>Actualizar datos y usar objetivo</button></div>
                         {profilePreviewOnly ? <Notice type="info">Vista previa aplicada: al guardar el objetivo no se cambiaran peso ni actividad.</Notice> : null}
                       </>
-                    ) : <button type="button" className="og-applyPreview" onClick={applyAutomaticNutritionTarget}>Recalcular sin cambiar mis datos</button>}
+                    ) : <button type="button" className="og-applyPreview" onClick={applyAutomaticNutritionTarget}><RotateCcw size={15} /> Aplicar calculo recomendado</button>}
                   </section>
                 ) : null}
 
-                <div className="og-editorFields">
+                <div className={`og-editorFields ${nutritionMode}`}>
                   <EditorField
                     icon={Flame}
                     label="Calorias"
@@ -1533,7 +1539,14 @@ export default function Objetivos() {
                   </p>
                 ) : null}
                 {nutritionMode === "manual" ? (
-                  <><p className="og-formHint"><Info size={16} />Las calorias se calculan automaticamente desde proteina y carbs x4, grasas x9.</p><div className="og-inlineActions"><button type="button" onClick={() => setNutritionDraft(initialDraft)}><RotateCcw size={14} /> Restaurar valores anteriores</button><button type="button" onClick={() => { setNutritionDraft(draftFromTarget(automaticTarget)); setNutritionMode("recalculate"); }}>Restablecer recomendado</button></div></>
+                  <>
+                    <div className="og-macroEquation" role="status">
+                      <Info size={15} />
+                      <span><strong>Calorias automaticas</strong>P x 4 + CH x 4 + G x 9</span>
+                      <b>{nutritionDraft.kcal ? `${formatNumber(nutritionDraft.kcal)} kcal` : "Completa los macros"}</b>
+                    </div>
+                    <div className="og-inlineActions og-restoreActions"><button type="button" onClick={() => setNutritionDraft(initialDraft)}><RotateCcw size={14} /> Restaurar anteriores</button><button type="button" onClick={() => { setNutritionDraft(draftFromTarget(automaticTarget)); setNutritionMode("recalculate"); }}><Target size={14} /> Usar recomendado</button></div>
+                  </>
                 ) : null}
 
                 {status && status.type !== "success" ? <Notice type={status.type}>{status.text}</Notice> : null}

@@ -8,6 +8,7 @@ import {
   personalMealTargetConsumedComposition,
   personalMealTargetsFromTrackingDay,
   reopenPersonalMealTargetConsumption,
+  updateCoachMealTargetExecution,
 } from "./quickMealTargetPlan.js";
 
 const DAILY = { kcal: 2000, proteina: 150, carbs: 220, grasas: 60 };
@@ -140,6 +141,37 @@ test("9. el cierre manual fija kcal y macros exactamente al consumo real", () =>
     carbs: 60.4,
     grasas: 5.4,
   });
+});
+
+test("9b. permite cerrar una meta personal que conservó el ID estable del almuerzo", () => {
+  const stableId = "almuerzo";
+  const day = baseDay({
+    configs: [
+      { ...config(stableId, 700, 45, 80, 20), personalTarget: true },
+      config(IDS.breakfast, 400, 30, 40, 12),
+      config(IDS.snack, 300, 25, 30, 8),
+      config(IDS.dinner, 600, 50, 70, 20),
+    ],
+    meals: {
+      [stableId]: [food(500, 35, 55, 14)],
+    },
+  });
+
+  const result = confirmPersonalMealTargetConsumption({
+    trackingDay: day,
+    mealId: stableId,
+    dailyTarget: DAILY,
+  });
+  const saved = result.mealsConfig.find((meal) => meal.mealId === stableId);
+
+  assert.deepEqual(saved.meta, {
+    kcal: 500,
+    proteina: 35,
+    carbs: 55,
+    grasas: 14,
+  });
+  assert.equal(saved.metaConfirmed, true);
+  assert.equal(saved.metaConfirmation.mode, "manual_consumption");
 });
 
 test("10. dentro de ±10 no permite crear un falso cierre manual", () => {
@@ -359,4 +391,56 @@ test("24. reemplazos planificados nunca cuentan como consumo Por meta", () => {
   });
   assert.equal(consumed.totals.kcal, 0);
   assert.equal(state.completed, false);
+});
+
+test("25. cerrar una meta del coach crea un overlay y redistribuye sin mutar el plan", () => {
+  const coachMeals = [
+    { id: "coach-breakfast", name: "Desayuno", type: "breakfast", target: { kcal: 700, proteina: 45, carbs: 80, grasas: 20 } },
+    { id: "coach-lunch", name: "Almuerzo", type: "lunch", target: { kcal: 600, proteina: 45, carbs: 70, grasas: 18 } },
+    { id: "coach-snack", name: "Merienda", type: "snack", target: { kcal: 300, proteina: 25, carbs: 30, grasas: 8 } },
+    { id: "coach-dinner", name: "Cena", type: "dinner", target: { kcal: 400, proteina: 35, carbs: 40, grasas: 14 } },
+  ];
+  const original = structuredClone(coachMeals);
+  const result = updateCoachMealTargetExecution({
+    trackingDay: {
+      mealsConfig: [],
+      meals: { "coach-lunch": [food(500, 40, 55, 13)] },
+    },
+    coachMeals,
+    mealId: "coach-lunch",
+  });
+  const overlay = result.mealsConfig.find((meal) => meal.mealId === "coach-lunch");
+  assert.equal(overlay.meta.kcal, 500);
+  assert.equal(overlay.metaConfirmed, true);
+  assert.equal(overlay.coachTargetExecution, true);
+  assert.equal(overlay.personalTarget, false);
+  assert.equal(result.mealsConfig.reduce((sum, meal) => sum + meal.meta.kcal, 0), 2000);
+  assert.deepEqual(coachMeals, original);
+});
+
+test("26. reabrir una meta del coach restaura su objetivo y vuelve a repartir", () => {
+  const coachMeals = [
+    { id: "coach-breakfast", type: "breakfast", target: { kcal: 700, proteina: 45, carbs: 80, grasas: 20 } },
+    { id: "coach-lunch", type: "lunch", target: { kcal: 600, proteina: 45, carbs: 70, grasas: 18 } },
+    { id: "coach-dinner", type: "dinner", target: { kcal: 700, proteina: 60, carbs: 70, grasas: 22 } },
+  ];
+  const trackingDay = {
+    mealsConfig: [],
+    meals: { "coach-lunch": [food(500, 40, 55, 13)] },
+  };
+  const closed = updateCoachMealTargetExecution({ trackingDay, coachMeals, mealId: "coach-lunch" });
+  const reopened = updateCoachMealTargetExecution({
+    trackingDay: { ...trackingDay, mealsConfig: closed.mealsConfig },
+    coachMeals: coachMeals.map((meal) => {
+      const overlay = closed.mealsConfig.find((config) => config.mealId === meal.id);
+      return { ...meal, target: overlay.meta, metaConfirmed: overlay.metaConfirmed, metaConfirmation: overlay.metaConfirmation };
+    }),
+    mealId: "coach-lunch",
+    reopen: true,
+  });
+  const lunch = reopened.mealsConfig.find((meal) => meal.mealId === "coach-lunch");
+  assert.equal(lunch.meta.kcal, 600);
+  assert.equal(lunch.metaConfirmed, false);
+  assert.equal(lunch.metaConfirmation, null);
+  assert.equal(reopened.mealsConfig.reduce((sum, meal) => sum + meal.meta.kcal, 0), 2000);
 });

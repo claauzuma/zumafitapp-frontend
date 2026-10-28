@@ -395,6 +395,7 @@ export default function AdminNavBar() {
           border: none;
           background: rgba(0,0,0,.52);
           backdrop-filter: blur(3px);
+          animation: an-backdrop-in .18s ease both;
         }
 
         .an-drawer{
@@ -411,12 +412,17 @@ export default function AdminNavBar() {
           display: flex;
           flex-direction: column;
           gap: 14px;
-          transform: translateX(100%);
-          transition: transform .22s ease;
+          transform: translate3d(100%,0,0);
+          transition: transform .24s cubic-bezier(.22,1,.36,1);
         }
 
         .an-drawer.open{
-          transform: translateX(0);
+          transform: translate3d(0,0,0);
+        }
+
+        @keyframes an-backdrop-in{
+          from{ opacity:0; }
+          to{ opacity:1; }
         }
 
         .an-drawer-head{

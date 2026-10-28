@@ -665,11 +665,11 @@
 }
 
 .og-dialog{
-  width:min(640px, 100%);
+  width:min(620px, 100%);
   max-height:min(90dvh, 780px);
   display:flex;
   flex-direction:column;
-  gap:14px;
+  gap:11px;
   overflow:auto;
   border:1px solid rgba(255,255,255,.12);
   border-radius:28px;
@@ -754,16 +754,16 @@
 .og-editModeGrid{
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:10px;
+  gap:8px;
 }
 
 .og-editModeGrid button{
-  min-height:92px;
-  border-radius:18px;
+  min-height:68px;
+  border-radius:15px;
   border:1px solid rgba(255,255,255,.09);
   background:rgba(255,255,255,.04);
   color:#e5e7eb;
-  padding:13px;
+  padding:10px 11px;
   display:flex;
   align-items:flex-start;
   gap:10px;
@@ -773,8 +773,9 @@
 
 .og-editModeGrid button.active{
   border-color:rgba(245,215,110,.44);
-  background:rgba(245,215,110,.10);
+  background:linear-gradient(135deg, rgba(245,215,110,.14), rgba(245,215,110,.055));
   color:#fff4bd;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 8px 24px rgba(0,0,0,.12);
 }
 
 .og-editModeGrid strong,
@@ -783,36 +784,54 @@
 }
 
 .og-editModeGrid strong{
-  font-size:13px;
+  font-size:12px;
   line-height:1.2;
 }
 
 .og-editModeGrid small{
-  margin-top:5px;
+  margin-top:3px;
   color:rgba(255,255,255,.62);
-  font-size:11px;
+  font-size:9px;
   line-height:1.3;
   font-weight:800;
 }
 
 .og-editorFields{
   display:grid;
-  gap:10px;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
 }
 
 .og-editorField{
-  min-height:74px;
+  min-width:0;
+  min-height:78px;
   border:1px solid rgba(255,255,255,.09);
   border-radius:17px;
   background:rgba(3,7,12,.46);
   display:grid;
+  grid-template-columns:1fr auto;
+  grid-template-areas:
+    "label unit"
+    "input input";
+  gap:5px 6px;
+  align-items:center;
+  padding:10px;
+  transition:border-color .18s ease, background .18s ease, transform .18s ease;
+}
+
+.og-editorField:focus-within{
+  border-color:rgba(245,215,110,.44);
+  background:rgba(245,215,110,.055);
+}
+
+.og-editorField:first-child{
+  grid-column:1 / -1;
+  min-height:68px;
   grid-template-columns:auto 1fr auto;
   grid-template-areas:
     "icon label unit"
     "icon input input";
-  gap:4px 10px;
-  align-items:center;
-  padding:11px 12px;
+  padding:9px 12px;
 }
 
 .og-editorFieldIcon{
@@ -826,10 +845,21 @@
   color:#facc15;
 }
 
+.og-editorField:not(:first-child) .og-editorFieldIcon{
+  display:none;
+}
+
+.og-editorField:nth-child(2){border-color:rgba(45,212,191,.18)}
+.og-editorField:nth-child(3){border-color:rgba(56,189,248,.18)}
+.og-editorField:nth-child(4){border-color:rgba(251,191,36,.18)}
+.og-editorField:nth-child(2) input{color:#5eead4}
+.og-editorField:nth-child(3) input{color:#7dd3fc}
+.og-editorField:nth-child(4) input{color:#fde68a}
+
 .og-editorFieldLabel{
   grid-area:label;
   color:rgba(255,255,255,.66);
-  font-size:11px;
+  font-size:9px;
   font-weight:950;
   text-transform:uppercase;
 }
@@ -837,7 +867,7 @@
 .og-editorFieldUnit{
   grid-area:unit;
   color:rgba(255,255,255,.52);
-  font-size:11px;
+  font-size:9px;
   font-weight:900;
   text-transform:uppercase;
 }
@@ -850,13 +880,14 @@
   outline:none;
   background:transparent;
   color:#fff;
-  font-size:21px;
+  font-size:20px;
   font-weight:850;
   padding:0;
 }
 
 .og-editorField.readonly{
-  background:rgba(255,255,255,.035);
+  border-color:rgba(245,215,110,.24);
+  background:linear-gradient(135deg, rgba(245,215,110,.09), rgba(255,255,255,.025));
 }
 
 .og-dialogFooter{
@@ -984,48 +1015,48 @@
   }
   .og-dialog{
     width:100%;
-    max-height:88dvh;
+    max-height:92dvh;
     border-radius:26px 26px 0 0;
-    padding:16px;
+    padding:14px;
   }
   .og-sheetHandle{
     display:block;
     margin:0 auto 2px;
   }
   .og-dialogHead h2{
-    font-size:22px;
+    font-size:20px;
   }
   .og-editModeGrid{
-    grid-template-columns:1fr;
+    grid-template-columns:1fr 1fr;
   }
   .og-dialogFooter{
-    bottom:-16px;
-    margin:0 -16px -16px;
-    padding:12px 16px calc(18px + env(safe-area-inset-bottom));
-    grid-template-columns:1fr;
-  }
-  .og-dialogFooter .og-save{
-    order:-1;
+    bottom:-14px;
+    margin:0 -14px -14px;
+    padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+    grid-template-columns:.82fr 1.25fr;
   }
   .og-summaryRow{
     min-height:60px;
   }
 }
-.og-recalculationSteps{margin-top:14px;padding:13px;border:1px solid rgba(56,189,248,.18);border-radius:16px;background:rgba(14,165,233,.05)}
+.og-recalculationSteps{display:grid;gap:9px;padding:10px;border:1px solid rgba(45,212,191,.22);border-radius:16px;background:radial-gradient(circle at 100% 0,rgba(45,212,191,.11),transparent 45%),linear-gradient(145deg,rgba(14,165,233,.055),rgba(8,13,19,.7));box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.og-recalculationHero{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:2px}
+.og-recalculationHeroIcon{width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(45,212,191,.28);border-radius:12px;background:rgba(45,212,191,.11);color:#5eead4;box-shadow:0 0 22px rgba(45,212,191,.08)}
+.og-recalculationHero div{min-width:0}.og-recalculationHero small{display:block;color:#5eead4;font-size:.57rem;font-weight:950;letter-spacing:.09em}.og-recalculationHero strong{display:block;margin-top:2px;color:#f8fafc;font-size:.82rem}.og-recalculationHero p{margin:2px 0 0;color:#94a3b8;font-size:.65rem;line-height:1.25}.og-recalculationHero>b{color:#fde68a;font-size:1.05rem;white-space:nowrap}
 .og-recalculationChoice{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.og-recalculationChoice button,.og-applyPreview{min-height:44px;border:1px solid rgba(255,255,255,.1);border-radius:11px;background:rgba(255,255,255,.04);color:#d4d4d8;font-weight:850}
+.og-recalculationChoice button,.og-applyPreview{min-height:38px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.04);color:#d4d4d8;font-size:.74rem;font-weight:850;cursor:pointer}
 .og-recalculationChoice button.active{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.1);color:#a7f3d0}
-.og-currentData{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
-.og-currentData span{padding:7px 9px;border-radius:9px;background:rgba(0,0,0,.2);color:#94a3b8;font-size:.72rem}.og-currentData strong{color:#f8fafc}
-.og-profileUpdateGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:11px}
+.og-currentData{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.og-currentData span{min-width:0;padding:6px 7px;border-radius:8px;background:rgba(0,0,0,.22);color:#64748b;font-size:.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.og-currentData strong{display:block;margin-top:1px;color:#e2e8f0;font-size:.68rem;overflow:hidden;text-overflow:ellipsis}
+.og-profileUpdateGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .og-profileUpdateGrid label{display:grid;gap:5px}.og-profileUpdateGrid label span{color:#94a3b8;font-size:.67rem;font-weight:900;text-transform:uppercase}
-.og-profileUpdateGrid input,.og-profileUpdateGrid select{min-width:0;min-height:44px;border:1px solid rgba(148,163,184,.18);border-radius:10px;background:#080d13;color:#fff;padding:0 10px}
-.og-previewCompare{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.og-previewCompare>div{display:grid;gap:3px;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:11px}.og-previewCompare span,.og-previewCompare small{color:#94a3b8;font-size:.7rem}.og-previewCompare strong{font-size:1.05rem}
-.og-profileConfirm{display:flex;align-items:flex-start;gap:8px;margin-top:11px;color:#cbd5e1;font-size:.78rem;line-height:1.4}.og-profileConfirm input{margin-top:2px;accent-color:#34d399}
-.og-applyPreview{width:100%;margin-top:10px;border-color:rgba(212,175,55,.32);color:#fde68a}
+.og-profileUpdateGrid input,.og-profileUpdateGrid select{min-width:0;min-height:40px;border:1px solid rgba(148,163,184,.18);border-radius:9px;background:#080d13;color:#fff;padding:0 9px}
+.og-previewCompare{display:grid;grid-template-columns:1fr 1fr;gap:7px}.og-previewCompare>div{display:grid;gap:3px;padding:9px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(0,0,0,.14)}.og-previewCompare span,.og-previewCompare small{color:#94a3b8;font-size:.65rem}.og-previewCompare strong{font-size:1rem}.og-previewCompare>div:last-child{border-color:rgba(45,212,191,.25);background:rgba(45,212,191,.055)}
+.og-profileConfirm{display:flex;align-items:flex-start;gap:8px;color:#cbd5e1;font-size:.72rem;line-height:1.35}.og-profileConfirm input{margin-top:2px;accent-color:#34d399}
+.og-applyPreview{width:100%;margin-top:0;border-color:rgba(212,175,55,.32);color:#fde68a;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,rgba(212,175,55,.11),rgba(45,212,191,.06))}
 .og-previewActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.og-previewActions .og-applyPreview{height:auto;padding:8px}
-@media(max-width:560px){.og-profileUpdateGrid{grid-template-columns:1fr}.og-previewCompare{grid-template-columns:1fr}}
-@media(max-width:560px){.og-previewActions{grid-template-columns:1fr}}
+.og-macroEquation{min-height:42px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:7px 10px;border:1px solid rgba(45,212,191,.19);border-radius:12px;background:linear-gradient(135deg,rgba(45,212,191,.075),rgba(56,189,248,.035));color:#5eead4}.og-macroEquation span{display:grid;color:#94a3b8;font-size:.64rem}.og-macroEquation span strong{color:#dffcf4;font-size:.72rem}.og-macroEquation b{color:#f8fafc;font-size:.82rem;white-space:nowrap}.og-restoreActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.og-restoreActions button{min-height:38px;font-size:.72rem}
+@media(max-width:560px){.og-previewActions{grid-template-columns:1fr}.og-recalculationHero{grid-template-columns:auto 1fr}.og-recalculationHero>b{grid-column:2}.og-recalculationHero p{display:none}}
 .og-compactWeek{display:grid;gap:8px;margin-top:12px}.og-weekSummary{display:flex;flex-wrap:wrap;align-items:center;gap:7px;padding:10px;border:1px solid rgba(212,175,55,.18);border-radius:13px;background:rgba(212,175,55,.045)}.og-weekSummary span{padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.18);color:#a1a1aa;font-size:.72rem}.og-weekSummary strong{color:#fff}.og-weekSummary button{display:flex;align-items:center;gap:5px;min-height:38px;margin-left:auto;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.04);color:#e4e4e7;font-weight:800}
 .og-compactDay{overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.14)}.og-compactDay.open{border-color:rgba(56,189,248,.24)}.og-compactDayHead{width:100%;min-height:48px;display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;border:0;background:transparent;color:#fff;padding:8px 11px;text-align:left}.og-compactDayHead small{overflow:hidden;color:#a1a1aa;text-overflow:ellipsis;white-space:nowrap}.og-dayBadge{padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:#d4d4d8;font-size:.6rem;font-weight:900;text-transform:uppercase}.og-dayBadge.entrenamiento{background:rgba(52,211,153,.12);color:#86efac}.og-dayBadge.descanso{background:rgba(56,189,248,.11);color:#bae6fd}.og-dayBadge.personalizado{background:rgba(212,175,55,.12);color:#fde68a}
 .og-compactDayBody{padding:0 11px 11px}.og-dayFields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.og-dayFields label{display:grid;gap:4px}.og-dayFields span{color:#94a3b8;font-size:.62rem;font-weight:900;text-transform:uppercase}.og-dayFields input{min-width:0;min-height:42px;border:1px solid rgba(148,163,184,.16);border-radius:9px;background:#080d13;color:#fff;padding:0 8px}.og-copyDays{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.og-copyDays label{display:flex;align-items:center;gap:4px;padding:5px 7px;border-radius:8px;background:rgba(255,255,255,.04);color:#cbd5e1;font-size:.68rem}.og-copyDays input{accent-color:#34d399}.og-dayActions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.og-dayActions button{min-height:40px;flex:1;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.04);color:#e4e4e7;font-weight:800}.og-dayActions button:disabled{opacity:.4}

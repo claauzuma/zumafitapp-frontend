@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 
 const ICONS = {
@@ -15,34 +15,68 @@ const AUTO_CLOSE_MS = {
   error: 0,
 };
 
+const EXIT_MS = 170;
+
 export default function AppToast({ toast, onClose }) {
-  const type = toast?.type || "info";
-  const message = toast?.message || "";
+  const [displayedToast, setDisplayedToast] = useState(toast || null);
+  const [closing, setClosing] = useState(false);
+  const exitTimerRef = useRef(null);
+  const type = displayedToast?.type || "info";
+  const message = displayedToast?.message || "";
   const Icon = ICONS[type] || Info;
+
+  useEffect(() => {
+    window.clearTimeout(exitTimerRef.current);
+    if (toast?.message) {
+      setDisplayedToast(toast);
+      setClosing(false);
+      return undefined;
+    }
+    if (!displayedToast?.message) return undefined;
+    setClosing(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      setDisplayedToast(null);
+      setClosing(false);
+    }, EXIT_MS);
+    return () => window.clearTimeout(exitTimerRef.current);
+  }, [toast, displayedToast?.message]);
+
+  const requestClose = useCallback(() => {
+    if (!message || closing) return;
+    setClosing(true);
+    window.clearTimeout(exitTimerRef.current);
+    exitTimerRef.current = window.setTimeout(() => {
+      setDisplayedToast(null);
+      setClosing(false);
+      onClose?.();
+    }, EXIT_MS);
+  }, [closing, message, onClose]);
 
   useEffect(() => {
     if (!message) return undefined;
 
-    const ms = toast?.durationMs ?? AUTO_CLOSE_MS[type] ?? 0;
+    const ms = displayedToast?.durationMs ?? AUTO_CLOSE_MS[type] ?? 0;
     if (!ms) return undefined;
 
     const timer = window.setTimeout(() => {
-      onClose?.();
+      requestClose();
     }, ms);
 
     return () => window.clearTimeout(timer);
-  }, [message, onClose, toast?.durationMs, type]);
+  }, [displayedToast?.durationMs, message, requestClose, type]);
+
+  useEffect(() => () => window.clearTimeout(exitTimerRef.current), []);
 
   if (!message) return null;
 
   return (
     <div className="zt-host" role="status" aria-live={type === "error" ? "assertive" : "polite"}>
-      <div className={`zt-toast ${type}`}>
+      <div className={`zt-toast ${type} ${closing ? "closing" : ""}`}>
         <div className="zt-icon">
           <Icon size={18} strokeWidth={2.4} aria-hidden="true" />
         </div>
         <div className="zt-message">{message}</div>
-        <button type="button" className="zt-close" onClick={onClose} aria-label="Cerrar notificacion">
+        <button type="button" className="zt-close" onClick={requestClose} aria-label="Cerrar notificacion">
           <X size={16} strokeWidth={2.4} aria-hidden="true" />
         </button>
       </div>
@@ -75,6 +109,10 @@ const styles = `
   color:#eef2f7;
   box-shadow:0 18px 58px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04);
   animation:zt-in .18s ease-out;
+}
+
+.zt-toast.closing{
+  animation:zt-out .17s ease-in both;
 }
 
 .zt-toast.success,
@@ -136,12 +174,17 @@ const styles = `
   to{ opacity:1; transform:translateY(0) scale(1); }
 }
 
+@keyframes zt-out{
+  from{ opacity:1; transform:translateY(0) scale(1); }
+  to{ opacity:0; transform:translateY(-6px) scale(.985); }
+}
+
 @media (max-width: 640px){
   .zt-host{
     top:auto;
     right:14px;
     left:14px;
-    bottom:14px;
+    bottom:calc(var(--zf-mobile-nav-height, 74px) + 22px + env(safe-area-inset-bottom));
     width:auto;
   }
 }

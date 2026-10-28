@@ -631,7 +631,10 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
           mode: { type: defaultMode(access), lockedByCoach: client?.menu?.mode?.lockedByCoach },
           weeklyPlan: {
             assignedMenusByDay: nextAssignments,
-            mealTargetsByDay: nextMealTargets,
+            mealTargetDay: {
+              dayKey: context.dayKey,
+              plan: nextMealTargets[context.dayKey],
+            },
           },
           coachNotes: client?.menu?.coachNotes || "",
         },
@@ -655,12 +658,12 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
   async function persistAssignments(
   nextAssignments,
   successMessage = "Plan semanal actualizado.",
-  nextMealTargets = null
+  mealTargetUpdate = null
 ) {
   setAssignments(nextAssignments);
 
-  if (nextMealTargets !== null) {
-    setMealTargetsByDay(nextMealTargets);
+  if (mealTargetUpdate) {
+    setMealTargetsByDay(mealTargetUpdate.nextMealTargets);
   }
 
   setBusy("weekly-save");
@@ -670,9 +673,11 @@ export default function WeeklyClientMenuPlanner({ clientId, client, access, nutr
       assignedMenusByDay: nextAssignments,
     };
 
-    // Solo mandar mealTargetsByDay si realmente queremos modificarlos.
-    if (nextMealTargets !== null) {
-      weeklyPlanPayload.mealTargetsByDay = nextMealTargets;
+    if (mealTargetUpdate) {
+      weeklyPlanPayload.mealTargetDay = {
+        dayKey: mealTargetUpdate.dayKey,
+        plan: mealTargetUpdate.plan,
+      };
     }
 
     const data = await updateProfessionalClientMenu(clientId, {
@@ -752,29 +757,18 @@ async function assignMenu(dayKey, menu, message = "Menú asignado al día.") {
     ),
   };
 
-  let nextMealTargets = null;
-
-  if (
-    mealTargetsByDay &&
-    Object.keys(mealTargetsByDay).length > 0
-  ) {
-    nextMealTargets = { ...mealTargetsByDay };
-
-    // Si un día tiene menú asignado, no debe conservar
-    // simultáneamente una planificación "per_meal".
-    DAY_KEYS.forEach((key) => {
-      if (next[key]) {
-        delete nextMealTargets[key];
-      }
-    });
-  }
+  const hasMealTargetForDay = Boolean(mealTargetsByDay?.[dayKey]);
+  const nextMealTargets = hasMealTargetForDay ? { ...mealTargetsByDay } : null;
+  if (nextMealTargets) delete nextMealTargets[dayKey];
 
   setPicker(null);
 
   await persistAssignments(
     next,
     message,
-    nextMealTargets
+    hasMealTargetForDay
+      ? { dayKey, plan: null, nextMealTargets }
+      : null
   );
 }
 

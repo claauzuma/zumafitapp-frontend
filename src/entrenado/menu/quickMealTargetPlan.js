@@ -664,6 +664,131 @@ export function personalMealTargetConfirmationReview(target = {}, composition = 
 
 export const PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION = "manual_consumption";
 
+function trackingMealTypeFromTarget(value = "") {
+  const type = String(value || "").trim().toLowerCase();
+  if (type === "breakfast" || type.includes("desay")) return "desayuno";
+  if (type === "lunch" || type.includes("almuer")) return "almuerzo";
+  if (type === "dinner" || type.includes("cena")) return "cena";
+  if (type.includes("meriend")) return "merienda";
+  if (type === "extrasnack" || type.includes("snack") || type.includes("colaci")) return "snack";
+  return "otra";
+}
+
+/**
+ * Cierra o reabre una meta asignada por el coach sin tocar la prescripciÃ³n.
+ * La ejecuciÃ³n vive como un overlay en FoodLogs y redistribuye solamente entre
+ * metas pendientes sin consumo. El plan semanal del profesional queda intacto.
+ */
+export function updateCoachMealTargetExecution({
+  trackingDay = null,
+  coachMeals = [],
+  mealId = "",
+  reopen = false,
+} = {}) {
+  const selectedId = String(mealId || "").trim();
+  const sourceMeals = (Array.isArray(coachMeals) ? coachMeals : [])
+    .map((meal, index) => ({
+      ...meal,
+      id: String(meal?.id || meal?.mealId || `coach-target-${index + 1}`),
+      target: normalizedTarget(meal?.target || meal?.meta || meal?.totals),
+    }));
+  if (!sourceMeals.some((meal) => meal.id === selectedId)) {
+    throw new Error("No encontramos la meta asignada por tu coach.");
+  }
+
+  const configs = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
+  const sourceIds = new Set(sourceMeals.map((meal) => meal.id));
+  const executionConfigs = new Map(configs
+    .filter((config) => sourceIds.has(mealConfigId(config)) && config?.coachTargetExecution === true)
+    .map((config) => [mealConfigId(config), config]));
+  const selectedConfig = executionConfigs.get(selectedId);
+  const selectedConfirmation = manualConsumptionConfirmation(selectedConfig?.metaConfirmation);
+  if (reopen && (!selectedConfig?.metaConfirmed || !selectedConfirmation)) {
+    throw new Error("Esta comida no tiene un cierre manual para reabrir.");
+  }
+
+  const consumedById = new Map(sourceMeals.map((meal) => [
+    meal.id,
+    personalMealTargetConsumedComposition(trackingDay, meal.id),
+  ]));
+  const selectedConsumption = consumedById.get(selectedId);
+  if (!reopen && !selectedConsumption?.items?.length) {
+    throw new Error("RegistrÃ¡ al menos un alimento consumido antes de confirmar.");
+  }
+
+  const syntheticMeals = sourceMeals.map((meal) => {
+    const config = executionConfigs.get(meal.id);
+    return {
+      ...meal,
+      target: normalizedTarget(config?.meta || meal.target),
+      confirmed: meal.id === selectedId ? false : config?.metaConfirmed === true,
+      metaConfirmed: meal.id === selectedId ? false : config?.metaConfirmed === true,
+      targetLocked: false,
+      targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.AUTO,
+    };
+  });
+  const nextSelectedTarget = reopen
+    ? selectedConfirmation.previousMeta
+    : normalizedTarget(selectedConsumption.totals);
+  const editableMealIds = sourceMeals
+    .filter((meal) => meal.id !== selectedId)
+    .filter((meal) => executionConfigs.get(meal.id)?.metaConfirmed !== true)
+    .filter((meal) => !(consumedById.get(meal.id)?.items?.length))
+    .map((meal) => meal.id);
+  const result = editPersonalMealTargetDay({
+    meals: syntheticMeals,
+    mealId: selectedId,
+    target: nextSelectedTarget,
+    mode: "redistribute",
+    editableMealIds,
+    confirmedMealIds: sourceMeals
+      .filter((meal) => executionConfigs.get(meal.id)?.metaConfirmed === true && meal.id !== selectedId)
+      .map((meal) => meal.id),
+    minimumRecipientKcal: 0,
+  });
+  const targetsById = new Map(result.meals.map((meal) => [String(meal.id), normalizedTarget(meal.target)]));
+  const nextExecutionConfigs = sourceMeals.map((meal, index) => {
+    const previous = executionConfigs.get(meal.id) || {};
+    const isSelected = meal.id === selectedId;
+    const previousTarget = normalizedTarget(previous?.meta || meal.target);
+    return {
+      ...previous,
+      mealId: meal.id,
+      tipo: trackingMealTypeFromTarget(meal.type || meal.tipo),
+      nombre: meal.name || meal.nombre || meal.label || MEAL_LABELS[trackingMealTypeFromTarget(meal.type || meal.tipo)] || `Comida ${index + 1}`,
+      orden: Number(meal.order ?? meal.orden ?? index),
+      meta: targetsById.get(meal.id),
+      metaConfirmed: isSelected ? !reopen : previous?.metaConfirmed === true,
+      metaConfirmation: isSelected
+        ? (reopen ? null : {
+            mode: PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION,
+            previousMeta: previousTarget,
+            consumedMeta: nextSelectedTarget,
+          })
+        : previous?.metaConfirmation || null,
+      targetOrigin: PERSONAL_MEAL_TARGET_ORIGIN.COACH,
+      targetLocked: true,
+      personalTarget: false,
+      coachTargetExecution: true,
+      consumptionSourceMealIds: Array.isArray(previous?.consumptionSourceMealIds)
+        ? previous.consumptionSourceMealIds
+        : [meal.id],
+    };
+  });
+
+  return {
+    mealId: selectedId,
+    reopened: reopen,
+    mealsConfig: [
+      ...configs.filter((config) => !(
+        sourceIds.has(mealConfigId(config)) && config?.coachTargetExecution === true
+      )),
+      ...nextExecutionConfigs,
+    ],
+    residual: result.residual,
+  };
+}
+
 function manualConsumptionConfirmation(value = null) {
   if (value?.mode !== PERSONAL_MEAL_TARGET_MANUAL_CONFIRMATION) return null;
   return {
@@ -743,7 +868,13 @@ export function confirmPersonalMealTargetConsumption({
   const configs = Array.isArray(trackingDay?.mealsConfig) ? trackingDay.mealsConfig : [];
   const currentConfig = configs.find((config) => mealConfigId(config) === id);
   if (!currentConfig) throw new Error("No encontramos la comida que querés confirmar.");
-  if (!id.startsWith("menu_target_")) throw new Error("Esta comida no es una meta personal editable.");
+  // Una meta generada puede absorber un consumo previo y conservar su identidad
+  // estable (por ejemplo, "almuerzo"). En ese caso el backend persiste
+  // `personalTarget: true`; exigir además el prefijo menu_target_ rechazaba una
+  // meta válida que el resto de la aplicación ya trataba como personal.
+  if (!isPersonalMealTargetConfig(currentConfig)) {
+    throw new Error("Esta comida no es una meta personal editable.");
+  }
 
   const composition = personalMealTargetConsumedComposition(trackingDay, id);
   if (!composition.items.length) {

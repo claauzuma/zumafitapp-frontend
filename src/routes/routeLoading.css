@@ -58,16 +58,6 @@
   font-weight: 800;
 }
 
-.route-loading-card i {
-  width: 18px;
-  height: 18px;
-  margin-left: auto;
-  border: 2px solid rgba(246, 212, 94, 0.18);
-  border-top-color: #ffe480;
-  border-radius: 999px;
-  animation: routeSpin 0.8s linear infinite;
-}
-
 .route-loading-actions {
   display: flex;
   flex-direction: row !important;
@@ -90,12 +80,6 @@
   font-size: 12px;
   font-weight: 950;
   text-decoration: none;
-}
-
-@keyframes routeSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 520px) {

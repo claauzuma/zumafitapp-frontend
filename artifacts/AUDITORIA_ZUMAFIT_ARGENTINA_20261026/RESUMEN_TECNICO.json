@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-10-26T19:59:42.212Z",
+  "database": "base2",
+  "collection": "fooddatabase2",
+  "total": 673,
+  "active": 652,
+  "inactive": 21,
+  "generic": 242,
+  "explicitOnly": 115,
+  "unclassified": 316,
+  "automatic": 242,
+  "withExternalReferenceFourMacros": 246,
+  "withoutExternalReferenceFourMacros": 427,
+  "auditSeverity": {
+    "ALTO": 5,
+    "MEDIO": 14,
+    "UNIDAD_AMBIGUA": 198,
+    "SIN_REFERENCIA_FIABLE": 238,
+    "OK": 218
+  },
+  "historyRows": 240,
+  "historyByMigration": {
+    "1 - food-catalog-fixes-2026-10-26": 84,
+    "2 - argentine-staples-2026-10-26": 156
+  },
+  "touchedByBothRows": 4,
+  "mongoOperations": [
+    "find"
+  ]
+}

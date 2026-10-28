@@ -43,13 +43,19 @@ export function resolveNutritionWeek(nutritionDraft = {}) {
 
   const generalDays = NUTRITION_WEEK_DAYS.filter((day) => !customized.has(day.key));
   const customizedKcal = [...customized.values()].reduce((sum, target) => sum + toNumber(target.kcal, 0), 0);
-  const adjustedKcal = weeklyKcalTarget !== null && generalDays.length
+  const balanceEnabled = nutritionDraft.weeklyBalanceEnabled !== false;
+  const adjustedKcal = balanceEnabled && weeklyKcalTarget !== null && generalDays.length
     ? Math.max(0, (weeklyKcalTarget - customizedKcal) / generalDays.length)
     : base.kcal;
 
   const targets = {};
   NUTRITION_WEEK_DAYS.forEach((day) => {
-    targets[day.key] = customized.get(day.key) || buildGeneralTarget(day, base, adjustedKcal, customized.size > 0);
+    targets[day.key] = customized.get(day.key) || buildGeneralTarget(
+      day,
+      base,
+      adjustedKcal,
+      balanceEnabled && customized.size > 0
+    );
   });
 
   const currentWeeklyKcal = Object.values(targets).reduce((sum, target) => sum + toNumber(target.kcal, 0), 0);

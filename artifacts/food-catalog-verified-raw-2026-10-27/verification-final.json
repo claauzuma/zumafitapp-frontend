@@ -1,0 +1,1596 @@
+{
+  "database": "base2",
+  "collection": "fooddatabase2",
+  "counts": {
+    "total": 673,
+    "foodDocuments": 659,
+    "activeFoodDocuments": 636,
+    "inactiveFoodDocuments": 23,
+    "automaticGeneric": 198,
+    "reviewFoodDocuments": 75,
+    "reviewActiveGeneric": 10,
+    "reviewActiveExplicitOnly": 42,
+    "reviewInactive": 23,
+    "missingOrNullFoodId": 14
+  },
+  "duplicateNumericIds": [],
+  "cookedAutomaticLeaks": [],
+  "brandedAutomaticLeaks": [],
+  "quantitySamples": {
+    "rawRice100g": {
+      "quantity": 100,
+      "unit": "Grs",
+      "kcal": 339,
+      "protein": 6.9,
+      "carbs": 77.5,
+      "fat": 0.2
+    },
+    "eggOneUnit": {
+      "quantity": 1,
+      "unit": "Unid",
+      "kcal": 78,
+      "protein": 6,
+      "carbs": 0.2,
+      "fat": 5.9
+    },
+    "rawChickenBreast150g": {
+      "quantity": 150,
+      "unit": "Grs",
+      "kcal": 171,
+      "protein": 33.75,
+      "carbs": 0,
+      "fat": 3.9
+    }
+  },
+  "automaticPrimaryProteins": [
+    {
+      "alimentoId": 65,
+      "carbohidratos100": 0,
+      "grasas100": 3,
+      "kcal100": 111,
+      "nombre": "Bife de chorizo magro, crudo (sin grasa visible)",
+      "proteina100": 21,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cuadril y bife angosto flaco, fresco, crudo"
+      }
+    },
+    {
+      "alimentoId": 72,
+      "carbohidratos100": 0,
+      "grasas100": 3.2,
+      "kcal100": 114,
+      "nombre": "Bola de lomo de novillito, cruda",
+      "proteina100": 22,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, bola de lomo de novillito, fresco, crudo"
+      }
+    },
+    {
+      "alimentoId": 75,
+      "carbohidratos100": 0,
+      "grasas100": 20.3,
+      "kcal100": 259.26,
+      "nombre": "Bondiola de cerdo",
+      "proteina100": 19.139999999999997,
+      "requiereRevision": true,
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 88,
+      "carbohidratos100": 0,
+      "grasas100": 7.000000000000001,
+      "kcal100": 151,
+      "nombre": "Carne de cerdo magro",
+      "proteina100": 22,
+      "requiereRevision": true,
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 113,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "kcal100": 138,
+      "nombre": "Churrasco vacuno magro, crudo (corte magro promedio)",
+      "proteina100": 22.2,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cortes magros, promedio, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 115,
+      "nombre": "Clara de huevo cruda (1 unidad = 33 g)",
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "carbohidratos100": 0.7,
+      "grasas100": 0.2,
+      "kcal100": 51,
+      "proteina100": 11.6,
+      "referenciaNutricional": {
+        "sourceFood": "Huevo de gallina, clara, cruda"
+      }
+    },
+    {
+      "alimentoId": 129,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "kcal100": 138,
+      "nombre": "Cuadrada vacuna magra, cruda (promedio cortes magros)",
+      "proteina100": 22.2,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cortes magros, promedio, crudo; incluye cuadrada"
+      }
+    },
+    {
+      "alimentoId": 165,
+      "nombre": "Filet de merluza",
+      "requiereRevision": false,
+      "carbohidratos100": 0,
+      "grasas100": 1.3,
+      "kcal100": 80,
+      "proteina100": 17.1,
+      "referenciaNutricional": {
+        "sourceFood": "Merluza cruda"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 222,
+      "carbohidratos100": 3.9,
+      "grasas100": 4,
+      "kcal100": 134,
+      "nombre": "Higado",
+      "proteina100": 20.599999999999998,
+      "requiereRevision": false,
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 224,
+      "nombre": "Huevo de gallina mediano, crudo (50 g comestibles)",
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "carbohidratos100": 0.4,
+      "grasas100": 11.8,
+      "kcal100": 156,
+      "proteina100": 12,
+      "referenciaNutricional": {
+        "sourceFood": "Huevo de gallina, entero, crudo"
+      }
+    },
+    {
+      "alimentoId": 241,
+      "carbohidratos100": 0,
+      "grasas100": 0.9,
+      "kcal100": 96,
+      "nombre": "Langostino, carne de cola cruda",
+      "proteina100": 22,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Langostino"
+      }
+    },
+    {
+      "alimentoId": 270,
+      "carbohidratos100": 0,
+      "grasas100": 4,
+      "kcal100": 120,
+      "nombre": "Lomo de cerdo magro",
+      "proteina100": 21,
+      "requiereRevision": true,
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 272,
+      "carbohidratos100": 0,
+      "grasas100": 1.3,
+      "kcal100": 83.7,
+      "nombre": "Lubina",
+      "proteina100": 18,
+      "requiereRevision": false,
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 358,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "kcal100": 125,
+      "nombre": "Paleta de novillito, cruda",
+      "proteina100": 19,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, paleta de novillito, fresco, crudo"
+      }
+    },
+    {
+      "alimentoId": 360,
+      "carbohidratos100": 0,
+      "grasas100": 3.7,
+      "kcal100": 116,
+      "nombre": "Palomita de novillito, cruda",
+      "proteina100": 20,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, palomita de novillito, fresco, crudo"
+      }
+    },
+    {
+      "alimentoId": 402,
+      "carbohidratos100": 0,
+      "grasas100": 1.9,
+      "kcal100": 125,
+      "nombre": "Peceto de novillito, crudo",
+      "proteina100": 23,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, peceto de novillito, fresco, crudo"
+      }
+    },
+    {
+      "alimentoId": 403,
+      "carbohidratos100": 0,
+      "grasas100": 2.33,
+      "kcal100": 114,
+      "nombre": "Pechuga de pavo sin piel, cruda",
+      "proteina100": 23.3,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Turkey, retail parts, breast, meat only, raw"
+      }
+    },
+    {
+      "alimentoId": 404,
+      "carbohidratos100": 0,
+      "grasas100": 2.6,
+      "kcal100": 114,
+      "nombre": "Pechuga de pollo sin piel, cruda",
+      "proteina100": 22.5,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Pollo, pechuga sin piel, crudo"
+      }
+    },
+    {
+      "alimentoId": 405,
+      "carbohidratos100": 0,
+      "grasas100": 4.78,
+      "kcal100": 127,
+      "nombre": "Pechuga de pollo con piel, cruda",
+      "proteina100": 21.4,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Chicken, breast, meat and skin, raw"
+      }
+    },
+    {
+      "alimentoId": 412,
+      "carbohidratos100": 0,
+      "grasas100": 1.3,
+      "kcal100": 80,
+      "nombre": "Pescado blanco/magro de mar, crudo",
+      "proteina100": 17.1,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Pescados de mar, promedio, crudo (brótola, corvina blanca, gatuzo, lenguado, merluza, etc.)"
+      }
+    },
+    {
+      "alimentoId": 517,
+      "carbohidratos100": 0,
+      "grasas100": 9.1,
+      "kcal100": 170,
+      "nombre": "Sardinas enlatadas al natural",
+      "proteina100": 22.1,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Sardinas enlatadas al natural"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "alimentoId": 528,
+      "carbohidratos100": 16.4,
+      "grasas100": 1.2,
+      "kcal100": 283,
+      "nombre": "Soja texturizada",
+      "proteina100": 51.5,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Soja texturizada"
+      },
+      "basePesaje": "seco"
+    },
+    {
+      "alimentoId": 541,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "kcal100": 138,
+      "nombre": "Carne vacuna/ternera magra, cruda (promedio)",
+      "proteina100": 22.2,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cortes magros, promedio, crudo"
+      }
+    },
+    {
+      "alimentoId": 542,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "kcal100": 210,
+      "nombre": "Tira de asado",
+      "proteina100": 20,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cortes grasos promedio, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 543,
+      "carbohidratos100": 0.5,
+      "grasas100": 8.7,
+      "kcal100": 149,
+      "nombre": "tofu",
+      "proteina100": 17.3,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Tofu"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "alimentoId": 609,
+      "carbohidratos100": 0,
+      "grasas100": 4.22,
+      "kcal100": 120,
+      "nombre": "Pata-muslo de pollo sin piel, carne cruda",
+      "proteina100": 19.2,
+      "requiereRevision": false,
+      "basePesaje": "crudo",
+      "referenciaNutricional": {
+        "sourceFood": "Chicken, broilers or fryers, leg, meat only, raw"
+      }
+    },
+    {
+      "alimentoId": 615,
+      "nombre": "Atún al natural enlatado, escurrido",
+      "kcal100": 86,
+      "proteina100": 19.4,
+      "carbohidratos100": 0,
+      "grasas100": 1,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Atún enlatado al natural"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "alimentoId": 616,
+      "nombre": "Atún en aceite enlatado, escurrido",
+      "kcal100": 190,
+      "proteina100": 29.1,
+      "carbohidratos100": 0,
+      "grasas100": 8.2,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Atún en aceite"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "alimentoId": 617,
+      "nombre": "Salmón rosado crudo",
+      "kcal100": 122,
+      "proteina100": 20.5,
+      "carbohidratos100": 0,
+      "grasas100": 4.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Salmón rosado crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 618,
+      "nombre": "Caballa enlatada",
+      "kcal100": 149,
+      "proteina100": 23.2,
+      "carbohidratos100": 0,
+      "grasas100": 6.3,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Caballa enlatada"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "alimentoId": 619,
+      "nombre": "Trucha cruda",
+      "kcal100": 113,
+      "proteina100": 20.5,
+      "carbohidratos100": 0,
+      "grasas100": 3.5,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Trucha cruda"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 620,
+      "nombre": "Carne vacuna magra promedio, cruda",
+      "kcal100": 138,
+      "proteina100": 22.2,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, cortes magros promedio, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 621,
+      "nombre": "Huevo entero de gallina, crudo",
+      "kcal100": 156,
+      "proteina100": 12,
+      "carbohidratos100": 0.4,
+      "grasas100": 11.8,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Huevo de gallina entero crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 653,
+      "nombre": "Nalga magra de novillito, cruda",
+      "kcal100": 106,
+      "proteina100": 22,
+      "carbohidratos100": 0,
+      "grasas100": 1.7,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, nalga de novillito, fresco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 654,
+      "nombre": "Tapa de nalga magra, cruda",
+      "kcal100": 138,
+      "proteina100": 22.2,
+      "carbohidratos100": 0,
+      "grasas100": 5.5,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Referencia de cortes magros promedio (nalga)"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 655,
+      "nombre": "Lomo vacuno, crudo",
+      "kcal100": 116,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, lomo, fresco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 656,
+      "nombre": "Roast beef, crudo",
+      "kcal100": 176,
+      "proteina100": 21.3,
+      "carbohidratos100": 0,
+      "grasas100": 10.1,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes semigrasos promedio: incluye roast beef"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 657,
+      "nombre": "Tortuguita de novillito, cruda",
+      "kcal100": 154,
+      "proteina100": 22,
+      "carbohidratos100": 0,
+      "grasas100": 7.6,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, tortuguita de novillito, fresco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 658,
+      "nombre": "Vacío de novillito, crudo",
+      "kcal100": 174,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 11,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, vacío de novillito, fresco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 659,
+      "nombre": "Matambre vacuno, crudo",
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes grasos promedio: incluye matambre"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 660,
+      "nombre": "Aguja vacuna, cruda",
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes grasos promedio: incluye aguja"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 661,
+      "nombre": "Falda vacuna, cruda",
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes grasos promedio: incluye falda"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 662,
+      "nombre": "Carne picada común, cruda",
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes grasos promedio: incluye carne picada común"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 663,
+      "nombre": "Carne picada especial, cruda",
+      "kcal100": 176,
+      "proteina100": 21.3,
+      "carbohidratos100": 0,
+      "grasas100": 10.1,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Cortes semigrasos promedio: incluye carne picada especial"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 664,
+      "nombre": "Colita de cuadril de novillito, cruda",
+      "kcal100": 143,
+      "proteina100": 21,
+      "carbohidratos100": 0,
+      "grasas100": 6.7,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Vacuno, colita de cuadril de novillito, fresco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 665,
+      "nombre": "Entraña vacuna, cruda",
+      "kcal100": 187,
+      "proteina100": 20.4,
+      "carbohidratos100": 0,
+      "grasas100": 11.7,
+      "requiereRevision": true,
+      "referenciaNutricional": {
+        "sourceFood": "Beef inside skirt, lean and fat, raw; SR Legacy fdcId 172158"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 666,
+      "nombre": "Ojo de bife / bife ancho, crudo",
+      "kcal100": 254,
+      "proteina100": 18.7,
+      "carbohidratos100": 0,
+      "grasas100": 20,
+      "requiereRevision": true,
+      "referenciaNutricional": {
+        "sourceFood": "Beef ribeye steak boneless choice raw; Foundation fdcId 2646172"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 667,
+      "nombre": "Osobuco vacuno, parte comestible cruda",
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Osobuco, crudo"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 679,
+      "nombre": "Salchicha parrillera, cruda",
+      "kcal100": 296,
+      "proteina100": 13.6,
+      "carbohidratos100": 3.8,
+      "grasas100": 25.1,
+      "requiereRevision": false,
+      "referenciaNutricional": {
+        "sourceFood": "Salchicha parrillera, cruda"
+      },
+      "basePesaje": "crudo"
+    }
+  ],
+  "automaticFoodsMissingBasis": [],
+  "keyDocuments": [
+    {
+      "activo": true,
+      "alimentoId": 35,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 11.7,
+      "carbohidratosUnidad": 0.117,
+      "grasas100": 0.2,
+      "grasasUnidad": 0.002,
+      "kcal100": 50,
+      "kcalUnidad": 0.5,
+      "macroBasis": "perUnit",
+      "nombre": "Ananá",
+      "proteina100": 0.4,
+      "proteinaUnidad": 0.004,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 39,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 77.5,
+      "carbohidratosUnidad": 0.775,
+      "grasas100": 0.2,
+      "grasasUnidad": 0.002,
+      "kcal100": 339,
+      "kcalUnidad": 3.39,
+      "macroBasis": "perUnit",
+      "nombre": "Arroz blanco, crudo (peso seco)",
+      "proteina100": 6.9,
+      "proteinaUnidad": 0.069,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "seco"
+    },
+    {
+      "activo": true,
+      "alimentoId": 42,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 72.7,
+      "carbohidratosUnidad": 0.727,
+      "grasas100": 3.2,
+      "grasasUnidad": 0.032,
+      "kcal100": 350,
+      "kcalUnidad": 3.5,
+      "macroBasis": "perUnit",
+      "nombre": "Arroz integral, crudo (peso seco)",
+      "proteina100": 7.5,
+      "proteinaUnidad": 0.075,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "seco"
+    },
+    {
+      "activo": true,
+      "alimentoId": 49,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 56.9,
+      "carbohidratosUnidad": 0.569,
+      "grasas100": 7.5,
+      "grasasUnidad": 0.075,
+      "kcal100": 357,
+      "kcalUnidad": 3.57,
+      "macroBasis": "perUnit",
+      "nombre": "Avena arrollada / instantánea, seca",
+      "proteina100": 15.6,
+      "proteinaUnidad": 0.156,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "seco"
+    },
+    {
+      "activo": true,
+      "alimentoId": 65,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 3,
+      "grasasUnidad": 0.03,
+      "kcal100": 111,
+      "kcalUnidad": 1.11,
+      "macroBasis": "perUnit",
+      "nombre": "Bife de chorizo magro, crudo (sin grasa visible)",
+      "proteina100": 21,
+      "proteinaUnidad": 0.21,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 72,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 3.2,
+      "grasasUnidad": 0.032,
+      "kcal100": 114,
+      "kcalUnidad": 1.14,
+      "macroBasis": "perUnit",
+      "nombre": "Bola de lomo de novillito, cruda",
+      "proteina100": 22,
+      "proteinaUnidad": 0.22,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 113,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 5.5,
+      "grasasUnidad": 0.055,
+      "kcal100": 138,
+      "kcalUnidad": 1.38,
+      "macroBasis": "perUnit",
+      "nombre": "Churrasco vacuno magro, crudo (corte magro promedio)",
+      "proteina100": 22.2,
+      "proteinaUnidad": 0.222,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 115,
+      "cantidadUnidad": 1,
+      "carbohidratosUnidad": 0.23,
+      "grasasUnidad": 0.07,
+      "kcalUnidad": 16.83,
+      "macroBasis": "perUnit",
+      "nombre": "Clara de huevo cruda (1 unidad = 33 g)",
+      "proteinaUnidad": 3.83,
+      "requiereRevision": false,
+      "unidad": "Unid",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo",
+      "carbohidratos100": 0.7,
+      "grasas100": 0.2,
+      "kcal100": 51,
+      "proteina100": 11.6
+    },
+    {
+      "activo": true,
+      "alimentoId": 120,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 91.4,
+      "carbohidratosUnidad": 0.914,
+      "grasas100": 0.8,
+      "grasasUnidad": 0.008,
+      "kcal100": 401,
+      "kcalUnidad": 4.01,
+      "macroBasis": "perUnit",
+      "nombre": "Copos de maíz sin azúcar, secos",
+      "proteina100": 7.1,
+      "proteinaUnidad": 0.071,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 129,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 5.5,
+      "grasasUnidad": 0.055,
+      "kcal100": 138,
+      "kcalUnidad": 1.38,
+      "macroBasis": "perUnit",
+      "nombre": "Cuadrada vacuna magra, cruda (promedio cortes magros)",
+      "proteina100": 22.2,
+      "proteinaUnidad": 0.222,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 162,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 71.5,
+      "carbohidratosUnidad": 0.715,
+      "grasas100": 1.5,
+      "grasasUnidad": 0.015,
+      "kcal100": 352,
+      "kcalUnidad": 3.52,
+      "macroBasis": "perUnit",
+      "nombre": "Fideos secos, crudos (peso seco)",
+      "proteina100": 13,
+      "proteinaUnidad": 0.13,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "seco"
+    },
+    {
+      "activo": true,
+      "alimentoId": 224,
+      "cantidadUnidad": 1,
+      "carbohidratosUnidad": 0.2,
+      "grasasUnidad": 5.9,
+      "kcalUnidad": 78,
+      "macroBasis": "perUnit",
+      "nombre": "Huevo de gallina mediano, crudo (50 g comestibles)",
+      "proteinaUnidad": 6,
+      "requiereRevision": false,
+      "unidad": "Unid",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo",
+      "carbohidratos100": 0.4,
+      "grasas100": 11.8,
+      "kcal100": 156,
+      "proteina100": 12
+    },
+    {
+      "activo": true,
+      "alimentoId": 241,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 0.9,
+      "grasasUnidad": 0.009,
+      "kcal100": 96,
+      "kcalUnidad": 0.96,
+      "macroBasis": "perUnit",
+      "nombre": "Langostino, carne de cola cruda",
+      "proteina100": 22,
+      "proteinaUnidad": 0.22,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 247,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 4.9,
+      "carbohidratosUnidad": 0.049,
+      "grasas100": 0.5,
+      "grasasUnidad": 0.005,
+      "kcal100": 36,
+      "kcalUnidad": 0.36,
+      "macroBasis": "perUnit",
+      "nombre": "Leche descremada fluida 0%, genérica",
+      "proteina100": 3,
+      "proteinaUnidad": 0.03,
+      "requiereRevision": false,
+      "unidad": "Ml",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 249,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 5.4,
+      "carbohidratosUnidad": 0.054,
+      "grasas100": 0.4,
+      "grasasUnidad": 0.004,
+      "kcal100": 43,
+      "kcalUnidad": 0.43,
+      "macroBasis": "perUnit",
+      "nombre": "Leche descremada alta en proteínas 0%, genérica",
+      "proteina100": 4.5,
+      "proteinaUnidad": 0.045,
+      "requiereRevision": false,
+      "unidad": "Ml",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 252,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 4.9,
+      "carbohidratosUnidad": 0.049,
+      "grasas100": 0.5,
+      "grasasUnidad": 0.005,
+      "kcal100": 36,
+      "kcalUnidad": 0.36,
+      "macroBasis": "perUnit",
+      "nombre": "La Serenísima Menos Calorías 0%",
+      "proteina100": 3,
+      "proteinaUnidad": 0.03,
+      "requiereRevision": false,
+      "unidad": "Ml",
+      "generation": {
+        "mode": "EXPLICIT_ONLY"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 253,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 4.8,
+      "carbohidratosUnidad": 0.048,
+      "grasas100": 1,
+      "grasasUnidad": 0.01,
+      "kcal100": 40,
+      "kcalUnidad": 0.4,
+      "macroBasis": "perUnit",
+      "nombre": "Leche sin lactosa parcialmente descremada, genérica",
+      "proteina100": 3,
+      "proteinaUnidad": 0.03,
+      "requiereRevision": false,
+      "unidad": "Ml",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 258,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 4.5,
+      "carbohidratosUnidad": 0.045,
+      "grasas100": 3,
+      "grasasUnidad": 0.03,
+      "kcal100": 57,
+      "kcalUnidad": 0.57,
+      "macroBasis": "perUnit",
+      "nombre": "Leche entera fluida, genérica",
+      "proteina100": 3,
+      "proteinaUnidad": 0.03,
+      "requiereRevision": false,
+      "unidad": "Ml",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 358,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 5.5,
+      "grasasUnidad": 0.055,
+      "kcal100": 125,
+      "kcalUnidad": 1.25,
+      "macroBasis": "perUnit",
+      "nombre": "Paleta de novillito, cruda",
+      "proteina100": 19,
+      "proteinaUnidad": 0.19,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 360,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 3.7,
+      "grasasUnidad": 0.037,
+      "kcal100": 116,
+      "kcalUnidad": 1.16,
+      "macroBasis": "perUnit",
+      "nombre": "Palomita de novillito, cruda",
+      "proteina100": 20,
+      "proteinaUnidad": 0.2,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 362,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 57,
+      "carbohidratosUnidad": 0.57,
+      "grasas100": 0.7,
+      "grasasUnidad": 0.007,
+      "kcal100": 268,
+      "kcalUnidad": 2.68,
+      "macroBasis": "perUnit",
+      "nombre": "Pan genérico de panadería, sin grasa agregada",
+      "proteina100": 8.4,
+      "proteinaUnidad": 0.084,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 364,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 57.4,
+      "carbohidratosUnidad": 0.574,
+      "grasas100": 0.2,
+      "grasasUnidad": 0.002,
+      "kcal100": 269,
+      "kcalUnidad": 2.69,
+      "macroBasis": "perUnit",
+      "nombre": "Pan baguette / francés de panadería",
+      "proteina100": 9.3,
+      "proteinaUnidad": 0.093,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 365,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 46.7,
+      "carbohidratosUnidad": 0.467,
+      "grasas100": 2.2,
+      "grasasUnidad": 0.022,
+      "kcal100": 244,
+      "kcalUnidad": 2.44,
+      "macroBasis": "perUnit",
+      "nombre": "Pan blanco tipo molde lacteado, genérico",
+      "proteina100": 9.4,
+      "proteinaUnidad": 0.094,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 369,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 42.5,
+      "carbohidratosUnidad": 0.425,
+      "grasas100": 3.3,
+      "grasasUnidad": 0.033,
+      "kcal100": 234,
+      "kcalUnidad": 2.34,
+      "macroBasis": "perUnit",
+      "nombre": "Pan de centeno, genérico",
+      "proteina100": 8.5,
+      "proteinaUnidad": 0.085,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 374,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 57,
+      "carbohidratosUnidad": 0.57,
+      "grasas100": 0.7,
+      "grasasUnidad": 0.007,
+      "kcal100": 268,
+      "kcalUnidad": 2.68,
+      "macroBasis": "perUnit",
+      "nombre": "Pan francés de panadería, sin grasa agregada",
+      "proteina100": 8.4,
+      "proteinaUnidad": 0.084,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 376,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 40.7,
+      "carbohidratosUnidad": 0.407,
+      "grasas100": 2.1,
+      "grasasUnidad": 0.021,
+      "kcal100": 225,
+      "kcalUnidad": 2.25,
+      "macroBasis": "perUnit",
+      "nombre": "Pan integral / de molde con salvado, genérico",
+      "proteina100": 10.9,
+      "proteinaUnidad": 0.109,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "basePesaje": "listo_para_consumir",
+      "generation": {
+        "mode": "GENERIC"
+      }
+    },
+    {
+      "activo": true,
+      "alimentoId": 391,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 16.9,
+      "carbohidratosUnidad": 0.169,
+      "grasas100": 0.1,
+      "grasasUnidad": 0.001,
+      "kcal100": 79,
+      "kcalUnidad": 0.79,
+      "macroBasis": "perUnit",
+      "nombre": "Papa, cruda",
+      "proteina100": 2.7,
+      "proteinaUnidad": 0.027,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 402,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 1.9,
+      "grasasUnidad": 0.019,
+      "kcal100": 125,
+      "kcalUnidad": 1.25,
+      "macroBasis": "perUnit",
+      "nombre": "Peceto de novillito, crudo",
+      "proteina100": 23,
+      "proteinaUnidad": 0.23,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 403,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 2.33,
+      "grasasUnidad": 0.0233,
+      "kcal100": 114,
+      "kcalUnidad": 1.14,
+      "macroBasis": "perUnit",
+      "nombre": "Pechuga de pavo sin piel, cruda",
+      "proteina100": 23.3,
+      "proteinaUnidad": 0.233,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 404,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 2.6,
+      "grasasUnidad": 0.026,
+      "kcal100": 114,
+      "kcalUnidad": 1.14,
+      "macroBasis": "perUnit",
+      "nombre": "Pechuga de pollo sin piel, cruda",
+      "proteina100": 22.5,
+      "proteinaUnidad": 0.225,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 405,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 4.78,
+      "grasasUnidad": 0.0478,
+      "kcal100": 127,
+      "kcalUnidad": 1.27,
+      "macroBasis": "perUnit",
+      "nombre": "Pechuga de pollo con piel, cruda",
+      "proteina100": 21.4,
+      "proteinaUnidad": 0.214,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 412,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 1.3,
+      "grasasUnidad": 0.013,
+      "kcal100": 80,
+      "kcalUnidad": 0.8,
+      "macroBasis": "perUnit",
+      "nombre": "Pescado blanco/magro de mar, crudo",
+      "proteina100": 17.1,
+      "proteinaUnidad": 0.171,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 494,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 3.3,
+      "carbohidratosUnidad": 0.033,
+      "grasas100": 0.1,
+      "grasasUnidad": 0.001,
+      "kcal100": 19,
+      "kcalUnidad": 0.19,
+      "macroBasis": "perUnit",
+      "nombre": "Repollo, crudo",
+      "proteina100": 1.3,
+      "proteinaUnidad": 0.013,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "basePesaje": "crudo",
+      "generation": {
+        "mode": "GENERIC"
+      }
+    },
+    {
+      "activo": true,
+      "alimentoId": 541,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 5.5,
+      "grasasUnidad": 0.055,
+      "kcal100": 138,
+      "kcalUnidad": 1.38,
+      "macroBasis": "perUnit",
+      "nombre": "Carne vacuna/ternera magra, cruda (promedio)",
+      "proteina100": 22.2,
+      "proteinaUnidad": 0.222,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 548,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 74.5,
+      "carbohidratosUnidad": 0.745,
+      "grasas100": 4.2,
+      "grasasUnidad": 0.042,
+      "kcal100": 388,
+      "kcalUnidad": 3.88,
+      "macroBasis": "perUnit",
+      "nombre": "Tostadas clásicas de mesa",
+      "proteina100": 13,
+      "proteinaUnidad": 0.13,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 551,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 83.9,
+      "carbohidratosUnidad": 0.839,
+      "grasas100": 2.1,
+      "grasasUnidad": 0.021,
+      "kcal100": 380,
+      "kcalUnidad": 3.8,
+      "macroBasis": "perUnit",
+      "nombre": "Galletas/tostadas de arroz, genéricas",
+      "proteina100": 6.3,
+      "proteinaUnidad": 0.063,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "listo_para_consumir"
+    },
+    {
+      "activo": true,
+      "alimentoId": 607,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 7.8,
+      "carbohidratosUnidad": 0.078,
+      "grasas100": 0.1,
+      "grasasUnidad": 0.001,
+      "kcal100": 36,
+      "kcalUnidad": 0.36,
+      "macroBasis": "perUnit",
+      "nombre": "Zapallo, crudo",
+      "proteina100": 1,
+      "proteinaUnidad": 0.01,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "activo": true,
+      "alimentoId": 609,
+      "cantidadUnidad": 1,
+      "carbohidratos100": 0,
+      "carbohidratosUnidad": 0,
+      "grasas100": 4.22,
+      "grasasUnidad": 0.0422,
+      "kcal100": 120,
+      "kcalUnidad": 1.2,
+      "macroBasis": "perUnit",
+      "nombre": "Pata-muslo de pollo sin piel, carne cruda",
+      "proteina100": 19.2,
+      "proteinaUnidad": 0.192,
+      "requiereRevision": false,
+      "unidad": "Grs",
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 653,
+      "nombre": "Nalga magra de novillito, cruda",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 1.06,
+      "proteinaUnidad": 0.22,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.017,
+      "kcal100": 106,
+      "proteina100": 22,
+      "carbohidratos100": 0,
+      "grasas100": 1.7,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 655,
+      "nombre": "Lomo vacuno, crudo",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 1.16,
+      "proteinaUnidad": 0.2,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.04,
+      "kcal100": 116,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 4,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 657,
+      "nombre": "Tortuguita de novillito, cruda",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 1.54,
+      "proteinaUnidad": 0.22,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.076,
+      "kcal100": 154,
+      "proteina100": 22,
+      "carbohidratos100": 0,
+      "grasas100": 7.6,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 658,
+      "nombre": "Vacío de novillito, crudo",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 1.74,
+      "proteinaUnidad": 0.2,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.11,
+      "kcal100": 174,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 11,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 664,
+      "nombre": "Colita de cuadril de novillito, cruda",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 1.43,
+      "proteinaUnidad": 0.21,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.067,
+      "kcal100": 143,
+      "proteina100": 21,
+      "carbohidratos100": 0,
+      "grasas100": 6.7,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    },
+    {
+      "alimentoId": 667,
+      "nombre": "Osobuco vacuno, parte comestible cruda",
+      "unidad": "Grs",
+      "cantidadUnidad": 1,
+      "kcalUnidad": 2.1,
+      "proteinaUnidad": 0.2,
+      "carbohidratosUnidad": 0,
+      "grasasUnidad": 0.144,
+      "kcal100": 210,
+      "proteina100": 20,
+      "carbohidratos100": 0,
+      "grasas100": 14.4,
+      "macroBasis": "perUnit",
+      "activo": true,
+      "requiereRevision": false,
+      "generation": {
+        "mode": "GENERIC"
+      },
+      "basePesaje": "crudo"
+    }
+  ]
+}

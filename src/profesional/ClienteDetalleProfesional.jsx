@@ -117,6 +117,7 @@ export default function ClienteDetalleProfesional() {
   const [nutritionDraft, setNutritionDraft] = useState(() => createNutritionDraft(null));
   const [menuDraft, setMenuDraft] = useState(() => createMenuDraft(null));
   const [routineDraft, setRoutineDraft] = useState(() => createRoutineDraft(null));
+  const persistedNutritionDraft = useMemo(() => createNutritionDraft(client), [client]);
 
   useEffect(() => {
     setNutritionDraft(createNutritionDraft(client));
@@ -764,6 +765,10 @@ async function applyNutritionPreview(editedTarget = null) {
       onEditDay={setEditingNutritionDay}
       onApplyGeneral={applyGeneralToWeek}
       onRecalculateWeek={recalculateNutritionWeek}
+      onToggleBalance={() => setNutritionDraft((draft) => ({
+        ...draft,
+        weeklyBalanceEnabled: !draft.weeklyBalanceEnabled,
+      }))}
     />
 
     {nutritionAssignmentImpact.affectedDays.length ? (
@@ -936,7 +941,7 @@ async function applyNutritionPreview(editedTarget = null) {
               clientId={clientId}
               client={client}
               access={access}
-              nutritionTargets={nutritionDraft}
+              nutritionTargets={persistedNutritionDraft}
               onToast={setToast}
             />
 
@@ -1750,6 +1755,7 @@ function DailyTargetsSection({
   onEditDay,
   onApplyGeneral,
   onRecalculateWeek,
+  onToggleBalance,
 }) {
   const weekPlan = useMemo(
     () => resolveNutritionWeek(nutritionDraft),
@@ -1845,6 +1851,24 @@ function DailyTargetsSection({
           del objetivo.
         </div>
       ) : null}
+
+      <button
+        type="button"
+        className={`prof-weekBalanceToggle ${nutritionDraft.weeklyBalanceEnabled ? "active" : ""}`}
+        onClick={onToggleBalance}
+        aria-pressed={nutritionDraft.weeklyBalanceEnabled === true}
+      >
+        <span className="prof-weekBalanceIcon"><Scale size={19} /></span>
+        <span>
+          <strong>Compensar calorÃ­as en la semana</strong>
+          <small>
+            {nutritionDraft.weeklyBalanceEnabled
+              ? "Activo: si ajustÃ¡s un dÃ­a, el resto absorbe la diferencia sin cambiar el total semanal."
+              : "Inactivo: cada dÃ­a conserva su objetivo sin compensar diferencias."}
+          </small>
+        </span>
+        <i aria-hidden="true"><b /></i>
+      </button>
 
       <div className="prof-dailyBarGridV3">
         {NUTRITION_WEEK_DAYS.map((day) => (
@@ -3683,6 +3707,7 @@ function createNutritionDraft(client) {
     targetWeightKg: valueOrEmpty(client?.goal?.targetWeightKg),
     approach: client?.goal?.approach || "",
     dailyTargets: createDailyTargetsDraft(client),
+    weeklyBalanceEnabled: client?.menu?.weeklyPlan?.balanceEnabled !== false,
   };
 }
 
@@ -3858,6 +3883,11 @@ function normalizeDailyTargetDraft(target = {}) {
 
 function nutritionPayloadFromDraft(draft = {}, assignmentInvalidation = null) {
   const weeklyPlan = serializeDailyTargets(draft.dailyTargets);
+  const hasDailyTargets = Object.keys(weeklyPlan.caloriesByDay || {}).length > 0
+    || Object.keys(weeklyPlan.macrosByDay || {}).length > 0;
+  weeklyPlan.mode = hasDailyTargets ? "per_day" : "same_all_days";
+  weeklyPlan.trainingDays = [];
+  weeklyPlan.balanceEnabled = draft.weeklyBalanceEnabled === true;
   return {
     kcal: calculateMacroKcal(draft.p, draft.c, draft.g) ?? toNullableNumber(draft.kcal),
     macros: {

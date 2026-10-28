@@ -1,0 +1,248 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --zf-bg: #05080c;
+  --zf-bg-soft: #080d13;
+  --zf-surface: #0b1118;
+  --zf-surface-raised: #101923;
+  --zf-surface-soft: rgba(15, 24, 34, 0.78);
+  --zf-border: rgba(255, 255, 255, 0.085);
+  --zf-border-strong: rgba(245, 215, 110, 0.24);
+  --zf-text: #f7f9fc;
+  --zf-text-soft: #dce4ed;
+  --zf-muted: #9aa8b8;
+  --zf-gold: #f5d76e;
+  --zf-gold-strong: #ffd75a;
+  --zf-teal: #4fd1b5;
+  --zf-danger: #f87171;
+  --zf-success: #4ade80;
+  --zf-radius-sm: 12px;
+  --zf-radius-md: 16px;
+  --zf-radius-lg: 22px;
+  --zf-radius-xl: 28px;
+  --zf-shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.24);
+  --zf-shadow-md: 0 20px 54px rgba(0, 0, 0, 0.34);
+  --zf-shadow-lg: 0 30px 90px rgba(0, 0, 0, 0.48);
+  --zf-motion-instant: 90ms;
+  --zf-motion-fast: 150ms;
+  --zf-motion-base: 220ms;
+  --zf-motion-slow: 360ms;
+  --zf-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --zf-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --zf-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --zf-mobile-nav-height: 74px;
+}
+
+html {
+  min-width: 320px;
+  background: var(--zf-bg);
+  scroll-behavior: smooth;
+  scrollbar-color: rgba(245, 215, 110, 0.38) rgba(255, 255, 255, 0.035);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100dvh;
+  color: var(--zf-text);
+  background:
+    radial-gradient(900px 520px at 5% -10%, rgba(245, 215, 110, 0.07), transparent 58%),
+    radial-gradient(760px 500px at 102% 18%, rgba(79, 209, 181, 0.045), transparent 56%),
+    var(--zf-bg);
+  font-family: inherit;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--zf-gold-strong);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(245, 215, 110, 0.12);
+}
+
+:where(input, select, textarea) {
+  caret-color: var(--zf-gold-strong);
+  transition:
+    border-color var(--zf-motion-fast) ease,
+    background-color var(--zf-motion-fast) ease,
+    box-shadow var(--zf-motion-fast) ease;
+}
+
+:where(input, select, textarea):focus {
+  border-color: rgba(245, 215, 110, 0.48);
+}
+
+::selection {
+  color: #090909;
+  background: var(--zf-gold);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 215, 110, 0.34) rgba(255, 255, 255, 0.03);
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(245, 215, 110, 0.28);
+  background-clip: padding-box;
+}
+
+.zf-surface {
+  border: 1px solid var(--zf-border);
+  border-radius: var(--zf-radius-lg);
+  background: linear-gradient(145deg, rgba(16, 25, 35, 0.96), rgba(7, 12, 18, 0.98));
+  box-shadow: var(--zf-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.zf-button {
+  min-height: 44px;
+  border: 1px solid var(--zf-border);
+  border-radius: var(--zf-radius-sm);
+  background: var(--zf-surface-raised);
+  color: var(--zf-text);
+  padding: 0 16px;
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    transform var(--zf-motion-instant) ease,
+    border-color var(--zf-motion-fast) ease,
+    background-color var(--zf-motion-fast) ease,
+    box-shadow var(--zf-motion-fast) ease;
+}
+
+.zf-button.primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, #f5c842, #ffe681);
+  color: #090909;
+  box-shadow: 0 12px 32px rgba(245, 200, 66, 0.2);
+}
+
+.zf-button:active {
+  transform: scale(0.98);
+}
+
+@keyframes zf-page-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 7px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes zf-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+:where(.cs-content, .pl-main) > :not(style),
+:where(.route-loading-card, .cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
+  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) both;
+}
+
+:where(.cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
+  animation-name: zf-dialog-enter;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zf-button:hover {
+    transform: translateY(-1px);
+    border-color: var(--zf-border-strong);
+    box-shadow: var(--zf-shadow-sm);
+  }
+}
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  :where(button, a, [role="button"]) {
+    scroll-margin-bottom: calc(var(--zf-mobile-nav-height) + 24px);
+  }
+
+  :where(.td-page, .og-page, .zp-page, .p-wrap, .cp-page, .nl-page, .rt-page) {
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  :where(
+    .td-iconBtn,
+    .td-registerMealBtn,
+    .og-tabs button,
+    .og-editTarget,
+    .nl-tabs button,
+    .nl-context-filters button,
+    .cp-back,
+    .zp-tab
+  ) {
+    min-height: 44px;
+  }
+
+  :where(.td-shell, .og-page, .zp-stack, .p-inner, .cp-page, .nl-shell) {
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}

@@ -42,6 +42,19 @@ test("la validación detecta una edición que rompe la meta diaria", () => {
   assert.equal(validation.differences.p, 3);
 });
 
+test("la validación acepta el reparto exacto de 2.240 kcal del planificador", () => {
+  const dailyTarget = { kcal: 2240, p: 190, c: 235, g: 60 };
+  const meals = [
+    { target: { kcal: 493, p: 41.8, c: 51.7, g: 13.2 } },
+    { target: { kcal: 739, p: 62.7, c: 77.6, g: 19.8 } },
+    { target: { kcal: 336, p: 28.5, c: 35.2, g: 9 } },
+    { target: { kcal: 672, p: 57, c: 70.5, g: 18 } },
+  ];
+
+  assert.deepEqual(mealTargetTotals(meals), dailyTarget);
+  assert.equal(validateMealTargetPlan(meals, dailyTarget).valid, true);
+});
+
 test("la normalización conserva una planificación persistida y rechaza contenido ambiguo", () => {
   const meals = buildBalancedMealTargets(target, 4, "tuesday");
   assert.equal(normalizeStoredMealTargetPlan({ mode: "per_meal", meals }).meals.length, 4);

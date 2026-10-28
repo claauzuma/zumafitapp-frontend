@@ -3125,6 +3125,63 @@
   font-weight:850;
 }
 
+.prof-weekBalanceToggle{
+  width:100%;
+  margin:0 0 16px;
+  padding:12px 14px;
+  border:1px solid rgba(120,170,230,.18);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(13,22,31,.98),rgba(8,14,21,.98));
+  color:#edf2f7;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:11px;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+
+.prof-weekBalanceToggle:hover,
+.prof-weekBalanceToggle.active{
+  border-color:rgba(94,234,212,.42);
+  background:linear-gradient(135deg,rgba(12,35,35,.98),rgba(8,18,24,.98));
+  box-shadow:0 10px 28px rgba(0,0,0,.2);
+}
+
+.prof-weekBalanceIcon{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  color:#f5d76e;
+  background:rgba(245,215,110,.09);
+  border:1px solid rgba(245,215,110,.2);
+}
+
+.prof-weekBalanceToggle > span:nth-child(2){display:grid;gap:3px;min-width:0}
+.prof-weekBalanceToggle strong{font-size:13px}
+.prof-weekBalanceToggle small{color:#91a3b5;font-size:11px;line-height:1.4}
+.prof-weekBalanceToggle > i{
+  width:42px;
+  height:24px;
+  padding:3px;
+  border-radius:999px;
+  background:#202b36;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+}
+.prof-weekBalanceToggle > i > b{
+  display:block;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#93a4b6;
+  transition:transform .18s ease,background .18s ease;
+}
+.prof-weekBalanceToggle.active > i{background:rgba(20,184,166,.25)}
+.prof-weekBalanceToggle.active > i > b{transform:translateX(18px);background:#5eead4}
+
 .prof-nutritionActions{
   display:flex;
   align-items:center;
