@@ -8449,8 +8449,8 @@ function MobileDayPicker({
       </button>
       <div className="min-w-0 px-1 text-center" aria-current={selectedIsToday ? "date" : undefined}>
         <div className="flex min-w-0 items-center justify-center gap-1.5">
-          <CalendarDays size={12} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-500"}`} />
-          <span className="truncate text-[10.5px] font-black leading-tight text-zinc-100 min-[360px]:text-[11px]">
+          <CalendarDays size={14} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-400"}`} />
+          <span className="truncate text-[11.5px] font-black leading-tight text-zinc-100 min-[360px]:text-[12px]">
             {longDateLabel}
           </span>
           {selectedIsToday ? (
@@ -9009,7 +9009,7 @@ function AutonomousMenuQuickActions({ mobile = false }) {
           type="button"
           onClick={actions.onSaveDay}
           disabled={!actions.canSaveDay}
-          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-[11px] font-black transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${mobile
+          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 text-[11px] font-black transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${mobile ? "min-h-[42px]" : "min-h-11"} ${mobile
             ? "border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(16,185,129,.065),rgba(6,13,16,.82))] text-emerald-100 hover:border-emerald-300/35 hover:bg-emerald-300/[0.09]"
             : "border border-emerald-300/30 bg-emerald-300/[0.08] text-emerald-100"}`}
         >
@@ -9019,7 +9019,7 @@ function AutonomousMenuQuickActions({ mobile = false }) {
         <button
           type="button"
           onClick={actions.onOpenSavedDays}
-          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-[11px] font-black text-zinc-200 transition duration-200 active:scale-[0.98] ${mobile
+          className={`inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-[11px] font-black text-zinc-200 transition duration-200 active:scale-[0.98] ${mobile ? "min-h-[42px]" : "min-h-11"} ${mobile
             ? "bg-[linear-gradient(145deg,rgba(255,255,255,.035),rgba(3,6,10,.7))] hover:border-white/20 hover:bg-white/[0.055]"
             : "bg-white/[0.035]"}`}
         >
@@ -9116,7 +9116,7 @@ function QuickMenuAction({
     <button
       type="button"
       className={`group relative flex min-w-0 flex-col items-center justify-center gap-1.5 text-center transition duration-200 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] active:scale-[0.98] ${mobile
-        ? `min-h-[78px] overflow-hidden rounded-[1rem] border px-1.5 py-2.5 shadow-[0_9px_24px_rgba(0,0,0,.24),inset_0_1px_0_rgba(255,255,255,.035)] hover:-translate-y-0.5 hover:border-white/25 ${mobileSurfaces[tone] || mobileSurfaces.gold}`
+        ? `min-h-[70px] overflow-hidden rounded-[.95rem] border px-1.5 py-2 shadow-[0_8px_22px_rgba(0,0,0,.23),inset_0_1px_0_rgba(255,255,255,.035)] hover:-translate-y-0.5 hover:border-white/25 ${mobileSurfaces[tone] || mobileSurfaces.gold}`
         : "min-h-[70px] border-r border-white/[0.07] px-1 py-2.5 hover:bg-white/[0.055] min-[640px]:min-h-[72px] min-[640px]:flex-row min-[640px]:gap-2.5 min-[640px]:px-3"}
         ${pressed ? "ring-1 ring-inset ring-[#FFD76B]/35 bg-[#D4AF37]/[0.08]" : ""}`}
       onClick={onClick}
@@ -9129,7 +9129,7 @@ function QuickMenuAction({
       <span
         className={`
           grid
-          ${mobile ? "h-10 w-10" : "h-11 w-11 min-[640px]:h-10 min-[640px]:w-10"}
+          ${mobile ? "h-9 w-9" : "h-11 w-11 min-[640px]:h-10 min-[640px]:w-10"}
           shrink-0
           place-items-center
           rounded-full
@@ -9138,7 +9138,7 @@ function QuickMenuAction({
         `}
       >
         {React.createElement(icon, {
-          size: 19,
+          size: mobile ? 18 : 19,
           strokeWidth: 2.2,
           className: busy ? "animate-spin" : "",
           "aria-hidden": "true",
@@ -9850,11 +9850,11 @@ function MobileGoalAccordion({
                   <span className="flex min-w-0 items-center justify-between gap-1.5">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${macroRow.dotClass}`} />
-                      <span className="truncate text-[7.5px] font-black uppercase tracking-[.04em] text-zinc-400 min-[360px]:text-[8px]">
+                      <span className="truncate text-[8.5px] font-black uppercase tracking-[.035em] text-zinc-300 min-[360px]:text-[9px]">
                         {macroRow.label}
                       </span>
                     </span>
-                    <span className={`shrink-0 text-[8px] font-black min-[360px]:text-[8.5px] ${macroExceeded ? "text-rose-300" : "text-zinc-200"}`}>
+                    <span className={`shrink-0 text-[9px] font-black min-[360px]:text-[9.5px] ${macroExceeded ? "text-rose-300" : "text-zinc-100"}`}>
                       {formatNumber(macroRow.current, 0)} / {formatNumber(macroRow.goal, 0)} g
                     </span>
                   </span>
