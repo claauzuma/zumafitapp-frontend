@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../../Api.js";
 import ProgramIntro from "./ProgramIntro.jsx";
@@ -11,8 +11,18 @@ import ProgramGenerating from "./ProgramGenerating.jsx";
 import ProgramReady from "./ProgramReady.jsx";
 
 const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const PROGRAM_STEP_LABELS = {
+  0: "Tu programa",
+  1: "Estilo de alimentación",
+  2: "Entrenamiento",
+  3: "Distribución semanal",
+  4: "Días de entrenamiento",
+  5: "Proteína objetivo",
+  6: "Creando tu programa",
+  7: "Programa listo",
+};
 
-export default function ProgramWizard({ onDone }) {
+export default function ProgramWizard({ onDone, onProgress, onBackChange }) {
   const nav = useNavigate();
 
   const [step, setStep] = useState(0);
@@ -27,6 +37,37 @@ export default function ProgramWizard({ onDone }) {
     caloriesByDay: {},
     macrosByDay: {},
   });
+
+  const hasShiftStep = calorieDist === "shift" && step >= 4;
+  const visibleStep = !hasShiftStep && step >= 5 ? step - 1 : step;
+  const visibleTotal = hasShiftStep ? 8 : 7;
+
+  useEffect(() => {
+    onProgress?.({
+      section: "program",
+      step: visibleStep,
+      total: visibleTotal,
+      label: PROGRAM_STEP_LABELS[step],
+    });
+  }, [onProgress, step, visibleStep, visibleTotal]);
+
+  const handleWizardBack = useCallback(() => {
+    if (loading) return;
+    if (step === 0) {
+      nav("/app/onboarding/goal", { replace: true });
+      return;
+    }
+    if (step === 1) setStep(0);
+    else if (step === 2) setStep(1);
+    else if (step === 3) setStep(2);
+    else if (step === 4) setStep(3);
+    else if (step === 5) setStep(calorieDist === "shift" ? 4 : 3);
+    else setStep(5);
+  }, [calorieDist, loading, nav, step]);
+
+  useEffect(() => {
+    onBackChange?.("program", handleWizardBack, loading);
+  }, [handleWizardBack, loading, onBackChange]);
 
   const payload = useMemo(
     () => ({
@@ -90,6 +131,7 @@ export default function ProgramWizard({ onDone }) {
 
   return (
     <div className="ob2-program">
+      <div key={`program-${step}`} className="ob2-stage ob2-stage--nested">
       {step === 0 && (
         <ProgramIntro
           onBack={() => nav("/app/onboarding/goal", { replace: true })}
@@ -226,6 +268,7 @@ export default function ProgramWizard({ onDone }) {
           loading={loading}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // src/onboarding_v2/OnboardingWizard.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { ArrowLeft, ArrowRight, LoaderCircle } from "lucide-react";
 import { apiFetch } from "../Api.js";
 import { setAuthLogged, getCachedUser } from "../authCache.js";
 import OnboardingLayout from "./OnboardingLayout.jsx";
@@ -89,6 +90,8 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   });
 
   const [i, setI] = useState(0);
+  const [nestedProgress, setNestedProgress] = useState(null);
+  const [nestedBack, setNestedBack] = useState(null);
 
   const section = useMemo(() => {
     const p = (loc.pathname || "").toLowerCase();
@@ -100,13 +103,47 @@ export default function OnboardingWizard({ startAt = "basics" }) {
   const isBasics = section === "basics";
   const screen = isBasics ? BASICS_SCREENS[i] : null;
 
+  const reportNestedProgress = useCallback((next) => {
+    if (!next || !next.section) return;
+    const normalized = {
+      section: next.section,
+      step: Math.max(0, Number(next.step) || 0),
+      total: Math.max(1, Number(next.total) || 1),
+      label: String(next.label || ""),
+    };
+    setNestedProgress((current) => (
+      current?.section === normalized.section
+      && current?.step === normalized.step
+      && current?.total === normalized.total
+      && current?.label === normalized.label
+        ? current
+        : normalized
+    ));
+  }, []);
+
+  const reportNestedBack = useCallback((nestedSection, handler, disabled = false) => {
+    if (typeof handler !== "function") return;
+    setNestedBack({ section: nestedSection, handler, disabled: Boolean(disabled) });
+  }, []);
+
+  const sectionStep = nestedProgress?.section === section ? nestedProgress.step : 0;
+  const sectionTotal = nestedProgress?.section === section
+    ? nestedProgress.total
+    : section === "goal"
+      ? 4
+      : 7;
+  const sectionStepCurrent = Math.min(sectionTotal, sectionStep + 1);
+  const sectionBackHandler = nestedBack?.section === section ? nestedBack.handler : null;
+
   const progressPct = useMemo(() => {
-    if (!isBasics) return section === "goal" ? 67 : 100;
-    if (i === 0) return 8;
-    const basicsCount = BASICS_SCREENS.length - 1;
-    const idx = Math.max(1, i) - 1;
-    return Math.round(((idx + 1) / basicsCount) * 100);
-  }, [isBasics, i, section]);
+    if (isBasics) {
+      return Math.max(3, Math.round(((i + 1) / BASICS_SCREENS.length) * 33));
+    }
+    if (section === "goal") {
+      return Math.min(67, 33 + Math.round((sectionStepCurrent / sectionTotal) * 34));
+    }
+    return Math.min(100, 67 + Math.round((sectionStepCurrent / sectionTotal) * 33));
+  }, [i, isBasics, section, sectionStepCurrent, sectionTotal]);
 
   useEffect(() => {
     const u = getCachedUser?.();
@@ -213,12 +250,20 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         title="Objetivo"
         subtitle="Definí tu meta"
         theme="goal"
-        progressPct={67}
-        onBack={() => nav("/app/onboarding", { replace: true, state: { backToBasics: true } })}
+        phaseIndex={1}
+        progressPct={progressPct}
+        stepCurrent={sectionStepCurrent}
+        stepTotal={sectionTotal}
+        transitionKey="goal"
+        navigationKey={`goal-${sectionStep}`}
+        onBack={sectionBackHandler || (() => nav("/app/onboarding", { replace: true, state: { backToBasics: true } }))}
+        backDisabled={Boolean(nestedBack?.section === section && nestedBack.disabled)}
         footer={null}
       >
         <div className="ob2-goal">
           <GoalWizard
+            onProgress={reportNestedProgress}
+            onBackChange={reportNestedBack}
             heightCm={form.alturaCm}
             currentWeightKg={form.pesoKg}
             tdeeKcal={form.tdeeCustom ?? form.tdeeEstimado}
@@ -252,12 +297,20 @@ export default function OnboardingWizard({ startAt = "basics" }) {
         title="Programa"
         subtitle="Últimos detalles"
         theme="program"
-        progressPct={100}
-        onBack={() => nav("/app/onboarding/goal", { replace: true })}
+        phaseIndex={2}
+        progressPct={progressPct}
+        stepCurrent={sectionStepCurrent}
+        stepTotal={sectionTotal}
+        transitionKey="program"
+        navigationKey={`program-${sectionStep}`}
+        onBack={sectionBackHandler || (() => nav("/app/onboarding/goal", { replace: true }))}
+        backDisabled={Boolean(nestedBack?.section === section && nestedBack.disabled)}
         footer={null}
       >
         <div className="ob2-program">
           <ProgramWizard
+            onProgress={reportNestedProgress}
+            onBackChange={reportNestedBack}
             onDone={async () => {
               await finishOnboardingAndGoHome();
             }}
@@ -278,7 +331,12 @@ export default function OnboardingWizard({ startAt = "basics" }) {
       title={screen.title}
       subtitle={screen.subtitle}
       theme={screen.key}
+      phaseIndex={0}
       progressPct={progressPct}
+      stepCurrent={i + 1}
+      stepTotal={BASICS_SCREENS.length}
+      transitionKey={screen.key}
+      navigationKey={`basics-${screen.key}`}
       onBack={back}
       footer={
         <div className="ob2-sticky-inner">
@@ -290,7 +348,6 @@ export default function OnboardingWizard({ startAt = "basics" }) {
             patchStep1={patchStep1}
             nav={nav}
           />
-          <div className="ob2-mini">Básicos → Objetivo → Programa</div>
         </div>
       }
     >
@@ -395,7 +452,7 @@ if (screenKey === "tdee") {
   return (
     <>
       {error ? (
-        <div style={{ color: "#ffd9a1", fontSize: 12, textAlign: "center" }}>
+        <div className="ob2-inline-error" role="alert">
           {error}
         </div>
       ) : null}
@@ -408,7 +465,8 @@ if (screenKey === "tdee") {
             onClick={onBack}
             disabled={loading}
           >
-            Atrás
+            <ArrowLeft size={18} strokeWidth={2.3} aria-hidden="true" />
+            <span>Atrás</span>
           </button>
 
           <button
@@ -416,8 +474,13 @@ if (screenKey === "tdee") {
             type="button"
             onClick={handlePrimary}
             disabled={loading}
+            aria-busy={loading}
           >
-            {loading ? "Guardando…" : "Siguiente"}
+            {loading ? (
+              <><LoaderCircle className="ob2-btn-spinner" size={18} aria-hidden="true" /> Guardando…</>
+            ) : (
+              <>Continuar <ArrowRight size={18} strokeWidth={2.3} aria-hidden="true" /></>
+            )}
           </button>
         </div>
       ) : (
@@ -426,8 +489,13 @@ if (screenKey === "tdee") {
           type="button"
           onClick={handlePrimary}
           disabled={loading}
+          aria-busy={loading}
         >
-          {loading ? "…" : "Ir a Básicos"}
+          {loading ? (
+            <><LoaderCircle className="ob2-btn-spinner" size={18} aria-hidden="true" /> Preparando…</>
+          ) : (
+            <>Empezar <ArrowRight size={18} strokeWidth={2.3} aria-hidden="true" /></>
+          )}
         </button>
       )}
     </>

@@ -166,6 +166,7 @@ class MenuErrorBoundary extends React.Component {
 export default function MenuEj() {
   const location = useLocation();
   const [actionsOpen, setActionsOpen] = useState(false);
+  const isMenuDay = !location.pathname.endsWith("/preferencias") && !location.pathname.endsWith("/favoritas");
   const currentTitle = location.pathname.endsWith("/preferencias")
     ? "Preferencias"
     : location.pathname.endsWith("/favoritas")
@@ -180,43 +181,44 @@ export default function MenuEj() {
     <div className="menu-wrap">
       <style>{CSS}</style>
 
-      <div className="menu-top">
-        <div className="menu-title">
-          <Utensils size={20} />
-          {currentTitle}
+      {!isMenuDay ? (
+        <div className="menu-top">
+          <div className="menu-title">
+            {currentTitle}
+          </div>
+          <div className="menu-mobile-actions">
+            <button
+              type="button"
+              className="menu-options-btn"
+              onClick={() => setActionsOpen((value) => !value)}
+              aria-label="Opciones de menú"
+              aria-expanded={actionsOpen}
+            >
+              <MoreHorizontal size={20} />
+            </button>
+            {actionsOpen ? (
+              <>
+                <button type="button" className="menu-options-backdrop" onClick={() => setActionsOpen(false)} aria-label="Cerrar opciones" />
+                <div className="menu-options-panel" role="dialog" aria-modal="true" aria-label="Opciones de menú">
+                  <div className="menu-options-title">Menú</div>
+                  <NavLink to="/app/menu" end className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
+                    <Utensils size={17} />
+                    Menú del día
+                  </NavLink>
+                  <NavLink to="/app/menu/preferencias" className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
+                    <SlidersHorizontal size={17} />
+                    Preferencias
+                  </NavLink>
+                  <NavLink to="/app/menu/favoritas" className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
+                    <Star size={17} />
+                    Favoritas
+                  </NavLink>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
-        <div className="menu-mobile-actions">
-          <button
-            type="button"
-            className="menu-options-btn"
-            onClick={() => setActionsOpen((value) => !value)}
-            aria-label="Opciones de menú"
-            aria-expanded={actionsOpen}
-          >
-            <MoreHorizontal size={20} />
-          </button>
-          {actionsOpen ? (
-            <>
-              <button type="button" className="menu-options-backdrop" onClick={() => setActionsOpen(false)} aria-label="Cerrar opciones" />
-              <div className="menu-options-panel" role="dialog" aria-label="Opciones de menú">
-                <div className="menu-options-title">Menú</div>
-                <NavLink to="/app/menu" end className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
-                  <Utensils size={17} />
-                  Menú del día
-                </NavLink>
-                <NavLink to="/app/menu/preferencias" className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
-                  <SlidersHorizontal size={17} />
-                  Preferencias
-                </NavLink>
-                <NavLink to="/app/menu/favoritas" className={({ isActive }) => `menu-option ${isActive ? "active" : ""}`}>
-                  <Star size={17} />
-                  Favoritas
-                </NavLink>
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
       <div className="tabs">
         <NavLink

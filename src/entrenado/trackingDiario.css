@@ -6568,6 +6568,24 @@
     margin-top: 16px;
   }
 
+  .td-toolbar > *,
+  .td-toolbar .td-dateNav,
+  .td-toolbar .td-date {
+    min-width: 0;
+  }
+
+  .td-toolbar .td-date {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .td-toolbar .td-date span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .td-toolbar .td-dateNav {
     grid-template-columns:
       44px

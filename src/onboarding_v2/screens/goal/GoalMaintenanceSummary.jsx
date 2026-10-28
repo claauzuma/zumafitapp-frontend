@@ -1,6 +1,9 @@
 import React from "react";
 
-export default function GoalMaintenanceSummary({ summary, onBack, onNext }) {
+export default function GoalMaintenanceSummary({ summary, onBack, onNext, loading = false }) {
+  const rangeMin = summary?.targetRangeKg?.min ?? summary?.rangeMinKg;
+  const rangeMax = summary?.targetRangeKg?.max ?? summary?.rangeMaxKg;
+
   return (
     <div>
       <h1 className="ob2-h1">Resumen del objetivo</h1>
@@ -15,7 +18,7 @@ export default function GoalMaintenanceSummary({ summary, onBack, onNext }) {
         <div className="ob2-summaryRow">
           <div className="ob2-summaryLabel">Rango objetivo</div>
           <div className="ob2-summaryRight">
-            {Number(summary.rangeMinKg).toFixed(1)} – {Number(summary.rangeMaxKg).toFixed(1)} kg
+            {Number(rangeMin).toFixed(1)} – {Number(rangeMax).toFixed(1)} kg
           </div>
         </div>
         <div className="ob2-summaryBody">Ajustamos tus calorías para mantenerte dentro del rango.</div>
@@ -24,11 +27,16 @@ export default function GoalMaintenanceSummary({ summary, onBack, onNext }) {
       <div className="ob2-sticky">
         <div className="ob2-sticky-inner">
           <div className="ob2-row2">
-            <button className="ob2-btn ghost" type="button" onClick={onBack}>
+            <button className="ob2-btn ghost" type="button" onClick={onBack} disabled={loading}>
               Atrás
             </button>
-            <button className="ob2-btn primary" type="button" onClick={onNext}>
-              Guardar y continuar
+            <button
+              className={`ob2-btn primary ${loading ? "is-loading" : ""}`}
+              type="button"
+              onClick={onNext}
+              disabled={loading}
+            >
+              {loading ? "Guardando..." : "Guardar y continuar"}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 // src/onboarding_v2/screens/goal/GoalWizard.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../../Api.js";
 import { previewClientNutrition } from "../../../clientGoals/clientGoalsApi.js";
@@ -12,6 +12,13 @@ import GoalMaintenanceSummary from "./GoalMaintenanceSummary.jsx";
 import GoalGainSetup from "./GoalGainSetup.jsx";
 import GoalGainSummary from "./GoalGainSummary.jsx";
 
+const GOAL_STEP_LABELS = [
+  "Tu objetivo",
+  "Elegí tu meta",
+  "Ajustá el plan",
+  "Confirmá tu objetivo",
+];
+
 function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
 }
@@ -23,6 +30,8 @@ function formatPreviewDate(value) {
 
 export default function GoalWizard({
   onDone,
+  onProgress,
+  onBackChange,
   heightCm,
   currentWeightKg,
   tdeeKcal,
@@ -38,6 +47,28 @@ export default function GoalWizard({
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    onProgress?.({
+      section: "goal",
+      step,
+      total: GOAL_STEP_LABELS.length,
+      label: GOAL_STEP_LABELS[step],
+    });
+  }, [onProgress, step]);
+
+  const handleWizardBack = useCallback(() => {
+    if (loading) return;
+    if (step <= 1) {
+      nav("/app/onboarding", { replace: true, state: { backToBasics: true } });
+      return;
+    }
+    setStep((current) => Math.max(1, current - 1));
+  }, [loading, nav, step]);
+
+  useEffect(() => {
+    onBackChange?.("goal", handleWizardBack, loading);
+  }, [handleWizardBack, loading, onBackChange]);
 
   const maintenanceKcal = useMemo(() => {
     const t = Number(tdeeKcal);
@@ -153,74 +184,86 @@ async function handleSaveAndContinue(goalPayload) {
 
 
   if (step === 0) {
-    return <GoalIntro onNext={() => setStep(1)} />;
+    return (
+      <div key="goal-intro" className="ob2-stage ob2-stage--nested">
+        <GoalIntro onNext={() => setStep(1)} />
+      </div>
+    );
   }
 
   if (step === 1) {
     return (
-      <GoalPick
-        value={goalType}
-        onChange={(v) => setGoalType(v)}
-        onBack={() => nav("/app/onboarding", { replace: true })}
-        onNext={async () => {
-          if (!goalType || loading) return;
-          await new Promise((r) => setTimeout(r, 140));
-          setStep(2);
-        }}
-      />
+      <div key="goal-pick" className="ob2-stage ob2-stage--nested">
+        <GoalPick
+          value={goalType}
+          onChange={(v) => setGoalType(v)}
+          onBack={() => nav("/app/onboarding", { replace: true })}
+          onNext={async () => {
+            if (!goalType || loading) return;
+            await new Promise((r) => setTimeout(r, 140));
+            setStep(2);
+          }}
+        />
+      </div>
     );
   }
 
   if (step === 2) {
     if (goalType === "perder_peso") {
       return (
-        <GoalLoseSetup
-          initialBudgetKcal={plan.budgetKcal}
-          endDateLabel={plan.endDateLabel}
-          projection={plan.projection}
-          calculationReady={plan.ready}
-          calculationLoading={previewLoading}
-          calculationError={previewError}
-          targetWeightKg={targetWeightKg}
-          setTargetWeightKg={setTargetWeightKg}
-          ratePctBWPerWeek={ratePctBWPerWeek}
-          setRatePctBWPerWeek={(v) => setRatePctBWPerWeek(clamp(v, 0.1, 1.5))}
-          onBack={() => setStep(1)}
-          onNext={() => plan.ready && setStep(3)}
-          heightCm={heightCm}
-          currentWeightKg={startWeightKg}
-        />
+        <div key="goal-lose-setup" className="ob2-stage ob2-stage--nested">
+          <GoalLoseSetup
+            initialBudgetKcal={plan.budgetKcal}
+            endDateLabel={plan.endDateLabel}
+            projection={plan.projection}
+            calculationReady={plan.ready}
+            calculationLoading={previewLoading}
+            calculationError={previewError}
+            targetWeightKg={targetWeightKg}
+            setTargetWeightKg={setTargetWeightKg}
+            ratePctBWPerWeek={ratePctBWPerWeek}
+            setRatePctBWPerWeek={(v) => setRatePctBWPerWeek(clamp(v, 0.1, 1.5))}
+            onBack={() => setStep(1)}
+            onNext={() => plan.ready && setStep(3)}
+            heightCm={heightCm}
+            currentWeightKg={startWeightKg}
+          />
+        </div>
       );
     }
 
     if (goalType === "ganar_peso") {
       return (
-        <GoalGainSetup
-          maintenanceKcal={plan.maintenanceKcal}
-          initialBudgetKcal={plan.budgetKcal}
-          endDateLabel={plan.endDateLabel}
-          projection={plan.projection}
-          calculationReady={plan.ready}
-          calculationLoading={previewLoading}
-          calculationError={previewError}
-          targetWeightKg={targetWeightKg}
-          setTargetWeightKg={setTargetWeightKg}
-          ratePctBWPerWeek={ratePctBWPerWeek}
-          setRatePctBWPerWeek={(v) => setRatePctBWPerWeek(clamp(v, 0.1, 1.5))}
-          onBack={() => setStep(1)}
-          onNext={() => plan.ready && setStep(3)}
-        />
+        <div key="goal-gain-setup" className="ob2-stage ob2-stage--nested">
+          <GoalGainSetup
+            maintenanceKcal={plan.maintenanceKcal}
+            initialBudgetKcal={plan.budgetKcal}
+            endDateLabel={plan.endDateLabel}
+            projection={plan.projection}
+            calculationReady={plan.ready}
+            calculationLoading={previewLoading}
+            calculationError={previewError}
+            targetWeightKg={targetWeightKg}
+            setTargetWeightKg={setTargetWeightKg}
+            ratePctBWPerWeek={ratePctBWPerWeek}
+            setRatePctBWPerWeek={(v) => setRatePctBWPerWeek(clamp(v, 0.1, 1.5))}
+            onBack={() => setStep(1)}
+            onNext={() => plan.ready && setStep(3)}
+          />
+        </div>
       );
     }
 
     return (
-      <GoalMaintenanceSetup
-        initialRangeLabel={plan.ready ? `${plan.budgetKcal - 150} – ${plan.budgetKcal + 150} kcal` : "Calculando…"}
-        trendTargetKg={targetWeightKg}
-        setTrendTargetKg={setTargetWeightKg}
-        onBack={() => setStep(1)}
-        onNext={() => plan.ready && setStep(3)}
-      />
+      <div key="goal-maintenance-setup" className="ob2-stage ob2-stage--nested">
+        <GoalMaintenanceSetup
+          initialRangeLabel={plan.ready ? `${plan.budgetKcal - 150} – ${plan.budgetKcal + 150} kcal` : "Calculando…"}
+          trendTargetKg={targetWeightKg}
+          setTrendTargetKg={setTargetWeightKg}
+          onBack={() => setStep(1)}
+          onNext={() => plan.ready && setStep(3)}
+        />
+      </div>
     );
   }
 
@@ -238,15 +281,17 @@ async function handleSaveAndContinue(goalPayload) {
     };
 
     return (
-      <GoalLoseSummary
-        summary={summary}
-        onBack={() => {
-          if (loading) return;
-          setStep(2);
-        }}
-        onNext={() => handleSaveAndContinue(summary)}
-        loading={loading}
-      />
+      <div key="goal-lose-summary" className="ob2-stage ob2-stage--nested">
+        <GoalLoseSummary
+          summary={summary}
+          onBack={() => {
+            if (loading) return;
+            setStep(2);
+          }}
+          onNext={() => handleSaveAndContinue(summary)}
+          loading={loading}
+        />
+      </div>
     );
   }
 
@@ -264,15 +309,17 @@ async function handleSaveAndContinue(goalPayload) {
     };
 
     return (
-      <GoalGainSummary
-        summary={summary}
-        onBack={() => {
-          if (loading) return;
-          setStep(2);
-        }}
-        onNext={() => handleSaveAndContinue(summary)}
-        loading={loading}
-      />
+      <div key="goal-gain-summary" className="ob2-stage ob2-stage--nested">
+        <GoalGainSummary
+          summary={summary}
+          onBack={() => {
+            if (loading) return;
+            setStep(2);
+          }}
+          onNext={() => handleSaveAndContinue(summary)}
+          loading={loading}
+        />
+      </div>
     );
   }
 
@@ -295,14 +342,16 @@ async function handleSaveAndContinue(goalPayload) {
   };
 
   return (
-    <GoalMaintenanceSummary
-      summary={maint}
-      onBack={() => {
-        if (loading) return;
-        setStep(2);
-      }}
-      onNext={() => handleSaveAndContinue(maint)}
-      loading={loading}
-    />
+    <div key="goal-maintenance-summary" className="ob2-stage ob2-stage--nested">
+      <GoalMaintenanceSummary
+        summary={maint}
+        onBack={() => {
+          if (loading) return;
+          setStep(2);
+        }}
+        onNext={() => handleSaveAndContinue(maint)}
+        loading={loading}
+      />
+    </div>
   );
 }

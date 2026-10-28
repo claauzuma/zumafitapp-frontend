@@ -1607,6 +1607,7 @@ export default function InicioEntrenado() {
           route: "/app/menu",
           icon: Apple,
         };
+  const showNextActionCard = !hasObjective || (!coachControlsNutrition && !hasOwnMenu);
   const NextActionIcon = nextAction.icon;
   const planLabel = accessContext?.hasCoach || capabilities?.hasCoach
     ? "con Coach"
@@ -1688,23 +1689,25 @@ export default function InicioEntrenado() {
           </div>
         ) : null}
 
-        <section className="zfh-panel zfh-menuCard" aria-labelledby="home-menu-title">
-          <div className="zfh-menuIntro">
-            <span className="zfh-roundIcon" aria-hidden="true"><NextActionIcon size={24} /></span>
-            <div className="zfh-menuCopy">
-              <h2 id="home-menu-title">{nextAction.title}</h2>
-              <p>{homeMenuDescription}</p>
+        {showNextActionCard ? (
+          <section className="zfh-panel zfh-menuCard" aria-labelledby="home-menu-title">
+            <div className="zfh-menuIntro">
+              <span className="zfh-roundIcon" aria-hidden="true"><NextActionIcon size={24} /></span>
+              <div className="zfh-menuCopy">
+                <h2 id="home-menu-title">{nextAction.title}</h2>
+                <p>{homeMenuDescription}</p>
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            className="zfh-primary"
-            onClick={() => navigate(nextAction.route, nextAction.state ? { state: nextAction.state } : undefined)}
-            {...(nextAction.route === "/app/menu/nuevo" ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
-          >
-            {nextAction.label}<ArrowRight size={19} aria-hidden="true" />
-          </button>
-        </section>
+            <button
+              type="button"
+              className="zfh-primary"
+              onClick={() => navigate(nextAction.route, nextAction.state ? { state: nextAction.state } : undefined)}
+              {...(nextAction.route === "/app/menu/nuevo" ? createNavigationPrefetchHandlers("/app/menu/nuevo", { data: false }) : {})}
+            >
+              {nextAction.label}<ArrowRight size={19} aria-hidden="true" />
+            </button>
+          </section>
+        ) : null}
 
       {pendingFollowup ? (
         <div className="card followupCard" role="status" aria-live="polite">

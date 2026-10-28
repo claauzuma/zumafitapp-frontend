@@ -2831,18 +2831,8 @@ async function removeFood(meal, item) {
   return (
     <div className="td-page">
       <section className="td-shell">
-        <header className="td-hero">
-          <div>
-            <div className="td-kicker">
-              <CalendarDays size={15} strokeWidth={2.3} aria-hidden="true" />
-              {diaryStatusText}
-            </div>
-<h1>Tracking</h1>
-<p>Registrá lo que comés y controlá tu objetivo del día.</p>
-          </div>
-        </header>
-
-        <div className="td-toolbar">
+        <h1 className="sr-only">Tracking diario</h1>
+        <div className="td-toolbar" aria-label={`Controles del tracking. ${diaryStatusText}`}>
           <div className="td-dateNav" aria-label="Selector de fecha">
             <button type="button" onClick={() => shiftDate(-1)} aria-label="Día anterior">
               <ChevronLeft size={21} strokeWidth={2.6} aria-hidden="true" />

@@ -14,14 +14,14 @@
   content: "";
   position: absolute;
   z-index: -1;
-  right: 12%;
-  bottom: -5px;
-  left: 10%;
-  height: 10px;
+  right: 10%;
+  bottom: 2px;
+  left: 8%;
+  height: 8px;
   border-radius: 999px;
-  background: radial-gradient(ellipse at center, rgba(245, 153, 0, 0.28), rgba(245, 215, 110, 0.08) 48%, transparent 76%);
-  filter: blur(8px);
-  opacity: 0.5;
+  background: radial-gradient(ellipse at center, rgba(245, 153, 0, 0.24), rgba(245, 215, 110, 0.06) 46%, transparent 74%);
+  filter: blur(7px);
+  opacity: 0.42;
   pointer-events: none;
 }
 
@@ -32,7 +32,9 @@
   max-width: 190px;
   object-fit: contain;
   object-position: left center;
-  filter: drop-shadow(0 2px 8px rgba(255, 153, 0, 0.12));
+  filter:
+    drop-shadow(0 3px 2px rgba(2, 6, 18, 0.68))
+    drop-shadow(0 0 9px rgba(245, 153, 0, 0.1));
 }
 
 .brand-logo--xs .brand-logo-img {
@@ -89,8 +91,8 @@
   }
 
   .brand-logo::after {
-    bottom: -4px;
-    height: 9px;
-    filter: blur(7px);
+    bottom: 2px;
+    height: 7px;
+    filter: blur(6px);
   }
 }

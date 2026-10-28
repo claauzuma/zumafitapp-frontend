@@ -15,7 +15,7 @@
 }
 
 .admin-main > :not(style) {
-  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) both;
+  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) backwards;
 }
 
 @media (max-width: 767px) {

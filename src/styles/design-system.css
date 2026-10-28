@@ -36,6 +36,10 @@
   --zf-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --zf-ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --zf-mobile-nav-height: 74px;
+  --zf-mobile-nav-gap: 8px;
+  --zf-mobile-nav-clearance: calc(
+    var(--zf-mobile-nav-height) + var(--zf-mobile-nav-gap) + 12px + env(safe-area-inset-bottom)
+  );
 }
 
 html {
@@ -164,7 +168,7 @@ button,
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: none;
   }
 }
 
@@ -175,13 +179,19 @@ button,
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: none;
   }
 }
 
 :where(.cs-content, .pl-main) > :not(style),
 :where(.route-loading-card, .cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
-  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) both;
+  /*
+   * `forwards`/`both` keeps an identity transform after the animation. Even
+   * though it looks like `none`, browsers retain a transformed containing
+   * block and nested fixed sheets stop being viewport-fixed. `backwards`
+   * keeps the entrance frame before paint and releases the transform after.
+   */
+  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) backwards;
 }
 
 :where(.cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
@@ -197,6 +207,13 @@ button,
 }
 
 @media (max-width: 767px) {
+  body:has([aria-modal="true"]) .cs-mobileNav {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0, 12px, 0);
+  }
+
   input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {

@@ -1,7 +1,7 @@
 import React from "react";
 import "./brandLogo.css";
 
-const LOGO_SRC = "/images/brand/logo.png";
+const LOGO_SRC = "/images/brand/logo-dark-pro.png";
 
 export default function BrandLogo({
   className = "",
@@ -16,6 +16,8 @@ export default function BrandLogo({
       <img
         src={LOGO_SRC}
         alt="ZumaFit"
+        width="2172"
+        height="724"
         className={`brand-logo-img ${imgClassName}`.trim()}
         loading={priority ? "eager" : "lazy"}
         decoding="async"

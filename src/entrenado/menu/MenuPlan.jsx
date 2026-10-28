@@ -41,6 +41,7 @@ import {
   Search,
   Sparkles,
   SlidersHorizontal,
+  Soup,
   Square,
   Sun,
   Sunrise,
@@ -50,6 +51,8 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
+
+import "./menuPlan.css";
 
 import { apiFetch } from "../../Api.js";
 import { getCachedUser } from "../../authCache.js";
@@ -272,6 +275,18 @@ function formatDate(value) {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+function formatLongDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00.000Z`);
+  const label = date.toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  });
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 function formatNumber(value, digits = 0) {
@@ -1458,10 +1473,6 @@ function useIsMobileMenuLayout() {
   }, []);
 
   return matches;
-}
-
-function compactDayLabel(row = {}) {
-  return row?.dayLabel || dayHeading(row).replace(/^Hoy,\s*/i, "") || "Día";
 }
 
 function completionPercent(row = {}) {
@@ -8423,37 +8434,37 @@ function MobileDayPicker({
   nextDisabled = false,
 }) {
   const selectedIsToday = row?.date === todayIso();
-  const dayLabel = compactDayLabel(row);
-  const dateLabel = formatDate(row?.date);
-  const secondaryLabel = selectedIsToday ? `${dayLabel} · ${dateLabel}` : dateLabel;
+  const longDateLabel = formatLongDate(row?.date);
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-1 rounded-[.95rem] border border-white/10 bg-[linear-gradient(145deg,rgba(16,24,36,.98),rgba(8,13,20,.98))] p-1 shadow-[0_8px_22px_rgba(0,0,0,.22)]">
+    <div className="zf-menu-mobile-date grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-1 rounded-[.95rem] border border-white/10 bg-[linear-gradient(145deg,rgba(15,22,32,.98),rgba(7,11,17,.99))] p-1 shadow-[0_8px_22px_rgba(0,0,0,.24),inset_0_1px_0_rgba(255,255,255,.035)]">
       <button
         type="button"
         onClick={onPrevious}
         disabled={previousDisabled}
-        className="grid h-10 w-10 place-items-center rounded-xl border border-white/12 bg-white/[0.045] text-zinc-100 transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
+        className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.035] text-zinc-100 transition duration-200 hover:border-white/20 hover:bg-white/[0.065] active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
         aria-label="Día anterior"
       >
         <ChevronLeft size={18} />
       </button>
-      <div className="min-w-0 py-0.5 text-center" aria-current={selectedIsToday ? "date" : undefined}>
+      <div className="min-w-0 px-1 text-center" aria-current={selectedIsToday ? "date" : undefined}>
         <div className="flex min-w-0 items-center justify-center gap-1.5">
-          <CalendarDays size={14} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-400"}`} />
-          <span className="truncate text-base font-black leading-tight text-white">
-            {selectedIsToday ? "Hoy" : dayLabel}
+          <CalendarDays size={12} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-500"}`} />
+          <span className="truncate text-[10.5px] font-black leading-tight text-zinc-100 min-[360px]:text-[11px]">
+            {longDateLabel}
           </span>
-        </div>
-        <div className="truncate text-[9px] font-black uppercase tracking-[0.09em] text-zinc-400">
-          {secondaryLabel}
+          {selectedIsToday ? (
+            <span className="hidden shrink-0 rounded-full border border-[#D4AF37]/25 bg-[#D4AF37]/10 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[.08em] text-[#FFE080] min-[390px]:inline-flex">
+              Hoy
+            </span>
+          ) : null}
         </div>
       </div>
       <button
         type="button"
         onClick={onNext}
         disabled={nextDisabled}
-        className="grid h-10 w-10 place-items-center rounded-xl border border-white/12 bg-white/[0.045] text-zinc-100 transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
+        className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.035] text-zinc-100 transition duration-200 hover:border-white/20 hover:bg-white/[0.065] active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-white/[0.02] disabled:text-zinc-700 disabled:opacity-55"
         aria-label="Día siguiente"
       >
         <ChevronRight size={18} />
@@ -8931,7 +8942,7 @@ function SaveMealModal({
   );
 }
 
-function AutonomousMenuQuickActions() {
+function AutonomousMenuQuickActions({ mobile = false }) {
   const actions = React.useContext(MenuAutonomousActionsContext);
 
   if (!actions?.visible) return null;
@@ -8948,9 +8959,14 @@ function AutonomousMenuQuickActions() {
   const modeLabel = generationModeLabel(actions.settings?.mode);
 
   return (
-    <section className="mt-2.5" aria-label="Acciones rapidas de menu">
+    <section className={`${mobile ? "zf-menu-mobile-actions" : ""} mt-2.5`} aria-label="Acciones rápidas de menú">
 
-      <div className="grid overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, actionCount)}, minmax(0, 1fr))` }}>
+      <div
+        className={mobile
+          ? "grid gap-2"
+          : "grid overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[linear-gradient(145deg,#111820,#090d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]"}
+        style={{ gridTemplateColumns: `repeat(${Math.max(1, actionCount)}, minmax(0, 1fr))` }}
+      >
 
 
 {actions.canCreate ? (
@@ -8959,6 +8975,7 @@ function AutonomousMenuQuickActions() {
     label="Crear menú"
     tone="violet"
     onClick={actions.onCreate}
+    mobile={mobile}
   />
 ) : null}
 
@@ -8972,6 +8989,7 @@ function AutonomousMenuQuickActions() {
   onClick={actions.onAutomatic}
   busy={actions.generating}
   locked={automaticLocked}
+  mobile={mobile}
 />
         {actions.canEditSettings ?
 
@@ -8982,6 +9000,7 @@ function AutonomousMenuQuickActions() {
   onClick={actions.onToggleSettings}
   pressed={actions.settingsOpen}
   controls="menu-generation-settings"
+  mobile={mobile}
 /> : null}
       </div>
 
@@ -8990,7 +9009,9 @@ function AutonomousMenuQuickActions() {
           type="button"
           onClick={actions.onSaveDay}
           disabled={!actions.canSaveDay}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/[0.08] px-3 text-[11px] font-black text-emerald-100 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-35"
+          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-[11px] font-black transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${mobile
+            ? "border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(16,185,129,.065),rgba(6,13,16,.82))] text-emerald-100 hover:border-emerald-300/35 hover:bg-emerald-300/[0.09]"
+            : "border border-emerald-300/30 bg-emerald-300/[0.08] text-emerald-100"}`}
         >
           <Heart size={15} />
           Guardar día
@@ -8998,7 +9019,9 @@ function AutonomousMenuQuickActions() {
         <button
           type="button"
           onClick={actions.onOpenSavedDays}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 text-[11px] font-black text-zinc-200 transition active:scale-[0.99]"
+          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-[11px] font-black text-zinc-200 transition duration-200 active:scale-[0.98] ${mobile
+            ? "bg-[linear-gradient(145deg,rgba(255,255,255,.035),rgba(3,6,10,.7))] hover:border-white/20 hover:bg-white/[0.055]"
+            : "bg-white/[0.035]"}`}
         >
           <BookOpen size={15} />
           Días guardados
@@ -9070,6 +9093,7 @@ function QuickMenuAction({
   locked = false,
   pressed,
   controls,
+  mobile = false,
 }) {
   const colors = {
     green:
@@ -9081,37 +9105,20 @@ function QuickMenuAction({
     gold:
       "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#FFD76B]",
   };
+  const mobileSurfaces = {
+    green: "border-lime-300/20 bg-[radial-gradient(circle_at_50%_0,rgba(163,230,53,.10),transparent_55%),linear-gradient(145deg,#10171a,#080d11)]",
+    violet: "border-violet-300/20 bg-[radial-gradient(circle_at_50%_0,rgba(167,139,250,.13),transparent_55%),linear-gradient(145deg,#12131c,#080d12)]",
+    cyan: "border-cyan-300/22 bg-[radial-gradient(circle_at_50%_0,rgba(34,211,238,.13),transparent_55%),linear-gradient(145deg,#0d171c,#070d12)]",
+    gold: "border-[#D4AF37]/25 bg-[radial-gradient(circle_at_50%_0,rgba(212,175,55,.14),transparent_55%),linear-gradient(145deg,#16160f,#090d11)]",
+  };
 
   return (
     <button
       type="button"
-      className={`
-        group
-        relative
-        flex
-        min-h-[70px]
-        min-w-0
-        flex-col
-        items-center
-        justify-center
-        gap-1.5
-        border-r
-        border-white/[0.07]
-        px-1
-        py-2.5
-        text-center
-        transition
-        hover:bg-white/[0.055]
-        focus-visible:z-10
-        focus-visible:outline
-        focus-visible:outline-2
-        focus-visible:outline-[#FFD76B]
-        min-[640px]:min-h-[72px]
-        min-[640px]:flex-row
-        min-[640px]:gap-2.5
-        min-[640px]:px-3
-        ${pressed ? "bg-[#D4AF37]/[0.08]" : ""}
-      `}
+      className={`group relative flex min-w-0 flex-col items-center justify-center gap-1.5 text-center transition duration-200 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] active:scale-[0.98] ${mobile
+        ? `min-h-[78px] overflow-hidden rounded-[1rem] border px-1.5 py-2.5 shadow-[0_9px_24px_rgba(0,0,0,.24),inset_0_1px_0_rgba(255,255,255,.035)] hover:-translate-y-0.5 hover:border-white/25 ${mobileSurfaces[tone] || mobileSurfaces.gold}`
+        : "min-h-[70px] border-r border-white/[0.07] px-1 py-2.5 hover:bg-white/[0.055] min-[640px]:min-h-[72px] min-[640px]:flex-row min-[640px]:gap-2.5 min-[640px]:px-3"}
+        ${pressed ? "ring-1 ring-inset ring-[#FFD76B]/35 bg-[#D4AF37]/[0.08]" : ""}`}
       onClick={onClick}
       aria-busy={busy || undefined}
       aria-pressed={pressed}
@@ -9122,14 +9129,11 @@ function QuickMenuAction({
       <span
         className={`
           grid
-          h-11
-          w-11
+          ${mobile ? "h-10 w-10" : "h-11 w-11 min-[640px]:h-10 min-[640px]:w-10"}
           shrink-0
           place-items-center
           rounded-full
           border
-          min-[640px]:h-10
-          min-[640px]:w-10
           ${colors[tone] || colors.gold}
         `}
       >
@@ -9143,30 +9147,29 @@ function QuickMenuAction({
 
       <span className="w-full min-w-0 px-0.5">
         <strong
-          className="
+          className={`
             block
             truncate
             text-[10.5px]
             font-black
             leading-tight
             text-zinc-100
-            min-[390px]:text-[11px]
-            sm:text-[12.5px]
-          "
+            ${mobile ? "min-[390px]:text-[11px]" : "min-[390px]:text-[11px] sm:text-[12.5px]"}
+          `}
         >
           {label}
         </strong>
 
         {detail ? (
           <small
-            className="
-              hidden
+            className={`
+              ${mobile && locked ? "block" : "hidden"}
               truncate
               text-[8.5px]
               font-bold
               text-zinc-500
-              min-[640px]:block
-            "
+              ${mobile ? "" : "min-[640px]:block"}
+            `}
           >
             {detail}
           </small>
@@ -9339,7 +9342,7 @@ function MobileDayMenu({
 
       <WeeklyBalanceNotice balance={displayRow?.weeklyBalance || trackingDay?.weeklyBalance} />
 
-      <AutonomousMenuQuickActions />
+      <AutonomousMenuQuickActions mobile />
 
       <DailyTargetTrackingDetails
         items={dailyTargetItems}
@@ -9374,21 +9377,35 @@ function MobileDayMenu({
         </div>
       */}
 
-{!targetOnlyMeals.length && !visibleEffectiveMeals.length ? (
-  <>
-    <MobileStandaloneTracking
-      trackingDay={trackingDay}
-    />
+      {!targetOnlyMeals.length && !visibleEffectiveMeals.length ? (
+        <section className="mt-3" aria-labelledby="mobile-menu-meals-title">
+          <header className="mb-2 flex items-center justify-between gap-3 px-0.5">
+            <h2 id="mobile-menu-meals-title" className="text-[13px] font-black text-white min-[390px]:text-sm">
+              Tus comidas
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsGoalExpanded((current) => !current)}
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1.5 text-[9.5px] font-black text-[#FFE080] transition hover:bg-[#D4AF37]/10 hover:text-[#FFF0B8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B]"
+              aria-expanded={isGoalExpanded}
+              aria-controls="mobile-goal-day-detail"
+            >
+              {isGoalExpanded ? "Ocultar detalle" : "Ver macros"}
+              {isGoalExpanded ? <ChevronUp size={13} /> : <ChevronRight size={13} />}
+            </button>
+          </header>
 
-    <div className="mt-3">
-      <MobileEmptyCard
-        title={emptyCopy.title}
-        text={emptyCopy.text}
-        trackingAction
-      />
-    </div>
-  </>
-) : null}
+          <MobileStandaloneTracking trackingDay={trackingDay} />
+
+          <div className="mt-2.5">
+            <MobileEmptyCard
+              title={emptyCopy.title}
+              text={emptyCopy.text}
+              trackingAction
+            />
+          </div>
+        </section>
+      ) : null}
 
 
 
@@ -9720,19 +9737,39 @@ function MobileGoalAccordion({
   const effectiveTrackingLabel = isWithinCalorieTolerance ? "Cumplido" : trackingLabelText;
   const detailId = "mobile-goal-day-detail";
   const ChevronIcon = expanded ? ChevronUp : ChevronDown;
-  const macroSummary = `P${formatNumber(target.proteina, 0)} / C${formatNumber(target.carbs, 0)} / G${formatNumber(target.grasas, 0)}`;
-  const remainingMacroSummary = [
-    ["P", remaining?.proteina],
-    ["C", remaining?.carbs],
-    ["G", remaining?.grasas],
-  ].map(([label, value]) => `${label} ${formatNumber(Math.max(0, Number(value) || 0), 0)}`).join(" · ");
-  const proteinTarget = Math.max(0, Number(target?.proteina) || 0);
-  const proteinConsumed = Math.max(0, Number(consumed?.proteina) || 0);
-  const proteinOverage = Math.max(0, proteinConsumed - proteinTarget);
-  const isProteinOverLimit = proteinTarget > 0 && proteinOverage > 10;
-  const proteinPercent = proteinTarget > 0
-    ? Math.max(0, Math.min(100, Math.round((proteinConsumed / proteinTarget) * 100)))
-    : 0;
+  const targetKcal = Math.max(0, Number(target?.kcal) || 0);
+  const calorieRingPercent = isCalorieOver
+    ? 100
+    : targetKcal > 0
+      ? Math.max(0, Math.min(100, (remainingKcalValue / targetKcal) * 100))
+      : 0;
+  const calorieRingColor = isCalorieOver ? "#fb7185" : isWithinCalorieTolerance ? "#6ee7b7" : "#2dd4bf";
+  const macroRows = [
+    {
+      key: "protein",
+      label: "Proteína",
+      current: Math.max(0, Number(consumed?.proteina) || 0),
+      goal: Math.max(0, Number(target?.proteina) || 0),
+      dotClass: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,.55)]",
+      fillClass: "bg-gradient-to-r from-rose-500 to-orange-300",
+    },
+    {
+      key: "carbs",
+      label: "Carbohidratos",
+      current: Math.max(0, Number(consumed?.carbs) || 0),
+      goal: Math.max(0, Number(target?.carbs) || 0),
+      dotClass: "bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,.55)]",
+      fillClass: "bg-gradient-to-r from-sky-500 to-cyan-300",
+    },
+    {
+      key: "fat",
+      label: "Grasas",
+      current: Math.max(0, Number(consumed?.grasas) || 0),
+      goal: Math.max(0, Number(target?.grasas) || 0),
+      dotClass: "bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,.5)]",
+      fillClass: "bg-gradient-to-r from-amber-500 to-yellow-200",
+    },
+  ];
 
   if (!hasTarget) {
     return (
@@ -9759,81 +9796,77 @@ function MobileGoalAccordion({
   }
 
   return (
-    <section className="mt-2 overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.12),transparent_30%),radial-gradient(circle_at_0_0,rgba(45,212,191,.10),transparent_36%),linear-gradient(145deg,#101923,#080d13)] shadow-[0_10px_26px_rgba(0,0,0,.26)]">
+    <section className="zf-menu-mobile-goal mt-2 overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,.10),transparent_32%),radial-gradient(circle_at_0_0,rgba(45,212,191,.09),transparent_38%),linear-gradient(145deg,#101821,#070c12)] shadow-[0_12px_28px_rgba(0,0,0,.28),inset_0_1px_0_rgba(255,255,255,.035)]">
       <button
         type="button"
-        className="relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 px-2.5 py-2.5 text-left"
+        className="group relative block w-full px-3 pb-3 pt-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#FFD76B]"
         aria-expanded={expanded}
         aria-controls={detailId}
         onClick={onToggle}
       >
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,.08)]">
-          <Target size={17} strokeWidth={2.2} aria-hidden="true" />
-        </span>
-        <span className="grid min-w-0 grid-cols-2 items-center">
-          <span className="min-w-0 pr-2.5">
-            <span className="block truncate text-[9px] font-black uppercase tracking-[0.08em] text-zinc-400">Meta del día</span>
-            <strong className="mt-0.5 block whitespace-nowrap text-[20px] font-black leading-none text-[#FFD76B] min-[390px]:text-[21px]">
-              {displayKcal(target.kcal)}
-            </strong>
-            <span className="mt-1.5 block truncate text-[9.5px] font-black leading-none text-sky-200 min-[390px]:text-[10.5px]">{macroSummary}</span>
+        <span className="flex items-center justify-between gap-3">
+          <span className="text-[9px] font-black uppercase tracking-[.11em] text-zinc-400">
+            Meta del día
           </span>
-          <span className="min-w-0 border-l border-white/10 pl-2.5 text-right">
-            <span className="block truncate text-[9px] font-black uppercase tracking-[0.08em] text-zinc-400">
-              {remainingKcalLabel}
-            </span>
-            <strong className={`mt-0.5 block whitespace-nowrap text-[20px] font-black leading-none min-[390px]:text-[21px] ${remainingKcalTone}`}>
-              {displayKcal(remainingKcalValue)}
-            </strong>
-            <span className="mt-1.5 block whitespace-nowrap text-[9.5px] font-black leading-none text-sky-100 min-[390px]:text-[10.5px]">
-              {remainingMacroSummary}
+          <span className={`inline-flex items-center gap-1 text-[8.5px] font-black uppercase tracking-[.07em] ${remainingKcalTone}`}>
+            {remainingKcalLabel}
+            <span className="grid h-6 w-6 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300 transition duration-200 group-hover:border-white/20 group-hover:text-white">
+              <ChevronIcon size={13} strokeWidth={2.5} aria-hidden="true" />
             </span>
           </span>
         </span>
-        <span className="shrink-0">
-          <span className="grid h-7 w-7 place-items-center rounded-full border border-white/10 bg-black/20 text-zinc-300">
-            <ChevronIcon size={15} strokeWidth={2.4} aria-hidden="true" />
-          </span>
-        </span>
-        <span className="col-start-2 col-end-4 grid min-w-0 gap-1.5 pr-0.5">
-          <span className="grid min-w-0 gap-0.5">
-            <span className="flex items-center gap-2 text-[8px] font-black uppercase tracking-[0.08em] text-zinc-500">
-              <span>Calorías</span>
-            </span>
-            <span className="h-2 overflow-hidden rounded-full border border-white/10 bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)]">
-              <span
-                className={`relative block h-full overflow-hidden rounded-full transition-[width] duration-500 ease-out ${isCalorieOver
-                  ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.62)]"
-                  : "bg-gradient-to-r from-[#D4AF37] via-emerald-400 to-cyan-300 shadow-[0_0_12px_rgba(45,212,191,.55)]"
-                }`}
-                style={{ width: `${displayPercent}%` }}
-              >
-                <span className="absolute inset-x-0 top-0 h-px bg-white/60" />
-                <span className="absolute inset-y-0 right-0 w-2 bg-white/25 blur-[2px]" />
+
+        <span className="mt-1.5 grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2.5 min-[360px]:gap-3">
+          <span
+            className="grid h-[92px] w-[92px] shrink-0 place-items-center rounded-full p-[5px] shadow-[0_0_24px_rgba(45,212,191,.08)] transition-[background] duration-500"
+            style={{
+              background: `conic-gradient(${calorieRingColor} ${calorieRingPercent * 3.6}deg, rgba(255,255,255,.085) 0deg)`,
+            }}
+            role="img"
+            aria-label={`${remainingKcalLabel}: ${displayKcal(remainingKcalValue)} de ${displayKcal(targetKcal)}`}
+          >
+            <span className="grid h-full w-full place-items-center rounded-full border border-white/[0.06] bg-[radial-gradient(circle_at_50%_30%,#17212a,#080d13_70%)] text-center shadow-[inset_0_2px_10px_rgba(0,0,0,.5)]">
+              <span>
+                <span className="block text-[7px] font-black uppercase tracking-[.08em] text-zinc-500">
+                  {isCalorieOver ? "Exceso" : isWithinCalorieTolerance ? "Balance" : "Restantes"}
+                </span>
+                <strong className={`mt-0.5 block text-[18px] font-black leading-none tracking-[-.04em] ${remainingKcalTone}`}>
+                  {formatNumber(remainingKcalValue, 0)}
+                </strong>
+                <span className="mt-0.5 block text-[8px] font-black text-zinc-300">kcal</span>
+                <span className="mt-0.5 block text-[7px] font-bold text-zinc-600">de {formatNumber(targetKcal, 0)}</span>
               </span>
             </span>
           </span>
-          <span className="grid min-w-0 gap-0.5">
-            <span className={`flex items-center justify-between gap-2 text-[7.5px] font-black uppercase tracking-[0.08em] ${isProteinOverLimit ? "text-rose-300" : "text-orange-200"}`}>
-              <span>Proteína</span>
-              <span className="text-[9.5px] normal-case tracking-normal min-[390px]:text-[10px]">
-                {isProteinOverLimit
-                  ? `Exceso +${formatNumber(proteinOverage, 0)} g`
-                  : `${formatNumber(proteinConsumed, 0)} / ${formatNumber(proteinTarget, 0)} g`}
-              </span>
-            </span>
-            <span className={`h-2 overflow-hidden rounded-full border bg-black/45 p-px shadow-[inset_0_1px_3px_rgba(0,0,0,.75),0_1px_0_rgba(255,255,255,.04)] ${isProteinOverLimit ? "border-rose-300/30" : "border-orange-200/20"}`}>
-              <span
-                className={`relative block h-full overflow-hidden rounded-full transition-[width,background-color] duration-500 ease-out ${isProteinOverLimit
-                  ? "bg-gradient-to-r from-rose-800 via-red-500 to-red-300 shadow-[0_0_14px_rgba(244,63,94,.65)]"
-                  : "bg-gradient-to-r from-amber-600 via-orange-400 to-orange-200 shadow-[0_0_12px_rgba(251,146,60,.48)]"
-                }`}
-                style={{ width: `${isProteinOverLimit ? 100 : proteinPercent}%` }}
-              >
-                <span className="absolute inset-x-0 top-0 h-px bg-white/55" />
-                <span className="absolute inset-y-0 right-0 w-2 bg-white/20 blur-[2px]" />
-              </span>
-            </span>
+
+          <span className="grid min-w-0 gap-2.5">
+            {macroRows.map((macroRow) => {
+              const macroPercent = macroRow.goal > 0
+                ? Math.max(0, Math.min(100, (macroRow.current / macroRow.goal) * 100))
+                : 0;
+              const macroExceeded = macroRow.goal > 0 && macroRow.current > macroRow.goal;
+              return (
+                <span key={macroRow.key} className="block min-w-0">
+                  <span className="flex min-w-0 items-center justify-between gap-1.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${macroRow.dotClass}`} />
+                      <span className="truncate text-[7.5px] font-black uppercase tracking-[.04em] text-zinc-400 min-[360px]:text-[8px]">
+                        {macroRow.label}
+                      </span>
+                    </span>
+                    <span className={`shrink-0 text-[8px] font-black min-[360px]:text-[8.5px] ${macroExceeded ? "text-rose-300" : "text-zinc-200"}`}>
+                      {formatNumber(macroRow.current, 0)} / {formatNumber(macroRow.goal, 0)} g
+                    </span>
+                  </span>
+                  <span className="mt-1 block h-1 overflow-hidden rounded-full bg-white/[0.075]">
+                    <span
+                      className={`block h-full rounded-full transition-[width] duration-500 ease-out ${macroRow.fillClass}`}
+                      style={{ width: `${macroPercent}%` }}
+                    />
+                  </span>
+                </span>
+              );
+            })}
           </span>
         </span>
       </button>
@@ -10235,6 +10268,14 @@ function MobileMenuOptionsDrawer({
           ) : null}
 
           <div className="mb-3 grid gap-2">
+            <Link
+              to="/app/menu/preferencias"
+              onClick={onClose}
+              className="flex min-h-12 items-center justify-between rounded-[1.05rem] border border-white/10 bg-white/[0.035] px-4 text-sm font-black text-zinc-100 focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/15"
+            >
+              <span className="inline-flex items-center gap-2"><SlidersHorizontal size={17} /> Preferencias</span>
+              <ChevronRight size={17} />
+            </Link>
             {isOwn ? (
               <>
                 {renaming ? (
@@ -10780,6 +10821,47 @@ function MobileEmptyCard({
 }) {
   const autonomousActions = React.useContext(MenuAutonomousActionsContext);
 
+  if (trackingAction) {
+    return (
+      <div className="zf-menu-mobile-empty relative overflow-hidden rounded-[1.05rem] border border-white/10 bg-[radial-gradient(circle_at_50%_-15%,rgba(45,212,191,.10),transparent_43%),radial-gradient(circle_at_100%_100%,rgba(212,175,55,.09),transparent_42%),linear-gradient(145deg,#101820,#070c11)] px-3.5 pb-3.5 pt-3 shadow-[0_14px_32px_rgba(0,0,0,.3),inset_0_1px_0_rgba(255,255,255,.035)]">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-[1.1rem] border border-emerald-300/20 bg-[radial-gradient(circle_at_50%_25%,rgba(110,231,183,.17),rgba(16,185,129,.055)_65%)] text-emerald-100 shadow-[0_10px_30px_rgba(16,185,129,.09),inset_0_1px_0_rgba(255,255,255,.06)]">
+          <Soup size={27} strokeWidth={1.65} aria-hidden="true" />
+        </div>
+
+        <div className="mt-2.5 text-center">
+          <strong className="block text-[13px] font-black leading-tight text-white min-[390px]:text-sm">
+            {title}
+          </strong>
+          {text ? (
+            <p className="mx-auto mt-1 max-w-[300px] text-[9px] font-bold leading-[1.45] text-zinc-500 min-[390px]:text-[9.5px]">
+              {text}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-3 grid gap-2">
+          <button
+            type="button"
+            disabled={autonomousActions?.canPlanMeal === false}
+            onClick={() => autonomousActions?.onPlanMeal?.()}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#FFE080]/55 bg-gradient-to-r from-[#F8C62B] via-[#FFD84D] to-[#FFE277] px-3 text-[10.5px] font-black text-[#131006] shadow-[0_9px_22px_rgba(212,175,55,.16),inset_0_1px_0_rgba(255,255,255,.5)] transition duration-200 hover:brightness-105 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <Plus size={15} strokeWidth={2.8} aria-hidden="true" />
+            Registrar comida
+          </button>
+          <button
+            type="button"
+            onClick={() => autonomousActions?.onTracking?.("picoteo")}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/35 bg-emerald-300/[0.055] px-3 text-[10.5px] font-black text-emerald-100 transition duration-200 hover:border-emerald-200/55 hover:bg-emerald-300/[0.09] active:scale-[0.985]"
+          >
+            <Target size={15} strokeWidth={2.35} aria-hidden="true" />
+            Registrar alimento
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden rounded-[1.05rem] border border-[#D4AF37]/20 bg-[radial-gradient(circle_at_100%_0,rgba(212,175,55,.13),transparent_38%),linear-gradient(145deg,#111923,#090e15)] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,.28)]">
       <span
@@ -10809,92 +10891,6 @@ function MobileEmptyCard({
         </p>
       ) : null}
 
-{trackingAction ? (
-  <div className="mt-2 grid grid-cols-2 gap-2 pl-10">
-    {/* REGISTRAR ALIMENTO */}
-    <button
-      type="button"
-      onClick={() =>
-        autonomousActions
-          ?.onTracking?.(
-            "picoteo"
-          )
-      }
-      className="
-        flex
-        min-h-[38px]
-        items-center
-        justify-center
-        gap-1.5
-        rounded-xl
-        border
-        border-[#FFD76B]/40
-        bg-gradient-to-r
-        from-[#FFC928]
-        to-[#FFE16A]
-        px-2
-        py-2
-        text-[9.5px]
-        font-black
-        text-black
-        shadow-[0_7px_18px_rgba(212,175,55,.13)]
-        transition
-        hover:brightness-105
-        active:scale-[0.98]
-      "
-    >
-      <Plus
-        size={14}
-        strokeWidth={2.8}
-      />
-
-      <span className="whitespace-nowrap">
-        Registrar alimento
-      </span>
-    </button>
-
-    {/* REGISTRAR COMIDA */}
-    <button
-      type="button"
-      disabled={autonomousActions?.canPlanMeal === false}
-      onClick={() =>
-        autonomousActions
-          ?.onPlanMeal?.()
-      }
-      className="
-        flex
-        min-h-[38px]
-        items-center
-        justify-center
-        gap-1.5
-        rounded-xl
-        border
-        border-emerald-300/30
-        bg-emerald-300/[0.045]
-        px-2
-        py-2
-        text-[9.5px]
-        font-black
-        text-emerald-200
-        transition
-        hover:border-emerald-300/50
-        hover:bg-emerald-300/[0.08]
-        active:scale-[0.98]
-        disabled:cursor-not-allowed
-        disabled:opacity-45
-      "
-    >
-      <Target
-        size={14}
-        strokeWidth={2.3}
-      />
-
-      <span className="whitespace-nowrap">
-        Registrar comida
-      </span>
-    </button>
-  </div>
-) : null}
 
 
 

@@ -30,15 +30,45 @@ function normSexo(sexo) {
   return "masculino";
 }
 
+function rangeBounds(value) {
+  const numbers = String(value || "").match(/\d+(?:[.,]\d+)?/g)?.map((item) => Number(item.replace(",", "."))) || [];
+  if (!numbers.length) return null;
+  return {
+    min: numbers[0],
+    max: String(value).includes("+") ? Number.POSITIVE_INFINITY : (numbers[1] ?? numbers[0]),
+  };
+}
+
+function representativePct(value) {
+  const bounds = rangeBounds(value);
+  if (!bounds) return null;
+  if (!Number.isFinite(bounds.max)) return bounds.min + 2;
+  return Math.round(((bounds.min + bounds.max) / 2) * 10) / 10;
+}
+
+function selectedRange(options, grasaPct, legacyLevel) {
+  const numeric = Number(grasaPct);
+  if (Number.isFinite(numeric)) {
+    const match = options.find((option) => {
+      const bounds = rangeBounds(option.v);
+      return bounds && numeric >= bounds.min && numeric <= bounds.max;
+    });
+    if (match) return match.v;
+  }
+
+  const legacy = String(legacyLevel || "");
+  return options.some((option) => option.v === legacy) ? legacy : "";
+}
+
 export default function BasicsBodyFat({ form, setForm }) {
   const sexo = normSexo(form?.sexo);
   const options = useMemo(() => (sexo === "femenino" ? FEMALE : MALE), [sexo]);
-  const selected = String(form?.grasaNivel || "");
+  const selected = selectedRange(options, form?.grasaPct, form?.grasaNivel);
 
   return (
     <div className="ob2-card">
       <h2 className="ob2-h2" style={{ marginTop: 0 }}>
-        ¿Que imagen te representa?
+        ¿Qué imagen te representa?
       </h2>
       <p className="ob2-p">Usá una evaluación visual. No hace falta ser exacto.</p>
 
@@ -50,7 +80,9 @@ export default function BasicsBodyFat({ form, setForm }) {
               key={o.v}
               type="button"
               className={`ob2-bf-item ${active ? "is-active" : ""}`}
-              onClick={() => setForm((prev) => ({ ...prev, grasaNivel: o.v }))}
+              aria-pressed={active}
+              aria-label={`Seleccionar ${o.l} de grasa corporal`}
+              onClick={() => setForm((prev) => ({ ...prev, grasaPct: representativePct(o.v) }))}
             >
               <div className="ob2-bf-illus" aria-hidden="true">
                 <Silhouette variant={sexo === "femenino" ? "female" : "male"} level={o.v} />

@@ -34,6 +34,7 @@ import {
 } from "./clientInvitationsApi.js";
 import PendingCoachInvitationModal, { ClientInvitationBanner } from "./PendingCoachInvitationModal.jsx";
 import BrandLogo from "./ui/BrandLogo.jsx";
+import FullPageLoader from "./FullPageLoader.jsx";
 import { clientPlanLabel, planFromCapabilities } from "./clientPlans/clientPlanUtils.js";
 import {
   CLIENT_ACCESS_CONTEXT_STALE_TIME,
@@ -673,6 +674,7 @@ const CSS = `
     background:linear-gradient(180deg,rgba(15,22,30,.94),rgba(6,10,15,.97));
     box-shadow:0 22px 60px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.055);
     backdrop-filter:blur(20px) saturate(155%);
+    transition:opacity var(--zf-motion-fast, .15s) ease, transform var(--zf-motion-base, .22s) var(--zf-ease-enter, ease), visibility var(--zf-motion-fast, .15s) ease;
   }
   .cs-mobileNavItem{
     position:relative;
@@ -745,6 +747,20 @@ const CSS = `
     height:54px;
     max-width:230px;
   }
+}
+
+/* Onboarding owns the full viewport: no duplicated app chrome or mobile gutters. */
+.cs-wrap--onboarding .cs-header,
+.cs-wrap--onboarding .cs-ov,
+.cs-wrap--onboarding .cs-drawer{
+  display:none !important;
+}
+.cs-wrap--onboarding .cs-content{
+  width:100%;
+  max-width:none;
+  min-height:100dvh;
+  margin:0;
+  padding:0;
 }
 `;
 
@@ -1263,11 +1279,11 @@ export default function ClientShell() {
   }
 
   return (
-    <div className="cs-wrap">
+    <div className={`cs-wrap ${isOnboardingRoute ? "cs-wrap--onboarding" : ""}`}>
       <style>{CSS}</style>
       <ImpersonationBanner />
       <AppToast toast={toast} onClose={() => setToast(null)} />
-      {primaryInvitation && !invitationSnoozed ? (
+      {!isOnboardingRoute && primaryInvitation && !invitationSnoozed ? (
         <PendingCoachInvitationModal
           invitations={pendingInvitations}
           busy={invitationBusy}
@@ -1344,21 +1360,13 @@ export default function ClientShell() {
         </div>
       ) : null}
 
-      {loading && (
-        <div className="cn-ov" role="status" aria-live="polite" aria-busy="true">
-          <div className="cn-ov-card">
-            <div className="cn-ov-glow" />
-            <div className="cn-ov-row">
-              <div className="cn-ov-spin" />
-              <div>
-                <p className="cn-ov-title">Cerrando sesión...</p>
-                <p className="cn-ov-sub">Guardando cambios y asegurando tu cuenta.</p>
-              </div>
-            </div>
-            <div className="cn-ov-shimmer" />
-          </div>
-        </div>
-      )}
+      {loading ? (
+        <FullPageLoader
+          title="Cerrando sesión..."
+          sub="Guardando cambios y asegurando tu cuenta."
+          variant="overlay"
+        />
+      ) : null}
 
       <header className="cs-header">
         <div className="cs-header-inner">
@@ -1404,7 +1412,9 @@ export default function ClientShell() {
         id="client-main-menu"
         className={`cs-drawer ${open ? "open" : ""}`}
         role="dialog"
-        aria-modal="true"
+        aria-modal={open ? "true" : undefined}
+        aria-hidden={!open}
+        inert={!open}
         aria-label="Menú principal"
       >
         <div className="cs-d-head">
@@ -1462,7 +1472,7 @@ export default function ClientShell() {
 
       {/* contenido */}
       <main className="cs-content">
-        {showCoachNotice ? (
+        {!isOnboardingRoute && showCoachNotice ? (
           <ClientCoachAssignmentNotice
             notice={coachNotice}
             busy={coachNoticeBusy}
@@ -1470,7 +1480,7 @@ export default function ClientShell() {
             onProfile={() => nav("/app/perfil")}
           />
         ) : null}
-        {primaryInvitation && invitationSnoozed ? (
+        {!isOnboardingRoute && primaryInvitation && invitationSnoozed ? (
           <ClientInvitationBanner
             invitation={primaryInvitation}
             busy={invitationBusy}
