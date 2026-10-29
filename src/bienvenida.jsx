@@ -6,7 +6,6 @@ import {
   BarChart3,
   ClipboardList,
   Dumbbell,
-  Flame,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -22,7 +21,6 @@ const BENEFITS = [
   { title: "Menú", text: "Planificá tus comidas", short: "Comidas", icon: ClipboardList },
   { title: "Rutina", text: "Entrená con propósito", short: "Entrená", icon: Dumbbell },
   { title: "Progreso", text: "Medí y analizá tus avances", short: "Avances", icon: TrendingUp },
-  { title: "Tracking", text: "Registrá hábitos y consumo", short: "Hábitos", icon: Flame },
 ];
 
 const CSS = `
@@ -142,7 +140,7 @@ body{ background:#020507; }
 }
 .lw-benefits{
   display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:12px;
 }
 .lw-benefit{
@@ -300,7 +298,6 @@ body{ background:#020507; }
 }
 @media (max-width: 840px){
   .lw-benefits{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .lw-benefit:last-child{ grid-column:1/-1; }
 }
 @media (max-width: 560px){
   .lw-hero{
@@ -370,7 +367,6 @@ body{ background:#020507; }
     border-radius:13px;
     gap:6px;
   }
-  .lw-benefit:last-child{ grid-column:1/-1; }
   .lw-benefit svg{ width:24px; height:24px; }
   .lw-benefit strong{ font-size:12px; line-height:1.05; }
   .lw-benefit span{ font-size:10px; line-height:1.2; }

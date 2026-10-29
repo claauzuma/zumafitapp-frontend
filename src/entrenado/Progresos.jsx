@@ -1,16 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
+  CalendarDays,
   Camera,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Dumbbell,
   LineChart,
+  LoaderCircle,
   Ruler,
   Scale,
+  Sparkles,
   Target,
   TrendingUp,
   X,
@@ -38,9 +42,12 @@ const CSS = `
   --zp-text:#f5f5f7;
   --zp-muted:#a9adb7;
   --zp-faint:#737985;
-  --zp-gold:#ffd21f;
-  --zp-gold-2:#f4c400;
+  --zp-gold:#ffd447;
+  --zp-gold-2:#f5a000;
   --zp-gold-dark:#8a6a00;
+  --zp-orange:#f27a00;
+  --zp-amber:#ffb319;
+  --zp-silver:#d7dee8;
   --zp-green:#39d353;
   --zp-red:#ff5d73;
 }
@@ -1722,6 +1729,454 @@ const CSS = `
   background:#050b12;
 }
 
+/* ZumaFit premium progress surfaces */
+.zp-page .zp-title-block{
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  min-height:96px;
+  margin:0 0 12px;
+  padding:14px;
+  border:1px solid rgba(245,160,0,.24);
+  border-radius:20px;
+  background:
+    radial-gradient(240px 120px at 100% 0,rgba(245,160,0,.22),transparent 68%),
+    radial-gradient(180px 120px at 8% 100%,rgba(255,212,71,.08),transparent 70%),
+    linear-gradient(135deg,#111820 0%,#080e14 58%,#0a0d10 100%);
+  box-shadow:0 18px 46px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.055);
+}
+
+.zp-page .zp-title-block::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  top:-70px;
+  right:-42px;
+  width:190px;
+  height:190px;
+  border:1px solid rgba(255,199,45,.11);
+  border-radius:50%;
+  box-shadow:0 0 0 22px rgba(245,160,0,.025),0 0 0 46px rgba(245,160,0,.018);
+  animation:zpHeroOrbit 9s linear infinite;
+}
+
+.zp-page .zp-title-block::after{
+  content:"";
+  position:absolute;
+  right:0;
+  bottom:0;
+  left:0;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--zp-orange),var(--zp-gold),transparent);
+  opacity:.7;
+}
+
+.zp-page .zp-title-icon{
+  width:48px;
+  height:48px;
+  border-color:rgba(255,194,44,.42);
+  background:linear-gradient(145deg,rgba(255,212,71,.18),rgba(245,122,0,.075));
+  color:#ffd447;
+  box-shadow:0 0 24px rgba(245,160,0,.12),inset 0 1px 0 rgba(255,255,255,.1);
+}
+
+.zp-page .zp-hero-copy{
+  position:relative;
+  z-index:1;
+  min-width:0;
+}
+
+.zp-page .zp-hero-eyebrow{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin-bottom:4px;
+  color:#ffc23b;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+}
+
+.zp-page .zp-title-block h1{
+  font-size:clamp(27px,7vw,36px);
+  background:linear-gradient(110deg,#fff 5%,#f8fbff 48%,#ffd86a 100%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+.zp-page .zp-title-block p{
+  max-width:340px;
+  color:#aeb9c7;
+}
+
+.zp-quick-weight{
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  margin-bottom:12px;
+  padding:13px;
+  border:1px solid rgba(245,160,0,.28);
+  border-radius:18px;
+  background:
+    radial-gradient(260px 110px at 100% 0,rgba(245,160,0,.16),transparent 70%),
+    linear-gradient(145deg,rgba(17,25,33,.98),rgba(6,12,18,.98));
+  box-shadow:0 14px 36px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.045);
+  animation:zpQuickEnter .46s cubic-bezier(.2,.85,.2,1) both;
+}
+
+.zp-quick-weight::after{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  top:-45px;
+  right:-30px;
+  width:130px;
+  height:130px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,212,71,.12),transparent 68%);
+  animation:zpQuickGlow 3.8s ease-in-out infinite;
+}
+
+.zp-quick-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:11px;
+}
+
+.zp-quick-heading{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+
+.zp-quick-icon{
+  width:36px;
+  height:36px;
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,199,45,.3);
+  border-radius:11px;
+  background:rgba(245,160,0,.09);
+  color:#ffd447;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.zp-quick-heading strong{
+  display:block;
+  color:#fff;
+  font-size:14px;
+  font-weight:950;
+  letter-spacing:-.015em;
+}
+
+.zp-quick-heading span{
+  display:block;
+  margin-top:2px;
+  color:#8998aa;
+  font-size:10px;
+  line-height:1.25;
+}
+
+.zp-quick-date{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  flex:0 0 auto;
+  min-height:27px;
+  padding:0 8px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:999px;
+  background:rgba(0,0,0,.18);
+  color:#d9e0e8;
+  font-size:9px;
+  font-weight:850;
+  text-transform:uppercase;
+}
+
+.zp-quick-form{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(112px,auto);
+  align-items:end;
+  gap:8px;
+}
+
+.zp-quick-field{
+  display:grid;
+  gap:5px;
+  min-width:0;
+  color:#8d9bad;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.zp-quick-input{
+  min-width:0;
+  min-height:46px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  border:1px solid rgba(215,222,232,.14);
+  border-radius:12px;
+  background:rgba(2,7,12,.76);
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease;
+}
+
+.zp-quick-input:focus-within{
+  border-color:rgba(255,190,35,.68);
+  background:#050b11;
+  box-shadow:0 0 0 3px rgba(245,160,0,.10),0 8px 22px rgba(0,0,0,.18);
+}
+
+.zp-quick-input input{
+  width:100%;
+  min-width:0;
+  height:44px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#fff;
+  padding:0 6px 0 11px;
+  font:inherit;
+  font-size:18px;
+  font-weight:950;
+}
+
+.zp-quick-input span{
+  padding-right:10px;
+  color:#f7c94e;
+  font-size:11px;
+  font-weight:900;
+  text-transform:none;
+}
+
+.zp-quick-save{
+  min-height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border:1px solid rgba(255,220,112,.46);
+  border-radius:12px;
+  background:linear-gradient(135deg,#ffd447 0%,#f5a000 58%,#ef7800 100%);
+  color:#130d02;
+  padding:0 12px;
+  font:inherit;
+  font-size:11px;
+  font-weight:950;
+  box-shadow:0 9px 24px rgba(245,136,0,.16),inset 0 1px 0 rgba(255,255,255,.36);
+  cursor:pointer;
+  transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+}
+
+.zp-quick-save:disabled{
+  opacity:.52;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+.zp-quick-save svg.is-spinning{ animation:zpSpin .8s linear infinite; }
+
+.zp-quick-feedback{
+  min-height:15px;
+  margin:7px 1px 0;
+  color:#8e9daf;
+  font-size:9.5px;
+  line-height:1.35;
+}
+
+.zp-quick-feedback.success{ color:#8be6bd; }
+.zp-quick-feedback.error{ color:#ff9cab; }
+
+.zp-page .zp-access-banner{
+  border-color:rgba(245,160,0,.17);
+  background:
+    radial-gradient(260px 110px at 100% 0,rgba(245,160,0,.10),transparent 68%),
+    rgba(9,16,24,.78);
+}
+
+.zp-page .zp-tab.active{
+  border-color:rgba(245,160,0,.38);
+  background:linear-gradient(145deg,rgba(255,212,71,.15),rgba(242,122,0,.08));
+  color:#ffd761;
+  box-shadow:0 6px 18px rgba(245,128,0,.08),inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.zp-summary-card{
+  overflow:hidden;
+  padding:15px 13px;
+}
+
+.zp-summary-card .zp-section-head{
+  align-items:flex-start;
+}
+
+.zp-summary-eyebrow{
+  display:block;
+  margin-bottom:3px;
+  color:#f5a000;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+
+.zp-summary-status{
+  min-height:26px;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:0 8px;
+  border:1px solid rgba(139,230,189,.2);
+  border-radius:999px;
+  background:rgba(57,211,83,.065);
+  color:#9debc5;
+  font-size:9px;
+  font-weight:900;
+}
+
+.zp-summary-main{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:end;
+  gap:10px;
+  padding:14px;
+  border:1px solid rgba(215,222,232,.08);
+  border-radius:16px;
+  background:
+    radial-gradient(220px 110px at 100% 0,rgba(245,160,0,.11),transparent 68%),
+    rgba(4,10,16,.62);
+}
+
+.zp-summary-current span{
+  color:#8f9daf;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+
+.zp-summary-current strong{
+  display:block;
+  margin-top:5px;
+  color:#fff;
+  font-size:clamp(28px,9vw,40px);
+  line-height:1;
+  letter-spacing:-.045em;
+}
+
+.zp-summary-current strong small{
+  margin-left:4px;
+  color:#f7c94e;
+  font-size:.38em;
+  letter-spacing:0;
+}
+
+.zp-summary-current p{
+  margin:6px 0 0;
+  color:#8493a5;
+  font-size:10px;
+}
+
+.zp-summary-change{
+  display:grid;
+  justify-items:end;
+  gap:3px;
+}
+
+.zp-summary-change span{
+  color:#8493a5;
+  font-size:8px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.zp-summary-change strong{
+  color:#f6f8fb;
+  font-size:15px;
+}
+
+.zp-goal-progress{
+  margin-top:11px;
+  padding:11px 12px;
+  border:1px solid rgba(215,222,232,.075);
+  border-radius:14px;
+  background:rgba(4,10,16,.46);
+}
+
+.zp-goal-progress header,
+.zp-goal-progress footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  color:#8f9daf;
+  font-size:9px;
+  font-weight:850;
+}
+
+.zp-goal-progress header strong{ color:#f5c74e; font-size:10px; }
+.zp-goal-progress footer{ margin-top:6px; }
+
+.zp-goal-track{
+  height:7px;
+  margin-top:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+}
+
+.zp-goal-track i{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#ef7800,#f5a000 58%,#ffd447);
+  box-shadow:0 0 16px rgba(245,160,0,.35);
+  transform-origin:left center;
+  animation:zpGoalFill .7s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.zp-goal-progress > .zp-secondary-btn{
+  width:100%;
+  margin-top:9px;
+}
+
+.zp-page .zp-chart-shell{
+  background:
+    radial-gradient(320px 120px at 75% 0,rgba(245,160,0,.055),transparent 68%),
+    linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px),
+    rgba(3,9,15,.48);
+  background-size:auto,32px 32px,32px 32px,auto;
+}
+
+.zp-weight-line{
+  stroke-dasharray:1;
+  stroke-dashoffset:1;
+  animation:zpLineDraw .9s cubic-bezier(.2,.8,.2,1) .12s forwards;
+}
+
+.zp-weight-point{
+  transform-box:fill-box;
+  transform-origin:center;
+  animation:zpPointIn .34s cubic-bezier(.2,.9,.2,1) both;
+}
+
+@keyframes zpHeroOrbit{ to{ transform:rotate(360deg); } }
+@keyframes zpQuickEnter{ from{opacity:0;transform:translateY(9px) scale(.99)} to{opacity:1;transform:none} }
+@keyframes zpQuickGlow{ 0%,100%{opacity:.65;transform:scale(.9)} 50%{opacity:1;transform:scale(1.06)} }
+@keyframes zpSpin{ to{transform:rotate(360deg)} }
+@keyframes zpGoalFill{ from{transform:scaleX(0)} to{transform:scaleX(1)} }
+@keyframes zpLineDraw{ to{stroke-dashoffset:0} }
+@keyframes zpPointIn{ from{opacity:0;transform:scale(.2)} to{opacity:1;transform:scale(1)} }
+
 @keyframes zpSurfaceEnter{
   from{opacity:0;transform:translateY(10px);}
   to{opacity:1;transform:translateY(0);}
@@ -2040,7 +2495,22 @@ function buildSummary(weights, user = {}) {
   const goal = goalWeightFromUser(user);
   const change = first !== null && current !== null && weights.length > 1 ? Number((current - first).toFixed(1)) : null;
   const percentage = first && change !== null ? Number(((change / first) * 100).toFixed(1)) : null;
+  const initialDistance = first !== null && goal !== null ? Math.abs(first - goal) : null;
+  const reachedGoal = first !== null && current !== null && goal !== null
+    ? first > goal ? current <= goal : first < goal ? current >= goal : current === goal
+    : false;
+  const directionalProgress = first !== null && current !== null && goal !== null
+    ? first > goal ? first - current : current - first
+    : null;
+  const goalProgress = initialDistance !== null && current !== null && first !== null
+    ? reachedGoal
+      ? 100
+      : initialDistance <= .05
+        ? 0
+        : Math.max(0, Math.min(100, Number(((directionalProgress / initialDistance) * 100).toFixed(0))))
+    : null;
   return {
+    startWeight: first,
     currentWeight: current,
     goalWeight: goal,
     remainingWeight: current !== null && goal !== null ? Number(Math.abs(current - goal).toFixed(1)) : null,
@@ -2050,6 +2520,7 @@ function buildSummary(weights, user = {}) {
     hasWeight: current !== null,
     hasGoal: goal !== null,
     hasTrend: weights.length > 1,
+    goalProgress,
   };
 }
 
@@ -2097,6 +2568,13 @@ function ProgressPage() {
   const capabilities = capabilitiesQuery.data || cachedUser?.nutritionCapabilities || null;
   const access = useMemo(() => resolveProgressAccess(liveUser, capabilities), [liveUser, capabilities]);
   const summary = useMemo(() => buildSummary(weights, progressUser), [weights, progressUser]);
+  async function refreshWeightData() {
+    await Promise.all([
+      progressQuery.refetch(),
+      authQuery.refetch(),
+      queryClient.invalidateQueries({ queryKey: queryKeys.authMe() }),
+    ]);
+  }
 
   const commonProps = {
     activeTab,
@@ -2111,6 +2589,7 @@ function ProgressPage() {
     capabilitiesError: capabilitiesQuery.isError,
     onPhotoChange: setPhotos,
     onWeightEdit: () => setWeightDialogOpen(true),
+    onWeightSaved: refreshWeightData,
   };
 
   return (
@@ -2122,15 +2601,16 @@ function ProgressPage() {
       <div className="zp-desktop">
         <DesktopProgressScreen {...commonProps} />
       </div>
-      {weightDialogOpen ? <WeightEditorDialog user={progressUser} onClose={() => setWeightDialogOpen(false)} onSaved={async () => { setWeightDialogOpen(false); await Promise.all([progressQuery.refetch(), authQuery.refetch(), queryClient.invalidateQueries({ queryKey: queryKeys.authMe() })]); }} /> : null}
+      {weightDialogOpen ? <WeightEditorDialog user={progressUser} onClose={() => setWeightDialogOpen(false)} onSaved={async () => { setWeightDialogOpen(false); await refreshWeightData(); }} /> : null}
     </div>
   );
 }
 
-function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit }) {
+function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit, onWeightSaved }) {
   return (
     <>
       <ProgressHero />
+      <QuickWeightCapture summary={summary} onSaved={onWeightSaved} />
       <ProgressAccessBanner access={access} capabilitiesError={capabilitiesError} />
       <ProgressTabs activeTab={activeTab} onTabChange={onTabChange} />
       <main className="zp-stack">
@@ -2151,10 +2631,11 @@ function MobileProgressScreen({ activeTab, onTabChange, range, onRangeChange, we
   );
 }
 
-function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit }) {
+function DesktopProgressScreen({ activeTab, onTabChange, range, onRangeChange, weights, summary, measurements, photos, access, capabilitiesError, onPhotoChange, onWeightEdit, onWeightSaved }) {
   return (
     <div className="zp-desktop-inner">
       <ProgressHero />
+      <QuickWeightCapture summary={summary} onSaved={onWeightSaved} />
       <ProgressTabs activeTab={activeTab} onTabChange={onTabChange} />
       <ProgressAccessBanner access={access} capabilitiesError={capabilitiesError} />
       <DesktopDashboard
@@ -2179,10 +2660,106 @@ function ProgressHero() {
       <div className="zp-title-icon">
         <LineChart size={29} strokeWidth={2.3} />
       </div>
-      <div>
+      <div className="zp-hero-copy">
+        <span className="zp-hero-eyebrow"><Sparkles size={11} aria-hidden="true" /> Tu evolución</span>
         <h1>Progresos</h1>
-        <p>Sigue tu evolución y mantén el foco.</p>
+        <p>Datos reales, pequeñas victorias y una dirección clara.</p>
       </div>
+    </section>
+  );
+}
+
+function QuickWeightCapture({ summary, onSaved }) {
+  const accessibleId = useId();
+  const titleId = `${accessibleId}-title`;
+  const feedbackId = `${accessibleId}-feedback`;
+  const [weightKg, setWeightKg] = useState(() => (
+    summary.currentWeight === null || summary.currentWeight === undefined
+      ? ""
+      : Number(summary.currentWeight).toFixed(1)
+  ));
+  const [edited, setEdited] = useState(false);
+  const mutation = useMutation({
+    mutationFn: upsertClientWeight,
+    onSuccess: async () => {
+      await onSaved?.();
+      setEdited(false);
+    },
+  });
+  const numericWeight = Number(weightKg);
+  const validWeight = numericWeight >= 20 && numericWeight <= 350;
+
+  useEffect(() => {
+    if (edited || mutation.isPending) return;
+    const nextWeight = summary.currentWeight === null || summary.currentWeight === undefined
+      ? ""
+      : Number(summary.currentWeight).toFixed(1);
+    setWeightKg(nextWeight);
+  }, [edited, mutation.isPending, summary.currentWeight]);
+
+  function updateWeight(value) {
+    setEdited(true);
+    mutation.reset();
+    setWeightKg(value);
+  }
+
+  function submitWeight(event) {
+    event.preventDefault();
+    if (!validWeight || mutation.isPending) return;
+    mutation.mutate({ date: localDateInput(), weightKg: numericWeight });
+  }
+
+  return (
+    <section className="zp-quick-weight" aria-labelledby={titleId}>
+      <div className="zp-quick-head">
+        <div className="zp-quick-heading">
+          <span className="zp-quick-icon"><Scale size={19} strokeWidth={2.2} aria-hidden="true" /></span>
+          <div>
+            <strong id={titleId}>Peso de hoy</strong>
+            <span>
+              {summary.hasWeight ? `Último registrado: ${formatKg(summary.currentWeight)}` : "Tu primer registro toma menos de un minuto"}
+            </span>
+          </div>
+        </div>
+        <span className="zp-quick-date"><CalendarDays size={11} aria-hidden="true" /> Hoy</span>
+      </div>
+
+      <form className="zp-quick-form" onSubmit={submitWeight}>
+        <label className="zp-quick-field">
+          Tu peso
+          <span className="zp-quick-input">
+            <input
+              type="number"
+              inputMode="decimal"
+              min="20"
+              max="350"
+              step="0.1"
+              value={weightKg}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => updateWeight(event.target.value)}
+              aria-describedby={feedbackId}
+            />
+            <span>kg</span>
+          </span>
+        </label>
+        <button className="zp-quick-save" type="submit" disabled={!validWeight || mutation.isPending}>
+          {mutation.isPending ? <LoaderCircle className="is-spinning" size={16} aria-hidden="true" /> : mutation.isSuccess ? <CheckCircle2 size={16} aria-hidden="true" /> : <Scale size={15} aria-hidden="true" />}
+          {mutation.isPending ? "Guardando" : mutation.isSuccess ? "Guardado" : "Guardar hoy"}
+        </button>
+      </form>
+
+      <p
+        id={feedbackId}
+        className={`zp-quick-feedback ${mutation.isError ? "error" : mutation.isSuccess ? "success" : ""}`}
+        role={mutation.isError ? "alert" : "status"}
+        aria-live="polite"
+      >
+        {mutation.isError
+          ? mutation.error?.message || "No pudimos guardar el peso. Probá de nuevo."
+          : mutation.isSuccess
+            ? "Peso de hoy actualizado. El resumen ya refleja el cambio."
+            : "Si hoy ya tenía un valor, se actualiza sin duplicarlo."}
+      </p>
     </section>
   );
 }
@@ -2360,8 +2937,8 @@ function RangeSelector({ value, onChange, access }) {
 
 function WeightChartCard({ weights, summary, range, onRangeChange, access, onWeightEdit }) {
   const visibleWeights = visibleWeightsForAccess(weights, access);
-  const title = access.isBasic ? "Peso - ultimos registros" : `Peso - ${range}`;
-  const subtitle = access.isBasic ? "Progreso basico incluido en Free" : "historial completo";
+  const title = access.isBasic ? "Evolución del peso" : `Peso · ${range}`;
+  const subtitle = access.isBasic ? "Tus últimos registros reales" : "Historial completo";
   const changeLabel = access.isBasic ? "Cambio reciente" : `Cambio ${range}`;
   return (
     <section className="zp-card zp-weight-card">
@@ -2382,8 +2959,8 @@ function WeightChartCard({ weights, summary, range, onRangeChange, access, onWei
         <ProgressEmptyState
           compact
           icon={Scale}
-          title={summary.hasWeight ? "Todavia necesitas mas registros para ver una tendencia." : "Todavia no hay un peso registrado."}
-          text="Registro de progreso proximamente. No vamos a simular un guardado que se pierda al recargar."
+          title={summary.hasWeight ? "Un registro más y aparece tu tendencia." : "Empezá con tu peso de hoy."}
+          text={summary.hasWeight ? "Usá el acceso rápido de arriba para sumar el próximo dato real." : "El dato se guarda en tu cuenta y podés actualizarlo sin duplicados."}
         />
       )}
 
@@ -2400,7 +2977,7 @@ function WeightChartCard({ weights, summary, range, onRangeChange, access, onWei
       </div>
 
       <div className="zp-lock-note" role="status">
-        <button type="button" className="zp-weight-action" onClick={onWeightEdit}>{summary.hasWeight ? "Editar peso de hoy" : "Registrar peso"}</button>
+        <button type="button" className="zp-weight-action" onClick={onWeightEdit}>{summary.hasWeight ? "Cargar otra fecha o corregir un registro" : "Registrar peso con fecha"}</button>
       </div>
     </section>
   );
@@ -2462,9 +3039,14 @@ function WeightLineChart({ weights, access }) {
       <svg className="zp-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={access?.isBasic ? "Grafico de peso de ultimos registros" : "Grafico de peso del historial seleccionado"}>
         <defs>
           <linearGradient id="zpWeightArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#ffd21f" stopOpacity=".42" />
-            <stop offset="58%" stopColor="#8a6a00" stopOpacity=".18" />
-            <stop offset="100%" stopColor="#8a6a00" stopOpacity="0" />
+            <stop offset="0%" stopColor="#ffd447" stopOpacity=".38" />
+            <stop offset="54%" stopColor="#f5a000" stopOpacity=".16" />
+            <stop offset="100%" stopColor="#ef7800" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="zpWeightStroke" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#ef7800" />
+            <stop offset="48%" stopColor="#f5a000" />
+            <stop offset="100%" stopColor="#ffe27a" />
           </linearGradient>
           <filter id="zpGlow" x="-20%" y="-40%" width="140%" height="180%">
             <feGaussianBlur stdDeviation="5" result="blur" />
@@ -2487,18 +3069,18 @@ function WeightLineChart({ weights, access }) {
         })}
         <line x1={left} x2={width - right} y1={top + plotHeight} y2={top + plotHeight} stroke="rgba(255,255,255,.18)" />
         <path d={areaPath} fill="url(#zpWeightArea)" />
-        <path d={linePath} fill="none" stroke="#ffd21f" strokeWidth="4" strokeLinecap="round" filter="url(#zpGlow)" />
-        {points.map((point) => (
-          <g key={point.week}>
+        <path className="zp-weight-line" pathLength="1" d={linePath} fill="none" stroke="url(#zpWeightStroke)" strokeWidth="4" strokeLinecap="round" filter="url(#zpGlow)" />
+        {points.map((point, index) => (
+          <g key={point.week} className="zp-weight-point" style={{ animationDelay: `${320 + index * 70}ms` }}>
             <text x={point.x} y={point.y - 18} textAnchor="middle" fill="#f5f5f7" fontSize="20" fontWeight="900">
               {point.averageWeight.toFixed(1)}
             </text>
-            <circle cx={point.x} cy={point.y} r={point.current ? 13 : 7} fill={point.current ? "rgba(255,210,31,.22)" : "#ffd21f"} stroke="#ffd21f" strokeWidth={point.current ? 4 : 0} />
-            {point.current ? <circle cx={point.x} cy={point.y} r="8" fill="#ffd21f" /> : null}
-            <text x={point.x} y={height - 42} textAnchor="middle" fill={point.current ? "#ffd21f" : "#f5f5f7"} fontSize="15" fontWeight={point.current ? "900" : "700"}>
+            <circle cx={point.x} cy={point.y} r={point.current ? 13 : 7} fill={point.current ? "rgba(255,212,71,.2)" : "#f5a000"} stroke="#ffd447" strokeWidth={point.current ? 4 : 0} />
+            {point.current ? <circle cx={point.x} cy={point.y} r="8" fill="#ffd447" /> : null}
+            <text x={point.x} y={height - 42} textAnchor="middle" fill={point.current ? "#ffd447" : "#f5f5f7"} fontSize="15" fontWeight={point.current ? "900" : "700"}>
               {point.week}
             </text>
-            <text x={point.x} y={height - 17} textAnchor="middle" fill={point.current ? "#ffd21f" : "#a9adb7"} fontSize="14">
+            <text x={point.x} y={height - 17} textAnchor="middle" fill={point.current ? "#ffd447" : "#a9adb7"} fontSize="14">
               {point.range}
             </text>
           </g>
@@ -2585,29 +3167,55 @@ function ProLockedCard({ icon: Icon = Camera, title, text, actionLabel = "Ver be
 }
 
 function SummaryCards({ summary }) {
+  const currentLabel = summary.currentWeight === null || summary.currentWeight === undefined
+    ? "--"
+    : Number(summary.currentWeight).toFixed(1);
+  const changeLabel = summary.hasTrend
+    ? `${summary.changeFourWeeks > 0 ? "+" : ""}${summary.changeFourWeeks.toFixed(1)} kg`
+    : "Sin tendencia";
+  const goalProgress = Number.isFinite(summary.goalProgress) ? summary.goalProgress : 0;
   return (
-    <section className="zp-card zp-placeholder-card">
+    <section className="zp-card zp-summary-card">
       <div className="zp-section-head">
-        <h2>Resumen</h2>
+        <div>
+          <span className="zp-summary-eyebrow">Estado actual</span>
+          <h2>Tu evolución</h2>
+        </div>
+        <span className="zp-summary-status"><CheckCircle2 size={12} aria-hidden="true" /> Datos reales</span>
       </div>
-      <div className="zp-placeholder-grid">
-        <div className="zp-info-tile">
+
+      <div className="zp-summary-main">
+        <div className="zp-summary-current">
           <span>Peso actual</span>
-          <strong>{formatKg(summary.currentWeight)}</strong>
-          <p>Promedio semanal actualizado con tu ultimo registro.</p>
+          <strong>{currentLabel}<small>kg</small></strong>
+          <p>{summary.updatedAt}</p>
         </div>
-        <div className="zp-info-tile">
-          <span>Objetivo</span>
-          <strong>{formatKg(summary.goalWeight)}</strong>
-          <p>{summary.hasGoal ? `Faltan ${formatKg(summary.remainingWeight)} para llegar a la meta.` : "Todavia no definiste tu objetivo de peso."}</p>
-          {!summary.hasGoal ? <NavLink className="zp-secondary-btn" to="/app/objetivos">Configurar objetivo</NavLink> : null}
-        </div>
-        <div className="zp-info-tile">
-          <span>Cambio reciente</span>
-          <strong>{summary.hasTrend ? `${summary.changeFourWeeks.toFixed(1)} kg` : "Sin tendencia"}</strong>
-          <p>{summary.hasTrend ? `${summary.changePercentage.toFixed(1)}% desde el primer registro visible.` : "Todavia necesitás mas registros para comparar."}</p>
+        <div className="zp-summary-change">
+          <span>Cambio visible</span>
+          <strong>{changeLabel}</strong>
         </div>
       </div>
+
+      {summary.hasGoal ? (
+        <div className="zp-goal-progress">
+          <header>
+            <span>Camino al objetivo</span>
+            <strong>{goalProgress}%</strong>
+          </header>
+          <div className="zp-goal-track" role="progressbar" aria-label="Recorrido hacia el objetivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow={goalProgress}>
+            <i style={{ width: `${goalProgress}%` }} />
+          </div>
+          <footer>
+            <span>Actual {formatKg(summary.currentWeight)}</span>
+            <span>Meta {formatKg(summary.goalWeight)}</span>
+          </footer>
+        </div>
+      ) : (
+        <div className="zp-goal-progress">
+          <header><span>Tu objetivo todavía no está definido</span></header>
+          <NavLink className="zp-secondary-btn" to="/app/objetivos">Configurar objetivo</NavLink>
+        </div>
+      )}
     </section>
   );
 }

@@ -10,6 +10,7 @@ import {
 
 
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import BrandLogo from "../../ui/BrandLogo.jsx";
 import {
   AlertTriangle,
   Apple,
@@ -6836,7 +6837,7 @@ async function setMealTargetMode({
     <MenuAutonomousActionsContext.Provider value={autonomousActions}>
     <MealChoiceActionsContext.Provider value={{ select: selectMealChoice }}>
     <div
-      className="min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-0 text-zinc-100 sm:px-6 sm:pb-12 sm:pt-5"
+      className="-mt-1.5 min-h-screen overflow-x-hidden bg-[#070707] px-0 pb-10 pt-0 text-zinc-100 sm:mt-0 sm:px-6 sm:pb-12 sm:pt-5"
       style={{ background: "#070707", color: "#f4f4f5", minHeight: "60vh" }}
     >
       <div className="mx-auto grid w-full max-w-6xl gap-3 sm:gap-5">
@@ -8358,20 +8359,43 @@ function ConfirmMacroPill({ label, value, tone = "neutral" }) {
 
 function LoadingState() {
   return (
-    <div className="rounded-3xl border border-[#D4AF37]/25 bg-[#11151c] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center gap-3 text-[#FFE8A3]">
-        <RefreshCw size={20} className="animate-spin" />
-        <strong>Cargando tu menú semanal...</strong>
+    <section
+      className="zf-menu-loading"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-busy="true"
+    >
+      <div className="zf-menu-loading-glow" aria-hidden="true" />
+
+      <BrandLogo
+        size="sm"
+        priority
+        className="zf-menu-loading-brand"
+        imgClassName="zf-menu-loading-brand-image"
+      />
+
+      <div className="zf-menu-loading-status">
+        <span className="zf-menu-loading-spinner" aria-hidden="true">
+          <span />
+        </span>
+        <div className="min-w-0">
+          <strong className="zf-menu-loading-title">Cargando menú</strong>
+          <p className="zf-menu-loading-copy">
+            Preparando tus metas y comidas del día.
+          </p>
+        </div>
       </div>
-      <p className="mt-2 text-sm font-semibold text-zinc-400">
-        Estoy buscando metas diarias, menú asignado y tracking guardado.
-      </p>
-      <div className="mt-4 grid gap-3">
-        {[0, 1, 2].map((item) => (
-          <div key={item} className="h-16 animate-pulse rounded-2xl border border-white/10 bg-white/[0.04]" />
+
+      <div className="zf-menu-loading-skeleton" aria-hidden="true">
+        {["74%", "91%", "62%"].map((width, item) => (
+          <span key={width} className="zf-menu-loading-skeleton-row">
+            <i />
+            <b style={{ width, animationDelay: `${item * 95}ms` }} />
+          </span>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 

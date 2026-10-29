@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
   Brain,
+  ChevronRight,
   ClipboardCheck,
   Crown,
   Dumbbell,
@@ -11,10 +12,9 @@ import {
   LogOut,
   Menu,
   MoreHorizontal,
-  Newspaper,
+  Settings,
   Target,
   TrendingUp,
-  Users,
   Utensils,
   X,
 } from "lucide-react";
@@ -377,13 +377,15 @@ const CSS = `
   animation:csBackdropIn .18s ease both;
 }
 .cs-drawer{
+  --cs-lion-opacity:.135;
   position:fixed;
   top:0;
   right:0;
   height: 100dvh;
-  width: min(380px, 92vw);
+  width: min(356px, 94vw);
   z-index: 9999;
   overflow:hidden;
+  isolation:isolate;
   border-left:1px solid rgba(245,184,28,.24);
   background:
     radial-gradient(420px 220px at 100% 0%, rgba(245,153,0,.11), transparent 62%),
@@ -408,6 +410,34 @@ const CSS = `
   opacity:.78;
   pointer-events:none;
 }
+.cs-drawer::after{
+  content:"";
+  position:absolute;
+  z-index:0;
+  right:-110px;
+  bottom:-120px;
+  width:360px;
+  height:360px;
+  border-radius:999px;
+  background:radial-gradient(circle,rgba(245,153,0,.16),rgba(245,153,0,.045) 42%,transparent 72%);
+  filter:blur(10px);
+  pointer-events:none;
+}
+.cs-drawerLion{
+  position:absolute;
+  z-index:0;
+  top:48px;
+  right:-54px;
+  width:clamp(228px,78vw,294px);
+  height:auto;
+  opacity:var(--cs-lion-opacity);
+  filter:saturate(1.28) contrast(1.08) drop-shadow(0 0 34px rgba(245,153,0,.20));
+  mix-blend-mode:screen;
+  pointer-events:none;
+  user-select:none;
+  transform:translate3d(8px,0,0) scale(.975);
+  animation:csDrawerLionIn .55s cubic-bezier(.22,1,.36,1) .04s both;
+}
 
 @keyframes csBackdropIn{
   from{ opacity:0; }
@@ -421,27 +451,44 @@ const CSS = `
   from{ opacity:0; transform:translate3d(10px,5px,0); }
   to{ opacity:1; transform:translate3d(0,0,0); }
 }
+@keyframes csDrawerLionIn{
+  from{ opacity:0; transform:translate3d(22px,-2px,0) scale(.95); }
+  to{ opacity:var(--cs-lion-opacity); transform:translate3d(8px,0,0) scale(.975); }
+}
 
 .cs-d-head{
-  padding: 13px 14px 11px;
+  position:relative;
+  z-index:1;
+  padding: 9px 12px 10px;
   border-bottom:1px solid rgba(255,255,255,.075);
   background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0));
   display:flex;
-  align-items:flex-start;
+  flex-direction:column;
+  gap:7px;
+}
+.cs-d-brandRow{
+  width:100%;
+  min-height:42px;
+  display:flex;
+  align-items:center;
   justify-content:space-between;
   gap:10px;
+}
+.cs-d-brandLogo .brand-logo-img{
+  height:40px;
+  max-width:154px;
 }
 
 /* profile header */
 .cs-prof{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
   min-width:0;
 }
 .cs-avatar{
-  width:48px;
-  height:48px;
+  width:42px;
+  height:42px;
   border-radius:999px;
   border:1px solid rgba(255,204,58,.30);
   background: radial-gradient(circle at 28% 18%, rgba(255,225,115,.24), transparent 42%),
@@ -480,37 +527,60 @@ const CSS = `
 }
 .cs-prof-link{
   display:inline-flex;
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 11px;
   font-weight: 900;
   color:#ffd45a;
   text-decoration:none;
   width: fit-content;
 }
 .cs-prof-link:hover{ text-decoration: underline; }
+.cs-prof-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.cs-planPill{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-height:23px;
+  padding:3px 7px;
+  border:1px solid rgba(245,184,28,.28);
+  border-radius:999px;
+  background:rgba(245,153,0,.07);
+  color:#ffe171;
+  font-size:9.5px;
+  line-height:1;
+  font-weight:850;
+  text-decoration:none;
+}
+.cs-planPill:hover{ border-color:rgba(245,184,28,.56); background:rgba(245,153,0,.12); }
 
 /* section title */
 .cs-sec{
-  padding: 6px 9px 0;
+  padding: 3px 7px 0;
 }
 .cs-sec-title{
-  padding: 8px 10px 4px;
-  font-size: 10.5px;
+  padding: 7px 9px 3px;
+  font-size: 9px;
   font-weight: 900;
-  letter-spacing: .11em;
+  letter-spacing: .13em;
   text-transform: uppercase;
   color: rgba(255,212,90,.82);
 }
 
 /* item */
 .cs-item, .cs-item-disabled{
+  position:relative;
   display:flex;
   align-items:center;
-  gap:9px;
-  width:calc(100% - 12px);
-  min-height:54px;
-  padding: 8px 10px;
-  border-radius: 15px;
+  gap:8px;
+  width:calc(100% - 8px);
+  min-height:48px;
+  padding: 6px 8px;
+  border-radius: 12px;
   border:1px solid transparent;
   text-decoration:none;
   color: var(--txt);
@@ -518,7 +588,8 @@ const CSS = `
   font:inherit;
   text-align:left;
   transition: background .18s ease, border-color .18s ease, transform .12s ease, box-shadow .18s ease, color .18s ease;
-  margin: 2px 6px;
+  margin: 1px 4px;
+  overflow:hidden;
   -webkit-tap-highlight-color:transparent;
 }
 .cs-item:hover{
@@ -528,15 +599,29 @@ const CSS = `
 }
 .cs-item:active{ transform:scale(.985); }
 .cs-item.active{
-  background: linear-gradient(120deg,#f4a900 0%,#ffd33d 48%,#ffe981 100%);
-  color:#130f04;
-  border-color:rgba(255,235,156,.75);
-  box-shadow:0 10px 24px rgba(224,151,0,.18), inset 0 1px 0 rgba(255,255,255,.52);
+  background:
+    radial-gradient(170px 70px at 100% 50%,rgba(245,153,0,.32),transparent 68%),
+    linear-gradient(100deg,rgba(245,153,0,.15),rgba(255,196,44,.045) 54%,rgba(255,255,255,.025)),
+    #111216;
+  color:#fff8df;
+  border-color:rgba(244,177,22,.74);
+  box-shadow:0 0 0 1px rgba(245,153,0,.15),0 0 24px rgba(229,145,0,.18),inset 0 1px 0 rgba(255,228,137,.12);
+}
+.cs-item.active::before{
+  content:"";
+  position:absolute;
+  top:8px;
+  bottom:8px;
+  left:0;
+  width:2px;
+  border-radius:0 999px 999px 0;
+  background:linear-gradient(180deg,#fff0a0,#f59f00);
+  box-shadow:0 0 10px rgba(245,153,0,.9);
 }
 .cs-ic{
-  width:36px;
-  height:36px;
-  border-radius: 12px;
+  width:32px;
+  height:32px;
+  border-radius: 10px;
   border:1px solid rgba(255,255,255,.11);
   background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.18));
   display:flex;
@@ -546,14 +631,15 @@ const CSS = `
   flex: 0 0 auto;
 }
 .cs-ic svg{
-  width:18px;
-  height:18px;
+  width:17px;
+  height:17px;
   transition:transform .22s cubic-bezier(.22,1,.36,1), color .18s ease;
 }
 .cs-item.active .cs-ic{
-  border-color: rgba(72,46,0,.24);
-  background: rgba(92,58,0,.10);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.24);
+  color:#ffd33d;
+  border-color:rgba(245,184,28,.42);
+  background:rgba(245,153,0,.10);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 16px rgba(245,153,0,.11);
 }
 .cs-item:hover .cs-ic svg{ transform:scale(1.06); }
 .cs-desc{
@@ -563,7 +649,7 @@ const CSS = `
   min-width:0;
 }
 .cs-desc > span{
-  font-size:14px;
+  font-size:13px;
   line-height:1.15;
   font-weight:850;
 }
@@ -575,13 +661,21 @@ const CSS = `
   font-weight: 600;
   color: var(--muted);
   opacity:.9;
-  font-size:11px;
+  font-size:10px;
   line-height:1.25;
 }
 .cs-item.active .cs-subline{
-  color:#0b0b0b;
-  opacity:.85;
+  color:rgba(255,245,213,.72);
+  opacity:1;
 }
+.cs-itemArrow{
+  flex:0 0 auto;
+  margin-left:auto;
+  color:rgba(255,255,255,.42);
+  transition:transform .18s ease,color .18s ease;
+}
+.cs-item:hover .cs-itemArrow{ transform:translateX(2px); color:rgba(255,220,112,.72); }
+.cs-item.active .cs-itemArrow{ color:#ffd23f; }
 
 /* disabled item */
 .cs-item-disabled{
@@ -593,16 +687,20 @@ const CSS = `
 .cs-item-disabled:hover{ transform:none; }
 .cs-badge{
   margin-left:auto;
-  font-size:11px;
+  font-size:8.5px;
   font-weight:900;
   color:#0a0a0a;
   background: linear-gradient(135deg,var(--gold2),var(--gold));
-  padding:6px 10px;
+  padding:4px 6px;
   border-radius:999px;
 }
 
 /* drawer body scroll */
 .cs-d-body{
+  position:relative;
+  z-index:1;
+  flex:1;
+  min-height:0;
   padding: 3px 0 8px;
   overflow:auto;
   scrollbar-width:thin;
@@ -623,17 +721,22 @@ const CSS = `
 
 /* footer */
 .cs-d-foot{
+  position:relative;
+  z-index:1;
   margin-top:auto;
-  padding: 9px 12px 12px;
+  padding: 5px 7px calc(7px + env(safe-area-inset-bottom));
   border-top:1px solid rgba(255,255,255,.075);
   background:linear-gradient(180deg,rgba(8,10,13,.76),rgba(5,7,10,.98));
   display:flex;
   flex-direction:column;
-  gap:10px;
+  gap:1px;
 }
 .cs-foot-item{
-  width:100%;
-  justify-content:center;
+  color:#f6f7f8;
+}
+.cs-foot-item:disabled{
+  opacity:.58;
+  cursor:not-allowed;
 }
 
 /* logout overlay (premium) */
@@ -788,22 +891,19 @@ const CSS = `
     min-height:44px;
   }
   .cs-drawer{
-    width:min(378px,93vw);
-    padding-bottom:env(safe-area-inset-bottom);
+    --cs-lion-opacity:.11;
+    width:min(356px,94vw);
   }
   .cs-d-head{
-    padding:11px 12px 9px;
+    padding:8px 10px 8px;
   }
-  .cs-prof{ gap:10px; }
-  .cs-avatar{ width:44px; height:44px; }
-  .cs-prof-link{ margin-top:4px; }
-  .cs-sec{ padding:4px 8px 0; }
-  .cs-sec-title{ padding:7px 9px 3px; }
-  .cs-item, .cs-item-disabled{
-    width:calc(100% - 8px);
-    margin:1.5px 4px;
-  }
-  .cs-d-foot{ padding:8px 11px 10px; }
+  .cs-drawerLion{ right:-66px; }
+  .cs-d-brandLogo .brand-logo-img{ height:38px; max-width:146px; }
+  .cs-prof{ gap:9px; }
+  .cs-avatar{ width:40px; height:40px; }
+  .cs-prof-link{ margin-top:3px; }
+  .cs-sec{ padding:3px 7px 0; }
+  .cs-sec-title{ padding:6px 9px 2px; }
 }
 
 @media (min-width:768px){
@@ -816,7 +916,8 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){
   .cs-ov,
   .cs-drawer,
-  .cs-drawer.open .cs-sec{
+  .cs-drawer.open .cs-sec,
+  .cs-drawerLion{
     animation:none !important;
     transition:none !important;
   }
@@ -931,13 +1032,6 @@ const NAV_SECTIONS = [
     title: "Tu progreso",
     items: [
       { to: "/app/progresos", label: "Progresos", sub: "Medidas y fotos", icon: <TrendingUp size={19} aria-hidden="true" />, enabled: true },
-    ],
-  },
-  {
-    title: "Social",
-    items: [
-      { to: "/app/amigos", label: "Amigos", sub: "Conexiones", icon: <Users size={19} aria-hidden="true" />, enabled: false },
-      { to: "/app/feed", label: "Feed", sub: "Actividad", icon: <Newspaper size={19} aria-hidden="true" />, enabled: false },
     ],
   },
 ];
@@ -1347,6 +1441,7 @@ export default function ClientShell() {
           <span>{it.label}</span>
           <small className="cs-subline">{it.sub}</small>
         </span>
+        <ChevronRight className="cs-itemArrow" size={15} strokeWidth={2.2} aria-hidden="true" />
       </NavLink>
     );
   }
@@ -1490,7 +1585,26 @@ export default function ClientShell() {
         inert={!open}
         aria-label="Menú principal"
       >
+        {open ? (
+          <img
+            className="cs-drawerLion"
+            src="/images/brand/lion-drawer-watermark.png"
+            alt=""
+            aria-hidden="true"
+            width="560"
+            height="840"
+            decoding="async"
+          />
+        ) : null}
         <div className="cs-d-head">
+          <div className="cs-d-brandRow">
+            <BrandLogo className="cs-d-brandLogo" size="sm" />
+
+            <button type="button" className="cs-btn" onClick={() => closeDrawer({ restoreFocus: true })} aria-label="Cerrar menú" title="Cerrar">
+              <X size={20} strokeWidth={2.3} aria-hidden="true" />
+            </button>
+          </div>
+
           <div className="cs-prof">
             <div className="cs-avatar" aria-label="Avatar">
               {avatarUrl ? <img src={avatarUrl} alt="Avatar" /> : <span>{initialFromName(fullName)}</span>}
@@ -1500,15 +1614,17 @@ export default function ClientShell() {
               <div className="cs-prof-name">{fullName ? fullName : "Mi cuenta"}</div>
               <div className="cs-prof-sub">{sub}</div>
 
-              <NavLink className="cs-prof-link" to="/app/perfil" onClick={() => closeDrawer()}>
-                Ver mi perfil →
-              </NavLink>
+              <div className="cs-prof-meta">
+                <NavLink className="cs-planPill" to="/app/planes" onClick={() => closeDrawer()}>
+                  <Crown size={11} strokeWidth={2.2} aria-hidden="true" />
+                  <span>{rawShellPlan ? clientPlanLabel(shellPlan) : "Mi plan"} · Ver beneficios</span>
+                </NavLink>
+                <NavLink className="cs-prof-link" to="/app/perfil" onClick={() => closeDrawer()}>
+                  Ver perfil →
+                </NavLink>
+              </div>
             </div>
           </div>
-
-          <button type="button" className="cs-btn" onClick={() => closeDrawer({ restoreFocus: true })} aria-label="Cerrar menú" title="Cerrar">
-            <X size={21} strokeWidth={2.3} aria-hidden="true" />
-          </button>
         </div>
 
         <div className="cs-d-body">
@@ -1530,15 +1646,24 @@ export default function ClientShell() {
         </div>
 
         <div className="cs-d-foot">
-          {/* Salir (último de todo) */}
+          {renderItem({
+            to: "/app/ajustes",
+            label: "Configuración",
+            sub: "Preferencias de la app",
+            icon: <Settings size={18} aria-hidden="true" />,
+            enabled: true,
+          })}
           <button
             type="button"
-            className="cs-btn cs-foot-item"
+            className="cs-item cs-foot-item"
             onClick={logout}
             disabled={loading || isImpersonating()}
-            style={{ width: "100%", justifyContent: "center" }}
           >
-            {isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando..." : "Salir"}
+            <span className="cs-ic"><LogOut size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+            <span className="cs-desc">
+              <span>{isImpersonating() ? "Modo solo lectura" : loading ? "Cerrando..." : "Salir"}</span>
+            </span>
+            <ChevronRight className="cs-itemArrow" size={15} strokeWidth={2.2} aria-hidden="true" />
           </button>
         </div>
       </aside>

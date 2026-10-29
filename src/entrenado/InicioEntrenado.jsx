@@ -1074,6 +1074,364 @@ const HOME_V2_CSS = `
   .zfh-macro strong{ font-size:11px; }
   .zfh-barValue{ font-size:7px; }
 }
+
+/* Premium ZumaFit brand layer */
+@keyframes zfhReveal{
+  from{ opacity:0; transform:translate3d(0,10px,0) scale(.992); }
+  to{ opacity:1; transform:translate3d(0,0,0) scale(1); }
+}
+
+@keyframes zfhAura{
+  0%,100%{ transform:translate3d(0,0,0) scale(1); opacity:.72; }
+  50%{ transform:translate3d(-8px,7px,0) scale(1.08); opacity:1; }
+}
+
+@keyframes zfhBarEnter{
+  from{ transform:scaleY(.08); opacity:.25; }
+  to{ transform:scaleY(1); opacity:1; }
+}
+
+@keyframes zfhLineEnter{
+  from{ transform:scaleX(.1); opacity:.25; }
+  to{ transform:scaleX(1); opacity:1; }
+}
+
+.zfh{
+  --zfh-gold:#ffd43b;
+  --zfh-amber:#f5a400;
+  --zfh-orange:#f97316;
+  --zfh-cream:#fff2b8;
+  --zfh-ink:#050708;
+  gap:12px;
+  padding-bottom:16px;
+}
+
+.zfh > *{
+  animation:zfhReveal .42s cubic-bezier(.22,1,.36,1) both;
+}
+.zfh > *:nth-child(2){ animation-delay:.035s; }
+.zfh > *:nth-child(3){ animation-delay:.07s; }
+.zfh > *:nth-child(4){ animation-delay:.105s; }
+.zfh > *:nth-child(5){ animation-delay:.14s; }
+.zfh > *:nth-child(6){ animation-delay:.175s; }
+
+.zfh-panel{
+  border-color:rgba(245,164,0,.25);
+  background:
+    radial-gradient(560px 260px at 100% 0%,rgba(249,115,22,.10),transparent 60%),
+    radial-gradient(520px 260px at 0% 0%,rgba(255,212,59,.08),transparent 58%),
+    linear-gradient(150deg,#11171b 0%,#080b0e 56%,#050708 100%);
+  box-shadow:
+    0 18px 48px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,241,184,.045),
+    inset 0 -1px 0 rgba(255,255,255,.015);
+  transition:transform .22s cubic-bezier(.22,1,.36,1),border-color .22s ease,box-shadow .22s ease;
+}
+
+.zfh-panel::before{
+  content:"";
+  position:absolute;
+  z-index:2;
+  top:0;
+  right:16px;
+  left:16px;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,212,59,.62),rgba(249,115,22,.34),transparent);
+  opacity:.72;
+  pointer-events:none;
+}
+
+.zfh-hero{
+  min-height:122px;
+  padding:16px 18px;
+  background:
+    radial-gradient(340px 170px at 94% 15%,rgba(255,212,59,.19),transparent 64%),
+    radial-gradient(280px 190px at 12% 110%,rgba(249,115,22,.10),transparent 66%),
+    linear-gradient(118deg,#10191c 0%,#0b0e0f 54%,#17150b 100%);
+}
+
+.zfh-hero::after{
+  width:270px;
+  height:270px;
+  right:-105px;
+  top:-130px;
+  background:radial-gradient(circle,rgba(255,195,34,.23),rgba(249,115,22,.08) 42%,transparent 70%);
+  filter:blur(1px);
+  animation:zfhAura 5.8s ease-in-out infinite;
+}
+
+.zfh-heroEyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-bottom:8px;
+  color:rgba(255,224,116,.78);
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.14em;
+  line-height:1;
+  text-transform:uppercase;
+}
+
+.zfh-heroEyebrow i{
+  width:17px;
+  height:2px;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--zfh-gold),var(--zfh-orange));
+  box-shadow:0 0 12px rgba(249,115,22,.45);
+}
+
+.zfh-hello{
+  color:#fff;
+  text-shadow:0 5px 24px rgba(0,0,0,.55);
+}
+
+.zfh-identity{ margin-top:10px; }
+
+.zfh-chip{
+  min-height:30px;
+  border-color:rgba(255,255,255,.105);
+  color:rgba(255,248,222,.76);
+  background:linear-gradient(145deg,rgba(255,255,255,.05),rgba(5,7,8,.20));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.zfh-chip svg{ color:#ffbd2e; }
+.zfh-chip:nth-child(2) svg{ color:#fb923c; }
+
+.zfh-planBadge,
+.zfh-planBadge.free,
+.zfh-planBadge.vip{
+  border-color:rgba(255,201,39,.34);
+  color:#fff0a1;
+  background:
+    radial-gradient(circle at 24% 0%,rgba(255,236,145,.16),transparent 46%),
+    linear-gradient(135deg,rgba(245,164,0,.18),rgba(249,115,22,.075));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 10px 24px rgba(0,0,0,.16);
+  transition:transform .18s ease,border-color .18s ease,filter .18s ease;
+}
+
+.zfh-planBadge svg{ color:var(--zfh-gold); filter:drop-shadow(0 0 7px rgba(255,212,59,.28)); }
+
+.zfh-roundIcon{
+  border-color:rgba(255,196,34,.30);
+  color:#ffd43b;
+  background:
+    radial-gradient(circle at 30% 15%,rgba(255,235,137,.15),transparent 45%),
+    linear-gradient(145deg,rgba(245,164,0,.13),rgba(249,115,22,.055));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 8px 22px rgba(0,0,0,.16);
+}
+
+.zfh-menuCard{
+  border-color:rgba(245,164,0,.30);
+  background:
+    linear-gradient(90deg,rgba(5,8,10,.99) 0%,rgba(7,10,11,.94) 54%,rgba(12,9,3,.38) 100%),
+    radial-gradient(360px 180px at 84% 0%,rgba(249,115,22,.18),transparent 66%),
+    url('/images/foods/pechugadepollo.jpeg') right center / min(48%, 390px) 100% no-repeat,
+    linear-gradient(145deg,#101619,#07090a);
+}
+
+.zfh-primary{
+  color:#100b02;
+  background:linear-gradient(105deg,#f5a400 0%,#ffd43b 54%,#ffe884 100%);
+  box-shadow:0 12px 30px rgba(245,164,0,.18),inset 0 1px 0 rgba(255,255,255,.48);
+  transition:transform .16s ease,filter .18s ease,box-shadow .18s ease;
+}
+
+.zfh-detailLink{
+  border-color:rgba(255,211,79,.20);
+  color:#fff2ba;
+  background:linear-gradient(145deg,rgba(255,211,79,.075),rgba(255,255,255,.025));
+  transition:transform .18s ease,border-color .18s ease,background .18s ease;
+}
+
+.zfh-objective{
+  background:
+    radial-gradient(470px 220px at 100% 0%,rgba(245,164,0,.12),transparent 62%),
+    radial-gradient(360px 180px at 0% 100%,rgba(249,115,22,.055),transparent 64%),
+    linear-gradient(150deg,#10171b,#080c0f 60%,#050708);
+}
+
+.zfh-kcal{
+  position:relative;
+  width:max-content;
+  min-width:190px;
+  margin:16px 0 0;
+  padding:13px 15px 12px;
+  border:1px solid rgba(255,203,48,.18);
+  border-radius:17px;
+  background:
+    radial-gradient(160px 80px at 0% 0%,rgba(255,212,59,.11),transparent 70%),
+    rgba(3,7,9,.34);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.zfh-kcal strong{
+  color:#ffd84a;
+  background:linear-gradient(100deg,#fff0a3,#ffd43b 58%,#fb923c);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+.zfh-kcal span{ color:#ffc34a; }
+
+.zfh-macros{
+  margin-top:12px;
+  gap:8px;
+}
+
+.zfh-macro{
+  gap:8px;
+  padding:11px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:13px;
+  background:linear-gradient(150deg,rgba(255,255,255,.038),rgba(0,0,0,.12));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.018);
+}
+.zfh-macro:first-child{ padding-left:11px; }
+.zfh-macro:last-child{ padding-right:11px; border-right:1px solid rgba(255,255,255,.075); }
+.zfh-macro.protein .zfh-macroTrack i{ background:linear-gradient(90deg,#fb923c,#ffd43b); }
+.zfh-macro.carbs .zfh-macroTrack i{ background:linear-gradient(90deg,#22d3ee,#2dd4bf); }
+.zfh-macro.fat .zfh-macroTrack i{ background:linear-gradient(90deg,#f59e0b,#fb7185); }
+.zfh-macroTrack i{
+  transform-origin:left center;
+  animation:zfhLineEnter .62s cubic-bezier(.22,1,.36,1) .18s both;
+  box-shadow:0 0 10px currentColor;
+}
+
+.zfh-week{
+  margin-top:12px;
+  padding:14px 13px 11px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:17px;
+  background:
+    radial-gradient(260px 130px at 100% 0%,rgba(245,164,0,.055),transparent 66%),
+    rgba(3,7,9,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.zfh-weekHead strong{ color:#ffd75a; }
+.zfh-chart{
+  border-bottom-color:rgba(255,195,34,.16);
+  background:repeating-linear-gradient(to top,transparent 0,transparent 52px,rgba(255,212,59,.035) 53px);
+}
+.zfh-bar{
+  transform-origin:center bottom;
+  animation:zfhBarEnter .62s cubic-bezier(.22,1,.36,1) both;
+}
+.zfh-day:nth-child(2) .zfh-bar{ animation-delay:.045s; }
+.zfh-day:nth-child(3) .zfh-bar{ animation-delay:.09s; }
+.zfh-day:nth-child(4) .zfh-bar{ animation-delay:.135s; }
+.zfh-day:nth-child(5) .zfh-bar{ animation-delay:.18s; }
+.zfh-day:nth-child(6) .zfh-bar{ animation-delay:.225s; }
+.zfh-day:nth-child(7) .zfh-bar{ animation-delay:.27s; }
+.zfh-day.pending .zfh-bar{ background:linear-gradient(180deg,#ffd94f,#d47908); }
+.zfh-day.projected .zfh-bar{ background:repeating-linear-gradient(135deg,#f6bf27 0 6px,#8d6316 6px 12px); }
+.zfh-day.today .zfh-dayLabel{ color:#ffe47a; border-bottom-color:#f5a400; }
+
+.zfh-sectionHead{
+  justify-content:flex-start;
+  gap:8px;
+}
+.zfh-sectionHead::before{
+  content:"";
+  width:4px;
+  height:21px;
+  border-radius:999px;
+  background:linear-gradient(180deg,var(--zfh-gold),var(--zfh-orange));
+  box-shadow:0 0 14px rgba(249,115,22,.25);
+}
+
+.zfh-secondaryGrid{ gap:9px; }
+.zfh-quickCard{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(255,196,34,.15);
+  background:
+    radial-gradient(190px 90px at 0% 0%,rgba(255,212,59,.055),transparent 68%),
+    linear-gradient(145deg,#101619,#080b0d);
+  box-shadow:0 12px 30px rgba(0,0,0,.19),inset 0 1px 0 rgba(255,255,255,.025);
+  transition:transform .18s cubic-bezier(.22,1,.36,1),border-color .18s ease,box-shadow .18s ease;
+}
+.zfh-quickCard::before{
+  content:"";
+  position:absolute;
+  right:-54px;
+  bottom:-64px;
+  width:140px;
+  height:140px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(245,164,0,.105),transparent 68%);
+  pointer-events:none;
+}
+.zfh-quickCard.routine::before{ background:radial-gradient(circle,rgba(249,115,22,.14),transparent 68%); }
+.zfh-quickCard.progress::before{ background:radial-gradient(circle,rgba(255,212,59,.12),transparent 68%); }
+.zfh-quickCard.routine .zfh-roundIcon{ color:#fb923c; border-color:rgba(249,115,22,.30); }
+.zfh-quickCard.progress .zfh-roundIcon{ color:#ffe064; border-color:rgba(255,212,59,.32); }
+.zfh-quickCard strong{ color:#fff7dd; }
+.zfh-quickCard > svg{ color:#e8a91d; transition:transform .18s ease,color .18s ease; }
+
+@media (hover:hover){
+  .zfh-panel:hover{ border-color:rgba(245,164,0,.34); }
+  .zfh-planBadge:hover{ transform:translateY(-1px); border-color:rgba(255,212,59,.58); filter:brightness(1.06); }
+  .zfh-primary:hover{ transform:translateY(-1px); box-shadow:0 15px 34px rgba(245,164,0,.23),inset 0 1px 0 rgba(255,255,255,.48); }
+  .zfh-detailLink:hover{ border-color:rgba(255,212,59,.42); background:rgba(245,164,0,.09); }
+  .zfh-quickCard:hover{ transform:translateY(-2px); border-color:rgba(245,164,0,.36); box-shadow:0 16px 34px rgba(0,0,0,.25),0 0 22px rgba(245,164,0,.055); }
+  .zfh-quickCard:hover > svg{ color:#ffd43b; transform:translateX(2px); }
+}
+
+.zfh-primary:active,
+.zfh-planBadge:active,
+.zfh-detailLink:active,
+.zfh-quickCard:active{ transform:scale(.985); }
+
+@media (max-width:680px){
+  .zfh{ gap:8px; padding-bottom:10px; }
+  .zfh-hero{ min-height:110px; padding:12px 13px; }
+  .zfh-heroEyebrow{ margin-bottom:6px; font-size:8px; }
+  .zfh-hello{ font-size:27px; }
+  .zfh-identity{ margin-top:8px; }
+  .zfh-chip{ min-height:27px; }
+  .zfh-objective{ padding:13px; }
+  .zfh-kcal{ min-width:166px; margin-top:11px; padding:11px 12px 10px; border-radius:14px; }
+  .zfh-kcal strong{ font-size:32px; }
+  .zfh-macros{ margin-top:9px; gap:5px; }
+  .zfh-macro{ gap:6px; padding:8px 7px; border-radius:11px; }
+  .zfh-macro:first-child{ padding-left:7px; }
+  .zfh-macro:last-child{ padding-right:7px; }
+  .zfh-week{ margin-top:9px; padding:11px 10px 8px; border-radius:14px; }
+  .zfh-chart{ height:116px; }
+  .zfh-day{ height:102px; }
+  .zfh-sectionHead::before{ height:18px; }
+  .zfh-quickCard{ min-height:66px; border-radius:16px; }
+}
+
+@media (max-width:360px){
+  .zfh-hello{ font-size:25px; }
+  .zfh-planBadge{ min-width:48px; padding-inline:7px; }
+  .zfh-planBadge span{ max-width:74px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .zfh-macro{ padding-inline:6px; }
+  .zfh-macro:first-child{ padding-left:6px; }
+  .zfh-macro:last-child{ padding-right:6px; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .zfh > *,
+  .zfh-hero::after,
+  .zfh-macroTrack i,
+  .zfh-bar{
+    animation:none !important;
+  }
+  .zfh-panel,
+  .zfh-planBadge,
+  .zfh-primary,
+  .zfh-detailLink,
+  .zfh-quickCard,
+  .zfh-quickCard > svg{
+    transition:none !important;
+  }
+}
 `;
 
 function titleCaseFirstName(fullName) {
@@ -1663,6 +2021,7 @@ export default function InicioEntrenado() {
         <section className="zfh-panel zfh-hero" aria-labelledby="home-client-title">
           <div className="zfh-heroBody">
             <div>
+              <span className="zfh-heroEyebrow"><i aria-hidden="true" /> Tu espacio ZumaFit</span>
               <h1 className="zfh-hello" id="home-client-title">{titulo}</h1>
               <div className="zfh-identity" aria-label="Resumen de tu plan">
                 <span className="zfh-chip"><UserRound size={15} aria-hidden="true" />{coachControlsNutrition ? "Acompañado por coach" : "Autogestionado"}</span>
@@ -1834,17 +2193,17 @@ export default function InicioEntrenado() {
             <h2 id="home-more-title">Tu día, en un vistazo</h2>
           </div>
           <div className="zfh-secondaryGrid">
-            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/tracking")}>
+            <button type="button" className="zfh-quickCard tracking" onClick={() => navigate("/app/tracking")}>
               <span className="zfh-roundIcon" aria-hidden="true"><CalendarDays size={21} /></span>
               <span><strong>Tracking</strong><span>Registrá lo que realmente comiste.</span></span>
               <ArrowRight size={17} aria-hidden="true" />
             </button>
-            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/rutinas")}>
+            <button type="button" className="zfh-quickCard routine" onClick={() => navigate("/app/rutinas")}>
               <span className="zfh-roundIcon" aria-hidden="true"><Dumbbell size={21} /></span>
               <span><strong>Rutina</strong><span>Revisá tu entrenamiento disponible.</span></span>
               <ArrowRight size={17} aria-hidden="true" />
             </button>
-            <button type="button" className="zfh-quickCard" onClick={() => navigate("/app/progresos")}>
+            <button type="button" className="zfh-quickCard progress" onClick={() => navigate("/app/progresos")}>
               <span className="zfh-roundIcon" aria-hidden="true"><TrendingUp size={21} /></span>
               <span><strong>Progreso</strong><span>Peso, medidas y evolución real.</span></span>
               <ArrowRight size={17} aria-hidden="true" />

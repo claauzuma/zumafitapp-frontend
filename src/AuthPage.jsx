@@ -966,10 +966,11 @@ return;
                   onClick={loginWithGoogle}
                   disabled={loading || googleLoading}
                 >
-                  <span className="ap-google-mark" aria-hidden="true">G</span>
+                  <GoogleMarkIcon />
                   <span className="ap-social-copy">Continuar con Google</span>
-                  <ArrowRight className="ap-social-arrow" size={18} aria-hidden="true" />
-                  {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
+                  <span className="ap-social-status" aria-hidden="true">
+                    {googleLoading ? <span className="ap-mini-spin" /> : null}
+                  </span>
                 </button>
               ) : (
                 <div className="ap-coach-note">
@@ -999,10 +1000,11 @@ return;
                 disabled={loading || googleLoading}
                 title="Continuar con Google"
               >
-                <span className="ap-google-mark" aria-hidden="true">G</span>
+                <GoogleMarkIcon />
                 <span className="ap-social-copy">{mode === "register" ? "Crear cuenta con Google" : "Continuar con Google"}</span>
-                <ArrowRight className="ap-social-arrow" size={18} aria-hidden="true" />
-                {googleLoading && <span className="ap-mini-spin" aria-hidden="true" />}
+                <span className="ap-social-status" aria-hidden="true">
+                  {googleLoading ? <span className="ap-mini-spin" /> : null}
+                </span>
               </button>
             </div>
           )}
@@ -1611,23 +1613,23 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
 .ap-social{ display:grid; gap:10px; margin:0 0 6px; }
 .ap-social-btn{
   width:100%;
-  min-height:62px;
-  display:flex;
+  min-height:48px;
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr) 24px;
   align-items:center;
-  justify-content:flex-start;
-  gap:11px;
-  border:1px solid rgba(255,255,255,.82);
-  border-radius:15px;
-  background:linear-gradient(180deg,#fff,#f1f5f9);
-  color:#111827;
-  padding:0 15px;
+  gap:10px;
+  border:1px solid #9aa9b7;
+  border-radius:7px;
+  background:#fff;
+  color:#243746;
+  padding:0 12px;
   cursor:pointer;
-  font-size:clamp(14px,2.7vw,17px);
-  font-weight:900;
-  box-shadow:0 10px 28px rgba(0,0,0,.18);
+  font-size:clamp(14px,2.6vw,16px);
+  font-weight:800;
+  box-shadow:0 3px 10px rgba(0,0,0,.18);
   transition:transform .12s ease, border-color .18s ease, filter .18s ease, box-shadow .18s ease;
 }
-.ap-social-btn:hover{ filter:brightness(1.02); box-shadow:0 13px 32px rgba(0,0,0,.25); }
+.ap-social-btn:hover{ border-color:#64788a; filter:brightness(1.01); box-shadow:0 5px 14px rgba(0,0,0,.22); }
 .ap-social-btn:active{ transform:scale(.99); }
 .ap-social-btn.is-loading{ border-color:rgba(244,197,66,.48); filter:brightness(1.06); }
 .ap-social-btn:disabled{ opacity:.7; cursor:not-allowed; }
@@ -1639,9 +1641,9 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   animation:apMiniSpin .8s linear infinite;
 }
 @keyframes apMiniSpin{ to{ transform:rotate(360deg); } }
-.ap-google-mark{ width:30px; height:30px; flex:0 0 auto; display:grid; place-items:center; border-radius:9px; background:#fff; color:#4285f4; border:1px solid #e2e8f0; font-family:Arial,sans-serif; font-size:18px; font-weight:900; box-shadow:0 2px 7px rgba(15,23,42,.10); }
-.ap-social-copy{ flex:1; text-align:center; }
-.ap-social-arrow{ color:#64748b; flex:0 0 auto; }
+.ap-google-mark{ width:21px; height:21px; display:block; justify-self:start; }
+.ap-social-copy{ min-width:0; text-align:center; }
+.ap-social-status{ width:24px; height:24px; display:grid; place-items:center; justify-self:end; }
 .ap-divider{
   display:flex;
   align-items:center;
@@ -1888,7 +1890,7 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-card{ border-radius:24px; padding:26px; }
   .ap-title{ font-size:35px; line-height:1.05; }
   .ap-sub{ margin:8px 0 16px; font-size:15px; line-height:1.4; }
-  .ap-social-btn{ min-height:50px; border-radius:13px; font-size:14px; }
+  .ap-social-btn{ min-height:44px; border-radius:6px; font-size:14px; }
   .ap-divider{ margin:14px 0; font-size:12px; }
   .ap-form{ gap:12px; }
   .ap-field{ gap:6px; font-size:14px; }
@@ -1930,14 +1932,14 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .auth-page{ min-height:100svh; }
   .ap-nav{ display:none; }
   .ap-hero{
-    min-height:218px;
-    padding:24px 18px 44px;
+    min-height:202px;
+    padding:18px 18px 38px;
     background-position:center 35%;
     background-size:cover;
   }
-  .ap-heroLogo .brand-logo-img{ height:44px; max-width:158px; }
-  .ap-hero-kicker{ margin-top:14px; font-size:9px; letter-spacing:.16em; }
-  .ap-hero h2{ max-width:330px; margin-top:8px; font-size:25px; line-height:1.06; }
+  .ap-heroLogo .brand-logo-img{ height:42px; max-width:154px; }
+  .ap-hero-kicker{ margin-top:11px; font-size:9px; letter-spacing:.16em; }
+  .ap-hero h2{ max-width:330px; margin-top:7px; font-size:24px; line-height:1.06; }
   .ap-hero p{
     margin-top:7px;
     max-width:320px;
@@ -1967,12 +1969,12 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   }
   .ap-social{ gap:8px; margin-bottom:2px; }
   .ap-social-btn{
-    min-height:54px;
-    border-radius:15px;
-    gap:10px;
-    font-size:16px;
+    min-height:46px;
+    border-radius:7px;
+    gap:9px;
+    font-size:14px;
   }
-  .ap-google-mark{ width:28px; height:28px; font-size:17px; }
+  .ap-google-mark{ width:20px; height:20px; }
   .ap-divider{
     gap:11px;
     margin:14px 0;
@@ -2059,15 +2061,16 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-foot{ padding:10px 14px 14px; font-size:13px; }
 }
 @media (max-width:430px){
-  .ap-hero{ min-height:194px; padding-top:20px; padding-bottom:40px; }
-  .ap-heroLogo .brand-logo-img{ height:42px; max-width:150px; }
-  .ap-hero h2{ max-width:310px; font-size:23px; }
+  .ap-hero{ min-height:180px; padding-top:14px; padding-bottom:34px; }
+  .ap-heroLogo .brand-logo-img{ height:40px; max-width:146px; }
+  .ap-hero h2{ max-width:310px; font-size:22px; }
   .ap-hero p{ display:none; }
   .ap-card{ padding:16px 14px 18px; }
   .ap-title{ font-size:30px; }
   .ap-sub{ font-size:15px; margin-bottom:14px; }
   .ap-tab{ min-height:46px; font-size:15px; }
-  .ap-social-btn,.ap-field input,.ap-peek,.ap-pass-spacer{ min-height:52px; }
+  .ap-social-btn{ min-height:44px; }
+  .ap-field input,.ap-peek,.ap-pass-spacer{ min-height:52px; }
   .ap-pass-row{ grid-template-columns:minmax(0,1fr) 46px; }
   .ap-peek,.ap-pass-spacer{ width:46px; }
   .btn.submit{ min-height:54px; }
@@ -2098,6 +2101,17 @@ html, body{ margin:0; padding:0; background:var(--auth-bg); color:var(--auth-tex
   .ap-choice-card{ min-height:90px; }
 }
 `;
+
+function GoogleMarkIcon() {
+  return (
+    <svg className="ap-google-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.31v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.09Z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.77c-.99.66-2.24 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+      <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.49 12c0-.73.13-1.43.35-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.45 1.18 4.93l3.66-2.83Z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.57 10.57 0 0 0 12 1 11 11 0 0 0 2.18 7.07L5.84 9.9C6.71 7.31 9.14 5.38 12 5.38Z" />
+    </svg>
+  );
+}
 
 function EyeOpenIcon() {
   return (
