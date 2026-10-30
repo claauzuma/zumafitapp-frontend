@@ -1,0 +1,281 @@
+[
+  {
+    "viewport": {
+      "name": "360x800",
+      "width": 360,
+      "height": 800
+    },
+    "collapsed": {
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 360,
+        "scrollWidth": 360,
+        "scrollHeight": 1914
+      },
+      "horizontalOverflow": false,
+      "sectionBars": [
+        {
+          "text": "Plan por comidas Completá cada meta con tu consumo 3",
+          "height": 44
+        }
+      ],
+      "cards": [
+        {
+          "type": "tracked",
+          "height": 194,
+          "width": 336,
+          "top": 626.3
+        },
+        {
+          "type": "target",
+          "height": 230.8,
+          "width": 336,
+          "top": 830.3
+        },
+        {
+          "type": "target",
+          "height": 230.8,
+          "width": 336,
+          "top": 1071
+        },
+        {
+          "type": "target",
+          "height": 213,
+          "width": 336,
+          "top": 1311.8
+        }
+      ],
+      "buttons": {
+        "count": 12,
+        "minWidth": 40,
+        "minHeight": 40,
+        "small": []
+      },
+      "nav": {
+        "top": 718,
+        "bottom": 792,
+        "height": 74
+      },
+      "lastCard": {
+        "bottom": 1524.8,
+        "scrollMarginBottom": "0px"
+      },
+      "apiCalls": [
+        "/api/usuarios/auth/me",
+        "/api/usuarios/me/invitations/pending",
+        "/api/clientes/me/access-context",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/tracking/day?date=2026-10-30"
+      ]
+    },
+    "trackedExpanded": {
+      "height": 227,
+      "detailsHeight": 159,
+      "detailsAnimation": "0.19s"
+    },
+    "targetExpanded": {
+      "height": 230.8,
+      "detailsHeight": 0,
+      "detailsAnimation": ""
+    },
+    "bottom": {
+      "scrollY": 1323,
+      "maxScroll": 1323,
+      "navTop": 718,
+      "lastCardBottom": 410.5,
+      "clearance": 307.5
+    },
+    "errors": [],
+    "screenshot": "menu-unified-360x800.png"
+  },
+  {
+    "viewport": {
+      "name": "390x844",
+      "width": 390,
+      "height": 844
+    },
+    "collapsed": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "scrollHeight": 1878
+      },
+      "horizontalOverflow": false,
+      "sectionBars": [
+        {
+          "text": "Plan por comidas Completá cada meta con tu consumo 3",
+          "height": 44
+        }
+      ],
+      "cards": [
+        {
+          "type": "tracked",
+          "height": 194,
+          "width": 366,
+          "top": 626.9
+        },
+        {
+          "type": "target",
+          "height": 214.8,
+          "width": 366,
+          "top": 830.9
+        },
+        {
+          "type": "target",
+          "height": 214.8,
+          "width": 366,
+          "top": 1055.6
+        },
+        {
+          "type": "target",
+          "height": 214.8,
+          "width": 366,
+          "top": 1280.4
+        }
+      ],
+      "buttons": {
+        "count": 12,
+        "minWidth": 40,
+        "minHeight": 40,
+        "small": []
+      },
+      "nav": {
+        "top": 762,
+        "bottom": 836,
+        "height": 74
+      },
+      "lastCard": {
+        "bottom": 1495.1,
+        "scrollMarginBottom": "0px"
+      },
+      "apiCalls": [
+        "/api/usuarios/auth/me",
+        "/api/usuarios/me/invitations/pending",
+        "/api/clientes/me/access-context",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/tracking/day?date=2026-10-30"
+      ]
+    },
+    "trackedExpanded": {
+      "height": 217,
+      "detailsHeight": 149,
+      "detailsAnimation": "0.19s"
+    },
+    "targetExpanded": {
+      "height": 214.8,
+      "detailsHeight": 0,
+      "detailsAnimation": ""
+    },
+    "bottom": {
+      "scrollY": 1227,
+      "maxScroll": 1227,
+      "navTop": 762,
+      "lastCardBottom": 460.9,
+      "clearance": 301.1
+    },
+    "errors": [],
+    "screenshot": "menu-unified-390x844.png"
+  },
+  {
+    "viewport": {
+      "name": "430x932",
+      "width": 430,
+      "height": 932
+    },
+    "collapsed": {
+      "viewport": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "scrollHeight": 1794
+      },
+      "horizontalOverflow": false,
+      "sectionBars": [
+        {
+          "text": "Plan por comidas Completá cada meta con tu consumo 3",
+          "height": 44
+        }
+      ],
+      "cards": [
+        {
+          "type": "tracked",
+          "height": 194,
+          "width": 406,
+          "top": 626.9
+        },
+        {
+          "type": "target",
+          "height": 190,
+          "width": 406,
+          "top": 830.9
+        },
+        {
+          "type": "target",
+          "height": 190,
+          "width": 406,
+          "top": 1030.9
+        },
+        {
+          "type": "target",
+          "height": 190,
+          "width": 406,
+          "top": 1230.9
+        }
+      ],
+      "buttons": {
+        "count": 12,
+        "minWidth": 40,
+        "minHeight": 40,
+        "small": []
+      },
+      "nav": {
+        "top": 850,
+        "bottom": 924,
+        "height": 74
+      },
+      "lastCard": {
+        "bottom": 1420.9,
+        "scrollMarginBottom": "0px"
+      },
+      "apiCalls": [
+        "/api/usuarios/auth/me",
+        "/api/usuarios/me/invitations/pending",
+        "/api/clientes/me/access-context",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/usuarios/me/menu-tracking/week?start=2026-10-26",
+        "/api/tracking/day?date=2026-10-30"
+      ]
+    },
+    "trackedExpanded": {
+      "height": 217,
+      "detailsHeight": 149,
+      "detailsAnimation": "0.19s"
+    },
+    "targetExpanded": {
+      "height": 190,
+      "detailsHeight": 0,
+      "detailsAnimation": ""
+    },
+    "bottom": {
+      "scrollY": 1055,
+      "maxScroll": 1055,
+      "navTop": 850,
+      "lastCardBottom": 558.6,
+      "clearance": 291.4
+    },
+    "errors": [],
+    "screenshot": "menu-unified-430x932.png"
+  }
+]

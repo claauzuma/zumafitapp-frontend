@@ -239,14 +239,16 @@ export async function preloadRouteData(to = "") {
 }
 
 export function prefetchNavigationTarget(to = "", { data = true } = {}) {
-  preloadRouteChunk(to);
-  if (data) preloadRouteData(to);
+  const work = [preloadRouteChunk(to)];
+  if (data) work.push(preloadRouteData(to));
+  return Promise.allSettled(work);
 }
 
 export function createNavigationPrefetchHandlers(to = "", options = {}) {
   const run = () => prefetchNavigationTarget(to, options);
   return {
     onPointerEnter: run,
+    onPointerDown: run,
     onFocus: run,
     onTouchStart: run,
     onMouseDown: run,
@@ -255,18 +257,56 @@ export function createNavigationPrefetchHandlers(to = "", options = {}) {
 
 export function scheduleIdleRoutePrefetch(paths = [], options = {}) {
   const uniquePaths = [...new Set(paths.map(normalizePath).filter(Boolean))];
-  if (!uniquePaths.length) return () => {};
+  if (!uniquePaths.length || typeof window === "undefined") return () => {};
 
-  const run = () => {
-    uniquePaths.forEach((path) => preloadRouteChunk(path));
-    if (options.data) uniquePaths.forEach((path) => preloadRouteData(path));
-  };
+  const idleIds = new Set();
+  const timerIds = new Set();
+  const initialDelay = Math.max(0, Number(options.delay ?? 180));
+  const interval = Math.max(0, Number(options.interval ?? 120));
+  const timeout = Math.max(250, Number(options.timeout ?? 1200));
+  let cancelled = false;
 
-  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-    const id = window.requestIdleCallback(run, { timeout: options.timeout || 3500 });
-    return () => window.cancelIdleCallback?.(id);
+  function later(callback, delay) {
+    const id = window.setTimeout(() => {
+      timerIds.delete(id);
+      callback();
+    }, delay);
+    timerIds.add(id);
   }
 
-  const timer = window.setTimeout(run, options.delay || 1200);
-  return () => window.clearTimeout(timer);
+  function schedulePath(index) {
+    if (cancelled || index >= uniquePaths.length) return;
+
+    const run = () => {
+      if (cancelled) return;
+      const path = uniquePaths[index];
+      const work = [preloadRouteChunk(path)];
+      if (options.data) work.push(preloadRouteData(path));
+
+      Promise.allSettled(work).finally(() => {
+        if (!cancelled) later(() => schedulePath(index + 1), interval);
+      });
+    };
+
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(() => {
+        idleIds.delete(id);
+        run();
+      }, { timeout });
+      idleIds.add(id);
+      return;
+    }
+
+    later(run, 0);
+  }
+
+  later(() => schedulePath(0), initialDelay);
+
+  return () => {
+    cancelled = true;
+    idleIds.forEach((id) => window.cancelIdleCallback?.(id));
+    timerIds.forEach((id) => window.clearTimeout(id));
+    idleIds.clear();
+    timerIds.clear();
+  };
 }

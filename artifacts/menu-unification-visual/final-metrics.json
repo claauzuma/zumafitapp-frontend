@@ -1,0 +1,84 @@
+[
+  {
+    "n": "360x800",
+    "w": 360,
+    "h": 800,
+    "firstCardY": 580.3,
+    "overflow": false,
+    "widths": {
+      "client": 360,
+      "scroll": 360
+    },
+    "cards": [
+      {
+        "type": "tracked",
+        "h": 194
+      },
+      {
+        "type": "target",
+        "h": 206
+      },
+      {
+        "type": "target",
+        "h": 230.8
+      },
+      {
+        "type": "target",
+        "h": 190
+      }
+    ],
+    "dock": {
+      "buttons": 4,
+      "h": 75.9
+    },
+    "emptyStatusVisible": false,
+    "macroTruncated": [],
+    "minTarget": {
+      "w": 40,
+      "h": 40
+    },
+    "navTop": 718,
+    "screenshot": "menu-final-360x800.png"
+  },
+  {
+    "n": "390x844",
+    "w": 390,
+    "h": 844,
+    "firstCardY": 580.9,
+    "overflow": false,
+    "widths": {
+      "client": 390,
+      "scroll": 390
+    },
+    "cards": [
+      {
+        "type": "tracked",
+        "h": 194
+      },
+      {
+        "type": "target",
+        "h": 190
+      },
+      {
+        "type": "target",
+        "h": 214.8
+      },
+      {
+        "type": "target",
+        "h": 190
+      }
+    ],
+    "dock": {
+      "buttons": 4,
+      "h": 76.5
+    },
+    "emptyStatusVisible": false,
+    "macroTruncated": [],
+    "minTarget": {
+      "w": 40,
+      "h": 40
+    },
+    "navTop": 762,
+    "screenshot": "menu-final-390x844.png"
+  }
+]

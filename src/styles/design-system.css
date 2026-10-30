@@ -32,6 +32,7 @@
   --zf-motion-fast: 150ms;
   --zf-motion-base: 220ms;
   --zf-motion-slow: 360ms;
+  --zf-motion-route: 170ms;
   --zf-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
   --zf-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --zf-ease-exit: cubic-bezier(0.4, 0, 1, 1);
@@ -163,8 +164,8 @@ button,
 
 @keyframes zf-page-enter {
   from {
-    opacity: 0;
-    transform: translate3d(0, 7px, 0);
+    opacity: 0.94;
+    transform: translate3d(0, 3px, 0);
   }
   to {
     opacity: 1;
@@ -183,19 +184,18 @@ button,
   }
 }
 
-:where(.cs-content, .pl-main) > :not(style),
-:where(.route-loading-card, .cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
+:where(.cs-content, .pl-main) > :not(style) {
   /*
    * `forwards`/`both` keeps an identity transform after the animation. Even
    * though it looks like `none`, browsers retain a transformed containing
    * block and nested fixed sheets stop being viewport-fixed. `backwards`
    * keeps the entrance frame before paint and releases the transform after.
    */
-  animation: zf-page-enter var(--zf-motion-slow) var(--zf-ease-enter) backwards;
+  animation: zf-page-enter var(--zf-motion-route) var(--zf-ease-enter) backwards;
 }
 
-:where(.cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
-  animation-name: zf-dialog-enter;
+:where(.route-loading-card, .cs-planModal, .zp-weight-dialog, .nl-modal, .modal) {
+  animation: zf-dialog-enter var(--zf-motion-base) var(--zf-ease-enter) backwards;
 }
 
 @media (hover: hover) and (pointer: fine) {

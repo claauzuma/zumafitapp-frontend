@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { Check, ScanLine } from "lucide-react";
 
 const MALE = [
   { v: "3-4", l: "3–4%" },
@@ -64,16 +65,27 @@ export default function BasicsBodyFat({ form, setForm }) {
   const sexo = normSexo(form?.sexo);
   const options = useMemo(() => (sexo === "femenino" ? FEMALE : MALE), [sexo]);
   const selected = selectedRange(options, form?.grasaPct, form?.grasaNivel);
+  const visualLabel = sexo === "femenino" ? "Referencia femenina" : "Referencia masculina";
 
   return (
-    <div className="ob2-card">
-      <h2 className="ob2-h2" style={{ marginTop: 0 }}>
-        ¿Qué imagen te representa?
-      </h2>
-      <p className="ob2-p">Usá una evaluación visual. No hace falta ser exacto.</p>
+    <div className="ob2-card ob2-bf-card">
+      <div className="ob2-bf-heading">
+        <span className="ob2-bf-headingIcon" aria-hidden="true">
+          <ScanLine size={18} strokeWidth={2.1} />
+        </span>
+        <div>
+          <span className="ob2-bf-context">{visualLabel}</span>
+          <h2 className="ob2-h2" style={{ marginTop: 0 }}>
+            ¿Qué imagen te representa?
+          </h2>
+        </div>
+      </div>
+      <p className="ob2-p ob2-bf-copy">
+        Elegí la silueta que más se parece a vos hoy. Es solo una referencia visual.
+      </p>
 
       <div className="ob2-bf-grid">
-        {options.map((o) => {
+        {options.map((o, index) => {
           const active = selected === o.v;
           return (
             <button
@@ -85,13 +97,21 @@ export default function BasicsBodyFat({ form, setForm }) {
               onClick={() => setForm((prev) => ({ ...prev, grasaPct: representativePct(o.v) }))}
             >
               <div className="ob2-bf-illus" aria-hidden="true">
-                <Silhouette variant={sexo === "femenino" ? "female" : "male"} level={o.v} />
+                <BodyCompositionFigure
+                  variant={sexo === "femenino" ? "female" : "male"}
+                  level={o.v}
+                  order={index}
+                  active={active}
+                />
               </div>
 
-              <div className="ob2-bf-pill">{o.l}</div>
+              <div className="ob2-bf-meta">
+                <span>Grasa estimada</span>
+                <strong>{o.l}</strong>
+              </div>
 
               <div className="ob2-bf-radio" aria-hidden="true">
-                {active ? "●" : "○"}
+                {active ? <Check size={13} strokeWidth={3} /> : null}
               </div>
             </button>
           );
@@ -101,21 +121,70 @@ export default function BasicsBodyFat({ form, setForm }) {
   );
 }
 
-function Silhouette({ variant = "male", level = "18-23" }) {
+function BodyCompositionFigure({ variant = "male", level = "18-23", order = 0, active = false }) {
   const k = levelToBulk(level);
-  const bulk = 18 + k * 18;
-  const waist = 10 + k * 14;
-  const hips = variant === "female" ? 14 + k * 18 : 10 + k * 14;
+  const female = variant === "female";
+  const idSuffix = `${variant}-${String(level).replace(/[^a-z0-9]/gi, "-")}`;
+  const gradientId = `ob2-bf-body-${idSuffix}`;
+  const glowId = `ob2-bf-glow-${idSuffix}`;
+
+  const shoulder = (female ? 19 : 25) + k * (female ? 5 : 7);
+  const chest = (female ? 18 : 22) + k * (female ? 8 : 10);
+  const waist = (female ? 10.5 : 12) + k * (female ? 15 : 18);
+  const hips = (female ? 18 : 14) + k * (female ? 12 : 17);
+  const arm = 4.8 + k * 3.2;
+  const thigh = (female ? 7.3 : 6.5) + k * 4.5;
+  const definition = Math.max(0, 1 - k * 1.5);
 
   return (
-    <svg width="92" height="92" viewBox="0 0 92 92" fill="none">
-      <rect x="1" y="1" width="90" height="90" rx="18" stroke="rgba(255,255,255,.06)" />
-      <circle cx="46" cy="24" r="10" fill="rgba(255,255,255,.10)" />
-      <path d={variant === "female" ? femalePath(bulk, waist, hips) : malePath(bulk, waist, hips)} fill="rgba(255,255,255,.10)" />
+    <svg
+      className="ob2-bf-figure"
+      viewBox="0 0 128 146"
+      fill="none"
+      data-variant={variant}
+      data-active={active ? "true" : "false"}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="38" y1="28" x2="91" y2="136" gradientUnits="userSpaceOnUse">
+          <stop stopColor={female ? "#ffd1dc" : "#ffe39a"} stopOpacity=".96" />
+          <stop offset=".48" stopColor={female ? "#f08a9d" : "#f5bd3f"} stopOpacity=".76" />
+          <stop offset="1" stopColor={female ? "#9f4f63" : "#9d6418"} stopOpacity=".68" />
+        </linearGradient>
+        <radialGradient id={glowId} cx="0" cy="0" r="1" gradientTransform="translate(64 75) rotate(90) scale(67 52)" gradientUnits="userSpaceOnUse">
+          <stop stopColor={female ? "#f08a9d" : "#f5c451"} stopOpacity=".19" />
+          <stop offset="1" stopColor={female ? "#f08a9d" : "#f5c451"} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+
+      <ellipse cx="64" cy="75" rx="52" ry="67" fill={`url(#${glowId})`} />
+      <path className="ob2-bf-orbit" d="M18 97C28 126 48 139 75 136C101 133 115 111 111 80" />
+      <circle className="ob2-bf-orbitDot" cx={21 + (order % 3) * 2} cy={96 - (order % 2) * 3} r="2.2" />
+
+      <circle cx="64" cy="20.5" r={female ? 9.2 : 9.8} fill={`url(#${gradientId})`} />
       <path
-        d={`M${46 - hips} 62 Q46 70 ${46 + hips} 62 L${46 + hips - 6} 76 Q46 82 ${46 - hips + 6} 76 Z`}
-        fill="rgba(255,255,255,.08)"
+        d={`M${59.5 - k} 29 L${68.5 + k} 29 L${70 + k} 39 L${58 - k} 39 Z`}
+        fill={`url(#${gradientId})`}
+        opacity=".88"
       />
+      <path d={bodyPath({ female, shoulder, chest, waist, hips })} fill={`url(#${gradientId})`} />
+      <path d={leftArmPath({ shoulder, arm, k })} fill={`url(#${gradientId})`} opacity=".88" />
+      <path d={rightArmPath({ shoulder, arm, k })} fill={`url(#${gradientId})`} opacity=".88" />
+      <path d={leftLegPath({ hips, thigh, k })} fill={`url(#${gradientId})`} opacity=".9" />
+      <path d={rightLegPath({ hips, thigh, k })} fill={`url(#${gradientId})`} opacity=".9" />
+
+      <g className="ob2-bf-definition" opacity={definition}>
+        <path d="M64 48V92" />
+        <path d="M53 59Q64 64 75 59" />
+        <path d="M54 72Q64 76 74 72" />
+        <path d="M56 84Q64 88 72 84" />
+      </g>
+      {k > 0.5 ? (
+        <path
+          className="ob2-bf-volumeLine"
+          d={`M${64 - waist * 0.7} 77 Q64 ${87 + k * 8} ${64 + waist * 0.7} 77`}
+        />
+      ) : null}
+      <ellipse className="ob2-bf-floor" cx="64" cy="139" rx={22 + k * 8} ry="3.5" />
     </svg>
   );
 }
@@ -142,46 +211,34 @@ function levelToBulk(level) {
   return 0.4;
 }
 
-function malePath(bulk, waist, hips) {
-  const xL = 46 - bulk;
-  const xR = 46 + bulk;
-  const wL = 46 - waist;
-  const wR = 46 + waist;
-  const hL = 46 - hips;
-  const hR = 46 + hips;
-
+function bodyPath({ female, shoulder, chest, waist, hips }) {
+  const bustY = female ? 53 : 55;
   return `
-    M${xL} 38
-    Q46 32 ${xR} 38
-    L${wR} 54
-    Q46 58 ${wL} 54
-    Z
-    M${wL} 54
-    Q46 62 ${wR} 54
-    L${hR} 62
-    Q46 66 ${hL} 62
+    M${64 - shoulder} 41
+    Q${64 - chest} ${bustY} ${64 - waist} 76
+    Q${64 - waist * 1.02} 91 ${64 - hips} 105
+    Q64 116 ${64 + hips} 105
+    Q${64 + waist * 1.02} 91 ${64 + waist} 76
+    Q${64 + chest} ${bustY} ${64 + shoulder} 41
+    Q64 36 ${64 - shoulder} 41
     Z
   `;
 }
 
-function femalePath(bulk, waist, hips) {
-  const xL = 46 - bulk * 0.9;
-  const xR = 46 + bulk * 0.9;
-  const wL = 46 - waist * 0.8;
-  const wR = 46 + waist * 0.8;
-  const hL = 46 - hips;
-  const hR = 46 + hips;
+function leftArmPath({ shoulder, arm, k }) {
+  const start = 64 - shoulder + 2;
+  return `M${start} 43 Q${start - arm - 4} 61 ${start - arm - 1} 82 L${start - arm + 1} ${104 + k * 2} Q${start - arm + 7} ${105 + k * 2} ${start - arm + 8} 99 L${start - 1} 67 Z`;
+}
 
-  return `
-    M${xL} 38
-    Q46 31 ${xR} 38
-    L${wR} 52
-    Q46 56 ${wL} 52
-    Z
-    M${wL} 52
-    Q46 60 ${wR} 52
-    L${hR} 62
-    Q46 66 ${hL} 62
-    Z
-  `;
+function rightArmPath({ shoulder, arm, k }) {
+  const start = 64 + shoulder - 2;
+  return `M${start} 43 Q${start + arm + 4} 61 ${start + arm + 1} 82 L${start + arm - 1} ${104 + k * 2} Q${start + arm - 7} ${105 + k * 2} ${start + arm - 8} 99 L${start + 1} 67 Z`;
+}
+
+function leftLegPath({ hips, thigh, k }) {
+  return `M${64 - hips + 2} 101 Q${64 - thigh - 4} 115 ${58 - thigh * 0.12} 137 L${48 - k * 2} 137 Q${47 - k * 2} 118 ${50 - hips * 0.28} 105 Z`;
+}
+
+function rightLegPath({ hips, thigh, k }) {
+  return `M${64 + hips - 2} 101 Q${64 + thigh + 4} 115 ${70 + thigh * 0.12} 137 L${80 + k * 2} 137 Q${81 + k * 2} 118 ${78 + hips * 0.28} 105 Z`;
 }

@@ -196,7 +196,7 @@ const CSS = `
 .cs-btn:active::after{
   opacity:1;
   transform: translate(-50%,-50%) scale(18);
-  transition: transform .45s ease, opacity .55s ease;
+  transition: transform .24s ease, opacity .28s ease;
 }
 
 /* content */
@@ -373,8 +373,8 @@ const CSS = `
   inset:0;
   z-index: 9998;
   background: rgba(2,5,9,.70);
-  backdrop-filter: blur(8px) saturate(145%);
-  animation:csBackdropIn .18s ease both;
+  backdrop-filter: blur(5px) saturate(130%);
+  animation:csBackdropIn .12s ease both;
 }
 .cs-drawer{
   --cs-lion-opacity:.135;
@@ -393,7 +393,7 @@ const CSS = `
     linear-gradient(165deg,#111318 0%,#090b0f 46%,#07090c 100%);
   box-shadow: -22px 0 80px rgba(0,0,0,.72), inset 1px 0 0 rgba(255,229,135,.035);
   transform: translate3d(110%,0,0);
-  transition: transform .32s cubic-bezier(.22,1,.36,1);
+  transition: transform .2s cubic-bezier(.22,1,.36,1);
   display:flex;
   flex-direction:column;
 }
@@ -431,12 +431,12 @@ const CSS = `
   width:clamp(228px,78vw,294px);
   height:auto;
   opacity:var(--cs-lion-opacity);
-  filter:saturate(1.28) contrast(1.08) drop-shadow(0 0 34px rgba(245,153,0,.20));
+  filter:saturate(1.24) contrast(1.06) drop-shadow(0 0 20px rgba(245,153,0,.18));
   mix-blend-mode:screen;
   pointer-events:none;
   user-select:none;
   transform:translate3d(8px,0,0) scale(.975);
-  animation:csDrawerLionIn .55s cubic-bezier(.22,1,.36,1) .04s both;
+  animation:csDrawerLionIn .26s cubic-bezier(.22,1,.36,1) .015s both;
 }
 
 @keyframes csBackdropIn{
@@ -527,7 +527,10 @@ const CSS = `
 }
 .cs-prof-link{
   display:inline-flex;
-  margin-top: 4px;
+  align-items:center;
+  min-height:36px;
+  padding:0 4px;
+  margin: 0 -4px;
   font-size: 11px;
   font-weight: 900;
   color:#ffd45a;
@@ -545,8 +548,8 @@ const CSS = `
   display:inline-flex;
   align-items:center;
   gap:4px;
-  min-height:23px;
-  padding:3px 7px;
+  min-height:36px;
+  padding:5px 9px;
   border:1px solid rgba(245,184,28,.28);
   border-radius:999px;
   background:rgba(245,153,0,.07);
@@ -712,12 +715,12 @@ const CSS = `
   background:linear-gradient(180deg,#f5a000,#ffe16a);
 }
 .cs-drawer.open .cs-sec{
-  animation:csDrawerSectionIn .38s cubic-bezier(.22,1,.36,1) both;
+  animation:csDrawerSectionIn .2s cubic-bezier(.22,1,.36,1) both;
 }
-.cs-drawer.open .cs-sec:nth-child(2){ animation-delay:.035s; }
-.cs-drawer.open .cs-sec:nth-child(3){ animation-delay:.07s; }
-.cs-drawer.open .cs-sec:nth-child(4){ animation-delay:.105s; }
-.cs-drawer.open .cs-sec:nth-child(5){ animation-delay:.14s; }
+.cs-drawer.open .cs-sec:nth-child(2){ animation-delay:.015s; }
+.cs-drawer.open .cs-sec:nth-child(3){ animation-delay:.03s; }
+.cs-drawer.open .cs-sec:nth-child(4){ animation-delay:.045s; }
+.cs-drawer.open .cs-sec:nth-child(5){ animation-delay:.06s; }
 
 /* footer */
 .cs-d-foot{
@@ -901,7 +904,7 @@ const CSS = `
   .cs-d-brandLogo .brand-logo-img{ height:38px; max-width:146px; }
   .cs-prof{ gap:9px; }
   .cs-avatar{ width:40px; height:40px; }
-  .cs-prof-link{ margin-top:3px; }
+  .cs-prof-link{ margin:0 -4px; }
   .cs-sec{ padding:3px 7px 0; }
   .cs-sec-title{ padding:6px 9px 2px; }
 }
@@ -1035,6 +1038,37 @@ const NAV_SECTIONS = [
     ],
   },
 ];
+
+const CLIENT_ROUTE_PREFETCH_PATHS = [
+  "/app/menu",
+  "/app/tracking",
+  "/app/progresos",
+  "/app/inicio",
+  "/app/rutinas",
+  "/app/objetivos",
+  "/app/perfil",
+  "/app/ajustes",
+  "/app/planes",
+  "/app/nutricion",
+  "/app/menu/nuevo",
+];
+
+let drawerLionPreloadPromise = null;
+
+function preloadDrawerLion() {
+  if (drawerLionPreloadPromise || typeof Image === "undefined") return drawerLionPreloadPromise;
+  const image = new Image();
+  image.decoding = "async";
+  image.fetchPriority = "low";
+  image.src = "/images/brand/lion-drawer-watermark.png";
+  drawerLionPreloadPromise = typeof image.decode === "function"
+    ? image.decode().catch(() => undefined)
+    : new Promise((resolve) => {
+        image.onload = resolve;
+        image.onerror = resolve;
+      });
+  return drawerLionPreloadPromise;
+}
 
 export default function ClientShell() {
   const nav = useNavigate();
@@ -1393,14 +1427,22 @@ export default function ClientShell() {
   );
 
   useEffect(() => {
-    return scheduleIdleRoutePrefetch([
-      "/app/objetivos",
-      "/app/menu",
-      "/app/menu/nuevo",
-      "/app/nutricion",
-      "/app/tracking",
-      "/app/planes",
-    ]);
+    return scheduleIdleRoutePrefetch(CLIENT_ROUTE_PREFETCH_PATHS, {
+      delay: 120,
+      interval: 80,
+      timeout: 900,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const warmImage = () => { void preloadDrawerLion(); };
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(warmImage, { timeout: 1000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(warmImage, 250);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // (opcional) si en el futuro tenés una URL de avatar:
@@ -1551,6 +1593,9 @@ export default function ClientShell() {
               type="button"
               className="cs-btn cs-menuBtn"
               onClick={() => setOpen(true)}
+              onPointerEnter={preloadDrawerLion}
+              onPointerDown={preloadDrawerLion}
+              onTouchStart={preloadDrawerLion}
               aria-label="Abrir menú"
               title="Menú"
               aria-expanded={open}
@@ -1615,11 +1660,21 @@ export default function ClientShell() {
               <div className="cs-prof-sub">{sub}</div>
 
               <div className="cs-prof-meta">
-                <NavLink className="cs-planPill" to="/app/planes" onClick={() => closeDrawer()}>
+                <NavLink
+                  className="cs-planPill"
+                  to="/app/planes"
+                  onClick={() => closeDrawer()}
+                  {...createNavigationPrefetchHandlers("/app/planes")}
+                >
                   <Crown size={11} strokeWidth={2.2} aria-hidden="true" />
                   <span>{rawShellPlan ? clientPlanLabel(shellPlan) : "Mi plan"} · Ver beneficios</span>
                 </NavLink>
-                <NavLink className="cs-prof-link" to="/app/perfil" onClick={() => closeDrawer()}>
+                <NavLink
+                  className="cs-prof-link"
+                  to="/app/perfil"
+                  onClick={() => closeDrawer()}
+                  {...createNavigationPrefetchHandlers("/app/perfil")}
+                >
                   Ver perfil →
                 </NavLink>
               </div>
@@ -1729,6 +1784,9 @@ export default function ClientShell() {
             type="button"
             className={`cs-mobileNavItem ${open ? "active" : ""}`}
             onClick={() => setOpen(true)}
+            onPointerEnter={preloadDrawerLion}
+            onPointerDown={preloadDrawerLion}
+            onTouchStart={preloadDrawerLion}
             aria-label="Abrir más opciones"
             aria-expanded={open}
             aria-controls="client-main-menu"

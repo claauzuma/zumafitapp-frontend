@@ -1077,7 +1077,7 @@ const HOME_V2_CSS = `
 
 /* Premium ZumaFit brand layer */
 @keyframes zfhReveal{
-  from{ opacity:0; transform:translate3d(0,10px,0) scale(.992); }
+  from{ opacity:.78; transform:translate3d(0,4px,0) scale(.996); }
   to{ opacity:1; transform:translate3d(0,0,0) scale(1); }
 }
 
@@ -1107,13 +1107,13 @@ const HOME_V2_CSS = `
 }
 
 .zfh > *{
-  animation:zfhReveal .42s cubic-bezier(.22,1,.36,1) both;
+  animation:zfhReveal .21s cubic-bezier(.22,1,.36,1) both;
 }
-.zfh > *:nth-child(2){ animation-delay:.035s; }
-.zfh > *:nth-child(3){ animation-delay:.07s; }
-.zfh > *:nth-child(4){ animation-delay:.105s; }
-.zfh > *:nth-child(5){ animation-delay:.14s; }
-.zfh > *:nth-child(6){ animation-delay:.175s; }
+.zfh > *:nth-child(2){ animation-delay:.014s; }
+.zfh > *:nth-child(3){ animation-delay:.028s; }
+.zfh > *:nth-child(4){ animation-delay:.042s; }
+.zfh > *:nth-child(5){ animation-delay:.056s; }
+.zfh > *:nth-child(6){ animation-delay:.07s; }
 
 .zfh-panel{
   border-color:rgba(245,164,0,.25);

@@ -8576,7 +8576,7 @@
     0 22px 52px rgba(0, 0, 0, 0.38),
     0 0 0 1px rgba(255, 203, 47, 0.025),
     inset 0 1px 0 rgba(255, 238, 171, 0.055);
-  animation: td-brand-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: td-brand-rise 210ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .td-dailySummaryV3::before {
@@ -8701,7 +8701,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.5),
     inset 0 -1px 0 rgba(128, 69, 0, 0.13);
   letter-spacing: -0.02em;
-  animation: td-brand-rise 520ms 70ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: td-brand-rise 225ms 18ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .td-registerMealBtn::after {
@@ -8746,7 +8746,7 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.035),
     0 15px 38px rgba(0, 0, 0, 0.22);
-  animation: td-brand-rise 520ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: td-brand-rise 230ms 32ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .td-dayEmptyV3::after {
@@ -8793,7 +8793,7 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.035),
     0 14px 36px rgba(0, 0, 0, 0.24);
-  animation: td-brand-rise 520ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: td-brand-rise 240ms 48ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .td-planRemainingIcon {
@@ -8822,8 +8822,8 @@
 
 @keyframes td-brand-rise {
   from {
-    opacity: 0;
-    transform: translateY(8px);
+    opacity: 0.76;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

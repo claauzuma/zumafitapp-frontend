@@ -37,7 +37,7 @@ const CSS = `
     radial-gradient(260px 160px at 100% 0,rgba(245,153,0,.18),transparent 72%),
     linear-gradient(145deg,rgba(17,23,29,.98),rgba(7,11,15,.99));
   box-shadow:0 20px 55px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.045);
-  animation:r-rise .42s cubic-bezier(.22,1,.36,1) both;
+  animation:r-rise .21s cubic-bezier(.22,1,.36,1) both;
 }
 .r-hero::after{
   content:"";
@@ -105,7 +105,7 @@ const CSS = `
     linear-gradient(110deg,rgba(245,153,0,.12),rgba(245,153,0,.025) 48%,transparent 74%),
     linear-gradient(155deg,#14171b,#090c10);
   box-shadow:0 18px 46px rgba(0,0,0,.32),0 0 28px rgba(220,135,0,.055),inset 0 1px 0 rgba(255,237,171,.06);
-  animation:r-rise .42s cubic-bezier(.22,1,.36,1) .06s both;
+  animation:r-rise .22s cubic-bezier(.22,1,.36,1) .02s both;
 }
 .r-next::before{
   content:"";
@@ -164,7 +164,7 @@ const CSS = `
   border-radius:22px;
   background:linear-gradient(155deg,rgba(14,20,26,.98),rgba(6,10,14,.99));
   box-shadow:0 18px 52px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.035);
-  animation:r-rise .42s cubic-bezier(.22,1,.36,1) .11s both;
+  animation:r-rise .23s cubic-bezier(.22,1,.36,1) .04s both;
 }
 .r-libraryHead{display:grid;gap:10px;margin-bottom:12px;}
 .r-libraryTitleRow{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
@@ -255,7 +255,7 @@ const CSS = `
 .r-empty strong{color:#e8edf2;font-size:14px;}
 .r-empty p{margin:0;font-size:11px;line-height:1.45;}
 .r-primary:focus-visible,.r-itemButton:focus-visible,.r-search:focus-visible{outline:2px solid #ffd34e;outline-offset:2px;}
-@keyframes r-rise{from{opacity:0;transform:translateY(9px) scale(.992)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes r-rise{from{opacity:.76;transform:translateY(4px) scale(.996)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes r-expand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @media (min-width:700px){
   .r-wrap{padding-top:14px;}

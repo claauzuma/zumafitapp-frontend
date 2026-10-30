@@ -1823,7 +1823,7 @@ const CSS = `
     radial-gradient(260px 110px at 100% 0,rgba(245,160,0,.16),transparent 70%),
     linear-gradient(145deg,rgba(17,25,33,.98),rgba(6,12,18,.98));
   box-shadow:0 14px 36px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.045);
-  animation:zpQuickEnter .46s cubic-bezier(.2,.85,.2,1) both;
+  animation:zpQuickEnter .22s cubic-bezier(.2,.85,.2,1) both;
 }
 
 .zp-quick-weight::after{
@@ -2170,7 +2170,7 @@ const CSS = `
 }
 
 @keyframes zpHeroOrbit{ to{ transform:rotate(360deg); } }
-@keyframes zpQuickEnter{ from{opacity:0;transform:translateY(9px) scale(.99)} to{opacity:1;transform:none} }
+@keyframes zpQuickEnter{ from{opacity:.78;transform:translateY(4px) scale(.996)} to{opacity:1;transform:none} }
 @keyframes zpQuickGlow{ 0%,100%{opacity:.65;transform:scale(.9)} 50%{opacity:1;transform:scale(1.06)} }
 @keyframes zpSpin{ to{transform:rotate(360deg)} }
 @keyframes zpGoalFill{ from{transform:scaleX(0)} to{transform:scaleX(1)} }
@@ -2178,7 +2178,7 @@ const CSS = `
 @keyframes zpPointIn{ from{opacity:0;transform:scale(.2)} to{opacity:1;transform:scale(1)} }
 
 @keyframes zpSurfaceEnter{
-  from{opacity:0;transform:translateY(10px);}
+  from{opacity:.76;transform:translateY(4px);}
   to{opacity:1;transform:translateY(0);}
 }
 
@@ -2186,19 +2186,19 @@ const CSS = `
 .zp-page .zp-desktop-grid > .zp-card,
 .zp-page .zp-side-stack > .zp-card,
 .zp-page .zp-kpi-row > .zp-metric{
-  animation:zpSurfaceEnter .42s cubic-bezier(.2,.8,.2,1) both;
+  animation:zpSurfaceEnter .22s cubic-bezier(.2,.8,.2,1) both;
 }
 
 .zp-page .zp-stack > .zp-card:nth-child(2),
 .zp-page .zp-side-stack > .zp-card:nth-child(2),
 .zp-page .zp-kpi-row > .zp-metric:nth-child(2){
-  animation-delay:55ms;
+  animation-delay:22ms;
 }
 
 .zp-page .zp-stack > .zp-card:nth-child(3),
 .zp-page .zp-side-stack > .zp-card:nth-child(3),
 .zp-page .zp-kpi-row > .zp-metric:nth-child(3){
-  animation-delay:100ms;
+  animation-delay:42ms;
 }
 
 @media (hover:hover){

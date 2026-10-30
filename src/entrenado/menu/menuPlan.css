@@ -1,7 +1,7 @@
 @keyframes zf-menu-reveal {
   from {
-    opacity: 0;
-    transform: translateY(7px);
+    opacity: 0.78;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -11,8 +11,8 @@
 
 @keyframes zf-menu-action-reveal {
   from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.985);
+    opacity: 0.82;
+    transform: translateY(3px) scale(0.992);
   }
   to {
     opacity: 1;
@@ -22,8 +22,8 @@
 
 @keyframes zf-menu-loading-in {
   from {
-    opacity: 0;
-    transform: translateY(7px) scale(0.99);
+    opacity: 0.84;
+    transform: translateY(3px) scale(0.995);
   }
   to {
     opacity: 1;
@@ -74,7 +74,7 @@
   box-shadow:
     0 18px 54px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  animation: zf-menu-loading-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zf-menu-loading-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .zf-menu-loading-glow {
@@ -190,27 +190,268 @@
 }
 
 .zf-menu-mobile-date {
-  animation: zf-menu-reveal 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zf-menu-reveal 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .zf-menu-mobile-goal {
-  animation: zf-menu-reveal 420ms 45ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zf-menu-reveal 210ms 18ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .zf-menu-mobile-actions > div:first-child > button {
-  animation: zf-menu-action-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zf-menu-action-reveal 195ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .zf-menu-mobile-actions > div:first-child > button:nth-child(2) {
-  animation-delay: 45ms;
+  animation-delay: 16ms;
 }
 
 .zf-menu-mobile-actions > div:first-child > button:nth-child(3) {
-  animation-delay: 90ms;
+  animation-delay: 32ms;
+}
+
+.zf-menu-mobile-actions > div:first-child > button:nth-child(4) {
+  animation-delay: 48ms;
+}
+
+.zf-menu-mobile-actions > div:first-child > button:nth-child(5) {
+  animation-delay: 64ms;
 }
 
 .zf-menu-mobile-empty {
-  animation: zf-menu-reveal 440ms 110ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: zf-menu-reveal 220ms 35ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes zf-meal-card-enter {
+  from {
+    opacity: 0.82;
+    transform: translate3d(0, 3px, 0) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes zf-meal-detail-enter {
+  from {
+    opacity: 0.72;
+    transform: translate3d(0, -3px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.zf-menu-section-bar {
+  position: relative;
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  padding: 6px 9px;
+  border: 1px solid rgba(245, 199, 68, 0.13);
+  border-radius: 14px;
+  color: #f8fafc;
+  background:
+    radial-gradient(circle at 0 50%, rgba(245, 171, 24, 0.09), transparent 34%),
+    linear-gradient(145deg, rgba(15, 21, 27, 0.96), rgba(7, 11, 16, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.zf-menu-section-bar::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(#ffd75a, #d89414);
+  content: "";
+}
+
+.zf-menu-section-bar--tracked {
+  border-color: rgba(52, 211, 153, 0.13);
+  background:
+    radial-gradient(circle at 0 50%, rgba(52, 211, 153, 0.08), transparent 34%),
+    linear-gradient(145deg, rgba(12, 21, 25, 0.96), rgba(7, 11, 16, 0.96));
+}
+
+.zf-menu-section-bar--tracked::after {
+  background: linear-gradient(#6ee7b7, #16a47d);
+}
+
+.zf-menu-section-bar__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(245, 199, 68, 0.2);
+  border-radius: 10px;
+  color: #ffe27a;
+  background: rgba(245, 171, 24, 0.07);
+}
+
+.zf-menu-section-bar--tracked .zf-menu-section-bar__icon {
+  border-color: rgba(52, 211, 153, 0.2);
+  color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.07);
+}
+
+.zf-menu-section-bar h3,
+.zf-menu-section-bar small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zf-menu-section-bar h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.zf-menu-section-bar small {
+  margin-top: 2px;
+  color: rgba(161, 174, 188, 0.78);
+  font-size: 8.5px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.zf-menu-section-bar__count {
+  display: grid;
+  min-width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(245, 199, 68, 0.2);
+  border-radius: 999px;
+  color: #ffe27a;
+  background: rgba(245, 171, 24, 0.07);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.zf-meal-card {
+  isolation: isolate;
+  border-color: rgba(255, 255, 255, 0.085) !important;
+  border-radius: 17px !important;
+  background:
+    radial-gradient(circle at 100% 0, rgba(245, 183, 38, 0.045), transparent 34%),
+    linear-gradient(145deg, #101720, #080d13 68%) !important;
+  box-shadow:
+    0 13px 30px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms ease;
+  animation: zf-meal-card-enter 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.zf-meal-card--target {
+  border-color: rgba(245, 199, 68, 0.14) !important;
+  background:
+    radial-gradient(circle at 0 0, rgba(245, 177, 32, 0.065), transparent 31%),
+    radial-gradient(circle at 100% 100%, rgba(45, 212, 191, 0.04), transparent 35%),
+    linear-gradient(145deg, #111820, #080d13 68%) !important;
+}
+
+.zf-meal-card--target.is-progress {
+  border-color: rgba(45, 212, 191, 0.18) !important;
+}
+
+.zf-meal-card--target.is-complete,
+.zf-meal-card--tracked {
+  border-color: rgba(52, 211, 153, 0.16) !important;
+}
+
+.zf-meal-card--flexible {
+  border-color: rgba(56, 189, 248, 0.15) !important;
+}
+
+.zf-meal-card--flexible.is-progress {
+  border-color: rgba(45, 212, 191, 0.18) !important;
+}
+
+.zf-meal-card--flexible.is-complete {
+  border-color: rgba(52, 211, 153, 0.2) !important;
+}
+
+.zf-meal-card--flexible.is-warning {
+  border-color: rgba(251, 146, 60, 0.22) !important;
+}
+
+.zf-meal-card__surface {
+  border-radius: inherit !important;
+  background:
+    radial-gradient(circle at 100% 0, rgba(245, 183, 38, 0.04), transparent 34%),
+    linear-gradient(145deg, #101720, #080d13 68%) !important;
+}
+
+.zf-meal-card__header {
+  min-height: 66px;
+}
+
+.zf-meal-card__actions {
+  gap: 4px !important;
+}
+
+.zf-meal-card__action,
+.zf-meal-card__actions > button {
+  min-width: 40px;
+  min-height: 40px;
+  transition:
+    transform 100ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.zf-meal-card__action:active,
+.zf-meal-card__actions > button:active {
+  transform: scale(0.95);
+}
+
+.zf-meal-card__progress,
+.zf-meal-card__macro-strip {
+  border-color: rgba(255, 255, 255, 0.075) !important;
+  background: rgba(1, 5, 9, 0.34) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.42);
+}
+
+.zf-meal-card__macro-strip {
+  min-height: 52px;
+  align-items: stretch;
+}
+
+.zf-meal-card__macro-strip small {
+  color: rgba(155, 167, 181, 0.68) !important;
+  font-size: 8px !important;
+  line-height: 1.2;
+}
+
+.zf-meal-card__macro-strip strong {
+  font-size: 11px !important;
+  line-height: 1.25;
+}
+
+.zf-meal-card__progress-fill {
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.zf-meal-card__details {
+  animation: zf-meal-detail-enter 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zf-meal-card:hover {
+    border-color: rgba(245, 199, 68, 0.2) !important;
+    transform: translateY(-1px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -222,8 +463,17 @@
   .zf-menu-mobile-date,
   .zf-menu-mobile-goal,
   .zf-menu-mobile-actions > div:first-child > button,
-  .zf-menu-mobile-empty {
+  .zf-menu-mobile-empty,
+  .zf-meal-card,
+  .zf-meal-card__details {
     animation: none;
+  }
+
+  .zf-meal-card__progress-fill,
+  .zf-meal-card,
+  .zf-meal-card__action,
+  .zf-meal-card__actions > button {
+    transition: none;
   }
 
   .zf-menu-loading-spinner span {

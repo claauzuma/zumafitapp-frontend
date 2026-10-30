@@ -7959,31 +7959,32 @@ function PersonalTargetReconciliationBanner({
         ? `${formatNumber(Math.abs(kcalDifference), 1)} kcal sin asignar`
         : `${formatNumber(kcalDifference, 1)} kcal de excedente proyectado`
       : "Macros pendientes de asignar";
+    const statusCopy = hasKcalDifference
+      ? `Proyectado ${formatNumber(projectedKcal, 0)} / ${formatNumber(targetKcal, 0)} kcal · ${missingKcal ? "corregí desde Editar metas" : "sin metas para compensar"}`
+      : `Objetivo calórico cubierto · sin metas para compensar`;
 
     return (
-      <section className={`mt-3 overflow-hidden rounded-[1.05rem] border p-3 ${missingKcal ? "border-sky-300/25 bg-sky-300/[0.055]" : "border-amber-300/25 bg-amber-300/[0.055]"}`} role="status" aria-live="polite">
-        <div className="flex items-start gap-2.5">
-          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${missingKcal ? "border-sky-300/25 bg-sky-300/10 text-sky-200" : "border-amber-300/25 bg-amber-300/10 text-amber-100"}`}>
-            <AlertTriangle size={17} />
+      <section className={`zf-menu-reconcile-compact mt-2.5 overflow-hidden rounded-[1rem] border p-2.5 ${missingKcal ? "border-sky-300/25 bg-sky-300/[0.055]" : "border-amber-300/25 bg-amber-300/[0.055]"}`} role="status" aria-live="polite">
+        <div className="flex items-center gap-2.5">
+          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border ${missingKcal ? "border-sky-300/25 bg-sky-300/10 text-sky-200" : "border-amber-300/25 bg-amber-300/10 text-amber-100"}`}>
+            <AlertTriangle size={15} />
           </span>
           <span className="min-w-0 flex-1">
             <strong className="block text-[12px] font-black text-white">{title}</strong>
-            <span className="mt-1 block text-[9.5px] font-bold leading-relaxed text-zinc-400">
-              Proyectado {formatNumber(projectedKcal, 1)} / {formatNumber(targetKcal, 1)} kcal. {missingKcal
-                ? "La comida se eliminó sin redistribuir; podés corregirlo desde Editar metas del día."
-                : "No quedan metas automáticas disponibles para compensarlo."}
+            <span className="mt-0.5 block truncate text-[9px] font-bold text-zinc-400" title={statusCopy}>
+              {statusCopy}
             </span>
           </span>
         </div>
-        <div className="mt-2.5 grid grid-cols-3 overflow-hidden rounded-lg border border-white/[0.07] bg-black/20">
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
           {[
             ["P", difference.proteina],
             ["C", difference.carbs],
             ["G", difference.grasas],
-          ].map(([label, value], index) => (
-            <span key={label} className={`px-1.5 py-2 text-center ${index ? "border-l border-white/[0.07]" : ""}`}>
-              <small className="block text-[7.5px] font-black uppercase text-zinc-500">{label}</small>
-              <b className="mt-0.5 block text-[9.5px] font-black text-zinc-200">{signed(value, " g")}</b>
+          ].map(([label, value]) => (
+            <span key={label} className="inline-flex min-h-7 items-center justify-center gap-1 rounded-lg border border-white/[0.07] bg-black/20 px-1.5 text-center">
+              <small className="text-[8px] font-black uppercase text-zinc-500">{label}</small>
+              <b className="text-[9.5px] font-black text-zinc-200">{signed(value, " g")}</b>
             </span>
           ))}
         </div>
@@ -8643,7 +8644,7 @@ function FlexibleMarginSlotCard({
 
   return (
     <section
-      className={`mt-2 cursor-pointer overflow-hidden rounded-[1.05rem] border shadow-[0_10px_26px_rgba(0,0,0,.24)] ${palette.shell} ${compact ? "p-2" : "p-2.5"}`}
+      className={`zf-meal-card zf-meal-card--flexible ${completed ? "is-complete" : exceeded ? "is-warning" : hasEntries ? "is-progress" : "is-empty"} mt-2 cursor-pointer overflow-hidden rounded-[1.05rem] border shadow-[0_10px_26px_rgba(0,0,0,.24)] ${palette.shell} ${compact ? "p-2" : "p-2.5"}`}
       onClick={handleCardClick}
     >
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
@@ -8676,7 +8677,7 @@ function FlexibleMarginSlotCard({
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-zinc-200"
+          className="zf-meal-card__action grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-zinc-200"
           aria-expanded={expanded}
           aria-label={toggleLabel}
           title={toggleLabel}
@@ -8690,7 +8691,7 @@ function FlexibleMarginSlotCard({
           <button
             type="button"
             onClick={() => setExpanded((current) => !current)}
-            className={`inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-black ${palette.primary}`}
+            className={`inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-black ${palette.primary}`}
             aria-expanded={expanded}
           >
             {expanded ? "Ocultar detalle" : "Ver detalle"}
@@ -8703,7 +8704,7 @@ function FlexibleMarginSlotCard({
             type="button"
             onClick={onEdit}
             disabled={saving}
-            className={`inline-flex min-h-8 flex-1 items-center justify-center gap-2 rounded-full border px-3 text-xs font-black disabled:opacity-50 sm:flex-none ${palette.primary}`}
+            className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border px-3 text-xs font-black disabled:opacity-50 sm:flex-none ${palette.primary}`}
           >
             {hasEntries ? <PencilLine size={14} /> : <Plus size={14} />}
             {hasEntries ? "Editar alimentos" : "Agregar alimentos"}
@@ -8713,7 +8714,7 @@ function FlexibleMarginSlotCard({
               type="button"
               onClick={onToggleCompleted}
               disabled={saving}
-              className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-50"
+              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 text-xs font-black text-emerald-100 disabled:opacity-50"
               aria-label="Marcar calorias libres como hecho"
             >
               <CheckCircle2 size={14} />
@@ -8723,7 +8724,7 @@ function FlexibleMarginSlotCard({
           <button
             type="button"
             onClick={() => setExpanded((current) => !current)}
-            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-black text-zinc-300"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-black text-zinc-300"
             aria-expanded={expanded}
           >
             {expanded ? "Ocultar" : "Detalle"}
@@ -8733,7 +8734,7 @@ function FlexibleMarginSlotCard({
       )}
 
       {expanded ? (
-        <div className="mt-3 border-t border-white/10 pt-3">
+        <div className="zf-meal-card__details mt-3 border-t border-white/10 pt-3">
           <p className="text-xs font-bold leading-relaxed text-zinc-300">
             {plan?.source === "personal_target"
               ? "Reservaste este margen al crear tus metas. Podés completarlo libremente sin modificar las metas de cada comida."
@@ -8978,7 +8979,9 @@ function AutonomousMenuQuickActions({ mobile = false }) {
   actions.canCreate,
   true,
   actions.canEditSettings,
+  ...(mobile ? [true, true] : []),
 ].filter(Boolean).length;
+  const denseMobileActions = mobile && actionCount >= 5;
 
   const modeLabel = generationModeLabel(actions.settings?.mode);
 
@@ -8997,6 +9000,7 @@ function AutonomousMenuQuickActions({ mobile = false }) {
   <QuickMenuAction
     icon={ClipboardPlus}
     label="Crear menú"
+    compactLabel={denseMobileActions ? "Crear" : ""}
     tone="violet"
     onClick={actions.onCreate}
     mobile={mobile}
@@ -9026,31 +9030,56 @@ function AutonomousMenuQuickActions({ mobile = false }) {
   controls="menu-generation-settings"
   mobile={mobile}
 /> : null}
+
+        {mobile ? (
+          <>
+            <QuickMenuAction
+              icon={Heart}
+              label="Guardar"
+              tone="green"
+              onClick={actions.onSaveDay}
+              disabled={!actions.canSaveDay}
+              mobile
+            />
+            <QuickMenuAction
+              icon={BookOpen}
+              label="Guardados"
+              compactLabel={denseMobileActions ? "Días" : ""}
+              tone="gold"
+              onClick={actions.onOpenSavedDays}
+              mobile
+            />
+          </>
+        ) : null}
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      {!mobile ? <div className="zf-menu-day-tools mt-2 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={actions.onSaveDay}
           disabled={!actions.canSaveDay}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 text-[11px] font-black transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${mobile ? "min-h-[42px]" : "min-h-11"} ${mobile
+          aria-label="Guardar día"
+          title="Guardar día"
+          className={`zf-menu-day-tool inline-flex items-center justify-center gap-2 rounded-xl px-3 text-[10.5px] font-black transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${mobile ? "min-h-10" : "min-h-11"} ${mobile
             ? "border border-emerald-300/20 bg-[linear-gradient(145deg,rgba(16,185,129,.065),rgba(6,13,16,.82))] text-emerald-100 hover:border-emerald-300/35 hover:bg-emerald-300/[0.09]"
             : "border border-emerald-300/30 bg-emerald-300/[0.08] text-emerald-100"}`}
         >
-          <Heart size={15} />
-          Guardar día
+          <Heart size={14} />
+          {mobile ? "Guardar" : "Guardar día"}
         </button>
         <button
           type="button"
           onClick={actions.onOpenSavedDays}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-[11px] font-black text-zinc-200 transition duration-200 active:scale-[0.98] ${mobile ? "min-h-[42px]" : "min-h-11"} ${mobile
+          aria-label="Abrir días guardados"
+          title="Días guardados"
+          className={`zf-menu-day-tool inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-[10.5px] font-black text-zinc-200 transition duration-200 active:scale-[0.98] ${mobile ? "min-h-10" : "min-h-11"} ${mobile
             ? "bg-[linear-gradient(145deg,rgba(255,255,255,.035),rgba(3,6,10,.7))] hover:border-white/20 hover:bg-white/[0.055]"
             : "bg-white/[0.035]"}`}
         >
-          <BookOpen size={15} />
-          Días guardados
+          <BookOpen size={14} />
+          {mobile ? "Guardados" : "Días guardados"}
         </button>
-      </div>
+      </div> : null}
 
       {actions.topUpOffer ? (
         <div className="mt-2 overflow-hidden rounded-2xl border border-cyan-300/30 bg-[radial-gradient(circle_at_100%_0,rgba(34,211,238,.12),transparent_38%),rgba(8,18,25,.96)] p-3 shadow-[0_12px_28px_rgba(0,0,0,.28)]" role="alertdialog" aria-labelledby="menu-top-up-title" aria-describedby="menu-top-up-description">
@@ -9110,6 +9139,7 @@ function AutonomousMenuQuickActions({ mobile = false }) {
 function QuickMenuAction({
   icon,
   label,
+  compactLabel = "",
   detail = "",
   tone = "gold",
   onClick,
@@ -9118,6 +9148,7 @@ function QuickMenuAction({
   pressed,
   controls,
   mobile = false,
+  disabled = false,
 }) {
   const colors = {
     green:
@@ -9139,21 +9170,23 @@ function QuickMenuAction({
   return (
     <button
       type="button"
-      className={`group relative flex min-w-0 flex-col items-center justify-center gap-1.5 text-center transition duration-200 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] active:scale-[0.98] ${mobile
-        ? `min-h-[70px] overflow-hidden rounded-[.95rem] border px-1.5 py-2 shadow-[0_8px_22px_rgba(0,0,0,.23),inset_0_1px_0_rgba(255,255,255,.035)] hover:-translate-y-0.5 hover:border-white/25 ${mobileSurfaces[tone] || mobileSurfaces.gold}`
+      className={`group relative flex min-w-0 flex-col items-center justify-center gap-1 text-center transition duration-200 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFD76B] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100 ${mobile
+        ? `min-h-[62px] overflow-hidden rounded-[.9rem] border px-1.5 py-1.5 shadow-[0_8px_22px_rgba(0,0,0,.23),inset_0_1px_0_rgba(255,255,255,.035)] hover:-translate-y-0.5 hover:border-white/25 ${mobileSurfaces[tone] || mobileSurfaces.gold}`
         : "min-h-[70px] border-r border-white/[0.07] px-1 py-2.5 hover:bg-white/[0.055] min-[640px]:min-h-[72px] min-[640px]:flex-row min-[640px]:gap-2.5 min-[640px]:px-3"}
         ${pressed ? "ring-1 ring-inset ring-[#FFD76B]/35 bg-[#D4AF37]/[0.08]" : ""}`}
       onClick={onClick}
+      disabled={disabled}
       aria-busy={busy || undefined}
       aria-pressed={pressed}
       aria-expanded={controls ? pressed : undefined}
       aria-controls={controls}
       aria-label={`${label}${detail ? `, ${detail}` : ""}${locked ? ", requiere plan Pro o VIP" : ""}`}
+      title={label}
     >
       <span
         className={`
           grid
-          ${mobile ? "h-9 w-9" : "h-11 w-11 min-[640px]:h-10 min-[640px]:w-10"}
+          ${mobile ? "h-8 w-8" : "h-11 w-11 min-[640px]:h-10 min-[640px]:w-10"}
           shrink-0
           place-items-center
           rounded-full
@@ -9162,7 +9195,7 @@ function QuickMenuAction({
         `}
       >
         {React.createElement(icon, {
-          size: mobile ? 18 : 19,
+          size: mobile ? 16 : 19,
           strokeWidth: 2.2,
           className: busy ? "animate-spin" : "",
           "aria-hidden": "true",
@@ -9181,7 +9214,7 @@ function QuickMenuAction({
             ${mobile ? "min-[390px]:text-[11px]" : "min-[390px]:text-[11px] sm:text-[12.5px]"}
           `}
         >
-          {label}
+          {compactLabel || label}
         </strong>
 
         {detail ? (
@@ -9436,19 +9469,24 @@ function MobileDayMenu({
 
       {targetOnlyMeals.length ? (
         <section className="mt-3 grid gap-2.5">
-          <div className="px-1">
-            <h3 className="text-base font-black text-white">Comidas por meta</h3>
-            <p className="mt-1 text-[11px] font-bold text-zinc-500">
-              {targetOnlyMeals.some((meal) => meal.personalTargetOnly)
-                ? "Completá cada objetivo agregando los alimentos que consumas."
-                : "Tu coach definió los objetivos. Generá cada comida o cargala manualmente."}
-            </p>
+          <div className="zf-menu-section-bar" aria-label={`${targetOnlyMeals.length} comidas por meta`}>
+            <span className="zf-menu-section-bar__icon" aria-hidden="true">
+              <Target size={14} strokeWidth={2.4} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <h3>Plan por comidas</h3>
+              <small>
+                {targetOnlyMeals.some((meal) => meal.personalTargetOnly) ? "Completá cada meta con tu consumo" : "Objetivos definidos por tu coach"}
+              </small>
+            </span>
+            <span className="zf-menu-section-bar__count" aria-hidden="true">{targetOnlyMeals.length}</span>
           </div>
 
           <MobileStandaloneTracking
             trackingDay={trackingDay}
             date={displayRow?.date}
             onlyMealIds={["picoteo"]}
+            showHeader={false}
           />
 
           {flexiblePlan ? (
@@ -10927,6 +10965,7 @@ function MobileStandaloneTracking({
   date = "",
   onlyMealIds = null,
   excludeMealIds = [],
+  showHeader = true,
 }) {
   const autonomousActions =
   React.useContext(
@@ -10947,6 +10986,8 @@ const groups = standaloneTrackingGroups(trackingDay).filter((group) => (
   (!onlyIds || onlyIds.has(String(group.id)))
   && !excludedIds.has(String(group.id))
 ));
+const trackingItemsCount = groups.reduce((sum, group) => sum + group.items.length, 0);
+const trackingCalories = groups.reduce((sum, group) => sum + (Number(group?.totals?.kcal) || 0), 0);
 
 const [
   expandedTrackingGroups,
@@ -11147,22 +11188,18 @@ async function deleteTrackingGroup(
   }
 
   return (
-    <section className="mt-2.5 grid gap-2">
-      <div className="flex items-center justify-between px-1">
-        <div>
-          <span className="text-[8px] font-black uppercase tracking-[0.13em] text-emerald-300/70">
-            Tracking de hoy
-          </span>
-
-          <h3 className="mt-0.5 text-base font-black tracking-[-0.01em] text-white">
-            Lo que ya comiste
-          </h3>
-        </div>
-
-        <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-2 py-1 text-[8px] font-black text-emerald-200">
-          Registrado
+    <section className={`zf-menu-tracking-section grid gap-2 ${showHeader ? "mt-2.5" : "mt-0"}`}>
+      {showHeader ? <div className="zf-menu-section-bar zf-menu-section-bar--tracked">
+        <span className="zf-menu-section-bar__icon" aria-hidden="true">
+          <CheckCircle2 size={14} strokeWidth={2.4} />
         </span>
-      </div>
+        <span className="min-w-0 flex-1">
+          <h3>Consumido hoy</h3>
+          <small>
+            {trackingItemsCount} {trackingItemsCount === 1 ? "alimento" : "alimentos"} · {formatNumber(trackingCalories, 0)} kcal
+          </small>
+        </span>
+      </div> : null}
 
 {groups.map((group, groupIndex) => {
   const expanded =
@@ -11190,6 +11227,8 @@ async function deleteTrackingGroup(
     <article
           key={group.id}
           className={`
+            zf-meal-card
+            zf-meal-card--tracked
             relative
             overflow-hidden
             rounded-[1.05rem]
@@ -11202,7 +11241,7 @@ async function deleteTrackingGroup(
           <span className={`pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full ${visual.rail}`} aria-hidden="true" />
 
           {/* HEADER DE LA COMIDA */}
-          <div className="relative z-10 flex items-start gap-2 border-b border-white/[0.07] px-2.5 py-2.5">
+          <div className="zf-meal-card__header relative z-10 flex items-start gap-2 px-2.5 py-2.5">
             <button
               type="button"
               onClick={() => toggleTrackingGroup(group.id)}
@@ -11231,16 +11270,10 @@ async function deleteTrackingGroup(
                     </span>
                   ) : null}
                 </span>
-                <span className="mt-1.5 flex min-w-0 items-center gap-2">
-                  <MobileFoodThumbStack foods={previewFoods} compact maxVisible={3} />
-                  <small className="min-w-0 truncate text-[8.5px] font-bold text-zinc-400">
-                    {group.items.length} {group.items.length === 1 ? "alimento consumido" : "alimentos consumidos"}
-                  </small>
-                </span>
               </div>
             </button>
 
-<div className="flex shrink-0 items-center justify-end gap-1 pt-0.5">
+<div className="zf-meal-card__actions flex shrink-0 items-center justify-end gap-1 pt-0.5">
   {/* AGREGAR */}
   <button
     type="button"
@@ -11253,10 +11286,10 @@ async function deleteTrackingGroup(
           { lockDestination: true }
         );
     }}
-    className={`
+    className={`zf-meal-card__action
       grid
-      h-8
-      w-8
+      h-10
+      w-10
       place-items-center
       rounded-full
       border
@@ -11273,73 +11306,6 @@ async function deleteTrackingGroup(
     />
   </button>
 
-  {/* GUARDAR COMO COMIDA REUTILIZABLE */}
-  {!group.entirelyFromSavedMeal ? <button
-    type="button"
-    onClick={(event) => {
-      event.stopPropagation();
-      autonomousActions?.onSaveMeal?.({
-        id: group.id,
-        name: group.label,
-        type: String(group.id).toLowerCase() === "picoteo" ? "picoteo" : group.mealType,
-        items: group.items,
-        totals: group.totals,
-      }, 0, {
-        sourceKind: String(group.id).toLowerCase() === "picoteo" ? "picoteo" : "tracking",
-        tags: ["tracking"],
-      });
-    }}
-    className="grid h-8 w-8 place-items-center rounded-full border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] text-[#FFE8A3] transition hover:border-[#D4AF37]/40 hover:bg-[#D4AF37]/10"
-    aria-label={`Guardar ${group.label} en Mis comidas`}
-    title="Guardar en Mis comidas"
-  >
-    <Save size={13} />
-  </button> : null}
-
-  {/* BORRAR TODO */}
-  <button
-    type="button"
-    disabled={
-      deletingTrackingKey ===
-      `group-${group.id}`
-    }
-    onClick={(event) => {
-      event.stopPropagation();
-
-      deleteTrackingGroup(
-        group
-      );
-    }}
-    className="
-      grid
-      h-8
-      w-8
-      place-items-center
-      rounded-full
-      border
-      border-rose-300/15
-      bg-rose-300/[0.05]
-      text-rose-300/70
-      transition
-      hover:border-rose-300/30
-      hover:bg-rose-300/10
-      hover:text-rose-200
-      disabled:opacity-40
-    "
-    aria-label={`Eliminar ${group.label}`}
-    title={`Eliminar ${group.label}`}
-  >
-    {deletingTrackingKey ===
-    `group-${group.id}` ? (
-      <RefreshCw
-        size={13}
-        className="animate-spin"
-      />
-    ) : (
-      <Trash2 size={13} />
-    )}
-  </button>
-
   {/* ABRIR / CERRAR */}
   <button
     type="button"
@@ -11348,10 +11314,10 @@ async function deleteTrackingGroup(
         group.id
       )
     }
-    className="
+    className="zf-meal-card__action
       grid
-      h-8
-      w-7
+      h-10
+      w-9
       place-items-center
       rounded-full
       border
@@ -11386,37 +11352,47 @@ async function deleteTrackingGroup(
           </div>
 
 {!expanded ? (
-  <div className="relative z-10 px-3 pb-3 pt-2.5">
-    <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
+  <div className="relative z-10 px-3 pb-3 pt-1.5">
+    <div className="zf-meal-card__progress mb-2 rounded-xl border border-white/[0.07] bg-black/20 px-2.5 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <MobileFoodThumbStack foods={previewFoods} compact maxVisible={4} />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center justify-between gap-2">
+            <small className="truncate text-[9px] font-black text-emerald-200">Tracking real</small>
+            <strong className="shrink-0 text-[9px] font-black text-zinc-300">
+              {group.items.length} {group.items.length === 1 ? "alimento" : "alimentos"}
+            </strong>
+          </span>
+          <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+            <span className="block h-full w-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-300 to-cyan-200" />
+          </span>
+        </span>
+      </div>
+    </div>
+    <div className="zf-meal-card__macro-strip grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
       <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] pr-1.5">
-        <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Consumido</small>
-        <strong className={`truncate text-[10px] font-black ${visual.kcalText}`}>{formatNumber(group.totals.kcal, 0)} kcal</strong>
+        <small className="text-[8px] font-black uppercase tracking-wide text-zinc-500">Consumido</small>
+        <strong className={`truncate text-[11px] font-black ${visual.kcalText}`}>{formatNumber(group.totals.kcal, 0)} kcal</strong>
       </span>
       <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] px-1.5">
-        <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Proteína</small>
-        <strong className="truncate text-[10px] font-black text-emerald-200">{formatNumber(group.totals.proteina, 1)} g</strong>
+        <small className="text-[8px] font-black uppercase tracking-wide text-zinc-500">Proteína</small>
+        <strong className="truncate text-[11px] font-black text-emerald-200">{formatNumber(group.totals.proteina, 1)} g</strong>
       </span>
       <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] px-1.5">
-        <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Carbos</small>
-        <strong className="truncate text-[10px] font-black text-sky-200">{formatNumber(group.totals.carbs, 1)} g</strong>
+        <small className="text-[8px] font-black uppercase tracking-wide text-zinc-500">Carbos</small>
+        <strong className="truncate text-[11px] font-black text-sky-200">{formatNumber(group.totals.carbs, 1)} g</strong>
       </span>
       <span className="grid min-w-0 gap-0.5 pl-1.5">
-        <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Grasas</small>
-        <strong className="truncate text-[10px] font-black text-violet-200">{formatNumber(group.totals.grasas, 1)} g</strong>
+        <small className="text-[8px] font-black uppercase tracking-wide text-zinc-500">Grasas</small>
+        <strong className="truncate text-[11px] font-black text-amber-200">{formatNumber(group.totals.grasas, 1)} g</strong>
       </span>
     </div>
-    {String(group.id).toLowerCase() !== "picoteo" ? (
-      <p className="mt-2 flex items-start gap-1.5 text-[8.5px] font-bold leading-relaxed text-zinc-400">
-        <CheckCircle2 size={12} className="mt-px shrink-0 text-emerald-300" />
-        Ya cuenta como consumo. Si generás, esta comida se conserva y sólo se completa lo que falta del día.
-      </p>
-    ) : null}
   </div>
 ) : null}
 
 
 {expanded ? (
-  <>
+  <div className="zf-meal-card__details">
     {/* ALIMENTOS */}
     <div className="relative z-10 divide-y divide-white/[0.055] px-2">
       {group.items.map(
@@ -11459,8 +11435,8 @@ async function deleteTrackingGroup(
               <span
                 className="
                   grid
-                  h-9
-                  w-9
+                    h-9
+                    w-9
                   shrink-0
                   place-items-center
                   overflow-hidden
@@ -11562,8 +11538,8 @@ async function deleteTrackingGroup(
                 }
                 className="
                   grid
-                  h-7
-                  w-7
+                  h-10
+                  w-10
                   shrink-0
                   place-items-center
                   rounded-lg
@@ -11625,7 +11601,44 @@ async function deleteTrackingGroup(
         )}
       </span>
     </footer>
-  </>
+
+    <div className={`relative z-10 grid gap-2 border-t border-white/[0.06] px-3 py-2.5 ${group.entirelyFromSavedMeal ? "grid-cols-1" : "grid-cols-2"}`}>
+      {!group.entirelyFromSavedMeal ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            autonomousActions?.onSaveMeal?.({
+              id: group.id,
+              name: group.label,
+              type: String(group.id).toLowerCase() === "picoteo" ? "picoteo" : group.mealType,
+              items: group.items,
+              totals: group.totals,
+            }, 0, {
+              sourceKind: String(group.id).toLowerCase() === "picoteo" ? "picoteo" : "tracking",
+              tags: ["tracking"],
+            });
+          }}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] px-2 text-[10px] font-black text-[#FFE8A3] transition active:scale-[0.98]"
+        >
+          <Save size={14} />
+          Guardar comida
+        </button>
+      ) : null}
+      <button
+        type="button"
+        disabled={deletingTrackingKey === `group-${group.id}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          deleteTrackingGroup(group);
+        }}
+        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-300/15 bg-rose-300/[0.05] px-2 text-[10px] font-black text-rose-200/80 transition active:scale-[0.98] disabled:opacity-40"
+      >
+        {deletingTrackingKey === `group-${group.id}` ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+        Eliminar registro
+      </button>
+    </div>
+  </div>
 ) : null}
 
 
@@ -12066,6 +12079,8 @@ function MobileMealCard({
     return (
       <article
         className="
+          zf-meal-card
+          zf-meal-card--target
           relative
           overflow-hidden
 
@@ -12087,7 +12102,7 @@ function MobileMealCard({
         "
       >
         <div
-          className="
+          className="zf-meal-card__surface
             relative
             overflow-hidden
 
@@ -12140,7 +12155,7 @@ function MobileMealCard({
 
           {/* HEADER CARD */}
 
-          <div className="relative z-10 flex items-center gap-2.5">
+          <div className="zf-meal-card__header relative z-10 flex items-center gap-2.5">
 
             <button
               type="button"
@@ -12318,7 +12333,7 @@ function MobileMealCard({
 
             {/* ACCIONES DERECHA */}
 
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="zf-meal-card__actions flex shrink-0 items-center gap-1.5">
 
               {/* ABRIR POR META */}
 
@@ -12445,7 +12460,7 @@ function MobileMealCard({
 
           {isExpanded ? (
             <div
-              className="
+              className="zf-meal-card__details
                 relative
                 z-10
 
@@ -12857,14 +12872,14 @@ function MobileMealCard({
 
   return (
     <article
-      className={`relative overflow-hidden rounded-[1.05rem] border transition ${visual.frame} ${
+      className={`zf-meal-card zf-meal-card--planned relative overflow-hidden rounded-[1.05rem] border transition ${visual.frame} ${
         completedVisual
           ? "ring-1 ring-emerald-300/25"
           : "ring-1 ring-white/[0.035]"
       }`}
     >
       <div
-        className={`relative overflow-hidden rounded-[1.05rem] p-3 ${visual.card}`}
+        className={`zf-meal-card__surface relative overflow-hidden rounded-[1.05rem] p-3 ${visual.card}`}
       >
 
         <span
@@ -12902,7 +12917,7 @@ function MobileMealCard({
         ) : null}
 
 
-        <div className="relative z-10 flex items-center gap-2.5">
+        <div className="zf-meal-card__header relative z-10 flex items-center gap-2.5">
 
           <button
             type="button"
@@ -12984,7 +12999,7 @@ function MobileMealCard({
           </button>
 
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="zf-meal-card__actions flex shrink-0 items-center gap-1.5">
 
             <button
               type="button"
@@ -13074,7 +13089,7 @@ function MobileMealCard({
 
 
         {!isExpanded ? (
-          <div className="relative z-10 mt-3 grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
+          <div className="zf-meal-card__macro-strip relative z-10 mt-3 grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
             <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] pr-1.5">
               <small className="text-[7px] font-black uppercase tracking-wide text-zinc-500">Planificado</small>
               <strong className={`truncate text-[10px] font-black ${visual.kcalText}`}>
@@ -13104,7 +13119,7 @@ function MobileMealCard({
 
 
         {isExpanded ? (
-          <div className="relative z-10 mt-3 overflow-hidden rounded-[0.95rem] border border-white/10 bg-black/20 p-3 opacity-100 transition-[max-height,opacity] duration-200 ease-out">
+          <div className="zf-meal-card__details relative z-10 mt-3 overflow-hidden rounded-[0.95rem] border border-white/10 bg-black/20 p-3 opacity-100 transition-[max-height,opacity] duration-200 ease-out">
 
             <div className="flex flex-wrap items-center gap-1.5">
 
@@ -13375,8 +13390,8 @@ function PersonalTargetMealIcon({ meal = {}, index = 0, visual }) {
   const icons = { breakfast: Sunrise, lunch: Sun, snack: Apple, dinner: MoonStar, meal: Utensils };
   const Icon = icons[type] || Utensils;
   return (
-    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border min-[390px]:h-14 min-[390px]:w-14 ${visual.icon}`}>
-      <Icon className="h-6 w-6 min-[390px]:h-7 min-[390px]:w-7" strokeWidth={1.8} />
+    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[.9rem] border ${visual.icon}`}>
+      <Icon className="h-[22px] w-[22px]" strokeWidth={1.9} />
     </span>
   );
 }
@@ -13393,33 +13408,50 @@ function PersonalTargetNutritionPanel({
     ? overageReview.hasNotice === true
     : ["kcal", "proteina", "carbs", "grasas"].some((key) => Number(totals?.[key]) < -0.05));
   const exceededKeys = new Set(overageReview?.exceededKeys || []);
+  const rawKcal = Number(totals.kcal) || 0;
+  const kcalExceeded = remaining && rawKcal < 0 && (overageReview
+    ? exceededKeys.has("kcal")
+    : rawKcal < -0.05);
+  const displayedKcal = remaining && rawKcal < 0
+    ? kcalExceeded ? Math.abs(rawKcal) : 0
+    : Math.abs(rawKcal);
+  const kcalTone = kcalExceeded
+    ? "text-sky-200"
+    : registered
+      ? "text-emerald-200"
+      : remaining
+        ? "text-teal-200"
+        : visual.accent;
+
   return (
-    <div className={`min-w-0 rounded-xl border px-2.5 py-2 ${remaining ? hasOverage ? "border-sky-300/25 bg-sky-300/[0.045]" : "border-teal-300/15 bg-teal-300/[0.035]" : registered ? "border-emerald-300/20 bg-emerald-300/[0.055]" : visual.panel}`}>
-      <div className="flex items-center gap-1.5">
-        {remaining
-          ? hasOverage
-            ? <CircleAlert size={12} className="text-sky-300" />
-            : <RefreshCw size={12} className="text-teal-300" />
-          : registered
-            ? <CheckCircle2 size={12} className="text-emerald-300" />
-          : <Target size={12} className={visual.accent} />}
-        <span className="text-[8.5px] font-black uppercase tracking-[.13em] text-zinc-500">{label}</span>
-      </div>
-      <strong className={`mt-1 block text-[13px] font-black min-[390px]:text-[14px] ${remaining ? hasOverage ? "text-sky-200" : "text-teal-200" : registered ? "text-emerald-200" : visual.accent}`}>
-        {formatNumber(totals.kcal, 0)} kcal
-      </strong>
-      <div className="mt-1.5 grid min-w-0 grid-cols-3 gap-1 border-t border-white/[0.06] pt-1.5">
-        {[
-          ["proteina", "P", totals.proteina, "text-teal-200"],
-          ["carbs", "C", totals.carbs, "text-sky-200"],
-          ["grasas", "G", totals.grasas, "text-amber-200"],
-        ].map(([key, macroLabel, value, tone]) => (
-          <span key={macroLabel} className="inline-flex min-w-0 items-baseline gap-0.5 whitespace-nowrap text-[8px] font-black tabular-nums text-zinc-300 min-[390px]:text-[9px]">
-            <span className={remaining && exceededKeys.has(key) ? "text-sky-300" : tone}>{macroLabel}</span>
-            {formatNumber(value, 1)} g
+    <div className="zf-meal-card__macro-strip grid min-w-0 grid-cols-4 gap-1.5 rounded-xl border border-white/[0.07] bg-black/20 p-2">
+      <span className="grid min-w-0 gap-0.5 border-r border-white/[0.07] pr-1.5">
+        <small className="truncate text-[8px] font-black uppercase tracking-wide text-zinc-500">{hasOverage ? "Revisar" : label}</small>
+        <strong className={`truncate text-[11px] font-black tabular-nums ${kcalTone}`}>
+          {kcalExceeded ? "+" : ""}{formatNumber(displayedKcal, 0)} kcal
+        </strong>
+      </span>
+      {[
+        ["proteina", "Proteína", totals.proteina, "text-emerald-200"],
+        ["carbs", "Carbos", totals.carbs, "text-sky-200"],
+        ["grasas", "Grasas", totals.grasas, "text-amber-200"],
+      ].map(([key, macroLabel, value, tone]) => {
+        const rawValue = Number(value) || 0;
+        const exceeded = remaining && rawValue < 0 && (overageReview
+          ? exceededKeys.has(key)
+          : rawValue < -0.05);
+        const displayedValue = remaining && rawValue < 0
+          ? exceeded ? Math.abs(rawValue) : 0
+          : Math.abs(rawValue);
+        return (
+          <span key={macroLabel} className="grid min-w-0 gap-0.5 border-r border-white/[0.07] px-1.5 last:border-r-0 last:pr-0">
+            <small className="truncate text-[8px] font-black uppercase tracking-wide text-zinc-500">{macroLabel}</small>
+            <strong className={`truncate text-[11px] font-black tabular-nums ${exceeded ? "text-sky-200" : tone}`}>
+              {exceeded ? "+" : ""}{formatNumber(displayedValue, 1)} g
+            </strong>
           </span>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -13439,12 +13471,12 @@ function PersonalTargetMacroProgress({ macroKey, label, target = 0, consumed = 0
 
   return (
     <div className="min-w-0 px-2 first:pl-0 last:pr-0 min-[390px]:px-3">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border text-[9px] font-black ${tone.badge}`}>{label}</span>
-        <strong className="min-w-0 truncate text-[10px] font-black text-zinc-100">
-          <span className={tone.text}>{formatNumber(actual, 1)}</span>
+      <div className="flex min-w-0 items-center gap-1">
+        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] border text-[8px] font-black ${tone.badge}`}>{label}</span>
+        <strong className="min-w-0 whitespace-nowrap text-[9px] font-black text-zinc-100 min-[390px]:text-[10px]">
+          <span className={tone.text}>{formatNumber(actual, Number.isInteger(actual) ? 0 : 1)}</span>
           <span className="text-zinc-600"> / </span>
-          {formatNumber(goal, 1)} g
+          {formatNumber(goal, Number.isInteger(goal) ? 0 : 1)} g
         </strong>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
@@ -13678,6 +13710,9 @@ function PlannedMealTargetCard({
       }
 
       className={`
+        zf-meal-card
+        zf-meal-card--target
+        ${mealCompleted ? "is-complete" : hasTrackedItems ? "is-progress" : "is-empty"}
         relative
         overflow-hidden
         rounded-[1.15rem]
@@ -13695,7 +13730,7 @@ function PlannedMealTargetCard({
           ===================================== */}
 
       <div
-        className="
+        className="zf-meal-card__header
           grid
           grid-cols-[auto_minmax(0,1fr)_auto]
           items-start
@@ -13806,6 +13841,7 @@ function PlannedMealTargetCard({
             ) : null}
 
 
+            {statusLabel !== "Sin registrar" ? (
             <span
               className={`
                 inline-flex
@@ -13829,6 +13865,7 @@ function PlannedMealTargetCard({
             >
               {statusLabel}
             </span>
+            ) : null}
 
           </div>
 
@@ -13840,7 +13877,7 @@ function PlannedMealTargetCard({
             ================================= */}
 
         <div
-          className="
+          className="zf-meal-card__actions
             flex
             shrink-0
             items-center
@@ -13848,38 +13885,16 @@ function PlannedMealTargetCard({
           "
         >
 
-          <div
-            className="
-              flex
-              h-9
-              items-center
-              gap-0.5
-
-              rounded-full
-
-              border
-              border-white/10
-              bg-black/25
-              p-0.5
-              text-zinc-200
-            "
-            title={meal?.personalTargetOnly ? "Meta personal" : "Meta del coach"}
+          <button
+            type="button"
+            onClick={onAddFood || onManage}
+            disabled={disabled || manuallyClosed || !(onAddFood || onManage)}
+            className={`zf-meal-card__action grid h-10 w-10 place-items-center rounded-full border transition active:scale-95 disabled:opacity-40 ${targetVisual.badge}`}
+            aria-label={`Agregar alimento consumido a ${mealName(meal, mealIndex)}`}
+            title={manuallyClosed ? "Reabrí la comida para modificar su consumo" : meal?.personalTargetOnly ? "Agregar alimento a tu meta" : "Agregar alimento a la meta del coach"}
           >
-            <span className="grid h-8 w-8 place-items-center rounded-full">
-              <Target size={16} />
-            </span>
-
-            <button
-              type="button"
-              onClick={onAddFood || onManage}
-              disabled={disabled || manuallyClosed || !(onAddFood || onManage)}
-              className={`grid h-8 w-8 place-items-center rounded-full border transition active:scale-95 disabled:opacity-40 ${targetVisual.badge}`}
-              aria-label={`Agregar alimento consumido a ${mealName(meal, mealIndex)}`}
-              title={manuallyClosed ? "Reabrí la comida para modificar su consumo" : "Agregar alimento"}
-            >
-              <Plus size={15} strokeWidth={2.8} />
-            </button>
-          </div>
+            <Plus size={16} strokeWidth={2.8} />
+          </button>
 
           <button
             type="button"
@@ -13900,7 +13915,7 @@ function PlannedMealTargetCard({
               !canRegisterPlannedComposition
               && (!onToggleTargetConfirmed || completionState.automatic || (!completionState.manual && !hasTrackedItems))
             )}
-            className={`grid h-9 w-9 place-items-center rounded-full border transition active:scale-95 disabled:cursor-not-allowed ${
+            className={`zf-meal-card__action grid h-10 w-10 place-items-center rounded-full border transition active:scale-95 disabled:cursor-not-allowed ${
               mealCompleted
                 ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,.18)]"
                 : completionState.manualStale
@@ -13928,10 +13943,10 @@ function PlannedMealTargetCard({
               )
             }
 
-            className="
+            className="zf-meal-card__action
               grid
-              h-9
-              w-9
+              h-10
+              w-10
               place-items-center
 
               rounded-full
@@ -13970,7 +13985,7 @@ function PlannedMealTargetCard({
       </div>
 
       {!expanded ? (
-        <div className="mx-3 mb-2.5 rounded-xl border border-white/[0.07] bg-black/20 px-2.5 py-2" aria-label={`Progreso consumido de ${mealName(meal, mealIndex)}`}>
+        <div className="zf-meal-card__progress mx-3 mb-2 rounded-xl border border-white/[0.07] bg-black/20 px-2.5 py-2" aria-label={`Progreso consumido de ${mealName(meal, mealIndex)}`}>
           <div className="flex min-w-0 items-center gap-2">
             {collapsedPreviewFoods.length ? (
               <MobileFoodThumbStack foods={collapsedPreviewFoods} compact maxVisible={4} />
@@ -13990,7 +14005,7 @@ function PlannedMealTargetCard({
               </span>
               <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-white/[0.07] shadow-[inset_0_1px_2px_rgba(0,0,0,.7)]">
                 <span
-                  className={`block h-full rounded-full transition-[width] duration-500 ${exceeded ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300" : targetVisual.progress}`}
+                  className={`zf-meal-card__progress-fill block h-full rounded-full ${exceeded ? "bg-gradient-to-r from-rose-700 via-rose-500 to-red-300" : targetVisual.progress}`}
                   style={{ width: `${consumedCaloriePercent}%` }}
                 />
               </span>
@@ -14001,37 +14016,27 @@ function PlannedMealTargetCard({
 
       {!expanded && mealCompleted ? (
         <div
-          className="mx-3 mb-3 grid gap-2"
+          className="mx-3 mb-3"
           aria-label={`Resumen consumido de ${mealName(meal, mealIndex)}`}
         >
-          <div className="grid grid-cols-1 gap-2 min-[350px]:grid-cols-2">
-            <PersonalTargetNutritionPanel
-              label="Meta"
-              totals={target}
-              visual={targetVisual}
-            />
-            <PersonalTargetNutritionPanel
-              label="Registrado"
-              totals={trackedTotals}
-              visual={targetVisual}
-              registered
-            />
-          </div>
+          <PersonalTargetNutritionPanel
+            label="Registrado"
+            totals={trackedTotals}
+            visual={targetVisual}
+            registered
+          />
         </div>
       ) : null}
 
       {!expanded && !mealCompleted ? (
         <div className="mx-3 mb-3 grid gap-2">
-          <div className="grid grid-cols-1 gap-2 min-[350px]:grid-cols-2">
-            <PersonalTargetNutritionPanel label="Meta" totals={target} visual={targetVisual} />
-            <PersonalTargetNutritionPanel
-              label="Restante"
-              totals={remaining}
-              visual={targetVisual}
-              remaining
-              overageReview={manualOverageReview}
-            />
-          </div>
+          <PersonalTargetNutritionPanel
+            label="Restante"
+            totals={remaining}
+            visual={targetVisual}
+            remaining
+            overageReview={manualOverageReview}
+          />
           {hasPendingPlannedComposition ? (
             <button
               type="button"
@@ -14059,7 +14064,7 @@ function PlannedMealTargetCard({
       {expanded ? (
 
         <div
-          className="
+          className="zf-meal-card__details
             border-t
             border-white/[0.08]
 
@@ -15306,9 +15311,9 @@ function MealTypeIcon({ meal, index, done, size = "md" }) {
   const sizeClass = size === "lg"
     ? "h-[58px] w-[58px] rounded-[1.05rem]"
     : size === "sm"
-      ? "h-9 w-9 rounded-xl"
+      ? "h-10 w-10 rounded-xl"
       : "h-12 w-12 rounded-2xl";
-  const iconSize = size === "lg" ? 31 : size === "sm" ? 18 : 23;
+  const iconSize = size === "lg" ? 31 : size === "sm" ? 19 : 23;
   return (
     <span className={`grid shrink-0 place-items-center border ${sizeClass} ${visual.icon} ${done ? "ring-1 ring-white/20" : ""}`}>
       <Icon size={iconSize} strokeWidth={1.7} />
