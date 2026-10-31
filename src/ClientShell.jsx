@@ -459,12 +459,12 @@ const CSS = `
 .cs-d-head{
   position:relative;
   z-index:1;
-  padding: 9px 12px 10px;
+  padding: 10px 12px 11px;
   border-bottom:1px solid rgba(255,255,255,.075);
   background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0));
   display:flex;
   flex-direction:column;
-  gap:7px;
+  gap:8px;
 }
 .cs-d-brandRow{
   width:100%;
@@ -483,7 +483,7 @@ const CSS = `
 .cs-prof{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:11px;
   min-width:0;
 }
 .cs-avatar{
@@ -510,6 +510,7 @@ const CSS = `
   display:block;
 }
 .cs-prof-name{
+  font-size:15px;
   font-weight: 900;
   color:#fff8dc;
   line-height:1.1;
@@ -531,7 +532,7 @@ const CSS = `
   min-height:36px;
   padding:0 4px;
   margin: 0 -4px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 900;
   color:#ffd45a;
   text-decoration:none;
@@ -554,7 +555,7 @@ const CSS = `
   border-radius:999px;
   background:rgba(245,153,0,.07);
   color:#ffe171;
-  font-size:9.5px;
+  font-size:10px;
   line-height:1;
   font-weight:850;
   text-decoration:none;
@@ -563,11 +564,14 @@ const CSS = `
 
 /* section title */
 .cs-sec{
-  padding: 3px 7px 0;
+  padding: 4px 8px 0;
+}
+.cs-sec + .cs-sec{
+  margin-top:3px;
 }
 .cs-sec-title{
-  padding: 7px 9px 3px;
-  font-size: 9px;
+  padding: 8px 8px 4px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: .13em;
   text-transform: uppercase;
@@ -579,11 +583,11 @@ const CSS = `
   position:relative;
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:10px;
   width:calc(100% - 8px);
-  min-height:48px;
-  padding: 6px 8px;
-  border-radius: 12px;
+  min-height:54px;
+  padding: 7px 9px;
+  border-radius: 13px;
   border:1px solid transparent;
   text-decoration:none;
   color: var(--txt);
@@ -591,7 +595,7 @@ const CSS = `
   font:inherit;
   text-align:left;
   transition: background .18s ease, border-color .18s ease, transform .12s ease, box-shadow .18s ease, color .18s ease;
-  margin: 1px 4px;
+  margin: 2px 4px;
   overflow:hidden;
   -webkit-tap-highlight-color:transparent;
 }
@@ -622,9 +626,9 @@ const CSS = `
   box-shadow:0 0 10px rgba(245,153,0,.9);
 }
 .cs-ic{
-  width:32px;
-  height:32px;
-  border-radius: 10px;
+  width:34px;
+  height:34px;
+  border-radius: 11px;
   border:1px solid rgba(255,255,255,.11);
   background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.18));
   display:flex;
@@ -634,8 +638,8 @@ const CSS = `
   flex: 0 0 auto;
 }
 .cs-ic svg{
-  width:17px;
-  height:17px;
+  width:18px;
+  height:18px;
   transition:transform .22s cubic-bezier(.22,1,.36,1), color .18s ease;
 }
 .cs-item.active .cs-ic{
@@ -648,24 +652,25 @@ const CSS = `
 .cs-desc{
   display:flex;
   flex-direction:column;
-  gap:2px;
+  gap:2.5px;
   min-width:0;
 }
 .cs-desc > span{
-  font-size:13px;
-  line-height:1.15;
+  font-size:14px;
+  line-height:1.18;
   font-weight:850;
+  letter-spacing:-.005em;
 }
 
 /* ✅ descripción SIEMPRE visible */
 .cs-subline{
   display:block;
-  margin-top:2px;
+  margin-top:1px;
   font-weight: 600;
-  color: var(--muted);
-  opacity:.9;
-  font-size:10px;
-  line-height:1.25;
+  color:rgba(184,193,204,.86);
+  opacity:1;
+  font-size:11px;
+  line-height:1.3;
 }
 .cs-item.active .cs-subline{
   color:rgba(255,245,213,.72);
@@ -690,7 +695,7 @@ const CSS = `
 .cs-item-disabled:hover{ transform:none; }
 .cs-badge{
   margin-left:auto;
-  font-size:8.5px;
+  font-size:9px;
   font-weight:900;
   color:#0a0a0a;
   background: linear-gradient(135deg,var(--gold2),var(--gold));
@@ -704,8 +709,9 @@ const CSS = `
   z-index:1;
   flex:1;
   min-height:0;
-  padding: 3px 0 8px;
+  padding: 4px 0 10px;
   overflow:auto;
+  overscroll-behavior:contain;
   scrollbar-width:thin;
   scrollbar-color:rgba(245,184,28,.55) transparent;
 }
@@ -727,12 +733,12 @@ const CSS = `
   position:relative;
   z-index:1;
   margin-top:auto;
-  padding: 5px 7px calc(7px + env(safe-area-inset-bottom));
+  padding: 7px 8px calc(8px + env(safe-area-inset-bottom));
   border-top:1px solid rgba(255,255,255,.075);
   background:linear-gradient(180deg,rgba(8,10,13,.76),rgba(5,7,10,.98));
   display:flex;
   flex-direction:column;
-  gap:1px;
+  gap:2px;
 }
 .cs-foot-item{
   color:#f6f7f8;
@@ -898,15 +904,15 @@ const CSS = `
     width:min(356px,94vw);
   }
   .cs-d-head{
-    padding:8px 10px 8px;
+    padding:9px 11px 10px;
   }
   .cs-drawerLion{ right:-66px; }
   .cs-d-brandLogo .brand-logo-img{ height:38px; max-width:146px; }
-  .cs-prof{ gap:9px; }
-  .cs-avatar{ width:40px; height:40px; }
+  .cs-prof{ gap:10px; }
+  .cs-avatar{ width:42px; height:42px; }
   .cs-prof-link{ margin:0 -4px; }
-  .cs-sec{ padding:3px 7px 0; }
-  .cs-sec-title{ padding:6px 9px 2px; }
+  .cs-sec{ padding:4px 8px 0; }
+  .cs-sec-title{ padding:7px 8px 3px; }
 }
 
 @media (min-width:768px){

@@ -8475,7 +8475,7 @@ function MobileDayPicker({
       <div className="min-w-0 px-1 text-center" aria-current={selectedIsToday ? "date" : undefined}>
         <div className="flex min-w-0 items-center justify-center gap-1.5">
           <CalendarDays size={14} className={`shrink-0 ${selectedIsToday ? "text-[#FFD76B]" : "text-zinc-400"}`} />
-          <span className="truncate text-[11.5px] font-black leading-tight text-zinc-100 min-[360px]:text-[12px]">
+          <span className="truncate text-[12.5px] font-black leading-tight text-zinc-100 min-[360px]:text-[13px]">
             {longDateLabel}
           </span>
           {selectedIsToday ? (
@@ -9468,20 +9468,7 @@ function MobileDayMenu({
 
 
       {targetOnlyMeals.length ? (
-        <section className="mt-3 grid gap-2.5">
-          <div className="zf-menu-section-bar" aria-label={`${targetOnlyMeals.length} comidas por meta`}>
-            <span className="zf-menu-section-bar__icon" aria-hidden="true">
-              <Target size={14} strokeWidth={2.4} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <h3>Plan por comidas</h3>
-              <small>
-                {targetOnlyMeals.some((meal) => meal.personalTargetOnly) ? "Completá cada meta con tu consumo" : "Objetivos definidos por tu coach"}
-              </small>
-            </span>
-            <span className="zf-menu-section-bar__count" aria-hidden="true">{targetOnlyMeals.length}</span>
-          </div>
-
+        <section className="mt-3 grid gap-2.5" aria-label={`${targetOnlyMeals.length} comidas por meta`}>
           <MobileStandaloneTracking
             trackingDay={trackingDay}
             date={displayRow?.date}
@@ -9892,7 +9879,7 @@ function MobileGoalAccordion({
                 <span className="block text-[7px] font-black uppercase tracking-[.08em] text-zinc-500">
                   {isCalorieOver ? "Exceso" : isWithinCalorieTolerance ? "Balance" : "Restantes"}
                 </span>
-                <strong className={`mt-0.5 block text-[18px] font-black leading-none tracking-[-.04em] ${remainingKcalTone}`}>
+                <strong className={`mt-0.5 block text-[19px] font-black leading-none tracking-[-.04em] ${remainingKcalTone}`}>
                   {formatNumber(remainingKcalValue, 0)}
                 </strong>
                 <span className="mt-0.5 block text-[8px] font-black text-zinc-300">kcal</span>
@@ -9916,7 +9903,7 @@ function MobileGoalAccordion({
                         {macroRow.label}
                       </span>
                     </span>
-                    <span className={`shrink-0 text-[9px] font-black min-[360px]:text-[9.5px] ${macroExceeded ? "text-rose-300" : "text-zinc-100"}`}>
+                    <span className={`shrink-0 text-[9.5px] font-black min-[360px]:text-[10px] ${macroExceeded ? "text-rose-300" : "text-zinc-100"}`}>
                       {formatNumber(macroRow.current, 0)} / {formatNumber(macroRow.goal, 0)} g
                     </span>
                   </span>
